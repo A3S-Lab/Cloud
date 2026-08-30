@@ -32,6 +32,7 @@ pub(super) struct StoredNodeCommand {
 pub(super) struct StoredObservation {
     node_id: NodeId,
     agent_instance_id: Uuid,
+    received_at: DateTime<Utc>,
     report: RuntimeObservationReport,
 }
 
@@ -365,7 +366,7 @@ impl INodeControlRepository for InMemoryNodeRepository {
     ) -> Result<NodeObservationReceipt, RepositoryError> {
         let batch =
             NodeObservationSubmission::try_from(batch).map_err(RepositoryError::Conflict)?;
-        let _received_at = canonical_timestamp(received_at);
+        let received_at = canonical_timestamp(received_at);
         let capabilities = NodeCapabilities::new(
             batch.runtime_capabilities.provider_id.to_string(),
             batch.runtime_capabilities.provider_build.clone(),
@@ -435,20 +436,23 @@ impl INodeControlRepository for InMemoryNodeRepository {
                     ));
                 }
             }
-            let candidate = StoredObservation {
-                node_id: NodeId::from_uuid(batch.node_id),
-                agent_instance_id: batch.agent_instance_id,
-                report: report.clone(),
-            };
             if let Some(existing) = state.observations.get(&report.report_id) {
-                if existing != &candidate {
+                if existing.node_id != NodeId::from_uuid(batch.node_id)
+                    || existing.agent_instance_id != batch.agent_instance_id
+                    || existing.report != *report
+                {
                     return Err(RepositoryError::Conflict(
                         "Runtime observation report ID was reused with different content".into(),
                     ));
                 }
                 replayed_reports += 1;
             } else {
-                new_reports.push(candidate);
+                new_reports.push(StoredObservation {
+                    node_id: NodeId::from_uuid(batch.node_id),
+                    agent_instance_id: batch.agent_instance_id,
+                    received_at,
+                    report: report.clone(),
+                });
             }
         }
 
@@ -599,9 +603,10 @@ impl INodeControlRepository for InMemoryNodeRepository {
             .map(|stored| RuntimeObservationRecord {
                 report_id: stored.report.report_id,
                 node_id: stored.node_id,
+                agent_instance_id: stored.agent_instance_id,
                 command_id: stored.report.command_id.map(NodeCommandId::from_uuid),
                 observed_at: stored.report.observed_at,
-                received_at: stored.report.observed_at,
+                received_at: stored.received_at,
                 observation: stored.report.observation.clone(),
             }))
     }

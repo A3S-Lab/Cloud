@@ -1979,6 +1979,118 @@ fn workload_runtime_evidence_is_one_non_authorizing_identity_projection() {
 }
 
 #[test]
+fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter() {
+    let root = module_root();
+    let identity_port =
+        std::fs::read_to_string(root.join("identity/application/workload_runtime_evidence.rs"))
+            .expect("read Identity workload Runtime evidence port");
+    let adapter =
+        std::fs::read_to_string(root.join("identity/infrastructure/workload_runtime_evidence.rs"))
+            .expect("read Identity workload Runtime evidence adapter");
+    let workload_query =
+        std::fs::read_to_string(root.join("workloads/application/bound_runtime_claim.rs"))
+            .expect("read Workloads bound Runtime Claim query");
+    let fleet_query =
+        std::fs::read_to_string(root.join("fleet/application/runtime_node_evidence.rs"))
+            .expect("read Fleet Runtime Node evidence query");
+    let production_port = production_source(&identity_port);
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+
+    assert!(production_port.contains("pub trait IWorkloadRuntimeEvidenceCandidatePort"));
+    assert!(!production_port.contains("crate::modules::workloads"));
+    assert!(!production_port.contains("crate::modules::fleet"));
+    assert!(
+        workload_query.contains("list_deployment_replica_member_bindings")
+            && !workload_query.contains("find_deployment_replica_binding")
+            && workload_query.contains("IWorkloadPlacementGroupRepository")
+            && workload_query.contains("find_placement_group_for_replica_generation")
+            && workload_query.contains("project_identity_placement_group_runtime_spec"),
+        "Workloads evidence must resolve the exact replica member for both ordinary and placement-group Deployments"
+    );
+    assert!(
+        workload_query
+            .contains("R: IWorkloadRepository + IWorkloadPlacementGroupRepository + 'static")
+            && fleet_query.contains(
+                "R: INodePoolRepository + INodeRepository + INodeControlRepository + 'static"
+            ),
+        "Fleet must share one concrete repository and Workloads must share its Workload/placement-group repository without collapsing the separate Claim aggregate"
+    );
+    assert!(
+        workload_query.contains("require_stable_owner_snapshot")
+            && workload_query.contains("current_claim != *claim")
+            && fleet_query.contains("require_stable_owner_snapshot")
+            && fleet_query.contains("current_record != *record"),
+        "owner facts must use an optimistic double collect instead of emitting a torn concurrent read"
+    );
+    assert!(
+        compact_adapter.contains(
+            "implIWorkloadRuntimeEvidenceCandidatePortforOwnerWorkloadRuntimeEvidenceAdapter"
+        ) && production_adapter.contains("Arc<dyn IBoundRuntimeClaimQueryPort>")
+            && production_adapter.contains("Arc<dyn IRuntimeNodeEvidenceQueryPort>")
+            && production_adapter.contains("RuntimeConsumerRequirements")
+            && production_adapter.contains("RuntimeAttestationBinding")
+            && production_adapter.contains("fleet.organization_id() != request.organization_id()"),
+        "Identity must combine only the two owner ports through Runtime's public admission contract"
+    );
+    for forbidden in [
+        "crate::modules::workloads::domain",
+        "crate::modules::workloads::infrastructure",
+        "crate::modules::fleet::domain",
+        "crate::modules::fleet::infrastructure",
+        "IResourceClaimRepository",
+        "INodeRepository",
+        "INodeControlRepository",
+        "Postgres",
+        "InMemory",
+        "redis",
+        "a3s_lane",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "WI2-C2 adapter imported an owner lifecycle or duplicate mechanism {forbidden}"
+        );
+    }
+
+    for (owner, source) in [("Workloads", workload_query), ("Fleet", fleet_query)] {
+        let production = production_source(&source);
+        assert!(
+            !production.contains("crate::modules::identity"),
+            "{owner} owner query adopted Identity consumer vocabulary"
+        );
+        for forbidden in [
+            "IOutboxRepository",
+            "IIntegrationEventProjector",
+            "tokio::spawn",
+            "redis",
+            "a3s_lane",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{owner} owner query duplicated delivery or coordination through {forbidden}"
+            );
+        }
+    }
+
+    let node_control =
+        std::fs::read_to_string(root.join("fleet/domain/repositories/node_control_repository.rs"))
+            .expect("read Fleet Node control repository contract");
+    let in_memory =
+        std::fs::read_to_string(root.join("fleet/infrastructure/persistence/in_memory_control.rs"))
+            .expect("read Fleet in-memory observation persistence");
+    let postgres = std::fs::read_to_string(
+        root.join("fleet/infrastructure/persistence/postgres/control/observations.rs"),
+    )
+    .expect("read Fleet PostgreSQL observation persistence");
+    assert!(node_control.contains("pub agent_instance_id: Uuid"));
+    assert!(in_memory.contains("received_at: stored.received_at"));
+    assert!(postgres.contains(
+        "select report_id, node_id, agent_instance_id, command_id, observed_at, received_at, observation"
+    ));
+}
+
+#[test]
 fn platform_scope_and_rbac_foundation_has_one_identity_authority_and_only_narrows_scope() {
     let root = module_root();
     let scope = std::fs::read_to_string(root.join("shared_kernel/domain/scope_context.rs"))

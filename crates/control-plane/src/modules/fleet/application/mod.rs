@@ -6,6 +6,7 @@ mod log_reader;
 mod log_retention;
 mod node_artifact_authorizer;
 pub mod queries;
+mod runtime_node_evidence;
 
 pub use commands::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, AcknowledgeNodeCommandResult,
@@ -31,6 +32,9 @@ pub use node_artifact_authorizer::NodeArtifactAuthorizer;
 pub use queries::{
     GetNode, GetNodeHandler, GetNodePool, GetNodePoolHandler, ListNodePools, ListNodePoolsHandler,
     ListNodes, ListNodesHandler, NodeQueryResult,
+};
+pub use runtime_node_evidence::{
+    IRuntimeNodeEvidenceQueryPort, RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
 };
 
 #[cfg(test)]

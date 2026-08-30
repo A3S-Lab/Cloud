@@ -2,22 +2,25 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
+pub mod published;
 
 pub use application::{
     project_replica_runtime_spec, project_runtime_spec, BindSkillWorkloadDeployment,
-    BindSkillWorkloadDeploymentHandler, CancelDeployment, CancelDeploymentHandler,
-    CancelDeploymentResult, CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
+    BindSkillWorkloadDeploymentHandler, BoundRuntimeClaimQuery, BoundRuntimeClaimQueryService,
+    CancelDeployment, CancelDeploymentHandler, CancelDeploymentResult,
+    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
     CreateSourceWorkloadDeploymentResult, CreateWorkloadDeployment,
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler, GetWorkloadLogs,
-    GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, RollbackWorkloadDeployment,
-    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, SourceWorkloadTemplate,
-    StopWorkload, StopWorkloadHandler, StopWorkloadResult, UnbindSkillWorkloadDeployment,
-    UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
-    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
+    GetWorkloadLogsHandler, IBoundRuntimeClaimQueryPort, ListWorkloads, ListWorkloadsHandler,
+    RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler,
+    RollbackWorkloadDeploymentResult, SourceWorkloadTemplate, StopWorkload, StopWorkloadHandler,
+    StopWorkloadResult, UnbindSkillWorkloadDeployment, UnbindSkillWorkloadDeploymentHandler,
+    UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadLogGapReason,
     WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult, WorkloadReplicaQueryResult,
+    WorkloadRuntimeExecutionBinding,
 };
 pub use domain::entities::{
     AgentReleaseAdmission, AgentWorkloadRevisionBinding, AtomicResourceClaimReservation,

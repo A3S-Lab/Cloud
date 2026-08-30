@@ -4,8 +4,9 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    IRecipientContactVerificationDispatcher, RecipientContactVerificationDeliveryDispatcher,
-    RecipientContactVerificationDispatchResult,
+    IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
+    RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
+    WorkloadRuntimeEvidenceRequest,
 };
 
 pub use application::commands::accept_membership_invitation::{
@@ -129,8 +130,8 @@ pub use domain::services::{
 pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
 pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
-    A3sEventRecipientContactVerificationConsumer, SmtpRecipientContactVerificationCredentials,
-    SmtpRecipientContactVerificationDeliveryOptions,
+    A3sEventRecipientContactVerificationConsumer, OwnerWorkloadRuntimeEvidenceAdapter,
+    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,

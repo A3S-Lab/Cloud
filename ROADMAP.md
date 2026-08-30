@@ -3285,13 +3285,46 @@ requires an absent Node hardware-attestation binding and always denies
 credential issuance. It is therefore a contract component, not completed WI2
 or available workload identity.
 
-The ordered continuation is `WI2-C2` one Identity-owned Application port and
-one Workloads/Fleet/Runtime anti-corruption adapter, `WI2-C3` immutable
-PostgreSQL persistence with idempotency/concurrency/revocation gates, and
-`WI2-C4` a Fleet-owned Node hardware-attestation fact plus a new issuance-ready
-versioned decision. No stage may introduce an Identity copy of Claim, Node or
-Runtime lifecycle, a provider-specific parser, Redis correctness lock, or
-parallel evidence registry. Only then may `WI3` issue a short-lived credential.
+`WI2-C2` is now implemented locally through one Identity-owned
+`IWorkloadRuntimeEvidenceCandidatePort` and one
+`OwnerWorkloadRuntimeEvidenceAdapter`. Workloads publishes only
+`a3s.cloud.bound-runtime-claim.v1` through its owner query: it interprets the
+current bound Claim and exact replica-member/revision lineage for both ordinary
+and placement-group Deployments, including each member's immutable plan and
+role-specific template, then reuses the sole Workloads Runtime compiler for the
+exact identity-attached Unit Spec. Fleet
+publishes only `a3s.cloud.runtime-node-evidence.v1` through its owner query: it
+validates current pool membership, no pending removal/maintenance, Ready Node,
+exact organization and Agent session, capability digest and first authoritative
+observation receipt. The adapter composes those two facts only through Runtime's
+`RuntimeConsumerRequirements` and `RuntimeAttestationBinding`; it imports no
+foreign repository or provider parser and creates no persistence, cache, lock,
+queue, event or retry lifecycle. Architecture and component tests reject owner
+identity substitution, class/isolation/semantics/attachment drift, and a
+second mechanism. Fleet uses one concrete repository across its pool, Node and
+control views; Workloads uses its sole Claim repository plus one concrete
+Workload/placement-group repository, preserving repository-per-aggregate DDD
+boundaries. Both owner services perform an optimistic double collect over their
+versioned heads; a concurrent Claim, binding, plan, pool, Node, session or
+latest-observation change returns a conflict instead of publishing a torn read.
+
+`WI2-C2` is a verifier foundation, not a deployment mutation: its generic
+execution binding computes the Spec that an attached Unit must already prove.
+It neither relabels a running Unit nor makes an unattached legacy Unit eligible.
+The ordered continuation is therefore split explicitly. `WI2-C3a` persists one
+Workloads-owned, immutable generic execution binding against the exact
+Workload revision and new Deployment identity before scheduling; ordinary,
+placement-group, reconciliation, restart and rollback dispatch must all consume
+it through the existing sole Runtime Spec compiler and carry it into the exact
+replica/Runtime generations. An existing unattached Unit requires a new rollout
+even when the revision is unchanged. `WI2-C3b` adds the one Identity-owned
+immutable PostgreSQL evidence history with
+idempotency/concurrency/revocation gates. Then `WI2-C4` adds a Fleet-owned Node
+hardware-attestation fact plus a new
+issuance-ready versioned decision. No stage may introduce an Identity copy of
+Claim, Node or Runtime lifecycle, a provider-specific parser, Redis correctness
+lock, or parallel evidence registry. Only then may `WI3` issue a short-lived
+credential.
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,

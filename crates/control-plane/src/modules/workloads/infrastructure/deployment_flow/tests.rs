@@ -30,9 +30,12 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, GatewayCertificateId,
     GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId, OperationId,
     OrganizationId, ProjectId, RepositoryError, ResourceClaimId, ResourceName, RouteId, SecretId,
-    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::{project_replica_runtime_spec, project_runtime_spec};
+use crate::modules::workloads::application::{
+    project_replica_runtime_spec, project_runtime_spec, BoundRuntimeClaimQuery,
+    BoundRuntimeClaimQueryService, IBoundRuntimeClaimQueryPort, WorkloadRuntimeExecutionBinding,
+};
 use crate::modules::workloads::domain::entities::{
     AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
     DeploymentReplicaBinding, DeploymentStatus, HttpHealthCheck, OciArtifact, OciArtifactReference,
@@ -2045,15 +2048,72 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
         .find_deployment(organization_id, first_deployment.id)
         .await?;
     assert_eq!(active.status, DeploymentStatus::Active);
+    let active_claim = resource_claims
+        .find(
+            organization_id,
+            ResourceClaimId::from_uuid(first_deployment.id.as_uuid()),
+        )
+        .await?;
     assert_eq!(
-        resource_claims
-            .find(
-                organization_id,
-                ResourceClaimId::from_uuid(first_deployment.id.as_uuid()),
-            )
-            .await?
-            .state,
+        active_claim.state,
         crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
+    );
+    let semantics = Sha256Digest::parse(format!("sha256:{}", "6".repeat(64)))?;
+    let attachment = Sha256Digest::parse(format!("sha256:{}", "7".repeat(64)))?;
+    let owner_query =
+        BoundRuntimeClaimQueryService::new(resource_claims.clone(), workloads.clone());
+    let owner_fact = owner_query
+        .find_bound_runtime_claim(BoundRuntimeClaimQuery::new(
+            active_claim.organization_id,
+            active_claim.project_id,
+            active_claim.environment_id,
+            active_claim.workload_id,
+            first_revision.id,
+            active_claim.id,
+            WorkloadRuntimeExecutionBinding::new(
+                RuntimeUnitClass::Service,
+                IsolationLevel::Confidential,
+                semantics.clone(),
+                attachment.clone(),
+            )?,
+        )?)
+        .await?
+        .ok_or("bound Runtime Claim owner fact")?;
+    assert_eq!(owner_fact.resource_claim_id(), active_claim.id);
+    assert_eq!(owner_fact.node_id(), active_claim.node_id);
+    assert_eq!(
+        owner_fact.runtime_spec().artifact,
+        first_runtime_spec.artifact
+    );
+    assert_eq!(
+        owner_fact.runtime_spec().process,
+        first_runtime_spec.process
+    );
+    assert_eq!(
+        owner_fact.runtime_spec().resources,
+        first_runtime_spec.resources
+    );
+    assert_eq!(
+        owner_fact.runtime_spec().unit_id,
+        active_claim.runtime_unit_id
+    );
+    assert_eq!(
+        owner_fact.runtime_spec().generation,
+        active_claim.runtime_generation
+    );
+    assert_eq!(
+        owner_fact
+            .runtime_spec()
+            .semantics_profile_digest
+            .as_deref(),
+        Some(semantics.as_str())
+    );
+    assert_eq!(
+        owner_fact
+            .runtime_spec()
+            .identity_attachment_digest
+            .as_deref(),
+        Some(attachment.as_str())
     );
     assert_eq!(
         workloads

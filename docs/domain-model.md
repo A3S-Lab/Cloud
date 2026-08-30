@@ -251,9 +251,10 @@ Primary aggregates:
   `WorkloadIdentityPolicyRevision` (`H0.4-WI1-C1/C2` contract, persistence,
   and maintained interfaces implemented locally; exact execution-attestation
   binding remains `WI2`)
-- `WorkloadRuntimeEvidenceBinding` (`H0.4-WI2-C1` deterministic,
-  non-authorizing policy/Claim/Node-session/Runtime-Box evidence projection;
-  owner-port composition, persistence and Fleet hardware attestation remain)
+- `WorkloadRuntimeEvidenceBinding` (`H0.4-WI2-C1/C2` deterministic,
+  non-authorizing policy/Claim/Node-session/Runtime-Box evidence projection and
+  sole owner-port composition; persistence and Fleet hardware attestation
+  remain)
 
 #### Platform scope and RBAC (`C0.5-MT1-C1/C2/C3` foundation)
 
@@ -370,7 +371,7 @@ delivery, discovery, peer policy, enforcement, revocation drills, and
 federation evidence remain open. No workload identity availability is claimed
 by `WI1`.
 
-#### Workload Runtime evidence (`H0.4-WI2-C1` component)
+#### Workload Runtime evidence (`H0.4-WI2-C1/C2` component)
 
 `WorkloadRuntimeEvidenceBinding` is an immutable Identity decision projection,
 not another Workload, Claim, Node, Runtime or attestation aggregate. Its
@@ -392,8 +393,37 @@ revalidate all owners.
 V1 structurally rejects a non-null Node hardware-attestation digest and its
 credential-authority predicate is always false. This makes the currently
 missing Fleet evidence visible instead of treating a Node certificate,
-capability document or Box provider name as hardware proof. `WI2-C2/C3` add the
-sole Identity-owned owner port/adapter and persistence; `WI2-C4` adds Fleet's
+capability document or Box provider name as hardware proof.
+
+`WI2-C2` adds one normalized Identity Application port and one Infrastructure
+anti-corruption adapter. Workloads owns the immutable
+`a3s.cloud.bound-runtime-claim.v1` fact and keeps Claim, Deployment, replica and
+revision interpretation behind `IBoundRuntimeClaimQueryPort`. Its query reuses
+the sole Workloads ordinary/member compiler and resolves the exact immutable
+member template for placement groups; consumers may bind only generic Runtime
+class, isolation, semantics and opaque identity attachment, never rebuild
+artifact, process, resource, network, mount or Secret fields. Fleet owns
+immutable `a3s.cloud.runtime-node-evidence.v1` and keeps NodePool, Node state,
+Agent session, capability envelope and observation storage behind
+`IRuntimeNodeEvidenceQueryPort`. The fact binds the first receipt time and
+current organization/capability digest, and rejects tenant substitution, a
+stale Agent session or provider-build drift. Identity then uses only Runtime's
+provider-neutral requirements and attestation binding to form the C1 candidate.
+Both owner query services double-collect the relevant versioned heads and fail
+with a concurrency conflict if the snapshot changes while it is being
+assembled. Fleet uses one concrete pool/Node/control repository; Workloads
+retains its sole Claim repository plus one concrete Workload/placement-group
+repository so distinct aggregate boundaries are not collapsed. No Redis lock
+becomes evidence authority.
+
+C2's generic execution binding is an expected-Spec verifier and does not mutate
+or retroactively authorize a running Unit. `WI2-C3a` makes that value one
+Workloads-owned immutable fact bound to the exact revision and new Deployment
+identity before scheduling. The ordinary, placement-group, reconciliation,
+restart and rollback paths must consume it through the same compiler and carry
+it into the exact replica/Runtime generations; an unattached existing Unit
+requires a new Deployment even when the revision is unchanged. `WI2-C3b` adds
+the sole Identity immutable evidence history. `WI2-C4` then adds Fleet's
 immutable hardware evidence and a new versioned decision before `WI3` can
 issue credentials.
 

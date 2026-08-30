@@ -6247,14 +6247,43 @@ SHA-256 and deterministic identity, accepts only a running observation within
 the 120-second protocol ceiling, and cannot authorize issuance because V1
 requires no Node hardware-attestation digest.
 
-Implement `WI2-C2` through one Identity consumer port and one cross-context
-adapter, then `WI2-C3` through immutable PostgreSQL persistence and retained
-replay/concurrency tests. Implement the missing Fleet-owned hardware Node
-attestation as `WI2-C4` and consume it only through a new versioned Identity
-decision. Handlers may not import Workloads/Fleet repositories, Identity may
-not copy their lifecycles, and cache/lock/queue mechanisms may not become
-evidence truth. `WI3` remains blocked by design until that full decision is
-freshly revalidated.
+`WI2-C2` now implements one Identity consumer port and one cross-context
+adapter over two owner-published facts. `BoundRuntimeClaimQueryService` alone
+interprets Workloads Claim/replica/revision state, resolves the exact immutable
+member plan for placement groups, and feeds a generic execution binding into
+the existing sole ordinary/member Runtime Spec compiler.
+`RuntimeNodeEvidenceQueryService` alone interprets Fleet pool membership, Node
+state, Agent session, capabilities and the exact first-received observation.
+The Identity adapter uses Runtime's public requirements and attestation
+binding, then normalizes the already frozen C1 candidate. It does not import
+owner repositories or create persistence, delivery, retry, cache or lock
+state. Fleet observation reads now retain the Agent instance and the first
+authoritative receipt timestamp in both PostgreSQL and in-memory adapters;
+Runtime's millisecond protocol time is checked against, but not confused with,
+Cloud/PostgreSQL microsecond timestamps. Fleet uses one concrete repository
+across pool, Node and control views; Workloads retains its sole Claim repository
+and one concrete Workload/placement-group repository instead of collapsing
+distinct aggregates. Both owner queries use an optimistic double collect;
+concurrent head, session or latest-observation changes conflict instead of
+producing torn evidence.
+
+The C2 projection verifies an identity-attached Spec but deliberately does not
+mutate a running Unit. Implement `WI2-C3a` first: persist one Workloads-owned,
+immutable generic execution binding against the exact revision and new
+Deployment identity before scheduling, and make ordinary, placement-group,
+reconciliation, restart and rollback dispatch reuse the existing sole Runtime
+Spec compiler and carry it into the exact replica/Runtime generations. The
+binding contains only Runtime class, isolation, semantics digest and opaque
+attachment digest; it is not an Identity policy replica. Existing unattached
+Units must roll forward through a new Deployment even when the revision is
+unchanged, rather than be relabelled in place. Implement `WI2-C3b` through the
+one Identity-owned immutable PostgreSQL evidence history plus retained
+idempotency/replay/concurrency/revocation tests. Implement the missing
+Fleet-owned hardware Node attestation as `WI2-C4` and consume it only through a
+new versioned Identity decision. Handlers may not import Workloads/Fleet
+repositories, Identity may not copy their lifecycles, and cache/lock/queue
+mechanisms may not become evidence truth. `WI3` remains blocked by design until
+that full decision is freshly revalidated.
 
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same

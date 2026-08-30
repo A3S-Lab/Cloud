@@ -1108,7 +1108,21 @@ async fn exercise_observation_control(
         .latest_runtime_observation(node_id, "postgres-service", 1)
         .await?
         .ok_or("latest Runtime observation was not found")?;
+    let first_received_at = observed_at
+        .with_nanosecond(observed_at.nanosecond() / 1_000 * 1_000)
+        .expect("PostgreSQL receipt timestamp");
+    let replay_received_at = observed_at + Duration::milliseconds(1);
+    let replay_received_at = replay_received_at
+        .with_nanosecond(replay_received_at.nanosecond() / 1_000 * 1_000)
+        .expect("PostgreSQL replay timestamp");
     assert_eq!(latest.report_id, report_id);
+    assert_eq!(latest.agent_instance_id, agent_instance_id);
+    assert_eq!(latest.observed_at, first_received_at);
+    assert_eq!(latest.received_at, first_received_at);
+    assert_ne!(
+        latest.received_at, replay_received_at,
+        "PostgreSQL replay must preserve the first authoritative receipt time"
+    );
     assert_eq!(latest.observation, batch.observations[0].observation);
     assert!(nodes
         .latest_runtime_observation(node_id, "missing-service", 1)

@@ -6,14 +6,14 @@ use crate::modules::assets::domain::{
     McpServiceProfileBinding, McpServiceProfileSpec,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, GitCommitSha,
-    OrganizationId, ProjectId, ResourceName, SecretId, Sha256Digest, WorkloadId,
-    WorkloadRevisionId,
+    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId,
+    GitCommitSha, NodeId, OrganizationId, ProjectId, ResourceName, SecretId, Sha256Digest,
+    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
     AgentWorkloadRevisionBinding, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget,
     ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
-    Workload,
+    Workload, WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
 };
 use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
 use chrono::{Duration, Utc};
@@ -270,9 +270,12 @@ fn projects_an_opaque_semantics_profile_without_product_fields() {
 #[test]
 fn projects_headless_service_to_network_none_without_health() {
     let digest = format!("sha256:{}", "b".repeat(64));
+    let workload_id = WorkloadId::new();
+    let revision_id = WorkloadRevisionId::new();
+    let created_at = canonical_timestamp(Utc::now());
     let revision = WorkloadRevision::create(
-        WorkloadRevisionId::new(),
-        WorkloadId::new(),
+        revision_id,
+        workload_id,
         1,
         ServiceTemplate {
             artifact: OciArtifact {
@@ -296,7 +299,7 @@ fn projects_headless_service_to_network_none_without_health() {
             ports: Vec::new(),
             health: None,
         },
-        Utc::now(),
+        created_at,
     )
     .expect("headless revision");
 
@@ -305,4 +308,84 @@ fn projects_headless_service_to_network_none_without_health() {
     assert_eq!(spec.network.mode, NetworkMode::None);
     assert!(spec.network.ports.is_empty());
     assert!(spec.health.is_none());
+
+    let binding = DeploymentReplicaBinding {
+        deployment_id: DeploymentId::new(),
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        environment_id: EnvironmentId::new(),
+        workload_id,
+        revision_id,
+        replica_id: WorkloadReplicaId::new(),
+        replica_generation: 4,
+        member_id: WorkloadReplicaMemberId::new(),
+        node_id: Some(NodeId::new()),
+        placement_generation: 2,
+        runtime_unit_id: "workload:headless:replica:1".into(),
+        runtime_generation: 4,
+        created_at,
+        updated_at: created_at,
+    };
+    let semantics =
+        Sha256Digest::parse(format!("sha256:{}", "c".repeat(64))).expect("semantics digest");
+    let attachment =
+        Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("identity attachment");
+    let execution = WorkloadRuntimeExecutionBinding::new(
+        RuntimeUnitClass::Service,
+        IsolationLevel::Confidential,
+        semantics.clone(),
+        attachment.clone(),
+    )
+    .expect("execution binding");
+    let identity_spec = project_identity_bound_runtime_spec(&revision, &binding, &execution)
+        .expect("identity-bound Runtime spec");
+    assert_eq!(identity_spec.artifact, spec.artifact);
+    assert_eq!(identity_spec.process, spec.process);
+    assert_eq!(identity_spec.resources, spec.resources);
+    assert_eq!(identity_spec.unit_id, binding.runtime_unit_id);
+    assert_eq!(identity_spec.generation, binding.runtime_generation);
+    assert_eq!(identity_spec.isolation, IsolationLevel::Confidential);
+    assert_eq!(
+        identity_spec.semantics_profile_digest.as_deref(),
+        Some(semantics.as_str())
+    );
+    assert_eq!(
+        identity_spec.identity_attachment_digest.as_deref(),
+        Some(attachment.as_str())
+    );
+
+    let mut worker_template = revision
+        .resolved_template()
+        .expect("leader template")
+        .clone();
+    worker_template.process.command = vec!["/app/worker".into()];
+    worker_template.process.args = vec!["--rank=1".into()];
+    let worker_member_id = WorkloadReplicaMemberId::new();
+    let worker_binding = DeploymentReplicaBinding {
+        member_id: worker_member_id,
+        runtime_unit_id: "workload:headless:replica:1:member:1".into(),
+        ..binding.clone()
+    };
+    let worker_plan = WorkloadPlacementGroupMemberPlan {
+        member_id: worker_member_id,
+        ordinal: 1,
+        role: WorkloadPlacementGroupMemberRole::Worker,
+        runtime_unit_id: worker_binding.runtime_unit_id.clone(),
+        template_digest: worker_template.digest().expect("worker template digest"),
+        template: worker_template.clone(),
+    };
+    let worker_spec = project_identity_placement_group_runtime_spec(
+        &revision,
+        &worker_binding,
+        &worker_plan,
+        &execution,
+    )
+    .expect("identity-bound placement-group worker spec");
+    assert_eq!(worker_spec.process.command, worker_template.process.command);
+    assert_ne!(worker_spec.process.command, spec.process.command);
+    assert_eq!(worker_spec.unit_id, worker_binding.runtime_unit_id);
+    assert_eq!(
+        worker_spec.identity_attachment_digest,
+        Some(attachment.to_string())
+    );
 }

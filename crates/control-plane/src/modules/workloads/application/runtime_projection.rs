@@ -2,6 +2,7 @@
 //! provider-neutral Runtime contract. This is deterministic application
 //! policy, not an infrastructure adapter or provider implementation.
 
+use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::workloads::domain::entities::{
     DeploymentReplicaBinding, ServiceTemplate, WorkloadPlacementGroupMemberPlan, WorkloadReplica,
     WorkloadReplicaLifecycle, WorkloadRevision,
@@ -13,6 +14,58 @@ use a3s_runtime::contract::{
     RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
     TransportProtocol,
 };
+
+/// Provider-neutral execution properties supplied by an authorized consumer
+/// when it needs an exact identity-attached projection. Workloads remains the
+/// sole compiler of the `RuntimeUnitSpec`; callers cannot mutate the compiled
+/// artifact, process, resources, network, mounts, or Secret references.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkloadRuntimeExecutionBinding {
+    runtime_class: RuntimeUnitClass,
+    isolation: IsolationLevel,
+    semantics_profile_digest: Sha256Digest,
+    identity_attachment_digest: Sha256Digest,
+}
+
+impl WorkloadRuntimeExecutionBinding {
+    pub fn new(
+        runtime_class: RuntimeUnitClass,
+        isolation: IsolationLevel,
+        semantics_profile_digest: Sha256Digest,
+        identity_attachment_digest: Sha256Digest,
+    ) -> Result<Self, String> {
+        let value = Self {
+            runtime_class,
+            isolation,
+            semantics_profile_digest,
+            identity_attachment_digest,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        Sha256Digest::parse(self.semantics_profile_digest.as_str())?;
+        Sha256Digest::parse(self.identity_attachment_digest.as_str())?;
+        Ok(())
+    }
+
+    pub const fn runtime_class(&self) -> RuntimeUnitClass {
+        self.runtime_class
+    }
+
+    pub const fn isolation(&self) -> IsolationLevel {
+        self.isolation
+    }
+
+    pub const fn semantics_profile_digest(&self) -> &Sha256Digest {
+        &self.semantics_profile_digest
+    }
+
+    pub const fn identity_attachment_digest(&self) -> &Sha256Digest {
+        &self.identity_attachment_digest
+    }
+}
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
     project_runtime_spec_with_digest(
@@ -53,6 +106,45 @@ pub(crate) fn project_bound_runtime_spec(
     let mut spec = project_runtime_spec(revision)?;
     spec.unit_id.clone_from(&binding.runtime_unit_id);
     spec.generation = binding.runtime_generation;
+    spec.validate()?;
+    Ok(spec)
+}
+
+/// Compile an exact bound Unit using the same Workloads projection authority
+/// as ordinary deployment. Identity and other consumers can supply only the
+/// four generic execution bindings that Runtime deliberately leaves opaque.
+pub(crate) fn project_identity_bound_runtime_spec(
+    revision: &WorkloadRevision,
+    binding: &DeploymentReplicaBinding,
+    execution: &WorkloadRuntimeExecutionBinding,
+) -> Result<RuntimeUnitSpec, String> {
+    let spec = project_bound_runtime_spec(revision, binding)?;
+    bind_runtime_execution(spec, execution)
+}
+
+pub(crate) fn project_identity_placement_group_runtime_spec(
+    revision: &WorkloadRevision,
+    binding: &DeploymentReplicaBinding,
+    plan: &WorkloadPlacementGroupMemberPlan,
+    execution: &WorkloadRuntimeExecutionBinding,
+) -> Result<RuntimeUnitSpec, String> {
+    let spec = project_placement_group_runtime_spec(revision, binding, plan)?;
+    bind_runtime_execution(spec, execution)
+}
+
+fn bind_runtime_execution(
+    mut spec: RuntimeUnitSpec,
+    execution: &WorkloadRuntimeExecutionBinding,
+) -> Result<RuntimeUnitSpec, String> {
+    execution.validate()?;
+    if spec.class != execution.runtime_class {
+        return Err(
+            "Workload revision cannot change Runtime Unit class at identity admission".into(),
+        );
+    }
+    spec.isolation = execution.isolation;
+    spec.semantics_profile_digest = Some(execution.semantics_profile_digest.as_str().into());
+    spec.identity_attachment_digest = Some(execution.identity_attachment_digest.as_str().into());
     spec.validate()?;
     Ok(spec)
 }

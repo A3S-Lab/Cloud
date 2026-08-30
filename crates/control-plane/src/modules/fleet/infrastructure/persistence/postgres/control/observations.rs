@@ -161,8 +161,8 @@ pub(in super::super) async fn latest_runtime_observation(
     }
     let row = a3s_orm::Database::new(a3s_orm::PostgresDialect, executor.clone())
         .fetch_optional_as(
-            sql_query::<(Uuid, Uuid, Option<Uuid>, DateTime<Utc>, DateTime<Utc>, Value)>(
-                "select report_id, node_id, command_id, observed_at, received_at, observation from runtime_observations where node_id = ",
+            sql_query::<(Uuid, Uuid, Uuid, Option<Uuid>, DateTime<Utc>, DateTime<Utc>, Value)>(
+                "select report_id, node_id, agent_instance_id, command_id, observed_at, received_at, observation from runtime_observations where node_id = ",
             )
             .bind(node_id.as_uuid())
             .append(" and unit_id = ")
@@ -174,7 +174,15 @@ pub(in super::super) async fn latest_runtime_observation(
         .await
         .map_err(|error| RepositoryError::Storage(error.to_string()))?;
     row.map(
-        |(report_id, stored_node_id, command_id, observed_at, received_at, document)| {
+        |(
+            report_id,
+            stored_node_id,
+            agent_instance_id,
+            command_id,
+            observed_at,
+            received_at,
+            document,
+        )| {
             let observation: a3s_runtime::contract::RuntimeObservation =
                 serde_json::from_value(document).map_err(|error| {
                     RepositoryError::Storage(format!(
@@ -195,6 +203,7 @@ pub(in super::super) async fn latest_runtime_observation(
             Ok(RuntimeObservationRecord {
                 report_id,
                 node_id,
+                agent_instance_id,
                 command_id: command_id.map(NodeCommandId::from_uuid),
                 observed_at,
                 received_at,

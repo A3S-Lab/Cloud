@@ -97,6 +97,7 @@ pub struct NodeLogGapMetadata {
 pub struct RuntimeObservationRecord {
     pub report_id: Uuid,
     pub node_id: NodeId,
+    pub agent_instance_id: Uuid,
     pub command_id: Option<crate::modules::shared_kernel::domain::NodeCommandId>,
     pub observed_at: DateTime<Utc>,
     pub received_at: DateTime<Utc>,

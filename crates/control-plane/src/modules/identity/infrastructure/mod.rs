@@ -6,6 +6,7 @@ mod recipient_contact_verification_event_consumer;
 mod smtp_recipient_contact_verification_delivery;
 mod spiffe_https_web_workload_identity_provider;
 mod vault_recipient_contact_proof;
+mod workload_runtime_evidence;
 
 pub use api_token_verifier::ApiTokenVerifier;
 pub use openid_connect_provider::OpenIdConnectProviderService;
@@ -23,3 +24,4 @@ pub use spiffe_https_web_workload_identity_provider::{
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
 };
 pub use vault_recipient_contact_proof::VaultRecipientContactProofService;
+pub use workload_runtime_evidence::OwnerWorkloadRuntimeEvidenceAdapter;

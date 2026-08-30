@@ -1,4 +1,5 @@
 mod agent_release_admission;
+mod bound_runtime_claim;
 pub mod commands;
 pub mod queries;
 pub(crate) mod resource_access;
@@ -9,6 +10,9 @@ mod workflow;
 mod tests;
 
 pub(crate) use agent_release_admission::admit_deployable_agent_release;
+pub use bound_runtime_claim::{
+    BoundRuntimeClaimQuery, BoundRuntimeClaimQueryService, IBoundRuntimeClaimQueryPort,
+};
 pub use commands::bind_skill_workload_deployment::{
     BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler,
 };
@@ -45,10 +49,13 @@ pub use queries::{
     WorkloadReplicaQueryResult,
 };
 pub(crate) use runtime_projection::{
-    project_bound_runtime_spec, project_placement_group_runtime_spec, project_runtime_secrets,
-    project_runtime_spec_with_digest,
+    project_bound_runtime_spec, project_identity_bound_runtime_spec,
+    project_identity_placement_group_runtime_spec, project_placement_group_runtime_spec,
+    project_runtime_secrets, project_runtime_spec_with_digest,
 };
-pub use runtime_projection::{project_replica_runtime_spec, project_runtime_spec};
+pub use runtime_projection::{
+    project_replica_runtime_spec, project_runtime_spec, WorkloadRuntimeExecutionBinding,
+};
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,

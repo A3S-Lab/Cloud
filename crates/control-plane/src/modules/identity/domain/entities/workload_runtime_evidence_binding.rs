@@ -130,6 +130,7 @@ impl WorkloadRuntimeEvidenceCandidate {
             || self.runtime_observed_at != canonical_timestamp(self.runtime_observed_at)
             || self.runtime_received_at != canonical_timestamp(self.runtime_received_at)
             || self.runtime_received_at < self.runtime_observed_at
+            || self.node_last_observed_at < self.runtime_observed_at
         {
             return Err("workload Runtime evidence timestamps are invalid or reordered".into());
         }
@@ -450,6 +451,14 @@ mod tests {
         stale.runtime_received_at = stale_at;
         assert!(
             WorkloadRuntimeEvidenceBinding::bind_runtime_component(&policy, stale, now).is_err()
+        );
+
+        let mut reordered = candidate(&policy, now - Duration::seconds(2));
+        reordered.runtime_received_at = now - Duration::seconds(1);
+        reordered.node_last_observed_at = now - Duration::seconds(3);
+        assert!(
+            WorkloadRuntimeEvidenceBinding::bind_runtime_component(&policy, reordered, now)
+                .is_err()
         );
     }
 

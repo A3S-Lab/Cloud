@@ -1,4 +1,7 @@
 use super::InMemoryNodeRepository;
+use crate::modules::fleet::application::{
+    IRuntimeNodeEvidenceQueryPort, RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
+};
 use crate::modules::fleet::domain::entities::{
     EnrollmentToken, NodeCertificate, NodeCertificateMaterial, NodeCommandDraft, NodePool,
 };
@@ -25,13 +28,14 @@ use a3s_cloud_contracts::{
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceControl, ResourceLimits, RestartPolicy,
-    RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeFeature,
-    RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec,
-    RuntimeUnitState,
+    RuntimeActionRequest, RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence,
+    RuntimeFeature, RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass,
+    RuntimeUnitSpec, RuntimeUnitState,
 };
 use chrono::{Duration, Timelike, Utc};
 use serde_json::json;
 use std::collections::BTreeMap;
+use std::sync::Arc;
 use uuid::Uuid;
 
 mod support;
@@ -871,6 +875,18 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .expect("replay observation");
     assert_eq!(replayed.accepted_reports, 0);
     assert_eq!(replayed.replayed_reports, 1);
+    let stored = repository
+        .latest_runtime_observation(node_id, "service-1", 1)
+        .await
+        .expect("read accepted observation")
+        .expect("stored observation");
+    assert_eq!(stored.agent_instance_id, agent_instance_id);
+    assert_eq!(stored.received_at, canonical_timestamp(observed_at));
+    assert_ne!(
+        stored.received_at,
+        canonical_timestamp(observed_at + Duration::milliseconds(1)),
+        "a replay must preserve the first authoritative receipt time"
+    );
 
     let mut conflict = batch;
     conflict.observations[0].observation.unit_id = "different-service".into();
@@ -951,6 +967,169 @@ async fn observations_and_gateway_acknowledgements_are_atomic_and_replay_safe() 
         .record_gateway_acknowledgement(gateway_conflict, observed_at + Duration::seconds(3),)
         .await
         .is_err());
+}
+
+#[tokio::test]
+async fn runtime_node_evidence_query_uses_the_current_ready_agent_session() {
+    let repository = Arc::new(InMemoryNodeRepository::new());
+    let organization_id = OrganizationId::new();
+    let now = canonical_timestamp(Utc::now());
+    let node_id = pool_node(
+        &repository,
+        organization_id,
+        "runtime-evidence-node",
+        'e',
+        now,
+    )
+    .await;
+    let node = INodeRepository::find(repository.as_ref(), organization_id, node_id)
+        .await
+        .expect("runtime evidence Node");
+    let pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("runtime evidence pool").expect("pool name"),
+        vec![node_id],
+        now + Duration::milliseconds(2),
+    )
+    .expect("runtime evidence pool");
+    repository
+        .save(NodePoolWrite {
+            pool: pool.clone(),
+            expected_version: None,
+            event: event(
+                organization_id,
+                pool.id.as_uuid(),
+                pool.aggregate_version,
+                "fleet.node-pool.changed",
+            ),
+            idempotency: IdempotencyRequest::new(
+                "fleet/node-pools",
+                "runtime-evidence-pool",
+                b"runtime evidence pool",
+            )
+            .expect("pool idempotency"),
+        })
+        .await
+        .expect("persist runtime evidence pool");
+
+    let observed_at = now + Duration::milliseconds(3);
+    let observed_at_ms =
+        u64::try_from(observed_at.timestamp_millis()).expect("positive Runtime timestamp");
+    let mut runtime_capabilities = runtime_capabilities();
+    runtime_capabilities.features.extend([
+        RuntimeFeature::IdentityAttachment,
+        RuntimeFeature::Attestation,
+    ]);
+    runtime_capabilities
+        .validate()
+        .expect("Runtime evidence capabilities");
+    let provider_build = runtime_capabilities.provider_build.clone();
+    let mut observation = runtime_observation("identity-service", 7, observed_at_ms);
+    observation.state = RuntimeUnitState::Running;
+    observation.provider_resource_id = Some("box:identity-service:7".into());
+    observation.provider_build = Some(provider_build.clone());
+    observation.started_at_ms = Some(observed_at_ms);
+    observation.evidence = Some(RuntimeEvidence {
+        provider_build: provider_build.clone(),
+        spec_digest: observation.spec_digest.clone(),
+        semantics_profile_digest: Some(format!("sha256:{}", "8".repeat(64))),
+        identity_attachment_digest: Some(format!("sha256:{}", "9".repeat(64))),
+        claims: BTreeMap::new(),
+    });
+    observation.provider_attestation = Some(ArtifactRef {
+        uri: format!(
+            "oci://registry.example/a3s/attestation@sha256:{}",
+            "a".repeat(64)
+        ),
+        digest: format!("sha256:{}", "a".repeat(64)),
+        media_type: "application/vnd.a3s.runtime.attestation.v1+json".into(),
+    });
+    observation
+        .validate()
+        .expect("running Runtime evidence observation");
+    let report_id = Uuid::now_v7();
+    let received_at = observed_at + Duration::milliseconds(1);
+    repository
+        .record_observations(
+            NodeObservationBatch {
+                schema: NodeObservationBatch::SCHEMA.into(),
+                node_id: node_id.as_uuid(),
+                agent_instance_id: node.agent_instance_id,
+                sent_at: observed_at,
+                heartbeat: NodeHeartbeat {
+                    schema: NodeHeartbeat::SCHEMA.into(),
+                    node_id: node_id.as_uuid(),
+                    agent_instance_id: node.agent_instance_id,
+                    observed_at,
+                    agent_version: node.agent_version.clone(),
+                    runtime_capabilities,
+                },
+                observations: vec![RuntimeObservationReport {
+                    report_id,
+                    command_id: None,
+                    observed_at,
+                    observation,
+                }],
+            }
+            .into(),
+            received_at,
+        )
+        .await
+        .expect("record Runtime identity observation");
+
+    let service = RuntimeNodeEvidenceQueryService::new(repository.clone());
+    let query = RuntimeNodeEvidenceQuery::new(
+        organization_id,
+        pool.id,
+        node_id,
+        "identity-service",
+        7,
+        received_at,
+    )
+    .expect("Runtime Node evidence query");
+    let evidence = service
+        .find_runtime_node_evidence(query.clone())
+        .await
+        .expect("query Runtime Node evidence")
+        .expect("current ready Runtime Node evidence");
+    assert_eq!(evidence.organization_id(), organization_id);
+    assert_eq!(evidence.node_pool_id(), pool.id);
+    assert_eq!(evidence.node_id(), node_id);
+    assert_eq!(evidence.agent_instance_id(), node.agent_instance_id);
+    assert_eq!(evidence.runtime_report_id(), report_id);
+    assert_eq!(evidence.runtime_received_at(), received_at);
+
+    let current_node = INodeRepository::find(repository.as_ref(), organization_id, node_id)
+        .await
+        .expect("current Runtime evidence Node");
+    repository
+        .set_state(NodeStateChange {
+            organization_id,
+            node_id,
+            state: NodeState::Draining,
+            expected_version: current_node.aggregate_version,
+            changed_at: received_at + Duration::milliseconds(1),
+            event: event(
+                organization_id,
+                node_id.as_uuid(),
+                current_node.aggregate_version + 1,
+                "fleet.node.state-changed",
+            ),
+            idempotency: IdempotencyRequest::new(
+                format!("organizations/{organization_id}/nodes"),
+                "drain-runtime-evidence-node",
+                b"draining",
+            )
+            .expect("state idempotency"),
+        })
+        .await
+        .expect("drain Runtime evidence Node");
+    assert!(service
+        .find_runtime_node_evidence(query)
+        .await
+        .expect("re-query drained Runtime Node evidence")
+        .is_none());
 }
 
 #[tokio::test]

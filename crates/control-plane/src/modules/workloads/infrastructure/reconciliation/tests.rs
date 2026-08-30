@@ -788,6 +788,7 @@ fn observation_record(
     RuntimeObservationRecord {
         report_id,
         node_id,
+        agent_instance_id: Uuid::from_u128(0xfeed),
         command_id: Some(NodeCommandId::from_uuid(report_id)),
         observed_at: received_at,
         received_at,
