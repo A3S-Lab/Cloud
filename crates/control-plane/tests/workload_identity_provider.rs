@@ -49,7 +49,8 @@ async fn real_tls_spiffe_https_web_provider_is_exact_bounded_and_drift_safe(
         request_timeout: std::time::Duration::from_secs(5),
         max_bundle_bytes: 64 * 1024,
     };
-    let provider = SpiffeHttpsWebWorkloadIdentityProviderService::new(&[options.clone()])?;
+    let provider =
+        SpiffeHttpsWebWorkloadIdentityProviderService::new(std::slice::from_ref(&options))?;
 
     assert!(matches!(
         provider.inspect(&digest('f')?).await,
