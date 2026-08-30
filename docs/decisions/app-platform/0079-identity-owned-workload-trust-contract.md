@@ -75,7 +75,8 @@ introduced.
 - `WI1-C1/C2`, the digest-bound `cloud.identity.workload-provider.v1`
   profile, and the maintained REST/OpenAPI `1.80.0`, TypeScript client, CLI,
   and Installation-bound Management MCP surface remain a foundation, not an
-  availability claim. The first strict HTTPS provider observation has local
-  real-TLS evidence; complete main certification, attestation, issuance,
-  discovery, enforcement, provider revocation drills, and federation evidence
-  remain required.
+  availability claim. The first strict HTTPS provider observation is verified
+  by the [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)
+  at 7/7 on Rust 1.88 and stable; attestation, issuance, discovery,
+  enforcement, provider revocation drills, and federation evidence remain
+  required.

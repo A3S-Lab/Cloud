@@ -6192,8 +6192,12 @@ constructor rule.
 
 `H0.4-WI1-C1`, the `WI1-C2` persistence core, and the first provider-inspection
 slice establish the production workload-trust foundation inside Identity. The
-retained [H0 PostgreSQL job](https://github.com/A3S-Lab/Cloud/actions/runs/33282985732/job/99181194562)
-passes; complete REST `1.80.0` main verification is pending. Strong
+[2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)
+passes REST/OpenAPI `1.80.0`, including the
+[H0 PostgreSQL gate](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009/job/99202680570)
+and the
+[Rust stable real-TLS provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009/job/99202680668).
+Strong
 installation, trust-domain, policy and revision identities bind two canonical
 trust A3S ACL contracts and one non-secret
 `cloud.identity.workload-provider.v1` provider-profile ACL. Exact A3S Runtime
@@ -6216,11 +6220,11 @@ one CAS head per aggregate; the policy ACL binds the exact trust revision and
 database FKs preserve Installation/tenant/Environment/Workload/revision/NodePool
 lineage. The PostgreSQL adapter reuses the Installation lock, sole privileged
 decision issuer and shared idempotency/Audit/Outbox transaction; in-memory
-privileged composition fails closed. A retained two-replica H0 gate covers
+privileged composition fails closed. The main two-replica H0 gate covers
 competing successors, replay drift, stable names, one current policy per
 Workload, stale trust, immutable history and token-revocation races. A local
-real-TLS provider protocol gate passes all 7/7 checks and is registered in the
-stable CI matrix; complete main proof remains open. REST/OpenAPI `1.80.0`, the
+real-TLS provider protocol gate passes all 7/7 checks on Rust 1.88 and stable
+in main CI. REST/OpenAPI `1.80.0`, the
 maintained TypeScript client, CLI, and ten Installation-bound Management MCP
 tools now reuse the same commands, queries, DTOs, authorization, page bounds,
 CAS, and idempotency authority. `WI2` through `WI7` remain open, so no workload

@@ -93,12 +93,13 @@ evidence provenance. The first
 `spiffe_https_web` adapter add exact-digest configuration plus strict, bounded,
 real-TLS SPIFFE JWK-bundle observation without a provider registry or issuance
 path. REST/OpenAPI `1.80.0`, TypeScript client, CLI, and ten Installation-bound
-Management MCP tools share the same closed CQRS. The retained H0 PostgreSQL job
-and local 7/7 provider protocol gate pass; complete main certification remains
-pending. This closes the ambiguous contract, management, and provider-observation
-boundaries but does not close the P0 gap: Fleet/Runtime attestation, issuance,
-private discovery, enforcement, failure/revocation evidence, and federation
-certification remain absent.
+Management MCP tools share the same closed CQRS. The
+[2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)
+verifies the H0 PostgreSQL gate and the real-TLS provider protocol gate at 7/7
+on Rust 1.88 and stable. This closes the ambiguous contract, management, and
+provider-observation boundaries but does not close the P0 gap: Fleet/Runtime
+attestation, issuance, private discovery, enforcement, failure/revocation
+evidence, and federation certification remain absent.
 
 ### 3.3 P0: platform observability, SLO and incident lifecycle
 

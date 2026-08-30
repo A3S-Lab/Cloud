@@ -3219,9 +3219,13 @@ no path may use a synthetic Organization or `actor_is_platform_admin` as
 authority.
 
 `H0.4-WI1-C1`, the `WI1-C2` persistence core, the maintained management
-surface, and the first provider-inspection slice are implemented. The retained
-[H0 PostgreSQL job](https://github.com/A3S-Lab/Cloud/actions/runs/33282985732/job/99181194562)
-passes; complete REST `1.80.0` main verification remains pending. Identity now
+surface, and the first provider-inspection slice are implemented. The
+[2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)
+passes REST/OpenAPI `1.80.0`, including the
+[H0 PostgreSQL gate](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009/job/99202680570)
+and the
+[Rust stable real-TLS provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009/job/99202680668).
+Identity now
 owns canonical
 `cloud.identity.trust-domain.v1` and
 `cloud.identity.workload-policy.v1` trust contracts plus the non-secret
@@ -3249,13 +3253,14 @@ timeouts and CA paths remain outside the semantic profile digest. REST/OpenAPI
 `1.80.0`, the maintained TypeScript client, CLI, and ten
 Installation-bound Management MCP tools dispatch the same closed CQRS and
 derive Principal plus exact credential identity only from verified context.
-The retained H0 gate covers two-replica CAS, exact owner/FK lineage,
+The main H0 gate covers two-replica CAS, exact owner/FK lineage,
 stable names, one policy per Workload, stale trust, replay drift, immutable
 history, and API-token revocation races. A real local TLS provider gate passes
-all 7/7 checks and is registered in the stable CI matrix; its main evidence is
-pending. `H0.4-WI1` remains unavailable until the complete main gate passes;
-Fleet/Runtime attestation, issuance, enforcement, revocation and federation
-remain owned by `WI2` through `WI7`.
+all 7/7 checks on Rust 1.88 and stable in main CI. The `H0.4-WI1` contract,
+persistence, management, and provider-inspection foundation is verified;
+workload identity remains unavailable because Fleet/Runtime attestation,
+issuance, enforcement, revocation, and federation remain owned by `WI2`
+through `WI7`.
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,

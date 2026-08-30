@@ -314,7 +314,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| Workload identity | **Foundation in progress.** Immutable PostgreSQL-backed trust state and the cross-surface management contract are implemented. A real-TLS, digest-pinned SPIFFE bundle inspection passes the local 7/7 protocol gate; main certification plus Runtime attestation, issuance, enforcement, revocation, and federation remain |
+| Workload identity | **Verified foundation; product work remains.** Immutable PostgreSQL-backed trust state and the cross-surface management contract are implemented. The [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009) verifies the real-TLS, digest-pinned SPIFFE bundle inspection at 7/7 on Rust 1.88 and stable together with PostgreSQL and cross-surface contracts; Runtime attestation, issuance, enforcement, revocation, and federation remain |
 | FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
