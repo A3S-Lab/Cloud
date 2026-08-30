@@ -3336,14 +3336,27 @@ The local locked metadata, workspace/all-targets test, Clippy `-D warnings`,
 rustdoc `-D warnings`, and focused component gates pass. The complete
 [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
 [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
-also pass. `WI2-C3b` next adds the one Identity-owned
-immutable PostgreSQL evidence history with
-idempotency/concurrency/revocation gates. Then `WI2-C4` adds a Fleet-owned Node
-hardware-attestation fact plus a new
-issuance-ready versioned decision. No stage may introduce an Identity copy of
-Claim, Node or Runtime lifecycle, a provider-specific parser, Redis correctness
-lock, or parallel evidence registry. Only then may `WI3` issue a short-lived
-credential.
+also pass. Component-only `WI2-C3b` is implemented pending retained main
+certification. One internal Identity recorder first resolves only an exact
+historic idempotency replay; a miss reads the current policy through the shared
+Installation/TrustDomain/Policy fence, obtains the sole Workloads/Fleet
+candidate, and admits
+`cloud.identity.workload-runtime-evidence-record.v1`. Migration `181` stores
+one all-typed immutable history through the existing
+`PostgresIdentityRepository` and A3S ORM. A second admission key for the same
+deterministic fact adopts the committed row, while request drift conflicts.
+Every new transaction revalidates the exact current Policy and TrustDomain;
+concurrent policy replacement either follows a committed evidence row or makes
+the stale write fail. Exact historic replay remains available after
+replacement, but the record always denies credential issuance. PostgreSQL
+checks the canonical Installation, current policy/trust heads, running state,
+timestamp order, 120-second freshness ceiling, and rejects update/delete. The
+existing H0 test now covers multi-replica replay, same-key drift, immutable
+SQL, history reads, and the policy/evidence race. No REST/OpenAPI surface,
+head/cache/queue, owner lifecycle copy, provider parser, Redis/Lane correctness
+mechanism, Audit/Outbox rail, or new workflow version is introduced. `WI2-C4`
+next adds a Fleet-owned Node hardware-attestation fact plus a new issuance-ready
+versioned decision. Only then may `WI3` issue a short-lived credential.
 
 1. complete `BX0.1` through `BX0.5`, retain the old provider evidence only as
    historical regression coverage, and re-certify `R0` through `E0`, `G0`,

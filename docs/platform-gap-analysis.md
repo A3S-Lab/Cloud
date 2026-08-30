@@ -101,6 +101,17 @@ provider-observation boundaries but does not close the P0 gap: Fleet/Runtime
 attestation, issuance, private discovery, enforcement, failure/revocation
 evidence, and federation certification remain absent.
 
+`H0.4-WI2-C1/C2` now provide the deterministic non-authorizing Identity
+binding and the sole Workloads/Fleet owner-port chain. Verified C3a moves its
+generic execution attachment into one immutable pre-scheduling Workloads fact.
+Component-only C3b is implemented pending retained main certification:
+migration `181` and the existing Identity PostgreSQL repository persist one
+typed immutable Runtime evidence history with exact historic replay, current
+Policy/TrustDomain fencing, deterministic same-fact adoption and a retained
+policy/evidence race. The V1 record explicitly lacks Fleet hardware
+attestation and never authorizes issuance. C4 must add that owner fact and a new
+fresh full decision before WI3; therefore the P0 gap remains open.
+
 ### 3.3 P0: platform observability, SLO and incident lifecycle
 
 **Gap:** many contexts emit excellent local evidence, but the platform lacks

@@ -236,7 +236,7 @@ Cloud Dashboard or private identity-provider UI is required.
 | Gate | Outcome | Current state |
 | --- | --- | --- |
 | `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | **Verified foundation.** `WI1-C1`, the `WI1-C2` persistence core, the maintained management surface, and the first provider-inspection slice are implemented. Canonical trust ACLs and deterministic revisions feed migration `179`'s immutable histories and sole heads, and policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. The [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009) verifies REST/OpenAPI `1.80.0`, TypeScript client, CLI, ten Installation-bound Management MCP tools, the H0 PostgreSQL gate, and the real-TLS provider gate at 7/7 on Rust 1.88 and stable. Workload identity is not yet available because `WI2` through `WI7` remain open. |
-| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | **Verified C1/C2 foundation; C3a component verified on main.** `WI2-C1` defines one deterministic, deliberately non-authorizing Identity evidence binding. `WI2-C2` composes the sole Workloads Claim and Fleet Node owner facts through Runtime/Box attestation; the [2026-08-30 Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529) and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. Component-only `WI2-C3a` admits the current Identity owner fact before scheduling and persists one immutable Workloads record, including an explicit no-policy result, for deterministic ordinary, placement-group and reconciliation projection. Migration `180`, the complete local Rust release gate, the [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762), and the [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. V1 still lacks Fleet hardware-attestation evidence and can never authorize credential issuance. `C3b` evidence history, `C4` hardware evidence/full decision, orchestration and retained provider gates remain open. |
+| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | **Verified C1/C2 foundation; C3a verified on main; C3b implemented pending retained main certification.** `WI2-C1` defines one deterministic, deliberately non-authorizing Identity evidence binding. `WI2-C2` composes the sole Workloads Claim and Fleet Node owner facts through Runtime/Box attestation; the [2026-08-30 Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529) and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. Component-only `WI2-C3a` admits the current Identity owner fact before scheduling and persists one immutable Workloads record; migration `180`, the [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762), and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. C3b migration `181` adds one typed immutable Identity history with exact historic replay, current Policy/TrustDomain revalidation, same-fact adoption, SQL immutability, and a retained policy/evidence concurrency gate. It adds no public API, second owner lifecycle or cache/queue authority. V1 still lacks Fleet hardware-attestation evidence and can never authorize credential issuance. `C4` hardware evidence/full decision, orchestration and retained provider gates remain open. |
 | `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
 | `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
 | `H0.4-WI5` | Box network enforcement, egress policy and Gateway-to-origin identity | Planned |
@@ -324,6 +324,22 @@ capability admission remains the provider-neutral isolation/identity feature
 gate. Concurrent workers adopt the first valid committed record. Bound Claim
 evidence is available only for the bound variant. No Redis/Lane correctness lock, cache truth, event
 rail, policy copy, scheduler or provider lifecycle is introduced.
+
+Component-only `WI2-C3b` adds one internal Identity application service and one
+repository port. An exact idempotency replay returns its historic record before
+current reads; a miss must traverse the C3a current-policy fence and C2 owner
+port. The PostgreSQL write then reacquires the canonical Installation shared
+fence, locks current TrustDomain before Policy through the same helper, and
+compares the complete expected accepted revision. Migration `181` stores every
+normalized field in the sole immutable history table through typed A3S ORM.
+The deterministic binding ID serializes different admission keys for the same
+fact, while the shared idempotency ledger rejects same-key input drift. The
+trigger rechecks current policy/trust lineage, running state, timestamp order
+and the 120-second freshness ceiling; update/delete always fail. Policy
+replacement and evidence admission serialize, but historic replay does not
+become current authorization. The record has no hardware-attestation binding
+and its issuance predicate remains false. No REST/OpenAPI/CLI/MCP surface or
+new Flow version is warranted until C4 produces the full fresh decision.
 
 ## 14. Non-goals
 

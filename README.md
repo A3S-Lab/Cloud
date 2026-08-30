@@ -260,9 +260,16 @@ written to a CLI context file.
   Component-only C3a admits one generic Identity authorization before
   scheduling and persists an immutable Workloads record, including an explicit
   no-policy outcome, so crash replay cannot relabel a legacy or running Unit.
-  The deterministic V1 evidence still lacks Node hardware attestation and
-  cannot authorize credential issuance; that fail-closed gap remains a required
-  WI2 gate rather than an inferred capability.
+  Component-only C3b adds the sole Identity-owned immutable
+  <code>cloud.identity.workload-runtime-evidence-record.v1</code> history in
+  migration <code>181</code>. Exact admission replay may return its historic
+  fact; every new write re-reads current TrustDomain/Policy and both owner
+  facts under the canonical Installation fence, then commits through one typed
+  A3S ORM repository. PostgreSQL rejects mutation, stale evidence, and a
+  Policy/evidence race that did not serialize first. The deterministic V1
+  record still lacks Node hardware attestation and cannot authorize credential
+  issuance; C4 remains a required fresh decision rather than an inferred
+  capability.
 - OpenShift-class outcomes—reconciliation, scheduling, isolation, rollout,
   policy, observability, and day-two operations—and TokenHub-class
   outcomes—governed model/provider/key access, routing, quotas, diagnostics,
@@ -325,7 +332,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-31**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a component verified on main.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; current ordinary, placement-group and reconciliation paths share it, while legacy Deployments remain unmodified. The complete [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. Identity evidence history, Fleet hardware attestation, issuance, enforcement, revocation, and federation remain open |
+| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a verified on main; C3b implemented pending retained main certification.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; the complete [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. C3b adds migration `181`, one typed immutable Identity evidence history, exact historic replay, current Policy/TrustDomain revalidation, deterministic same-fact adoption, and retained concurrency/revocation tests without a public API or second owner lifecycle. Fleet hardware attestation, the full issuance decision, issuance, enforcement, revocation, and federation remain open |
 | FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap

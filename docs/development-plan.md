@@ -6294,14 +6294,25 @@ locked metadata, workspace/all-targets test, Clippy `-D warnings`, rustdoc
 [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and
 [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)
 also pass.
-Implement `WI2-C3b` next through the one Identity-owned immutable PostgreSQL
-evidence history plus retained
-idempotency/replay/concurrency/revocation tests. Implement the missing
-Fleet-owned hardware Node attestation as `WI2-C4` and consume it only through a
-new versioned Identity decision. Handlers may not import Workloads/Fleet
-repositories, Identity may not copy their lifecycles, and cache/lock/queue
-mechanisms may not become evidence truth. `WI3` remains blocked by design until
-that full decision is freshly revalidated.
+Component-only `WI2-C3b` is implemented pending retained main certification.
+`WorkloadRuntimeEvidenceRecorder` performs exact historic replay before any
+current read. A replay miss uses the sole current-policy and owner-candidate
+ports, admits one deterministic
+`cloud.identity.workload-runtime-evidence-record.v1`, then migration `181` and
+the existing `PostgresIdentityRepository` atomically revalidate current
+TrustDomain/Policy under the canonical Installation fence and persist the one
+typed immutable history. Different keys for the same fact adopt one row;
+same-key input drift conflicts. New writes after policy/trust replacement fail,
+while an exact old request may replay its non-authorizing historic result.
+Database guards require running, ordered, at-most-120-second evidence and
+reject direct update/delete. The retained H0 workload-trust test now includes
+multi-replica evidence concurrency, replay, drift, stable history and the
+policy/evidence race. This component has no management API, new workflow,
+current/head table, cache, queue, Outbox/Audit rail, provider parser, or copied
+Workloads/Fleet lifecycle. Implement the missing Fleet-owned hardware Node
+attestation as `WI2-C4` and consume it only through a new versioned Identity
+decision. `WI3` remains blocked by design until that full decision is freshly
+revalidated.
 
 Serving API, Worker, Relay, and `all` processes never invoke a migrator. Cloud
 persistence, the Flow event store, and the Boot task queue each call the same

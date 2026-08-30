@@ -371,7 +371,7 @@ delivery, discovery, peer policy, enforcement, revocation drills, and
 federation evidence remain open. No workload identity availability is claimed
 by `WI1`.
 
-#### Workload Runtime evidence (`H0.4-WI2-C1/C2` verified; `C3a` component)
+#### Workload Runtime evidence (`H0.4-WI2-C1/C2` verified; `C3a` verified; `C3b` implemented)
 
 `WorkloadRuntimeEvidenceBinding` is an immutable Identity decision projection,
 not another Workload, Claim, Node, Runtime or attestation aggregate. Its
@@ -435,9 +435,19 @@ uncancelled. The repository and migration lock Deployment before Workload
 Control. Concurrent Flow workers adopt the first valid committed row after an
 idempotency race, while only an exact replay can write later. An unattached existing
 Unit requires a new Deployment even when the revision is unchanged. `WI2-C3b`
-next adds the sole Identity immutable evidence history. `WI2-C4` then adds
-Fleet's immutable hardware evidence and a new versioned decision before `WI3`
-can issue credentials.
+adds `WorkloadRuntimeEvidenceRecord` and migration `181` as the sole Identity
+immutable evidence history. One internal recorder resolves exact historic
+idempotency replay first; otherwise it reads the current Policy plus the C2
+owner candidate and writes through one repository. PostgreSQL reacquires the
+canonical Installation fence, reuses the same current TrustDomain-before-Policy
+read, serializes the deterministic binding ID, and either inserts or adopts the
+identical row. Same-key input drift and stale policy conflict. The all-typed
+table has no head/current companion, rejects update/delete, and checks running,
+ordered, at-most-120-second evidence. Historic replay remains non-authorizing
+after a policy successor. No Workloads/Fleet lifecycle, provider parser,
+public API, cache, queue, Redis/Lane correctness lock, Audit/Outbox rail, or
+workflow version is added. `WI2-C4` then adds Fleet's immutable hardware
+evidence and a new versioned decision before `WI3` can issue credentials.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

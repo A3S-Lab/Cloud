@@ -127,8 +127,31 @@ instead of reinterpreting policy or overwriting it. Historic workflow versions a
 legacy Deployments are neither backfilled nor relabelled; obtaining identity
 requires a new Deployment even when the revision is unchanged. The stored value
 contains no Identity policy ID, revision, credential rule, key, provider state,
-cache, queue or parallel lifecycle. `WI2-C3b` next persists the one Identity
-evidence history.
+cache, queue or parallel lifecycle.
+
+Component-only `WI2-C3b` persists the sole Identity evidence history without
+changing C3a Flow semantics. `WorkloadRuntimeEvidenceRecord` wraps the
+deterministic V1 binding and exact admission time; its authority predicate is
+also permanently false. The internal recorder derives one canonical
+idempotency request from admission, Installation, tenant, Workload, Claim and
+evaluation time. It resolves an exact historic replay first. On a miss it reads
+the sole current Identity policy and the C2 owner candidate, then delegates one
+write to `IWorkloadRuntimeEvidenceRepository`.
+
+The existing `PostgresIdentityRepository` is the only implementation.
+Migration `181` creates one all-typed
+`workload_runtime_evidence_history` table; it has no current/head companion.
+The transaction checks idempotency, takes the canonical Installation shared
+fence, reuses the single current TrustDomain/Policy read, serializes the
+deterministic binding identity, adopts an identical committed fact, and stores
+the shared idempotency response. The database trigger repeats the Installation
+and exact current Policy/TrustDomain checks, requires running ordered evidence
+within 120 seconds, and forbids update/delete. A concurrent policy successor
+therefore either commits after evidence or causes that stale evidence write to
+conflict. Exact replay may still return the historic non-authorizing fact after
+replacement. There is no provider-document parser, owner lifecycle table,
+REST surface, workflow version, cache, Redis/Lane lock, queue, Audit/Outbox, or
+parallel evidence registry.
 
 ## Consequences
 
@@ -138,8 +161,8 @@ evidence history.
   identity availability.
 - `WI2-C2` supplies the verified owner-port chain and anti-corruption adapter;
   `WI2-C3a` supplies the component-only Workloads execution-admission handoff,
-  `WI2-C3b` adds
-  the sole Identity evidence history and replay/concurrency gates, and `WI2-C4`
-  adds Fleet Node hardware evidence plus the issuance-ready versioned decision.
+  `WI2-C3b` supplies the sole typed Identity evidence history and
+  replay/concurrency/policy-replacement gates, and `WI2-C4` adds Fleet Node
+  hardware evidence plus the issuance-ready versioned decision.
 - `WI3` cannot issue, rotate or locally deliver credentials until `WI2-C4` and
   its stale/revoked/replayed evidence tests pass.
