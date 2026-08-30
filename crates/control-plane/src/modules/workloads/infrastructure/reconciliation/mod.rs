@@ -5,7 +5,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, NodeId, RepositoryError, ResourceClaimId,
 };
-use crate::modules::workloads::application::project_replica_runtime_spec;
+use crate::modules::workloads::application::project_replica_runtime_spec_with_execution;
 use crate::modules::workloads::domain::entities::{
     DeploymentStatus, ResourceClaim, ResourceClaimState, WorkloadDesiredState,
     WorkloadReplicaLifecycle,
@@ -230,7 +230,11 @@ impl WorkloadRuntimeReconciler {
             .deployment
             .node_id
             .ok_or_else(|| "active deployment omitted its node".to_string())?;
-        let spec = project_replica_runtime_spec(&target.revision, &target.replica)?;
+        let spec = project_replica_runtime_spec_with_execution(
+            &target.revision,
+            &target.replica,
+            target.runtime_execution_binding.as_ref(),
+        )?;
         let resource_binding = self.resource_binding(target, &spec, node_id).await?;
         let context = ReconciliationContext {
             target,
@@ -624,6 +628,9 @@ fn validate_target(target: &ActiveRuntimeTarget) -> Result<(), String> {
         &target.replica,
         &target.member,
     )?;
+    if let Some(binding) = &target.runtime_execution_binding {
+        binding.validate_lineage(&target.deployment, &target.workload, &target.revision)?;
+    }
     if target.workload.desired_state != WorkloadDesiredState::Running
         || target.workload.active_revision_id != Some(target.revision.id)
         || target.revision.workload_id != target.workload.id

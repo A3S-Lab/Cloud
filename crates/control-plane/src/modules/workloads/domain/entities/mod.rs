@@ -3,6 +3,7 @@ mod placement_group;
 mod resource_allocation;
 mod resource_claim;
 mod resource_requirements;
+mod runtime_execution_binding;
 mod secret_binding;
 mod workload;
 mod workload_control;
@@ -25,6 +26,10 @@ pub use resource_claim::{
     MAX_ATOMIC_RESOURCE_CLAIM_RESERVATIONS,
 };
 pub use resource_requirements::CompiledResourceRequirements;
+pub use runtime_execution_binding::{
+    DeploymentRuntimeExecutionBinding, WorkloadRuntimeExecutionBinding,
+    DEPLOYMENT_RUNTIME_EXECUTION_BINDING_SCHEMA,
+};
 pub use secret_binding::{SecretBinding, SecretBindingTarget};
 pub use workload::{Workload, WorkloadDesiredState};
 pub use workload_control::{

@@ -3,6 +3,7 @@ mod bound_runtime_claim;
 pub mod commands;
 pub mod queries;
 pub(crate) mod resource_access;
+mod runtime_execution_admission;
 mod runtime_projection;
 mod workflow;
 
@@ -48,14 +49,16 @@ pub use queries::{
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
     WorkloadReplicaQueryResult,
 };
+pub use runtime_execution_admission::{
+    AdmittedWorkloadRuntimeExecution, DeploymentRuntimeExecutionAdmissionRequest,
+    IWorkloadRuntimeExecutionAdmissionPort, NoWorkloadRuntimeExecutionAdmission,
+};
 pub(crate) use runtime_projection::{
-    project_bound_runtime_spec, project_identity_bound_runtime_spec,
-    project_identity_placement_group_runtime_spec, project_placement_group_runtime_spec,
-    project_runtime_secrets, project_runtime_spec_with_digest,
+    project_bound_runtime_spec_with_execution, project_placement_group_runtime_spec_with_execution,
+    project_replica_runtime_spec_with_execution, project_runtime_secrets,
+    project_runtime_spec_with_digest,
 };
-pub use runtime_projection::{
-    project_replica_runtime_spec, project_runtime_spec, WorkloadRuntimeExecutionBinding,
-};
+pub use runtime_projection::{project_replica_runtime_spec, project_runtime_spec};
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,

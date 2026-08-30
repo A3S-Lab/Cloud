@@ -353,6 +353,26 @@ orm_table! {
 }
 
 orm_table! {
+    pub(super) struct DeploymentRuntimeExecutionBindings => "deployment_runtime_execution_bindings" {
+        deployment_id: Uuid => "deployment_id",
+        organization_id: Uuid => "organization_id",
+        project_id: Uuid => "project_id",
+        environment_id: Uuid => "environment_id",
+        workload_id: Uuid => "workload_id",
+        workload_revision_id: Uuid => "workload_revision_id",
+        node_pool_id: Option<Uuid> => "node_pool_id",
+        binding_schema: String => "binding_schema",
+        runtime_class: Option<String> => "runtime_class",
+        isolation_level: Option<String> => "isolation_level",
+        semantics_profile_digest: Option<String> => "semantics_profile_digest",
+        identity_attachment_digest: Option<String> => "identity_attachment_digest",
+        authorized_at: Option<DateTime<Utc>> => "authorized_at",
+        admitted_at: DateTime<Utc> => "admitted_at",
+        binding_digest: String => "binding_digest",
+    }
+}
+
+orm_table! {
     pub(super) struct ResourceClaims => "resource_claims" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

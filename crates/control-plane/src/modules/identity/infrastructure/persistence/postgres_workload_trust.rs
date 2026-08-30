@@ -18,8 +18,9 @@ use crate::modules::identity::domain::repositories::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,
     ITrustDomainRepository, IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
-    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadTrustDomainRevision,
-    ReadWorkloadIdentityPolicyRevision, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+    ReadCurrentWorkloadIdentityPolicyForRuntime, ReadCurrentWorkloadIdentityPolicyForWorkload,
+    ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
+    MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
 use crate::modules::identity::domain::value_objects::PlatformPermission;
 use crate::modules::shared_kernel::domain::{
@@ -233,6 +234,44 @@ async fn load_current_workload_policy(
     .map(decode_workload_policy_revision)
     .transpose()
     .map_err(Into::into)
+}
+
+async fn load_current_workload_policy_for_runtime(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    workload_id: crate::modules::shared_kernel::domain::WorkloadId,
+    lock_clause: &'static str,
+) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, PostgresPersistenceError> {
+    fetch_optional::<WorkloadPolicyRevisionRow, _>(
+        transaction,
+        sql_query::<WorkloadPolicyRevisionRow>(SELECT_WORKLOAD_POLICY_REVISION)
+            .append(" join workload_identity_policy_heads head on head.organization_id = revision.organization_id and head.policy_id = revision.policy_id and head.revision_id = revision.id and head.revision_number = revision.revision_number where head.organization_id = ")
+            .bind(organization_id.as_uuid())
+            .append(" and head.workload_id = ")
+            .bind(workload_id.as_uuid())
+            .append(lock_clause),
+    )
+    .await?
+    .map(decode_workload_policy_revision)
+    .transpose()
+    .map_err(Into::into)
+}
+
+async fn load_organization_installation_for_runtime(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    lock_clause: &'static str,
+) -> Result<Option<InstallationId>, PostgresPersistenceError> {
+    fetch_optional::<Uuid, _>(
+        transaction,
+        sql_query::<Uuid>(
+            "select organization.installation_id from organizations organization where organization.id = ",
+        )
+        .bind(organization_id.as_uuid())
+        .append(lock_clause),
+    )
+    .await
+    .map(|value| value.map(InstallationId::from_uuid))
 }
 
 async fn load_workload_policy_revision(
@@ -1148,6 +1187,98 @@ impl IWorkloadIdentityPolicyRepository for PostgresIdentityRepository {
                     .map(decode_workload_policy_revision)
                     .transpose()
                     .map_err(Into::into)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn read_current_for_runtime(
+        &self,
+        read: ReadCurrentWorkloadIdentityPolicyForRuntime,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        read.validate().map_err(RepositoryError::Storage)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let installation_id = load_organization_installation_for_runtime(
+                        transaction,
+                        read.organization_id,
+                        "",
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?;
+                    lock_installation_for_authorization(transaction, installation_id).await?;
+                    let locked_installation = load_organization_installation_for_runtime(
+                        transaction,
+                        read.organization_id,
+                        " for key share of organization",
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?;
+                    if locked_installation != installation_id {
+                        return Err(RepositoryError::Conflict(
+                            "Workload Runtime policy organization changed Installation".into(),
+                        )
+                        .into());
+                    }
+                    let Some(candidate) = load_current_workload_policy_for_runtime(
+                        transaction,
+                        read.organization_id,
+                        read.workload_id,
+                        "",
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    let spec = candidate.contract.spec();
+                    if candidate.installation_id != installation_id
+                        || spec.installation_id != installation_id
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "Workload Runtime policy changed Installation lineage".into(),
+                        )
+                        .into());
+                    }
+                    let trust_domain = load_current_trust_domain(
+                        transaction,
+                        installation_id,
+                        spec.trust_domain_id,
+                        " for share of head, revision",
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        RepositoryError::Conflict(
+                            "Workload Runtime policy has no current TrustDomain".into(),
+                        )
+                    })?;
+                    let locked_policy = load_current_workload_policy(
+                        transaction,
+                        installation_id,
+                        read.organization_id,
+                        candidate.policy_id,
+                        " for share of head, revision",
+                    )
+                    .await?
+                    .ok_or_else(|| {
+                        RepositoryError::Conflict(
+                            "Workload Runtime policy changed during admission".into(),
+                        )
+                    })?;
+                    if locked_policy != candidate
+                        || locked_policy.contract.spec().workload_id != read.workload_id
+                        || locked_policy.contract.spec().trust_domain_revision_id != trust_domain.id
+                    {
+                        return Err(RepositoryError::Conflict(
+                            "Workload Runtime policy or TrustDomain is no longer current".into(),
+                        )
+                        .into());
+                    }
+                    locked_policy
+                        .validate_against_trust_domain(&trust_domain)
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    Ok(Some(locked_policy))
                 })
             })
             .await

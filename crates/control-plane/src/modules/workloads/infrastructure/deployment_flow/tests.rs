@@ -27,14 +27,17 @@ use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId, GatewayCertificateId,
-    GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId, OperationId,
-    OrganizationId, ProjectId, RepositoryError, ResourceClaimId, ResourceName, RouteId, SecretId,
-    Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    canonical_timestamp, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
+    GatewayCertificateId, GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId,
+    OperationId, OrganizationId, ProjectId, RepositoryError, ResourceClaimId, ResourceName,
+    RouteId, SecretId, Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    project_replica_runtime_spec, project_runtime_spec, BoundRuntimeClaimQuery,
-    BoundRuntimeClaimQueryService, IBoundRuntimeClaimQueryPort, WorkloadRuntimeExecutionBinding,
+    project_replica_runtime_spec, project_runtime_spec, AdmittedWorkloadRuntimeExecution,
+    BoundRuntimeClaimQuery, BoundRuntimeClaimQueryService,
+    DeploymentRuntimeExecutionAdmissionRequest, IBoundRuntimeClaimQueryPort,
+    IWorkloadRuntimeExecutionAdmissionPort,
 };
 use crate::modules::workloads::domain::entities::{
     AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
@@ -42,7 +45,7 @@ use crate::modules::workloads::domain::entities::{
     RequestedServiceTemplate, ResourceClaimReservation, ResourceClaimState, SecretBinding,
     SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, Workload,
     WorkloadControlSpec, WorkloadDesiredState, WorkloadPlacementGroup, WorkloadReplicaLifecycle,
-    WorkloadRevision,
+    WorkloadRevision, WorkloadRuntimeExecutionBinding,
 };
 use crate::modules::workloads::domain::events::{DeploymentRequested, WorkloadStopRequested};
 use crate::modules::workloads::domain::repositories::{
@@ -135,6 +138,143 @@ impl IWorkloadPrestartGate for ScriptedPrestartGate {
         };
         Ok(statuses.lock().expect("pre-start status").clone())
     }
+}
+
+struct FixedRuntimeExecutionAdmission {
+    execution: WorkloadRuntimeExecutionBinding,
+    authorized_at: chrono::DateTime<Utc>,
+}
+
+#[async_trait]
+impl IWorkloadRuntimeExecutionAdmissionPort for FixedRuntimeExecutionAdmission {
+    async fn admit(
+        &self,
+        request: DeploymentRuntimeExecutionAdmissionRequest,
+    ) -> Result<Option<AdmittedWorkloadRuntimeExecution>, RepositoryError> {
+        request.validate().map_err(RepositoryError::Conflict)?;
+        let node_pool_id = request.node_pool_id().ok_or_else(|| {
+            RepositoryError::Conflict(
+                "fixed Runtime execution admission requires an exact NodePool".into(),
+            )
+        })?;
+        AdmittedWorkloadRuntimeExecution::new(
+            node_pool_id,
+            self.execution.clone(),
+            self.authorized_at,
+        )
+        .map(Some)
+        .map_err(RepositoryError::Conflict)
+    }
+}
+
+struct RacingRuntimeExecutionAdmission {
+    barrier: tokio::sync::Barrier,
+    calls: AtomicUsize,
+    execution: WorkloadRuntimeExecutionBinding,
+    authorized_at: chrono::DateTime<Utc>,
+}
+
+#[async_trait]
+impl IWorkloadRuntimeExecutionAdmissionPort for RacingRuntimeExecutionAdmission {
+    async fn admit(
+        &self,
+        request: DeploymentRuntimeExecutionAdmissionRequest,
+    ) -> Result<Option<AdmittedWorkloadRuntimeExecution>, RepositoryError> {
+        request.validate().map_err(RepositoryError::Conflict)?;
+        let node_pool_id = request.node_pool_id().ok_or_else(|| {
+            RepositoryError::Conflict("racing admission requires an exact NodePool".into())
+        })?;
+        let call = self.calls.fetch_add(1, Ordering::SeqCst);
+        self.barrier.wait().await;
+        AdmittedWorkloadRuntimeExecution::new(
+            node_pool_id,
+            self.execution.clone(),
+            self.authorized_at + Duration::milliseconds(if call == 0 { 0 } else { 1 }),
+        )
+        .map(Some)
+        .map_err(RepositoryError::Conflict)
+    }
+}
+
+#[tokio::test]
+async fn concurrent_runtime_execution_admission_adopts_one_durable_winner(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let base = canonical_timestamp(Utc::now());
+    let organization_id = OrganizationId::new();
+    let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("runtime-admission-race")?,
+        base,
+    );
+    let node_pool_id = NodePoolId::new();
+    let mut bundle = deployment_bundle(workload, 1, 'a', base, "runtime-admission-race")?;
+    bundle.control = WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 1, Some(node_pool_id))?;
+    let deployment_id = bundle.deployment.id;
+    let workload_id = bundle.workload.id;
+    let revision_id = bundle.revision.id;
+    workloads.create_deployment(bundle).await?;
+    let deployment = workloads
+        .mark_resolving(deployment_id, 1, base + Duration::milliseconds(1))
+        .await?;
+    let workload = workloads
+        .find_workload(organization_id, workload_id)
+        .await?;
+    let revision = workloads
+        .find_revision(organization_id, revision_id)
+        .await?;
+    let control = workloads
+        .find_workload_control(organization_id, workload_id)
+        .await?;
+    let admission = Arc::new(RacingRuntimeExecutionAdmission {
+        barrier: tokio::sync::Barrier::new(2),
+        calls: AtomicUsize::new(0),
+        execution: WorkloadRuntimeExecutionBinding::new(
+            RuntimeUnitClass::Service,
+            IsolationLevel::Confidential,
+            Sha256Digest::from_bytes(b"racing semantics"),
+            Sha256Digest::from_bytes(b"racing identity"),
+        )?,
+        authorized_at: base + Duration::seconds(10),
+    });
+    let runtime = runtime_with_resource_claims_and_runtime_execution_admission(
+        &workloads,
+        &nodes,
+        Arc::new(InMemoryResourceClaimRepository::new()),
+        admission.clone(),
+        Duration::seconds(5),
+    )?;
+
+    let left = super::admit_deployment_runtime_execution(
+        &runtime,
+        &deployment,
+        &workload,
+        &revision,
+        &control,
+    );
+    let right = super::admit_deployment_runtime_execution(
+        &runtime,
+        &deployment,
+        &workload,
+        &revision,
+        &control,
+    );
+    let (left, right) = tokio::join!(left, right);
+    let left = left?.ok_or("left admission")?;
+    let right = right?.ok_or("right admission")?;
+    assert_eq!(left, right);
+    assert_eq!(admission.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(
+        workloads
+            .find_deployment_runtime_execution_binding(organization_id, deployment_id)
+            .await?,
+        Some(left)
+    );
+    Ok(())
 }
 
 #[tokio::test]
@@ -815,6 +955,17 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
             canonical_operation.input,
         )
         .await?;
+    let unbound_admission = workloads
+        .find_deployment_runtime_execution_binding(organization_id, canonical_deployment.id)
+        .await?
+        .ok_or("explicit no-policy Runtime admission")?;
+    assert!(!unbound_admission.is_bound());
+    assert!(
+        workloads
+            .bind_deployment_runtime_execution(unbound_admission)
+            .await?
+            .replayed
+    );
     let canonical_lease =
         prepare_and_lease_apply(&engine, &nodes, first_node_id, first_agent_instance_id, 0).await?;
     let canonical_apply = canonical_lease
@@ -1978,13 +2129,63 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     let organization_id = OrganizationId::new();
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let nodes = Arc::new(InMemoryNodeRepository::new());
-    let (node_id, agent_instance_id, capabilities) =
-        ready_node(&nodes, organization_id, base).await?;
+    let mut identity_capabilities = capabilities();
+    identity_capabilities
+        .features
+        .push(RuntimeFeature::IdentityAttachment);
+    let (node_id, agent_instance_id, capabilities) = ready_node_with_capabilities(
+        &nodes,
+        organization_id,
+        base,
+        "identity-admission-node",
+        'd',
+        8_000,
+        8 * 1024 * 1024 * 1024,
+        NodeId::new(),
+        identity_capabilities,
+    )
+    .await?;
+    let pool = NodePool::create(
+        NodePoolId::new(),
+        organization_id,
+        ResourceName::parse("identity admission pool")?,
+        vec![node_id],
+        base + Duration::milliseconds(10),
+    )?;
+    let pool_id = pool.id;
+    nodes
+        .save(NodePoolWrite {
+            expected_version: None,
+            event: NodePoolChanged::envelope(
+                &pool,
+                NodePoolChangeKind::Created,
+                pool.created_at,
+                Uuid::now_v7(),
+            )?,
+            idempotency: IdempotencyRequest::new(
+                "test/node-pools",
+                "create-identity-admission-pool",
+                b"create",
+            )?,
+            pool,
+        })
+        .await?;
     let resource_claims = Arc::new(InMemoryResourceClaimRepository::new());
-    let runtime = runtime_with_resource_claims(
+    let semantics = Sha256Digest::parse(format!("sha256:{}", "6".repeat(64)))?;
+    let attachment = Sha256Digest::parse(format!("sha256:{}", "7".repeat(64)))?;
+    let runtime = runtime_with_resource_claims_and_runtime_execution_admission(
         &workloads,
         &nodes,
         resource_claims.clone(),
+        Arc::new(FixedRuntimeExecutionAdmission {
+            execution: WorkloadRuntimeExecutionBinding::new(
+                RuntimeUnitClass::Service,
+                IsolationLevel::Sandbox,
+                semantics.clone(),
+                attachment.clone(),
+            )?,
+            authorized_at: canonical_timestamp(base),
+        }),
         Duration::seconds(10),
     )?;
     let engine = FlowEngine::in_memory(Arc::new(runtime));
@@ -1997,7 +2198,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
         base,
     );
 
-    let first = deployment_bundle(workload, 1, 'a', base, "healthy-first")?;
+    let mut first = deployment_bundle(workload, 1, 'a', base, "healthy-first")?;
+    first.control = WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 1, Some(pool_id))?;
     let first_revision = first.revision.clone();
     let first_deployment = first.deployment.clone();
     let first_operation = first.operation.clone();
@@ -2024,7 +2226,10 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
         first_lease.commands[0].command_id,
         first_deployment.id.as_uuid()
     );
-    let first_runtime_spec = project_runtime_spec(&first_revision)?;
+    let first_runtime_spec = match &first_lease.commands[0].payload {
+        NodeCommandPayload::RuntimeApply { request, .. } => request.spec.clone(),
+        _ => return Err("first Deployment emitted a non-apply command".into()),
+    };
     record_observation(
         &nodes,
         node_id,
@@ -2058,8 +2263,6 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
         active_claim.state,
         crate::modules::workloads::domain::entities::ResourceClaimState::BoundToRuntimeUnit
     );
-    let semantics = Sha256Digest::parse(format!("sha256:{}", "6".repeat(64)))?;
-    let attachment = Sha256Digest::parse(format!("sha256:{}", "7".repeat(64)))?;
     let owner_query =
         BoundRuntimeClaimQueryService::new(resource_claims.clone(), workloads.clone());
     let owner_fact = owner_query
@@ -2070,12 +2273,6 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
             active_claim.workload_id,
             first_revision.id,
             active_claim.id,
-            WorkloadRuntimeExecutionBinding::new(
-                RuntimeUnitClass::Service,
-                IsolationLevel::Confidential,
-                semantics.clone(),
-                attachment.clone(),
-            )?,
         )?)
         .await?
         .ok_or("bound Runtime Claim owner fact")?;
@@ -2138,8 +2335,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     let selected_workload = workloads
         .find_workload(organization_id, first_deployment.workload_id)
         .await?;
-    let second = deployment_bundle(selected_workload, 2, 'b', Utc::now(), "unhealthy-update")?;
-    let second_revision = second.revision.clone();
+    let mut second = deployment_bundle(selected_workload, 2, 'b', Utc::now(), "unhealthy-update")?;
+    second.control = WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 1, Some(pool_id))?;
     let second_deployment = second.deployment.clone();
     let second_operation = second.operation.clone();
     workloads.create_deployment(second).await?;
@@ -2159,7 +2356,10 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     )
     .await?;
     assert_eq!(second_lease.commands.len(), 1);
-    let second_runtime_spec = project_runtime_spec(&second_revision)?;
+    let second_runtime_spec = match &second_lease.commands[0].payload {
+        NodeCommandPayload::RuntimeApply { request, .. } => request.spec.clone(),
+        _ => return Err("second Deployment emitted a non-apply command".into()),
+    };
     record_observation(
         &nodes,
         node_id,

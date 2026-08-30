@@ -3262,7 +3262,7 @@ workload identity remains unavailable because Fleet/Runtime attestation,
 issuance, enforcement, revocation, and federation remain owned by `WI2`
 through `WI7`.
 
-`H0.4-WI2-C1` is now implemented locally as the non-authorizing Runtime
+`H0.4-WI2-C1` is verified as the non-authorizing Runtime
 evidence contract. Cloud pins A3S Runtime `0.4.0` and the exact Box revision
 that preserve one opaque Identity policy digest across Unit Spec, provider
 evidence, restart/replay and confidential-provider attestation. Their exact
@@ -3285,7 +3285,7 @@ requires an absent Node hardware-attestation binding and always denies
 credential issuance. It is therefore a contract component, not completed WI2
 or available workload identity.
 
-`WI2-C2` is now implemented locally through one Identity-owned
+`WI2-C2` is verified through one Identity-owned
 `IWorkloadRuntimeEvidenceCandidatePort` and one
 `OwnerWorkloadRuntimeEvidenceAdapter`. Workloads publishes only
 `a3s.cloud.bound-runtime-claim.v1` through its owner query: it interprets the
@@ -3307,17 +3307,34 @@ Workload/placement-group repository, preserving repository-per-aggregate DDD
 boundaries. Both owner services perform an optimistic double collect over their
 versioned heads; a concurrent Claim, binding, plan, pool, Node, session or
 latest-observation change returns a conflict instead of publishing a torn read.
+The [2026-08-30 Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529)
+and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
+pass the complete C1/C2 repository gate.
 
-`WI2-C2` is a verifier foundation, not a deployment mutation: its generic
-execution binding computes the Spec that an attached Unit must already prove.
-It neither relabels a running Unit nor makes an unattached legacy Unit eligible.
-The ordered continuation is therefore split explicitly. `WI2-C3a` persists one
-Workloads-owned, immutable generic execution binding against the exact
-Workload revision and new Deployment identity before scheduling; ordinary,
-placement-group, reconciliation, restart and rollback dispatch must all consume
-it through the existing sole Runtime Spec compiler and carry it into the exact
-replica/Runtime generations. An existing unattached Unit requires a new rollout
-even when the revision is unchanged. `WI2-C3b` adds the one Identity-owned
+Component-only `WI2-C3a` is now implemented locally. Identity publishes one
+generic `a3s.cloud.workload-runtime-execution-authorization.v1` fact and keeps
+policy/trust lifecycle private. The internal owner read fences the canonical
+Installation even for an absent policy, then locks current TrustDomain before
+the policy head and rejects stale trust. One Workloads consumer port and ACL
+admit that fact before scheduling. Migration `180` persists exactly one
+immutable `a3s.cloud.deployment-runtime-execution-binding.v1` row per current
+Deployment: either exact class/isolation/semantics/opaque attachment or an
+explicit no-policy result. That explicit absence makes crash replay
+deterministic instead of adopting a policy created later. Ordinary Deployment,
+placement-group v2, reconciliation, restart and rollback projection all use the
+same row and sole Runtime Spec compiler. The database and domain accept it only
+while the exact Deployment is Resolving, unscheduled, undispatched, unactivated
+and uncancelled. Scheduling fences the same NodePool before reservation and in
+the final Deployment transition transaction; exact replay is the only later
+write. Domain values enter through Cloud Published Language and persistence
+reuses the typed A3S ORM; neither direct Runtime authority nor raw SQL enters
+those layers. Concurrent Flow workers adopt the first valid committed row
+rather than overwriting it or reinterpreting policy. Historic workflow
+versions and legacy Deployments remain unmodified and unbackfilled, so an
+unattached Unit requires a new rollout even when its revision is unchanged.
+The local locked metadata, workspace/all-targets test, Clippy `-D warnings`,
+rustdoc `-D warnings`, and focused component gates pass; main verification
+remains pending for this slice. `WI2-C3b` next adds the one Identity-owned
 immutable PostgreSQL evidence history with
 idempotency/concurrency/revocation gates. Then `WI2-C4` adds a Fleet-owned Node
 hardware-attestation fact plus a new

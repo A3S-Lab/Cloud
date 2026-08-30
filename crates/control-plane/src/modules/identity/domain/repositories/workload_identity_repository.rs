@@ -222,6 +222,24 @@ impl ReadCurrentWorkloadIdentityPolicyForWorkload {
     }
 }
 
+/// Internal owner read used only to publish the current Runtime authorization
+/// fact. It carries no caller credential because it is not a management API
+/// and returns no Secret or policy mutation authority.
+#[derive(Debug, Clone, Copy)]
+pub struct ReadCurrentWorkloadIdentityPolicyForRuntime {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+}
+
+impl ReadCurrentWorkloadIdentityPolicyForRuntime {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil() || self.workload_id.as_uuid().is_nil() {
+            return Err("workload Runtime policy read identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ListWorkloadIdentityPolicyRevisions {
     pub installation_id: InstallationId,
@@ -292,6 +310,11 @@ pub trait IWorkloadIdentityPolicyRepository: Send + Sync {
     async fn read_current_for_workload(
         &self,
         read: ReadCurrentWorkloadIdentityPolicyForWorkload,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError>;
+
+    async fn read_current_for_runtime(
+        &self,
+        read: ReadCurrentWorkloadIdentityPolicyForRuntime,
     ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError>;
 
     async fn list_revisions(

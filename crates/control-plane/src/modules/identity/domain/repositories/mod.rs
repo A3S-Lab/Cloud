@@ -59,7 +59,7 @@ pub use workload_identity_repository::{
     AcceptTrustDomainRevisionWrite, AcceptWorkloadIdentityPolicyRevisionWrite,
     ITrustDomainRepository, IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
-    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadTrustDomainRevision,
-    ReadWorkloadIdentityPolicyRevision, DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE,
-    MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
+    ReadCurrentWorkloadIdentityPolicyForRuntime, ReadCurrentWorkloadIdentityPolicyForWorkload,
+    ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
+    DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };

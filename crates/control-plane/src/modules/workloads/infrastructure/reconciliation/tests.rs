@@ -4,6 +4,7 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
     ResourceName, WorkloadId, WorkloadRevisionId,
 };
+use crate::modules::workloads::application::project_replica_runtime_spec;
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, HttpHealthCheck,
     OciArtifact, ResourceClaimBindingEvidence, ResourceClaimReservation, ServicePort,
@@ -563,6 +564,7 @@ async fn reconciliation_commands_are_scoped_to_the_stable_replica_generation(
         member,
         deployment,
         replica_binding,
+        runtime_execution_binding: None,
     };
     let primary_spec = project_replica_runtime_spec(&primary.revision, &primary.replica)?;
     let secondary_spec = project_replica_runtime_spec(&secondary.revision, &secondary.replica)?;
@@ -683,6 +685,7 @@ fn runtime_target(
         member,
         deployment,
         replica_binding,
+        runtime_execution_binding: None,
     })
 }
 

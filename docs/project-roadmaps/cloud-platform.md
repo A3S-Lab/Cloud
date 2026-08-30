@@ -56,13 +56,19 @@ only Unit lifecycle contract.
 | `CLOUD-R9` | Qualify self-hosted installation, control-plane upgrades, backups, restores, disaster recovery, certificate/key rotation, mixed versions, and signed distribution | Clean install, rolling upgrade, interrupted migration, rollback boundary, node/region loss, and full restore drills pass |
 
 The workload-identity sub-lane of `CLOUD-R1/R2` has a verified WI1 trust-policy
-foundation and a local `WI2-C1` contract. The latter deterministically binds an
-exact policy revision to Workloads Claim, NodePool, Fleet Node session and
-Runtime/Box attestation evidence, but its V1 hardware-Node-attestation field is
-structurally absent and it cannot authorize issuance. Next come the one
-Identity-owned owner port/adapter, immutable PostgreSQL persistence and Fleet
-hardware-attestation fact; Redis, Lane or a copied lifecycle cannot replace
-those gates.
+foundation and verified `WI2-C1/C2` evidence/owner-port composition. The
+[Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529)
+and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
+pass that exact gate. Component-only `WI2-C3a` is implemented locally: Identity
+publishes one generic current-policy authorization fact, and Workloads migration
+`180` persists an immutable pre-scheduling bound or explicit no-policy outcome
+used by ordinary, placement-group and reconciliation projection. Legacy Units
+are not relabelled or backfilled. NodePool lineage is checked before reservation
+and in the final placement transaction; concurrent Flow workers adopt the first
+valid committed outcome. Next come C3b's one Identity evidence history
+and C4's Fleet hardware-attestation fact/full versioned decision; V1 cannot
+authorize issuance. Redis, Lane or a copied lifecycle cannot replace those
+gates.
 
 ## 3. Runtime CI/CD as a core module
 

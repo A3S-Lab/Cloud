@@ -1,8 +1,8 @@
 use super::deployment_group_bindings;
-use super::queries;
 use super::schema::{
     DeploymentReplicaBindings, WorkloadControls, WorkloadReplicaMembers, WorkloadReplicas,
 };
+use super::{queries, runtime_execution_bindings};
 use crate::infrastructure::{execute, fetch_optional, require_one_row, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError,
@@ -405,6 +405,10 @@ pub(super) async fn require_current_desired_deployment(
     )
     .await?
     .ok_or_else(|| invariant("deployment Workload is missing its control record"))?;
+    if deployment.status == crate::modules::workloads::domain::entities::DeploymentStatus::Resolving
+    {
+        require_runtime_execution_placement(transaction, deployment, &control).await?;
+    }
     let binding = binding_in_transaction(transaction, deployment.organization_id, deployment.id)
         .await?
         .ok_or_else(|| invariant("deployment is missing its replica binding"))?;
@@ -444,6 +448,26 @@ pub(super) async fn require_current_desired_deployment(
         )
         .into());
     }
+    Ok(())
+}
+
+async fn require_runtime_execution_placement(
+    transaction: &PostgresTransaction,
+    deployment: &Deployment,
+    control: &WorkloadControl,
+) -> Result<(), PostgresPersistenceError> {
+    let Some(runtime_binding) = runtime_execution_bindings::load_in_transaction(
+        transaction,
+        deployment.organization_id,
+        deployment.id,
+    )
+    .await?
+    else {
+        return Ok(());
+    };
+    runtime_binding
+        .validate_placement_lineage(deployment, control)
+        .map_err(RepositoryError::Conflict)?;
     Ok(())
 }
 

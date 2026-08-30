@@ -4,9 +4,7 @@ use crate::modules::identity::application::{
 };
 use crate::modules::identity::domain::entities::WorkloadRuntimeEvidenceCandidate;
 use crate::modules::shared_kernel::domain::{RepositoryError, Sha256Digest};
-use crate::modules::workloads::application::{
-    BoundRuntimeClaimQuery, IBoundRuntimeClaimQueryPort, WorkloadRuntimeExecutionBinding,
-};
+use crate::modules::workloads::application::{BoundRuntimeClaimQuery, IBoundRuntimeClaimQueryPort};
 use a3s_runtime::{RuntimeAttestationBinding, RuntimeConsumerRequirements};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -35,13 +33,6 @@ impl IWorkloadRuntimeEvidenceCandidatePort for OwnerWorkloadRuntimeEvidenceAdapt
         request: WorkloadRuntimeEvidenceRequest,
     ) -> Result<WorkloadRuntimeEvidenceCandidate, RepositoryError> {
         request.validate().map_err(admission_error)?;
-        let execution_binding = WorkloadRuntimeExecutionBinding::new(
-            request.runtime_class(),
-            request.isolation_level(),
-            request.semantics_profile_digest().clone(),
-            request.identity_attachment_digest().clone(),
-        )
-        .map_err(admission_error)?;
         let workload_query = BoundRuntimeClaimQuery::new(
             request.organization_id(),
             request.project_id(),
@@ -49,7 +40,6 @@ impl IWorkloadRuntimeEvidenceCandidatePort for OwnerWorkloadRuntimeEvidenceAdapt
             request.workload_id(),
             request.workload_revision_id(),
             request.resource_claim_id(),
-            execution_binding,
         )
         .map_err(admission_error)?;
         let workload = self

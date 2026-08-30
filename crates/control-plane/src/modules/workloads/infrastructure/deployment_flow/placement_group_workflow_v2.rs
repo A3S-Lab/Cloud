@@ -1,15 +1,15 @@
-use super::{DeploymentFlowConfig, DeploymentFlowRuntime};
+use super::{admit_deployment_runtime_execution, DeploymentFlowConfig, DeploymentFlowRuntime};
 use crate::modules::fleet::domain::repositories::NodeResourceInventoryRecord;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeId, OrganizationId, RepositoryError, ResourceClaimId, WorkloadId,
     WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::project_placement_group_runtime_spec;
+use crate::modules::workloads::application::project_placement_group_runtime_spec_with_execution;
 use crate::modules::workloads::domain::entities::{
     AtomicResourceClaimReservation, CompiledResourceRequirements, Deployment,
-    DeploymentReplicaBinding, DeploymentStatus, PlacementTopology, ReplicaAntiAffinity,
-    ResourceClaim, ResourceClaimReservation, ResourceClaimState, ServiceResources, WorkloadControl,
-    WorkloadPlacementGroup,
+    DeploymentReplicaBinding, DeploymentRuntimeExecutionBinding, DeploymentStatus,
+    PlacementTopology, ReplicaAntiAffinity, ResourceClaim, ResourceClaimReservation,
+    ResourceClaimState, ServiceResources, Workload, WorkloadControl, WorkloadPlacementGroup,
 };
 use crate::modules::workloads::domain::repositories::{
     is_capacity_unavailable, is_placement_unavailable, PlacementGroupCancellationWrite,
@@ -129,10 +129,12 @@ enum ValidateScheduledGroupOutput {
 
 struct GroupSchedulingContext {
     deployment: Deployment,
+    workload: Workload,
     group: WorkloadPlacementGroup,
     control: WorkloadControl,
     revision: crate::modules::workloads::domain::entities::WorkloadRevision,
     member_bindings: Vec<DeploymentReplicaBinding>,
+    runtime_execution_binding: Option<DeploymentRuntimeExecutionBinding>,
 }
 
 #[derive(Clone)]
@@ -385,7 +387,7 @@ async fn validate_materialization(
     input: ValidateMaterializationInput,
 ) -> a3s_flow::Result<ValidateMaterializationOutput> {
     validate_input(&input.deployment)?;
-    let context = load_context(runtime, &input.deployment).await?;
+    let mut context = load_context(runtime, &input.deployment).await?;
     if matches!(
         context.deployment.status,
         DeploymentStatus::Cancelling | DeploymentStatus::Cancelled
@@ -403,6 +405,29 @@ async fn validate_materialization(
             context.deployment.status.as_str()
         )));
     }
+    if context.deployment.status == DeploymentStatus::Queued {
+        runtime
+            .workloads
+            .mark_resolving(
+                context.deployment.id,
+                context.deployment.aggregate_version,
+                Utc::now().max(context.deployment.updated_at),
+            )
+            .await
+            .map_err(|error| {
+                runtime_error("could not resolve placement-group Deployment", error)
+            })?;
+        context = load_context(runtime, &input.deployment).await?;
+    }
+    admit_deployment_runtime_execution(
+        runtime,
+        &context.deployment,
+        &context.workload,
+        &context.revision,
+        &context.control,
+    )
+    .await?;
+    context = load_context(runtime, &input.deployment).await?;
     let validated_at = Utc::now().max(context.deployment.updated_at);
     let scheduling_deadline = context
         .deployment
@@ -460,6 +485,17 @@ async fn schedule(
             .map_err(|error| {
                 runtime_error("could not resolve placement-group Deployment", error)
             })?;
+        context = load_context(runtime, &input.deployment).await?;
+    }
+    if context.deployment.status == DeploymentStatus::Resolving {
+        admit_deployment_runtime_execution(
+            runtime,
+            &context.deployment,
+            &context.workload,
+            &context.revision,
+            &context.control,
+        )
+        .await?;
         context = load_context(runtime, &input.deployment).await?;
     }
     if context.deployment.status == DeploymentStatus::Scheduled {
@@ -661,6 +697,11 @@ async fn load_context(
             "placement-group Deployment identity is inconsistent".into(),
         ));
     }
+    let workload = runtime
+        .workloads
+        .find_workload(expected.organization_id, expected.workload_id)
+        .await
+        .map_err(|error| runtime_error("could not load placement-group Workload", error))?;
     let group_binding = runtime
         .workloads
         .find_deployment_placement_group_binding(expected.organization_id, expected.deployment_id)
@@ -700,6 +741,36 @@ async fn load_context(
         .list_deployment_replica_member_bindings(expected.organization_id, expected.deployment_id)
         .await
         .map_err(|error| runtime_error("could not load Deployment member bindings", error))?;
+    let runtime_execution_binding = runtime
+        .workloads
+        .find_deployment_runtime_execution_binding(expected.organization_id, expected.deployment_id)
+        .await
+        .map_err(|error| {
+            runtime_error(
+                "could not load placement-group Runtime execution binding",
+                error,
+            )
+        })?;
+    if let Some(binding) = &runtime_execution_binding {
+        binding
+            .validate_lineage(&deployment, &workload, &revision)
+            .map_err(|error| {
+                runtime_error(
+                    "placement-group Runtime execution binding is inconsistent",
+                    error,
+                )
+            })?;
+        if deployment.status == DeploymentStatus::Resolving {
+            binding
+                .validate_placement_lineage(&deployment, &control)
+                .map_err(|error| {
+                    runtime_error(
+                        "placement-group Runtime execution placement lineage changed",
+                        error,
+                    )
+                })?;
+        }
+    }
     let canonical_binding = member_bindings.first().ok_or_else(|| {
         FlowError::Runtime("placement-group Deployment omitted its leader binding".into())
     })?;
@@ -732,6 +803,16 @@ async fn load_context(
         || group_binding.member_count != expected.member_count
         || group_binding.replica_id != expected.replica_id
         || group_binding.replica_generation != expected.replica_generation
+        || workload.organization_id != expected.organization_id
+        || workload.id != expected.workload_id
+        || workload.project_id != group.project_id
+        || workload.environment_id != group.environment_id
+        || revision.workload_id != workload.id
+        || control.validate_against(&workload).is_err()
+        || group.organization_id != workload.organization_id
+        || group.project_id != workload.project_id
+        || group.environment_id != workload.environment_id
+        || group.workload_id != workload.id
         || group.id != group_binding.group_id
         || group.plan_digest != group_binding.group_plan_digest
         || control.organization_id != expected.organization_id
@@ -779,10 +860,12 @@ async fn load_context(
     }
     Ok(GroupSchedulingContext {
         deployment,
+        workload,
         group,
         control,
         revision,
         member_bindings,
+        runtime_execution_binding,
     })
 }
 
@@ -841,8 +924,13 @@ fn member_specs(context: &GroupSchedulingContext) -> a3s_flow::Result<Vec<Runtim
         .iter()
         .zip(&context.group.members)
         .map(|(binding, plan)| {
-            project_placement_group_runtime_spec(&context.revision, binding, plan)
-                .map_err(|error| runtime_error("could not project group member Runtime", error))
+            project_placement_group_runtime_spec_with_execution(
+                &context.revision,
+                binding,
+                plan,
+                context.runtime_execution_binding.as_ref(),
+            )
+            .map_err(|error| runtime_error("could not project group member Runtime", error))
         })
         .collect()
 }

@@ -61,9 +61,10 @@ owner interfaces plus Runtime's public attestation contract:
   ResourceClaim state and exact replica-member/revision lineage, selects the
   same member-binding authority for ordinary and placement-group Deployments,
   and for a placement group verifies its immutable plan and exact role-specific
-  member template. Both paths reuse the sole Workloads Runtime compiler. Its
-  generic execution binding can supply only class, isolation, semantics digest
-  and opaque identity attachment;
+  member template. Both paths reuse the sole Workloads Runtime compiler. After
+  C3a the query accepts no caller-authored execution semantics: it loads the
+  exact immutable Deployment admission and publishes no Claim for legacy or
+  explicitly unbound Deployments;
 - Fleet publishes `a3s.cloud.runtime-node-evidence.v1` through
   `IRuntimeNodeEvidenceQueryPort`. The owner query alone checks current pool
   organization and membership/removal/maintenance, Ready Node state, Agent
@@ -92,16 +93,41 @@ reduce read or dispatch pressure but cannot admit evidence. Runtime and Box
 remain provider/lifecycle authorities; Identity never parses provider-specific
 attestation documents.
 
-C2's generic execution binding is an expected-Spec verifier, not a mutation or
-an authority to attach identity to an existing Unit. `WI2-C3a` must persist one
-Workloads-owned immutable binding against the exact revision and new Deployment
-identity before scheduling. Ordinary, placement-group, reconciliation, restart
-and rollback dispatch all reuse the sole Workloads compiler and carry the
-binding into the exact replica/Runtime generations; an unattached existing Unit
+C2's original generic execution input was only an expected-Spec verifier, not a
+mutation or authority to relabel an existing Unit. Component-only `WI2-C3a`
+now closes that gap. Identity publishes one
+`a3s.cloud.workload-runtime-execution-authorization.v1` owner fact containing
+only exact owner lineage, Runtime class, isolation, semantics digest, opaque
+attachment digest, NodePool and acceptance time. Its internal read fences the
+Organization's canonical Installation, then locks current TrustDomain and
+policy heads in the existing order; stale trust and lineage drift fail closed.
+Workloads consumes that fact through one consumer-owned admission port and one
+anti-corruption adapter.
+
+The Workloads Domain names class and isolation only through the versioned Cloud
+Published Language; it does not import Runtime execution/provider authority.
+Its PostgreSQL repository maps migration `180` through the existing typed A3S
+ORM table, selection and insert abstractions, with no parallel raw-SQL path.
+
+Before scheduling, every current ordinary or placement-group Deployment commits
+one immutable `a3s.cloud.deployment-runtime-execution-binding.v1` record through
+migration `180`. The record is either the exact generic binding or an explicit
+no-policy outcome; therefore absence is replayable and cannot later turn into a
+different binding after process loss. Ordinary dispatch, placement-group v2,
+reconciliation, restart and rollback projection all use that same record and
+the sole Workloads Runtime compiler. Rows are accepted only while the exact
+Deployment is Resolving and has no node, command, activation or cancellation
+state. Scheduling rechecks the binding's NodePool before reservation and again
+inside the final Deployment transition transaction; PostgreSQL uses the
+canonical Deployment-then-Control lock order. Exact replay is the only later
+write. If multiple Flow workers race with different observation times, the
+first committed row wins; a loser reloads and validates that durable winner
+instead of reinterpreting policy or overwriting it. Historic workflow versions and
+legacy Deployments are neither backfilled nor relabelled; obtaining identity
 requires a new Deployment even when the revision is unchanged. The stored value
-contains only Runtime class, isolation, semantics digest and opaque attachment
-digest, never an Identity policy lifecycle. `WI2-C3b` then persists the one
-Identity evidence history.
+contains no Identity policy ID, revision, credential rule, key, provider state,
+cache, queue or parallel lifecycle. `WI2-C3b` next persists the one Identity
+evidence history.
 
 ## Consequences
 
@@ -109,8 +135,9 @@ Identity evidence history.
   Cloud-system services use the same binding contract.
 - `WI2-C1` is a component foundation and must not be marketed as workload
   identity availability.
-- `WI2-C2` supplies the sole owner-port chain and anti-corruption adapter;
-  `WI2-C3a` adds the sole Workloads execution-binding handoff, `WI2-C3b` adds
+- `WI2-C2` supplies the verified owner-port chain and anti-corruption adapter;
+  `WI2-C3a` supplies the component-only Workloads execution-admission handoff,
+  `WI2-C3b` adds
   the sole Identity evidence history and replay/concurrency gates, and `WI2-C4`
   adds Fleet Node hardware evidence plus the issuance-ready versioned decision.
 - `WI3` cannot issue, rotate or locally deliver credentials until `WI2-C4` and

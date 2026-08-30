@@ -13,10 +13,10 @@ use crate::modules::identity::domain::repositories::{
     IWorkloadIdentityPolicyRepository, ListTrustDomainRevisions,
     ListWorkloadIdentityPolicyRevisions, ProposeTenantSupportGrantWrite,
     ReadCurrentPlatformRolePolicy, ReadCurrentTrustDomain, ReadCurrentWorkloadIdentityPolicy,
-    ReadCurrentWorkloadIdentityPolicyForWorkload, ReadPlatformRoleBinding,
-    ReadPlatformRolePolicyRevision, ReadPrincipalPlatformRoleBinding, ReadTenantSupportGrant,
-    ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision, RevokePlatformRoleBindingWrite,
-    RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
+    ReadCurrentWorkloadIdentityPolicyForRuntime, ReadCurrentWorkloadIdentityPolicyForWorkload,
+    ReadPlatformRoleBinding, ReadPlatformRolePolicyRevision, ReadPrincipalPlatformRoleBinding,
+    ReadTenantSupportGrant, ReadTrustDomainRevision, ReadWorkloadIdentityPolicyRevision,
+    RevokePlatformRoleBindingWrite, RevokeTenantSupportGrantWrite, TenantSupportGrantRecord,
 };
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, InstallationId, PlatformRoleBindingId, PlatformRolePolicyRevisionId,
@@ -89,6 +89,13 @@ impl IWorkloadIdentityPolicyRepository for InMemoryIdentityRepository {
         _read: ReadCurrentWorkloadIdentityPolicyForWorkload,
     ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
         unavailable()
+    }
+
+    async fn read_current_for_runtime(
+        &self,
+        _read: ReadCurrentWorkloadIdentityPolicyForRuntime,
+    ) -> Result<Option<AcceptedWorkloadIdentityPolicyRevision>, RepositoryError> {
+        Ok(None)
     }
 
     async fn list_revisions(

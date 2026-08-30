@@ -14,6 +14,7 @@ use crate::modules::workloads::domain::entities::{
     AgentWorkloadRevisionBinding, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget,
     ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
     Workload, WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
+    WorkloadRuntimeExecutionBinding,
 };
 use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
 use chrono::{Duration, Utc};
@@ -337,20 +338,23 @@ fn projects_headless_service_to_network_none_without_health() {
         attachment.clone(),
     )
     .expect("execution binding");
-    let identity_spec = project_identity_bound_runtime_spec(&revision, &binding, &execution)
-        .expect("identity-bound Runtime spec");
-    assert_eq!(identity_spec.artifact, spec.artifact);
-    assert_eq!(identity_spec.process, spec.process);
-    assert_eq!(identity_spec.resources, spec.resources);
-    assert_eq!(identity_spec.unit_id, binding.runtime_unit_id);
-    assert_eq!(identity_spec.generation, binding.runtime_generation);
-    assert_eq!(identity_spec.isolation, IsolationLevel::Confidential);
+    let execution_spec = bind_runtime_execution(
+        project_bound_runtime_spec(&revision, &binding).expect("bound Runtime spec"),
+        &execution,
+    )
+    .expect("execution-bound Runtime spec");
+    assert_eq!(execution_spec.artifact, spec.artifact);
+    assert_eq!(execution_spec.process, spec.process);
+    assert_eq!(execution_spec.resources, spec.resources);
+    assert_eq!(execution_spec.unit_id, binding.runtime_unit_id);
+    assert_eq!(execution_spec.generation, binding.runtime_generation);
+    assert_eq!(execution_spec.isolation, IsolationLevel::Confidential);
     assert_eq!(
-        identity_spec.semantics_profile_digest.as_deref(),
+        execution_spec.semantics_profile_digest.as_deref(),
         Some(semantics.as_str())
     );
     assert_eq!(
-        identity_spec.identity_attachment_digest.as_deref(),
+        execution_spec.identity_attachment_digest.as_deref(),
         Some(attachment.as_str())
     );
 
@@ -374,13 +378,12 @@ fn projects_headless_service_to_network_none_without_health() {
         template_digest: worker_template.digest().expect("worker template digest"),
         template: worker_template.clone(),
     };
-    let worker_spec = project_identity_placement_group_runtime_spec(
-        &revision,
-        &worker_binding,
-        &worker_plan,
+    let worker_spec = bind_runtime_execution(
+        project_placement_group_runtime_spec(&revision, &worker_binding, &worker_plan)
+            .expect("placement-group worker spec"),
         &execution,
     )
-    .expect("identity-bound placement-group worker spec");
+    .expect("execution-bound placement-group worker spec");
     assert_eq!(worker_spec.process.command, worker_template.process.command);
     assert_ne!(worker_spec.process.command, spec.process.command);
     assert_eq!(worker_spec.unit_id, worker_binding.runtime_unit_id);

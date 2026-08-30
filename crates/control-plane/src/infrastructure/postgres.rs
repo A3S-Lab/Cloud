@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 179;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "179";
+pub const CLOUD_MIGRATION_COUNT: i64 = 180;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "180";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1641,6 +1641,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/179_workload_trust_authority.sql"
             )),
         ),
+        Migration::new(
+            "180",
+            "Deployment Runtime execution bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/180_deployment_runtime_execution_bindings.sql"
+            )),
+        ),
     ]
 }
 
@@ -1667,6 +1675,10 @@ mod tenant_support_grant_approvals_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/workload_trust_authority_migration.rs"]
 mod workload_trust_authority_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/deployment_runtime_execution_bindings_migration.rs"]
+mod deployment_runtime_execution_bindings_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/node_protocol_session_migration.rs"]

@@ -5,9 +5,10 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, ManagedOwnerReference,
-    OciArtifact, PlacementTopology, Workload, WorkloadControl, WorkloadControlSpec,
-    WorkloadReplica, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding,
+    DeploymentRuntimeExecutionBinding, ManagedOwnerReference, OciArtifact, PlacementTopology,
+    Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember,
+    WorkloadRevision, WorkloadWriterFenceReceipt,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -127,6 +128,7 @@ pub struct ActiveRuntimeTarget {
     pub member: WorkloadReplicaMember,
     pub deployment: Deployment,
     pub replica_binding: DeploymentReplicaBinding,
+    pub runtime_execution_binding: Option<DeploymentRuntimeExecutionBinding>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -486,6 +488,17 @@ pub trait IWorkloadRepository: Send + Sync {
         organization_id: OrganizationId,
         deployment_id: DeploymentId,
     ) -> Result<DeploymentPlacementGroupBinding, RepositoryError>;
+
+    async fn bind_deployment_runtime_execution(
+        &self,
+        binding: DeploymentRuntimeExecutionBinding,
+    ) -> Result<IdempotentWrite<DeploymentRuntimeExecutionBinding>, RepositoryError>;
+
+    async fn find_deployment_runtime_execution_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Option<DeploymentRuntimeExecutionBinding>, RepositoryError>;
 
     async fn list_workloads(
         &self,

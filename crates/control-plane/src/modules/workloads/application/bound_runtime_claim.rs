@@ -1,14 +1,13 @@
 use super::{
-    project_identity_bound_runtime_spec, project_identity_placement_group_runtime_spec,
-    WorkloadRuntimeExecutionBinding,
+    project_bound_runtime_spec_with_execution, project_placement_group_runtime_spec_with_execution,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, RepositoryError, ResourceClaimId, WorkloadId,
     WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    DeploymentPlacementGroupBinding, DeploymentReplicaBinding, ResourceClaim, ResourceClaimState,
-    WorkloadPlacementGroup, WorkloadRevision,
+    DeploymentPlacementGroupBinding, DeploymentReplicaBinding, DeploymentRuntimeExecutionBinding,
+    ResourceClaim, ResourceClaimState, WorkloadPlacementGroup, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
     IResourceClaimRepository, IWorkloadPlacementGroupRepository, IWorkloadRepository,
@@ -19,9 +18,9 @@ use crate::modules::workloads::published::{
 use async_trait::async_trait;
 use std::sync::Arc;
 
-/// Exact consumer request accepted by the Workloads owner port. The execution
-/// binding contains only generic Runtime values; no Identity aggregate or
-/// product role crosses into Workloads.
+/// Exact consumer request accepted by the Workloads owner port. Runtime
+/// execution semantics are loaded from the Workloads-owned immutable
+/// Deployment binding and cannot be supplied by the caller.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BoundRuntimeClaimQuery {
     organization_id: OrganizationId,
@@ -30,7 +29,6 @@ pub struct BoundRuntimeClaimQuery {
     workload_id: WorkloadId,
     workload_revision_id: WorkloadRevisionId,
     resource_claim_id: ResourceClaimId,
-    execution_binding: WorkloadRuntimeExecutionBinding,
 }
 
 impl BoundRuntimeClaimQuery {
@@ -41,7 +39,6 @@ impl BoundRuntimeClaimQuery {
         workload_id: WorkloadId,
         workload_revision_id: WorkloadRevisionId,
         resource_claim_id: ResourceClaimId,
-        execution_binding: WorkloadRuntimeExecutionBinding,
     ) -> Result<Self, String> {
         let value = Self {
             organization_id,
@@ -50,7 +47,6 @@ impl BoundRuntimeClaimQuery {
             workload_id,
             workload_revision_id,
             resource_claim_id,
-            execution_binding,
         };
         value.validate()?;
         Ok(value)
@@ -66,7 +62,7 @@ impl BoundRuntimeClaimQuery {
         {
             return Err("bound Runtime Claim query identity is invalid".into());
         }
-        self.execution_binding.validate()
+        Ok(())
     }
 }
 
@@ -103,6 +99,7 @@ impl BoundRuntimeClaimQueryService {
         claim: &ResourceClaim,
         binding: &DeploymentReplicaBinding,
         revision: &WorkloadRevision,
+        runtime_execution_binding: &DeploymentRuntimeExecutionBinding,
         placement_group: Option<(&WorkloadPlacementGroup, &DeploymentPlacementGroupBinding)>,
     ) -> Result<(), RepositoryError> {
         let current_claim = self
@@ -123,7 +120,17 @@ impl BoundRuntimeClaimQueryService {
             .find_revision(claim.organization_id, revision.id)
             .await
             .map_err(|error| concurrent_projection_error("Workload revision", error))?;
-        if current_claim != *claim || current_binding != *binding || current_revision != *revision {
+        let current_runtime_execution_binding = self
+            .workloads
+            .find_deployment_runtime_execution_binding(claim.organization_id, claim.deployment_id)
+            .await
+            .map_err(|error| concurrent_projection_error("Runtime execution binding", error))?
+            .ok_or_else(owner_snapshot_changed)?;
+        if current_claim != *claim
+            || current_binding != *binding
+            || current_revision != *revision
+            || current_runtime_execution_binding != *runtime_execution_binding
+        {
             return Err(owner_snapshot_changed());
         }
 
@@ -192,6 +199,32 @@ impl IBoundRuntimeClaimQueryPort for BoundRuntimeClaimQueryService {
         }
         if !claim_matches_query(&claim, &query) {
             return Ok(None);
+        }
+
+        let runtime_execution_binding = match self
+            .workloads
+            .find_deployment_runtime_execution_binding(claim.organization_id, claim.deployment_id)
+            .await?
+        {
+            Some(binding) => binding,
+            None => return Ok(None),
+        };
+        runtime_execution_binding
+            .validate()
+            .map_err(owner_projection_error)?;
+        if !runtime_execution_binding.is_bound() {
+            return Ok(None);
+        }
+        if runtime_execution_binding.deployment_id() != claim.deployment_id
+            || runtime_execution_binding.organization_id() != claim.organization_id
+            || runtime_execution_binding.project_id() != claim.project_id
+            || runtime_execution_binding.environment_id() != claim.environment_id
+            || runtime_execution_binding.workload_id() != claim.workload_id
+            || runtime_execution_binding.workload_revision_id() != query.workload_revision_id
+        {
+            return Err(owner_projection_error(
+                "bound ResourceClaim drifted from its Runtime execution binding".into(),
+            ));
         }
 
         let bindings = self
@@ -280,19 +313,23 @@ impl IBoundRuntimeClaimQueryPort for BoundRuntimeClaimQueryService {
                         )
                     })?;
                 (
-                    project_identity_placement_group_runtime_spec(
+                    project_placement_group_runtime_spec_with_execution(
                         &revision,
                         &binding,
                         plan,
-                        &query.execution_binding,
+                        Some(&runtime_execution_binding),
                     )
                     .map_err(owner_projection_error)?,
                     Some((group, group_binding)),
                 )
             }
             Err(RepositoryError::NotFound) => (
-                project_identity_bound_runtime_spec(&revision, &binding, &query.execution_binding)
-                    .map_err(owner_projection_error)?,
+                project_bound_runtime_spec_with_execution(
+                    &revision,
+                    &binding,
+                    Some(&runtime_execution_binding),
+                )
+                .map_err(owner_projection_error)?,
                 None,
             ),
             Err(error) => return Err(error),
@@ -301,6 +338,7 @@ impl IBoundRuntimeClaimQueryPort for BoundRuntimeClaimQueryService {
             &claim,
             &binding,
             &revision,
+            &runtime_execution_binding,
             placement_group_evidence
                 .as_ref()
                 .map(|(group, group_binding)| (group, group_binding)),

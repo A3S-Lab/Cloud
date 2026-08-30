@@ -11,11 +11,12 @@ use super::types::{
     ScheduleStepOutput, VerifyStepInput, VerifyStepOutput,
 };
 use super::DeploymentFlowRuntime;
-use super::{flow_error, resource_claim_id};
+use super::{admit_deployment_runtime_execution, flow_error, resource_claim_id};
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, RepositoryError};
-use crate::modules::workloads::application::project_bound_runtime_spec;
-use crate::modules::workloads::application::project_replica_runtime_spec;
+use crate::modules::workloads::application::{
+    project_bound_runtime_spec_with_execution, project_replica_runtime_spec_with_execution,
+};
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, DeploymentReplicaBinding, DeploymentStatus, ReplicaAntiAffinity,
     ResourceClaimBindingEvidence, ResourceClaimReservation, ResourceClaimState,
@@ -370,6 +371,19 @@ async fn resolve(
             .map_err(|error| flow_error("could not persist resolved OCI artifact", error))?;
     }
     validate_rollback_source(runtime, &input, &revision).await?;
+    let workload = runtime
+        .workloads
+        .find_workload(input.organization_id, input.workload_id)
+        .await
+        .map_err(|error| flow_error("could not load Deployment Workload", error))?;
+    let control = runtime
+        .workloads
+        .find_workload_control(input.organization_id, input.workload_id)
+        .await
+        .map_err(|error| flow_error("could not load Deployment control", error))?;
+    let runtime_execution_binding =
+        admit_deployment_runtime_execution(runtime, &deployment, &workload, &revision, &control)
+            .await?;
     let replica_binding = runtime
         .workloads
         .find_deployment_replica_binding(input.organization_id, deployment.id)
@@ -393,8 +407,12 @@ async fn resolve(
         )
         .await
         .map_err(|error| flow_error("could not load deployment replica member", error))?;
-    let spec = project_replica_runtime_spec(&revision, &replica)
-        .map_err(|error| flow_error("could not project replica Runtime specification", error))?;
+    let spec = project_replica_runtime_spec_with_execution(
+        &revision,
+        &replica,
+        runtime_execution_binding.as_ref(),
+    )
+    .map_err(|error| flow_error("could not project replica Runtime specification", error))?;
     validate_current_replica_binding(
         &replica_binding,
         &deployment,
@@ -528,13 +546,37 @@ async fn previous_runtime(
     let node_id = previous_deployment
         .node_id
         .ok_or_else(|| FlowError::Runtime("active deployment omitted its node".into()))?;
-    let spec =
-        project_bound_runtime_spec(&previous_revision, &replica_binding).map_err(|error| {
+    let runtime_execution_binding = runtime
+        .workloads
+        .find_deployment_runtime_execution_binding(input.organization_id, previous_deployment.id)
+        .await
+        .map_err(|error| {
             flow_error(
-                "could not project previous replica Runtime specification",
+                "could not load previous Deployment Runtime execution binding",
                 error,
             )
         })?;
+    if let Some(binding) = &runtime_execution_binding {
+        binding
+            .validate_lineage(&previous_deployment, &workload, &previous_revision)
+            .map_err(|error| {
+                flow_error(
+                    "previous Deployment Runtime execution binding is inconsistent",
+                    error,
+                )
+            })?;
+    }
+    let spec = project_bound_runtime_spec_with_execution(
+        &previous_revision,
+        &replica_binding,
+        runtime_execution_binding.as_ref(),
+    )
+    .map_err(|error| {
+        flow_error(
+            "could not project previous replica Runtime specification",
+            error,
+        )
+    })?;
     validate_runtime_binding(
         &replica_binding,
         &previous_deployment,
@@ -744,6 +786,16 @@ async fn schedule(
         return Err(FlowError::Runtime(
             "deployment has no supported required replica anti-affinity policy".into(),
         ));
+    }
+    if let Some(runtime_binding) = runtime
+        .workloads
+        .find_deployment_runtime_execution_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load Runtime execution placement fence", error))?
+    {
+        runtime_binding
+            .validate_placement_lineage(&deployment, &control)
+            .map_err(|error| flow_error("Runtime execution placement lineage changed", error))?;
     }
     let mut nodes = runtime
         .nodes

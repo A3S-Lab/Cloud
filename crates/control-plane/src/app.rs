@@ -214,6 +214,7 @@ use crate::modules::identity::{
     RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
     RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
     SmtpRecipientContactVerificationDeliveryService,
+    WorkloadRuntimeExecutionAuthorizationQueryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 use crate::modules::integration_events::{
@@ -315,6 +316,7 @@ use crate::modules::workloads::{
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    IWorkloadRuntimeExecutionAdmissionPort, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
     ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
@@ -1046,6 +1048,13 @@ async fn build_api_worker_application(
                 Arc::clone(&environments),
                 Arc::clone(&executions),
             ));
+        let runtime_execution_authorizations =
+            Arc::new(WorkloadRuntimeExecutionAuthorizationQueryService::new(
+                Arc::clone(&workload_identity_policies),
+            ));
+        let runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort> = Arc::new(
+            IdentityWorkloadRuntimeExecutionAdmissionAdapter::new(runtime_execution_authorizations),
+        );
         let deployment_runtime = DeploymentFlowRuntime::new(
             DeploymentFlowDependencies::new(
                 deployment_workloads,
@@ -1055,7 +1064,8 @@ async fn build_api_worker_application(
                 Arc::clone(&node_control),
                 deployment_route_updates,
             )
-            .with_prestart_gate(workload_prestart_gate),
+            .with_prestart_gate(workload_prestart_gate)
+            .with_runtime_execution_admission(runtime_execution_admission),
             chrono_duration(config.fleet.heartbeat_timeout_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             deployment_flow_config,

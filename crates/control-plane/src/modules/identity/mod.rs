@@ -2,11 +2,14 @@ pub mod application;
 pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
+pub mod published;
 
 pub use application::{
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
+    IWorkloadRuntimeExecutionAuthorizationQueryPort,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
-    WorkloadRuntimeEvidenceRequest,
+    WorkloadRuntimeEvidenceRequest, WorkloadRuntimeExecutionAuthorizationQuery,
+    WorkloadRuntimeExecutionAuthorizationQueryService,
 };
 
 pub use application::commands::accept_membership_invitation::{

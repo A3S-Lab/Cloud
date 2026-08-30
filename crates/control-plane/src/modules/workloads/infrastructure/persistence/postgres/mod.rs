@@ -13,6 +13,7 @@ mod resource_claim_rows;
 mod resource_claim_writes;
 mod resource_claims;
 mod rows;
+mod runtime_execution_bindings;
 mod schema;
 mod secret_rotation_restarts;
 mod stop;
@@ -25,8 +26,9 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, OciArtifact, Workload,
-    WorkloadControl, WorkloadReplica, WorkloadReplicaMember, WorkloadRevision,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding,
+    DeploymentRuntimeExecutionBinding, OciArtifact, Workload, WorkloadControl, WorkloadReplica,
+    WorkloadReplicaMember, WorkloadRevision,
 };
 use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, CreateDeploymentBundle, DeploymentBundle,
@@ -261,6 +263,24 @@ impl IWorkloadRepository for PostgresWorkloadRepository {
             deployment_id,
         )
         .await
+    }
+
+    async fn bind_deployment_runtime_execution(
+        &self,
+        binding: DeploymentRuntimeExecutionBinding,
+    ) -> Result<
+        crate::modules::shared_kernel::domain::IdempotentWrite<DeploymentRuntimeExecutionBinding>,
+        RepositoryError,
+    > {
+        runtime_execution_bindings::bind(&self.executor, binding).await
+    }
+
+    async fn find_deployment_runtime_execution_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Option<DeploymentRuntimeExecutionBinding>, RepositoryError> {
+        runtime_execution_bindings::find(&self.executor, organization_id, deployment_id).await
     }
 
     async fn list_workloads(

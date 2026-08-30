@@ -1,9 +1,9 @@
-use super::replicas;
 use super::rows::{self, DeploymentSelection, RevisionSelection, WorkloadSelection};
 use super::schema::{
     ActiveWorkloads, DeploymentReplicaBindings, Deployments, McpServiceProfiles, WorkloadReplicas,
     WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads,
 };
+use super::{replicas, runtime_execution_bindings};
 use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, EnvironmentId, OrganizationId, ProjectId,
@@ -258,6 +258,8 @@ pub(super) async fn list_active_runtime_targets(
             replica_binding.member_id,
         )
         .await?;
+        let runtime_execution_binding =
+            runtime_execution_bindings::find(executor, organization_id, deployment.id).await?;
         if workload.desired_state
             != crate::modules::workloads::domain::entities::WorkloadDesiredState::Running
             || workload.active_revision_id != Some(revision.id)
@@ -279,6 +281,7 @@ pub(super) async fn list_active_runtime_targets(
             member,
             deployment,
             replica_binding,
+            runtime_execution_binding,
         });
     }
     Ok(targets)

@@ -6247,11 +6247,13 @@ SHA-256 and deterministic identity, accepts only a running observation within
 the 120-second protocol ceiling, and cannot authorize issuance because V1
 requires no Node hardware-attestation digest.
 
-`WI2-C2` now implements one Identity consumer port and one cross-context
+Verified `WI2-C2` implements one Identity consumer port and one cross-context
 adapter over two owner-published facts. `BoundRuntimeClaimQueryService` alone
 interprets Workloads Claim/replica/revision state, resolves the exact immutable
-member plan for placement groups, and feeds a generic execution binding into
-the existing sole ordinary/member Runtime Spec compiler.
+member plan for placement groups, and reuses the existing sole ordinary/member
+Runtime Spec compiler. With C3a it loads generic execution semantics only from
+the Workloads-owned immutable Deployment admission; callers cannot provide
+them.
 `RuntimeNodeEvidenceQueryService` alone interprets Fleet pool membership, Node
 state, Agent session, capabilities and the exact first-received observation.
 The Identity adapter uses Runtime's public requirements and attestation
@@ -6265,19 +6267,33 @@ across pool, Node and control views; Workloads retains its sole Claim repository
 and one concrete Workload/placement-group repository instead of collapsing
 distinct aggregates. Both owner queries use an optimistic double collect;
 concurrent head, session or latest-observation changes conflict instead of
-producing torn evidence.
+producing torn evidence. Cloud main CI run
+[`33310808529`](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529)
+and Box provider conformance run
+[`33310808538`](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538)
+pass the complete C1/C2 gate.
 
-The C2 projection verifies an identity-attached Spec but deliberately does not
-mutate a running Unit. Implement `WI2-C3a` first: persist one Workloads-owned,
-immutable generic execution binding against the exact revision and new
-Deployment identity before scheduling, and make ordinary, placement-group,
-reconciliation, restart and rollback dispatch reuse the existing sole Runtime
-Spec compiler and carry it into the exact replica/Runtime generations. The
-binding contains only Runtime class, isolation, semantics digest and opaque
-attachment digest; it is not an Identity policy replica. Existing unattached
-Units must roll forward through a new Deployment even when the revision is
-unchanged, rather than be relabelled in place. Implement `WI2-C3b` through the
-one Identity-owned immutable PostgreSQL evidence history plus retained
+Component-only `WI2-C3a` is implemented locally. Identity publishes only exact
+lineage and generic Runtime class, isolation, semantics, opaque attachment,
+NodePool and acceptance time. Its internal owner read serializes current and
+absent-policy snapshots through the existing Installation fence, locks current
+TrustDomain before policy, and rejects stale trust. Workloads consumes that
+fact through one inward port and ACL, then migration `180` commits one immutable
+pre-scheduling admission for every current Deployment. The row holds either
+the exact generic execution binding or an explicit no-policy result; therefore
+crash replay cannot reinterpret absence after a policy is created. Ordinary,
+placement-group v2, reconciliation, restart and rollback projection reuse the
+same row and the existing sole Runtime Spec compiler. Scheduling checks its
+NodePool before reservation and again in the final Deployment transaction;
+Runtime capability admission still rejects providers that cannot carry the
+attached isolation/identity semantics. Concurrent Flow workers adopt the first
+valid committed row after an idempotency race. Historic workflow
+versions and legacy Deployments are not backfilled or relabelled. The local
+locked metadata, workspace/all-targets test, Clippy `-D warnings`, rustdoc
+`-D warnings`, and focused component gates pass; main verification remains
+pending.
+Implement `WI2-C3b` next through the one Identity-owned immutable PostgreSQL
+evidence history plus retained
 idempotency/replay/concurrency/revocation tests. Implement the missing
 Fleet-owned hardware Node attestation as `WI2-C4` and consume it only through a
 new versioned Identity decision. Handlers may not import Workloads/Fleet

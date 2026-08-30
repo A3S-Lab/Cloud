@@ -1,4 +1,5 @@
 mod deployment_flow;
+mod identity_runtime_execution_admission;
 mod node_drain_reconciliation;
 mod oci_registry;
 mod persistence;
@@ -16,6 +17,7 @@ pub use deployment_flow::{
     PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
+pub use identity_runtime_execution_admission::IdentityWorkloadRuntimeExecutionAdmissionAdapter;
 pub use node_drain_reconciliation::{
     NodeDrainEvacuationFailure, NodeDrainEvacuationReconciler, NodeDrainEvacuationReport,
 };

@@ -28,11 +28,46 @@ pub(super) fn runtime_with_resource_claims(
     )
 }
 
+pub(super) fn runtime_with_resource_claims_and_runtime_execution_admission(
+    workloads: &Arc<InMemoryWorkloadRepository>,
+    nodes: &Arc<InMemoryNodeRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
+    convergence_timeout: Duration,
+) -> Result<DeploymentFlowRuntime, String> {
+    runtime_with_prestart_gate_and_runtime_execution_admission(
+        workloads,
+        nodes,
+        resource_claims,
+        Arc::new(crate::modules::workloads::domain::services::UnrestrictedWorkloadPrestartGate),
+        runtime_execution_admission,
+        convergence_timeout,
+    )
+}
+
 pub(super) fn runtime_with_prestart_gate(
     workloads: &Arc<InMemoryWorkloadRepository>,
     nodes: &Arc<InMemoryNodeRepository>,
     resource_claims: Arc<dyn IResourceClaimRepository>,
     prestart_gate: Arc<dyn crate::modules::workloads::domain::services::IWorkloadPrestartGate>,
+    convergence_timeout: Duration,
+) -> Result<DeploymentFlowRuntime, String> {
+    runtime_with_prestart_gate_and_runtime_execution_admission(
+        workloads,
+        nodes,
+        resource_claims,
+        prestart_gate,
+        Arc::new(crate::modules::workloads::application::NoWorkloadRuntimeExecutionAdmission),
+        convergence_timeout,
+    )
+}
+
+fn runtime_with_prestart_gate_and_runtime_execution_admission(
+    workloads: &Arc<InMemoryWorkloadRepository>,
+    nodes: &Arc<InMemoryNodeRepository>,
+    resource_claims: Arc<dyn IResourceClaimRepository>,
+    prestart_gate: Arc<dyn crate::modules::workloads::domain::services::IWorkloadPrestartGate>,
+    runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
     convergence_timeout: Duration,
 ) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
@@ -50,7 +85,8 @@ pub(super) fn runtime_with_prestart_gate(
             control_port,
             Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
         )
-        .with_prestart_gate(prestart_gate),
+        .with_prestart_gate(prestart_gate)
+        .with_runtime_execution_admission(runtime_execution_admission),
         Duration::seconds(5),
         DeploymentFlowConfig::from_milliseconds(
             milliseconds,
@@ -1018,11 +1054,21 @@ pub(super) fn stopped_observation(
 ) -> Result<RuntimeObservation, String> {
     let now_ms = u64::try_from(Utc::now().timestamp_millis())
         .map_err(|_| "test clock predates Unix epoch")?;
+    let spec_digest = spec.digest()?;
+    let evidence = (spec.semantics_profile_digest.is_some()
+        || spec.identity_attachment_digest.is_some())
+    .then(|| RuntimeEvidence {
+        provider_build: "test-runtime-1".into(),
+        spec_digest: spec_digest.clone(),
+        semantics_profile_digest: spec.semantics_profile_digest.clone(),
+        identity_attachment_digest: spec.identity_attachment_digest.clone(),
+        claims: BTreeMap::new(),
+    });
     let observation = RuntimeObservation {
         schema: RuntimeObservation::SCHEMA.into(),
         unit_id: spec.unit_id.clone(),
         generation: spec.generation,
-        spec_digest: spec.digest()?,
+        spec_digest,
         class: RuntimeUnitClass::Service,
         state: RuntimeUnitState::Stopped,
         provider_resource_id: Some(format!("container-{}", spec.generation)),
@@ -1033,7 +1079,7 @@ pub(super) fn stopped_observation(
         health: None,
         outputs: Vec::new(),
         usage: None,
-        evidence: None,
+        evidence,
         provider_attestation: None,
         failure: None,
     };

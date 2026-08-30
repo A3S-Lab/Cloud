@@ -16,6 +16,10 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::shared_kernel::domain::{
     DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
 };
+use crate::modules::workloads::application::{
+    DeploymentRuntimeExecutionAdmissionRequest, IWorkloadRuntimeExecutionAdmissionPort,
+    NoWorkloadRuntimeExecutionAdmission,
+};
 pub use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
@@ -23,6 +27,10 @@ pub use crate::modules::workloads::application::{
     RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::ResourceClaimState;
+use crate::modules::workloads::domain::entities::{
+    Deployment, DeploymentRuntimeExecutionBinding, DeploymentStatus, Workload, WorkloadControl,
+    WorkloadRevision,
+};
 use crate::modules::workloads::domain::repositories::{
     IDeploymentFlowWorkloadRepository, IResourceClaimRepository,
 };
@@ -107,6 +115,7 @@ pub struct DeploymentFlowRuntime {
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) route_updates: Arc<dyn IDeploymentRouteUpdater>,
     pub(super) prestart_gate: Arc<dyn IWorkloadPrestartGate>,
+    pub(super) runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
     pub(super) heartbeat_timeout: chrono::Duration,
     pub(super) config: DeploymentFlowConfig,
 }
@@ -120,6 +129,7 @@ pub struct DeploymentFlowDependencies {
     node_control: Arc<dyn INodeControlRepository>,
     route_updates: Arc<dyn IDeploymentRouteUpdater>,
     prestart_gate: Arc<dyn IWorkloadPrestartGate>,
+    runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
 }
 
 impl DeploymentFlowDependencies {
@@ -139,11 +149,20 @@ impl DeploymentFlowDependencies {
             node_control,
             route_updates,
             prestart_gate: Arc::new(UnrestrictedWorkloadPrestartGate),
+            runtime_execution_admission: Arc::new(NoWorkloadRuntimeExecutionAdmission),
         }
     }
 
     pub fn with_prestart_gate(mut self, prestart_gate: Arc<dyn IWorkloadPrestartGate>) -> Self {
         self.prestart_gate = prestart_gate;
+        self
+    }
+
+    pub fn with_runtime_execution_admission(
+        mut self,
+        runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
+    ) -> Self {
+        self.runtime_execution_admission = runtime_execution_admission;
         self
     }
 }
@@ -165,6 +184,7 @@ impl DeploymentFlowRuntime {
             node_control: dependencies.node_control,
             route_updates: dependencies.route_updates,
             prestart_gate: dependencies.prestart_gate,
+            runtime_execution_admission: dependencies.runtime_execution_admission,
             heartbeat_timeout,
             config,
         })
@@ -269,6 +289,138 @@ fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
 
 fn resource_claim_id(deployment_id: DeploymentId) -> ResourceClaimId {
     ResourceClaimId::from_uuid(deployment_id.as_uuid())
+}
+
+fn validate_deployment_runtime_execution_binding(
+    binding: &DeploymentRuntimeExecutionBinding,
+    deployment: &Deployment,
+    workload: &Workload,
+    revision: &WorkloadRevision,
+    control: &WorkloadControl,
+) -> a3s_flow::Result<()> {
+    let validation = if deployment.status == DeploymentStatus::Resolving {
+        binding.validate_admission(deployment, workload, revision, control)
+    } else {
+        binding.validate_lineage(deployment, workload, revision)
+    };
+    validation.map_err(|error| {
+        flow_error(
+            "Deployment Runtime execution binding is inconsistent",
+            error,
+        )
+    })
+}
+
+async fn admit_deployment_runtime_execution(
+    runtime: &DeploymentFlowRuntime,
+    deployment: &Deployment,
+    workload: &Workload,
+    revision: &WorkloadRevision,
+    control: &WorkloadControl,
+) -> a3s_flow::Result<Option<DeploymentRuntimeExecutionBinding>> {
+    if let Some(existing) = runtime
+        .workloads
+        .find_deployment_runtime_execution_binding(deployment.organization_id, deployment.id)
+        .await
+        .map_err(|error| flow_error("could not load Deployment Runtime execution binding", error))?
+    {
+        validate_deployment_runtime_execution_binding(
+            &existing, deployment, workload, revision, control,
+        )?;
+        return Ok(Some(existing));
+    }
+    if deployment.status != DeploymentStatus::Resolving {
+        return Ok(None);
+    }
+    let request = DeploymentRuntimeExecutionAdmissionRequest::new(
+        workload.organization_id,
+        workload.project_id,
+        workload.environment_id,
+        workload.id,
+        revision.id,
+        deployment.id,
+        control.spec.placement_policy.node_pool_id(),
+    )
+    .map_err(|error| flow_error("could not construct Runtime execution admission", error))?;
+    let admitted = runtime
+        .runtime_execution_admission
+        .admit(request)
+        .await
+        .map_err(|error| flow_error("could not admit Deployment Runtime execution", error))?;
+    let admitted_at = crate::modules::shared_kernel::domain::canonical_timestamp(
+        admitted
+            .as_ref()
+            .map_or(deployment.updated_at, |value| value.authorized_at())
+            .max(deployment.updated_at)
+            .max(chrono::Utc::now()),
+    );
+    let binding = match admitted {
+        Some(admitted) => {
+            let node_pool_id = admitted.node_pool_id();
+            let authorized_at = admitted.authorized_at();
+            DeploymentRuntimeExecutionBinding::bind(
+                deployment,
+                workload,
+                revision,
+                control,
+                node_pool_id,
+                admitted.into_execution(),
+                authorized_at,
+                admitted_at,
+            )
+        }
+        None => DeploymentRuntimeExecutionBinding::admit_unbound(
+            deployment,
+            workload,
+            revision,
+            control,
+            admitted_at,
+        ),
+    }
+    .map_err(|error| flow_error("could not bind admitted Runtime execution", error))?;
+    let write = match runtime
+        .workloads
+        .bind_deployment_runtime_execution(binding.clone())
+        .await
+    {
+        Ok(write) => write,
+        Err(RepositoryError::IdempotencyConflict) => {
+            let winner = runtime
+                .workloads
+                .find_deployment_runtime_execution_binding(
+                    deployment.organization_id,
+                    deployment.id,
+                )
+                .await
+                .map_err(|error| {
+                    flow_error(
+                        "could not load concurrent Deployment Runtime execution winner",
+                        error,
+                    )
+                })?
+                .ok_or_else(|| {
+                    FlowError::Runtime(
+                        "Deployment Runtime execution conflicted without a durable winner".into(),
+                    )
+                })?;
+            validate_deployment_runtime_execution_binding(
+                &winner, deployment, workload, revision, control,
+            )?;
+            return Ok(Some(winner));
+        }
+        Err(error) => {
+            return Err(flow_error(
+                "could not persist Deployment Runtime execution",
+                error,
+            ))
+        }
+    };
+    if write.value != binding {
+        return Err(FlowError::Runtime(
+            "Deployment Runtime execution persistence changed the admitted binding".into(),
+        ));
+    }
+    Ok(Some(write.value))
 }
 
 async fn cancel_database_reservation(

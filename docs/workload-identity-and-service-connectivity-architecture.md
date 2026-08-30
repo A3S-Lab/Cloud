@@ -236,7 +236,7 @@ Cloud Dashboard or private identity-provider UI is required.
 | Gate | Outcome | Current state |
 | --- | --- | --- |
 | `H0.4-WI1` | TrustDomain and WorkloadIdentityPolicy ACL, DDD owner and provider ports | **Verified foundation.** `WI1-C1`, the `WI1-C2` persistence core, the maintained management surface, and the first provider-inspection slice are implemented. Canonical trust ACLs and deterministic revisions feed migration `179`'s immutable histories and sole heads, and policies bind the exact TrustDomain revision. PostgreSQL reuses the Installation lock, sole privileged decision issuer, shared idempotency/Audit/Outbox, and exact Workload/NodePool owner FKs; the in-memory privileged path fails closed. The [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009) verifies REST/OpenAPI `1.80.0`, TypeScript client, CLI, ten Installation-bound Management MCP tools, the H0 PostgreSQL gate, and the real-TLS provider gate at 7/7 on Rust 1.88 and stable. Workload identity is not yet available because `WI2` through `WI7` remain open. |
-| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | **Component foundation in progress.** `WI2-C1` defines one deterministic Identity-owned evidence binding for the exact policy revision, Workloads Claim, NodePool snapshot, Fleet Node Agent session/capability snapshot, and Runtime/Box Unit-generation attestation. Runtime `0.4.0` carries the opaque policy digest through Spec and evidence, while the pinned confidential Box provider binds it to provider attestation. The exact [Runtime main CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095) and [Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002) pins pass. V1 explicitly contains no Node hardware-attestation binding and can never authorize credential issuance; the owner port, persistence, full Fleet attestation fact, orchestration and retained provider gates remain open. |
+| `H0.4-WI2` | Node and exact Runtime Unit attestation binding through Fleet/Box | **Verified C1/C2 foundation; C3a component implemented locally.** `WI2-C1` defines one deterministic, deliberately non-authorizing Identity evidence binding. `WI2-C2` composes the sole Workloads Claim and Fleet Node owner facts through Runtime/Box attestation; the [2026-08-30 Cloud main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529) and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. Component-only `WI2-C3a` now admits the current Identity owner fact before scheduling and persists one immutable Workloads record, including an explicit no-policy result, for deterministic ordinary, placement-group and reconciliation projection. Migration `180` and the complete local Rust release gate pass; main verification for this slice is pending. V1 still lacks Fleet hardware-attestation evidence and can never authorize credential issuance. `C3b` evidence history, `C4` hardware evidence/full decision, orchestration and retained provider gates remain open. |
 | `H0.4-WI3` | Short-lived issuance, local workload endpoint, rotation and Secret separation | Planned |
 | `H0.4-WI4` | PrivateService and PeerAuthorization complete snapshots | Planned |
 | `H0.4-WI5` | Box network enforcement, egress policy and Gateway-to-origin identity | Planned |
@@ -299,6 +299,31 @@ It has an explicit absent Node hardware-attestation digest and always denies
 credential-issuance authority. Fleet must publish the missing immutable
 hardware evidence through the one Identity-owned port before a versioned full
 WI2 decision can enable WI3.
+
+Verified `WI2-C2` adds no foreign lifecycle. Workloads alone interprets the
+bound ResourceClaim, exact replica member and immutable placement-group plan;
+Fleet alone interprets the current NodePool, Node Agent session, capabilities
+and first authoritative Runtime observation. Identity's sole adapter combines
+those owner facts through Runtime's public requirements and attestation
+binding. Both owner queries double-collect current state, so a concurrent head,
+session, plan or observation change conflicts instead of emitting torn
+evidence.
+
+Component-only `WI2-C3a` makes execution attachment a deployment-time fact
+rather than a caller-authored query value. Identity publishes only generic
+Runtime semantics and exact lineage. Its PostgreSQL read serializes both the
+present-policy and no-policy cases through the existing Installation fence and
+locks TrustDomain before policy, rejecting stale trust. Workloads persists the
+result exactly once while the Deployment is Resolving and unscheduled. An
+explicit no-policy row makes crash replay deterministic; a missing row means a
+legacy Deployment and is never backfilled. The ordinary flow, placement-group
+v2, previous-runtime/rollback projection and reconciler all consume this one
+record through the existing Runtime compiler. Scheduling revalidates NodePool
+lineage both before reservation and in its final transaction, while Runtime
+capability admission remains the provider-neutral isolation/identity feature
+gate. Concurrent workers adopt the first valid committed record. Bound Claim
+evidence is available only for the bound variant. No Redis/Lane correctness lock, cache truth, event
+rail, policy copy, scheduler or provider lifecycle is introduced.
 
 ## 14. Non-goals
 

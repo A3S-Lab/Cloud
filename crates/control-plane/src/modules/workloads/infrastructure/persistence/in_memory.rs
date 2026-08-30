@@ -5,9 +5,10 @@ use crate::modules::shared_kernel::domain::{
     WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding, DeploymentStatus,
-    OciArtifact, Workload, WorkloadControl, WorkloadPlacementGroup, WorkloadReplica,
-    WorkloadReplicaLifecycle, WorkloadReplicaMember, WorkloadRevision, WorkloadWriterFenceReceipt,
+    Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding,
+    DeploymentRuntimeExecutionBinding, DeploymentStatus, OciArtifact, Workload, WorkloadControl,
+    WorkloadPlacementGroup, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadReplicaMember,
+    WorkloadRevision, WorkloadWriterFenceReceipt,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadDeploymentHealthChanged, WorkloadReplicaEvacuated, WorkloadReplicaEvacuationRequested,
@@ -66,6 +67,8 @@ struct State {
     deployment_replica_member_bindings:
         BTreeMap<(DeploymentId, WorkloadReplicaMemberId), DeploymentReplicaBinding>,
     deployment_placement_group_bindings: BTreeMap<DeploymentId, DeploymentPlacementGroupBinding>,
+    deployment_runtime_execution_bindings:
+        BTreeMap<DeploymentId, DeploymentRuntimeExecutionBinding>,
     idempotency: BTreeMap<(String, String), (String, DeploymentBundle)>,
     cancellation_idempotency: BTreeMap<(String, String), (String, Deployment)>,
     stop_idempotency: BTreeMap<(String, String), (String, WorkloadStopBundle)>,
@@ -910,6 +913,88 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .filter(|binding| binding.organization_id == organization_id)
             .cloned()
             .ok_or(RepositoryError::NotFound)
+    }
+
+    async fn bind_deployment_runtime_execution(
+        &self,
+        binding: DeploymentRuntimeExecutionBinding,
+    ) -> Result<IdempotentWrite<DeploymentRuntimeExecutionBinding>, RepositoryError> {
+        binding.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(existing) = state
+            .deployment_runtime_execution_bindings
+            .get(&binding.deployment_id())
+        {
+            return if existing == &binding {
+                Ok(IdempotentWrite {
+                    value: existing.clone(),
+                    replayed: true,
+                })
+            } else {
+                Err(RepositoryError::IdempotencyConflict)
+            };
+        }
+        let deployment = state
+            .deployments
+            .get(&binding.deployment_id())
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        let workload = state
+            .workloads
+            .get(&deployment.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Deployment Runtime binding references a missing Workload".into(),
+                )
+            })?;
+        let revision = state
+            .revisions
+            .get(&deployment.revision_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Deployment Runtime binding references a missing revision".into(),
+                )
+            })?;
+        let control = state
+            .controls
+            .get(&deployment.workload_id)
+            .cloned()
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "Deployment Runtime binding references a missing control record".into(),
+                )
+            })?;
+        binding
+            .validate_admission(&deployment, &workload, &revision, &control)
+            .map_err(RepositoryError::Conflict)?;
+        state
+            .deployment_runtime_execution_bindings
+            .insert(binding.deployment_id(), binding.clone());
+        Ok(IdempotentWrite {
+            value: binding,
+            replayed: false,
+        })
+    }
+
+    async fn find_deployment_runtime_execution_binding(
+        &self,
+        organization_id: OrganizationId,
+        deployment_id: DeploymentId,
+    ) -> Result<Option<DeploymentRuntimeExecutionBinding>, RepositoryError> {
+        let binding = self
+            .state
+            .read()
+            .await
+            .deployment_runtime_execution_bindings
+            .get(&deployment_id)
+            .filter(|binding| binding.organization_id() == organization_id)
+            .cloned();
+        if let Some(binding) = &binding {
+            binding.validate().map_err(RepositoryError::Storage)?;
+        }
+        Ok(binding)
     }
 
     async fn list_workloads(
@@ -2650,6 +2735,10 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
                         "active Runtime target references a missing replica member".into(),
                     )
                 })?;
+            let runtime_execution_binding = state
+                .deployment_runtime_execution_bindings
+                .get(&deployment.id)
+                .cloned();
             targets.push(ActiveRuntimeTarget {
                 workload,
                 revision,
@@ -2657,6 +2746,7 @@ impl IWorkloadRuntimeTargetRepository for InMemoryWorkloadRepository {
                 member,
                 deployment,
                 replica_binding,
+                runtime_execution_binding,
             });
             if targets.len() == limit {
                 break;
@@ -2808,6 +2898,9 @@ fn require_current_desired_replica(
     let control = state.controls.get(&deployment.workload_id).ok_or_else(|| {
         RepositoryError::Storage("deployment Workload is missing its control record".into())
     })?;
+    if deployment.status == DeploymentStatus::Resolving {
+        require_runtime_execution_placement(state, deployment, control)?;
+    }
     let binding = state
         .deployment_replica_bindings
         .get(&deployment.id)
@@ -2843,6 +2936,22 @@ fn require_current_desired_replica(
         ));
     }
     Ok(())
+}
+
+fn require_runtime_execution_placement(
+    state: &State,
+    deployment: &Deployment,
+    control: &WorkloadControl,
+) -> Result<(), RepositoryError> {
+    let Some(runtime_binding) = state
+        .deployment_runtime_execution_bindings
+        .get(&deployment.id)
+    else {
+        return Ok(());
+    };
+    runtime_binding
+        .validate_placement_lineage(deployment, control)
+        .map_err(RepositoryError::Conflict)
 }
 
 fn version_conflict(expected: u64, actual: u64) -> RepositoryError {

@@ -371,7 +371,7 @@ delivery, discovery, peer policy, enforcement, revocation drills, and
 federation evidence remain open. No workload identity availability is claimed
 by `WI1`.
 
-#### Workload Runtime evidence (`H0.4-WI2-C1/C2` component)
+#### Workload Runtime evidence (`H0.4-WI2-C1/C2` verified; `C3a` component)
 
 `WorkloadRuntimeEvidenceBinding` is an immutable Identity decision projection,
 not another Workload, Claim, Node, Runtime or attestation aggregate. Its
@@ -395,14 +395,12 @@ credential-authority predicate is always false. This makes the currently
 missing Fleet evidence visible instead of treating a Node certificate,
 capability document or Box provider name as hardware proof.
 
-`WI2-C2` adds one normalized Identity Application port and one Infrastructure
+Verified `WI2-C2` adds one normalized Identity Application port and one Infrastructure
 anti-corruption adapter. Workloads owns the immutable
 `a3s.cloud.bound-runtime-claim.v1` fact and keeps Claim, Deployment, replica and
 revision interpretation behind `IBoundRuntimeClaimQueryPort`. Its query reuses
 the sole Workloads ordinary/member compiler and resolves the exact immutable
-member template for placement groups; consumers may bind only generic Runtime
-class, isolation, semantics and opaque identity attachment, never rebuild
-artifact, process, resource, network, mount or Secret fields. Fleet owns
+member template for placement groups. Fleet owns
 immutable `a3s.cloud.runtime-node-evidence.v1` and keeps NodePool, Node state,
 Agent session, capability envelope and observation storage behind
 `IRuntimeNodeEvidenceQueryPort`. The fact binds the first receipt time and
@@ -416,16 +414,30 @@ retains its sole Claim repository plus one concrete Workload/placement-group
 repository so distinct aggregate boundaries are not collapsed. No Redis lock
 becomes evidence authority.
 
-C2's generic execution binding is an expected-Spec verifier and does not mutate
-or retroactively authorize a running Unit. `WI2-C3a` makes that value one
-Workloads-owned immutable fact bound to the exact revision and new Deployment
-identity before scheduling. The ordinary, placement-group, reconciliation,
-restart and rollback paths must consume it through the same compiler and carry
-it into the exact replica/Runtime generations; an unattached existing Unit
-requires a new Deployment even when the revision is unchanged. `WI2-C3b` adds
-the sole Identity immutable evidence history. `WI2-C4` then adds Fleet's
-immutable hardware evidence and a new versioned decision before `WI3` can
-issue credentials.
+C2's original caller-supplied generic execution value was only an expected-Spec
+verifier and could not mutate or retroactively authorize a running Unit.
+Component-only `WI2-C3a` replaces that input with one owner-fact/consumer-ACL
+handoff. Identity alone interprets its accepted policy and publishes exact
+Workload/revision/NodePool lineage plus Runtime class, isolation, semantics
+digest, opaque attachment digest, and acceptance time. Workloads admits it
+before scheduling and migration `180` persists one immutable
+`a3s.cloud.deployment-runtime-execution-binding.v1` record for the exact new
+Deployment. The record is either the admitted semantics or an explicit
+no-policy outcome; a missing record therefore identifies a legacy Deployment
+and is never reinterpreted or backfilled.
+
+Ordinary, placement-group v2, reconciliation, restart and rollback paths load
+that same record through the sole Workloads Runtime compiler; no caller can
+synthesize artifact, process, resource, network, mount, Secret, or execution
+semantics. Domain validation and PostgreSQL admit a first write only while the
+exact Deployment is Resolving, unscheduled, undispatched, unactivated and
+uncancelled. The repository and migration lock Deployment before Workload
+Control. Concurrent Flow workers adopt the first valid committed row after an
+idempotency race, while only an exact replay can write later. An unattached existing
+Unit requires a new Deployment even when the revision is unchanged. `WI2-C3b`
+next adds the sole Identity immutable evidence history. `WI2-C4` then adds
+Fleet's immutable hardware evidence and a new versioned decision before `WI3`
+can issue credentials.
 
 #### Verified recipient contact (`C0.3-N5a` implemented component)
 

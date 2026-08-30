@@ -2005,7 +2005,7 @@ fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter(
             && !workload_query.contains("find_deployment_replica_binding")
             && workload_query.contains("IWorkloadPlacementGroupRepository")
             && workload_query.contains("find_placement_group_for_replica_generation")
-            && workload_query.contains("project_identity_placement_group_runtime_spec"),
+            && workload_query.contains("project_placement_group_runtime_spec_with_execution"),
         "Workloads evidence must resolve the exact replica member for both ordinary and placement-group Deployments"
     );
     assert!(
@@ -2088,6 +2088,211 @@ fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter(
     assert!(postgres.contains(
         "select report_id, node_id, agent_instance_id, command_id, observed_at, received_at, observation"
     ));
+}
+
+#[test]
+fn deployment_runtime_execution_has_one_owner_fact_one_acl_and_one_immutable_binding() {
+    let root = module_root();
+    let identity_fact = std::fs::read_to_string(
+        root.join("identity/published/workload_runtime_execution_authorization.rs"),
+    )
+    .expect("read Identity Runtime execution owner fact");
+    let identity_query = std::fs::read_to_string(
+        root.join("identity/application/workload_runtime_execution_authorization.rs"),
+    )
+    .expect("read Identity Runtime execution owner query");
+    let identity_persistence = std::fs::read_to_string(
+        root.join("identity/infrastructure/persistence/postgres_workload_trust.rs"),
+    )
+    .expect("read Identity workload trust persistence");
+    let admission =
+        std::fs::read_to_string(root.join("workloads/application/runtime_execution_admission.rs"))
+            .expect("read Workloads Runtime execution admission port");
+    let adapter = std::fs::read_to_string(
+        root.join("workloads/infrastructure/identity_runtime_execution_admission.rs"),
+    )
+    .expect("read Workloads Identity admission ACL");
+    let binding = std::fs::read_to_string(
+        root.join("workloads/domain/entities/runtime_execution_binding.rs"),
+    )
+    .expect("read Workloads Deployment Runtime binding");
+    let repository =
+        std::fs::read_to_string(root.join("workloads/domain/repositories/workload_repository.rs"))
+            .expect("read Workloads repository port");
+    let owner_query =
+        std::fs::read_to_string(root.join("workloads/application/bound_runtime_claim.rs"))
+            .expect("read Workloads bound Runtime Claim owner query");
+    let ordinary =
+        std::fs::read_to_string(root.join("workloads/infrastructure/deployment_flow/steps.rs"))
+            .expect("read ordinary Deployment flow");
+    let placement = std::fs::read_to_string(
+        root.join("workloads/infrastructure/deployment_flow/placement_group_workflow_v2.rs"),
+    )
+    .expect("read placement-group Deployment flow v2");
+    let reconciliation =
+        std::fs::read_to_string(root.join("workloads/infrastructure/reconciliation/mod.rs"))
+            .expect("read Workloads reconciliation");
+    let in_memory =
+        std::fs::read_to_string(root.join("workloads/infrastructure/persistence/in_memory.rs"))
+            .expect("read in-memory Workloads persistence");
+    let postgres_replicas = std::fs::read_to_string(
+        root.join("workloads/infrastructure/persistence/postgres/replicas.rs"),
+    )
+    .expect("read PostgreSQL Workloads replica persistence");
+    let application = std::fs::read_to_string(root.join("../app.rs"))
+        .expect("read production application composition");
+    let migration = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../migrations/180_deployment_runtime_execution_bindings.sql"),
+    )
+    .expect("read Deployment Runtime binding migration");
+
+    for required in [
+        "a3s.cloud.workload-runtime-execution-authorization.v1",
+        "pub struct WorkloadRuntimeExecutionAuthorization",
+        "workload_revision_id: WorkloadRevisionId",
+        "node_pool_id: NodePoolId",
+        "runtime_class: RuntimeUnitClass",
+        "isolation_level: RuntimeIsolationLevel",
+        "semantics_profile_digest: Sha256Digest",
+        "identity_attachment_digest: Sha256Digest",
+        "authorized_at: DateTime<Utc>",
+    ] {
+        assert!(
+            identity_fact.contains(required),
+            "Identity Runtime owner fact lost generic invariant {required}"
+        );
+    }
+    for forbidden in [
+        "WorkloadIdentityPolicyId",
+        "WorkloadIdentityPolicyRevisionId",
+        "credential_id",
+        "private_key",
+        "certificate",
+        "crate::modules::workloads",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_source(&identity_fact).contains(forbidden),
+            "Identity Runtime owner fact leaked lifecycle or infrastructure through {forbidden}"
+        );
+    }
+
+    assert!(identity_query.contains("pub trait IWorkloadRuntimeExecutionAuthorizationQueryPort"));
+    assert!(identity_query.contains("read_current_for_runtime"));
+    let runtime_read = identity_persistence
+        .split("async fn read_current_for_runtime(")
+        .nth(1)
+        .and_then(|source| source.split("async fn list_revisions(").next())
+        .expect("isolate internal Runtime policy read");
+    let installation_lock = runtime_read
+        .find("lock_installation_for_authorization")
+        .expect("Runtime policy read must fence Installation");
+    let trust_lock = runtime_read
+        .find("load_current_trust_domain")
+        .expect("Runtime policy read must lock current TrustDomain");
+    let policy_lock = runtime_read
+        .rfind("load_current_workload_policy(")
+        .expect("Runtime policy read must lock current policy");
+    assert!(installation_lock < trust_lock && trust_lock < policy_lock);
+    assert!(runtime_read.contains("load_organization_installation_for_runtime"));
+    assert!(runtime_read.contains("return Ok(None)"));
+    assert!(admission.contains("pub trait IWorkloadRuntimeExecutionAdmissionPort"));
+    assert!(!production_source(&admission).contains("crate::modules::identity"));
+    assert!(adapter.contains("IWorkloadRuntimeExecutionAuthorizationQueryPort"));
+    assert!(
+        adapter.contains("current Identity policy does not authorize the exact Deployment lineage")
+    );
+    for forbidden in [
+        "IWorkloadIdentityPolicyRepository",
+        "Postgres",
+        "InMemory",
+        "redis",
+        "a3s_lane",
+        "tokio::spawn",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "Workloads Identity ACL duplicated an owner or shared mechanism through {forbidden}"
+        );
+    }
+
+    assert_eq!(
+        binding
+            .matches("pub struct DeploymentRuntimeExecutionBinding {")
+            .count(),
+        1,
+        "Workloads acquired a second Deployment Runtime binding"
+    );
+    for required in [
+        "a3s.cloud.deployment-runtime-execution-binding.v1",
+        "pub fn admit_unbound(",
+        "pub fn validate_admission(",
+        "pub fn validate_placement_lineage(",
+        "DeploymentStatus::Resolving",
+        "self.calculate_binding_digest()? != self.binding_digest",
+    ] {
+        assert!(
+            binding.contains(required),
+            "Deployment Runtime binding lost invariant {required}"
+        );
+    }
+    assert!(!production_source(&binding).contains("crate::modules::identity"));
+    assert_eq!(
+        repository
+            .matches("async fn bind_deployment_runtime_execution(")
+            .count(),
+        1
+    );
+    assert_eq!(
+        repository
+            .matches("async fn find_deployment_runtime_execution_binding(")
+            .count(),
+        1
+    );
+    assert!(
+        owner_query.contains("find_deployment_runtime_execution_binding")
+            && owner_query.contains("!runtime_execution_binding.is_bound()")
+            && !owner_query.contains("WorkloadRuntimeExecutionBinding"),
+        "bound Runtime Claim callers must not synthesize execution semantics"
+    );
+
+    for current_path in [&ordinary, &placement] {
+        assert!(current_path.contains("admit_deployment_runtime_execution"));
+        assert!(current_path.contains("_with_execution"));
+        assert!(current_path.contains("validate_placement_lineage"));
+    }
+    assert!(reconciliation.contains("project_replica_runtime_spec_with_execution"));
+    for repository in [&in_memory, &postgres_replicas] {
+        assert!(repository.contains("validate_placement_lineage"));
+        assert!(repository.contains("DeploymentStatus::Resolving"));
+    }
+    assert!(application.contains("IdentityWorkloadRuntimeExecutionAdmissionAdapter::new"));
+    assert!(application.contains("with_runtime_execution_admission"));
+
+    assert_eq!(
+        migration
+            .matches("create table deployment_runtime_execution_bindings")
+            .count(),
+        1
+    );
+    for forbidden in [
+        "policy_id",
+        "redis",
+        "a3s_lane",
+        "outbox",
+        "idempotency",
+        "create queue",
+        "legacy deployments set",
+    ] {
+        assert!(
+            !migration.to_ascii_lowercase().contains(forbidden),
+            "Deployment Runtime persistence duplicated a lifecycle or mechanism through {forbidden}"
+        );
+    }
 }
 
 #[test]

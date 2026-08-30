@@ -256,9 +256,13 @@ written to a CLI context file.
   <code>cloud.identity.workload-runtime-evidence-binding.v1</code> foundation
   binds one exact policy digest to its Workloads Claim, NodePool and Fleet Node
   session/capability snapshot, plus Runtime Unit generation and Box provider
-  attestation. Its deterministic V1 fact explicitly lacks Node hardware
-  attestation and cannot authorize credential issuance; that fail-closed gap
-  remains a required WI2 gate rather than an inferred capability.
+  attestation. Verified C2 composes only the Workloads and Fleet owner facts.
+  Component-only C3a admits one generic Identity authorization before
+  scheduling and persists an immutable Workloads record, including an explicit
+  no-policy outcome, so crash replay cannot relabel a legacy or running Unit.
+  The deterministic V1 evidence still lacks Node hardware attestation and
+  cannot authorize credential issuance; that fail-closed gap remains a required
+  WI2 gate rather than an inferred capability.
 - OpenShift-class outcomes—reconciliation, scheduling, isolation, rollout,
   policy, observability, and day-two operations—and TokenHub-class
   outcomes—governed model/provider/key access, routing, quotas, diagnostics,
@@ -321,7 +325,7 @@ The portfolio is gate-driven, not percentage-driven. As of **2026-08-30**:
 | Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| Workload identity | **Verified trust foundation; WI2 component work in progress.** Immutable PostgreSQL-backed trust state and the cross-surface management contract are implemented. The [2026-08-30 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009) verifies the real-TLS, digest-pinned SPIFFE bundle inspection at 7/7 on Rust 1.88 and stable together with PostgreSQL and cross-surface contracts. The deterministic Claim/Node-session/Runtime evidence-binding contract is implemented locally, but Node hardware attestation, owner-port composition, persistence, issuance, enforcement, revocation, and federation remain |
+| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a component implemented locally.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a now production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; current ordinary, placement-group and reconciliation paths share it, while legacy Deployments remain unmodified. This slice still awaits main verification, and Identity evidence history, Fleet hardware attestation, issuance, enforcement, revocation, and federation remain open |
 | FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
 
 See the [product roadmap](ROADMAP.md), [platform gap
