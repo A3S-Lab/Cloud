@@ -1,3 +1,5 @@
 mod persistence;
 
-pub use persistence::{InMemorySearchRepository, PostgresSearchRepository};
+#[cfg(test)]
+pub(crate) use persistence::InMemorySearchRepository;
+pub(in crate::modules::search) use persistence::PostgresSearchRepository;

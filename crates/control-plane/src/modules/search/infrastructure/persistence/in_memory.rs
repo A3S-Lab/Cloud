@@ -1,5 +1,6 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::search::domain::{ISearchRepository, SearchQuery, SearchResult};
+use crate::modules::search::domain::{
+    ISearchRepository, SearchQuery, SearchResult, SearchVisibility,
+};
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
 use async_trait::async_trait;
 use std::cmp::Ordering;
@@ -7,23 +8,23 @@ use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
 use tokio::sync::RwLock;
 
 #[derive(Default)]
-pub struct InMemorySearchRepository {
+pub(crate) struct InMemorySearchRepository {
     projections: RwLock<Vec<SearchResult>>,
     query_count: AtomicUsize,
 }
 
 impl InMemorySearchRepository {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self::default()
     }
 
-    pub async fn register(&self, projection: SearchResult) -> Result<(), RepositoryError> {
+    pub(crate) async fn register(&self, projection: SearchResult) -> Result<(), RepositoryError> {
         projection.validate().map_err(RepositoryError::Storage)?;
         self.projections.write().await.push(projection);
         Ok(())
     }
 
-    pub fn query_count(&self) -> usize {
+    pub(crate) fn query_count(&self) -> usize {
         self.query_count.load(AtomicOrdering::Relaxed)
     }
 }
@@ -35,7 +36,7 @@ impl ISearchRepository for InMemorySearchRepository {
         organization_id: OrganizationId,
         query: &SearchQuery,
         limit: u16,
-        resource_access: &ResourceAccessEvaluator,
+        visibility: &SearchVisibility,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         self.query_count.fetch_add(1, AtomicOrdering::Relaxed);
         let query = query.as_str();
@@ -45,7 +46,7 @@ impl ISearchRepository for InMemorySearchRepository {
             .await
             .iter()
             .filter(|projection| projection.organization_id == organization_id)
-            .filter(|projection| projection.is_visible_to(resource_access))
+            .filter(|projection| projection.is_visible_to(visibility))
             .filter_map(|projection| {
                 let title = projection.title.to_lowercase();
                 let id = projection.id.to_string();
@@ -101,8 +102,7 @@ fn compare_matches(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
-    use crate::modules::search::domain::SearchResourceKind;
+    use crate::modules::search::domain::{SearchResourceKind, SearchVisibilityScope};
     use crate::modules::shared_kernel::domain::ProjectId;
     use chrono::Utc;
     use uuid::Uuid;
@@ -145,7 +145,7 @@ mod tests {
                 organization_id,
                 &SearchQuery::parse("cloud").expect("query"),
                 6,
-                &ResourceAccessEvaluator::organization_wide(),
+                &SearchVisibility::organization_wide(),
             )
             .await
             .expect("search");
@@ -193,7 +193,7 @@ mod tests {
                 .expect("projection");
         }
 
-        let resource_access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+        let visibility = SearchVisibility::restricted([SearchVisibilityScope::Project {
             project_id: allowed_project_id,
         }]);
         let results = repository
@@ -201,7 +201,7 @@ mod tests {
                 organization_id,
                 &SearchQuery::parse("cloud").expect("query"),
                 1,
-                &resource_access,
+                &visibility,
             )
             .await
             .expect("search");

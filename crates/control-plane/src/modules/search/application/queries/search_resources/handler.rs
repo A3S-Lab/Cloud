@@ -38,7 +38,7 @@ impl QueryHandler<SearchResources> for SearchResourcesHandler {
                     query.organization_id,
                     &normalized,
                     query.limit,
-                    &query.resource_access,
+                    &query.visibility,
                 )
                 .await
                 .map_err(Into::into))

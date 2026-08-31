@@ -334,7 +334,6 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
         "PostgresWorkflowRunRepository",
         "PostgresFormRepository",
         "PostgresHumanTaskRepository",
-        "PostgresSearchRepository",
         "PostgresAuditRecordRepository",
         "PostgresNotificationRepository",
         "PostgresPluginRegistryRepository",
@@ -408,13 +407,29 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
 
     let source_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
     let adapter_path = source_root.join("app").join("postgres_adapters.rs");
+    let search_owner_path = source_root.join("modules").join("search").join("mod.rs");
+    let search_constructor = ["PostgresSearchRepository", "::new("].concat();
     let mut sources = Vec::new();
     collect_rust_sources(&source_root, &mut sources);
     for path in sources {
+        let source = std::fs::read_to_string(&path).expect("read Rust source");
+        if path == search_owner_path {
+            assert_eq!(
+                source.matches(&search_constructor).count(),
+                1,
+                "Search must construct its private adapter exactly once at its owner boundary"
+            );
+            assert!(source.contains(") -> Arc<dyn ISearchRepository>"));
+        } else {
+            assert!(
+                !source.contains(&search_constructor),
+                "{} bypassed the Search-owned persistence constructor boundary",
+                path.display()
+            );
+        }
         if path == adapter_path {
             continue;
         }
-        let source = std::fs::read_to_string(&path).expect("read Rust source");
         for repository in repositories {
             assert!(
                 !source.contains(&format!("{repository}::new(")),

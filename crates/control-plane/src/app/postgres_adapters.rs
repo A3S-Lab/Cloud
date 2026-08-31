@@ -63,7 +63,7 @@ use crate::modules::plugins::domain::services::IPluginRegistryEnrollmentAuthoriz
 use crate::modules::plugins::PostgresPluginRegistryRepository;
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::PostgresProjectsRepository;
-use crate::modules::search::{ISearchRepository, PostgresSearchRepository};
+use crate::modules::search::{search_persistence_adapter, ISearchRepository};
 use crate::modules::secrets::{ISecretRepository, PostgresSecretRepository};
 use crate::modules::security::{
     IGatewayRoutePolicyTimelineRepository, PostgresGatewayRoutePolicyTimelineRepository,
@@ -92,12 +92,14 @@ use crate::modules::workloads::{
 use a3s_orm::PostgresExecutor;
 use std::sync::Arc;
 
-/// The sole constructor boundary between process composition and PostgreSQL
-/// repository implementations.
+/// The sole process-selection boundary between roles and PostgreSQL adapter
+/// families.
 ///
 /// Creating the factory performs no I/O and grants no capability. A process
 /// receives a repository only by selecting the corresponding typed family in
-/// its existing role-gated composition branch.
+/// its existing role-gated composition branch. A bounded context may keep its
+/// concrete constructor private behind an owner factory that returns only its
+/// port; Search follows that rule.
 pub(super) struct PostgresAdapterFactory {
     executor: PostgresExecutor,
 }
@@ -123,7 +125,7 @@ impl PostgresAdapterFactory {
             developer_workflows: DeveloperWorkflowManagementPostgresAdapters::new(
                 self.executor.clone(),
             ),
-            search: Arc::new(PostgresSearchRepository::new(self.executor.clone())),
+            search: self.search(),
             audit_records: Arc::new(PostgresAuditRecordRepository::new(self.executor.clone())),
             security_investigations: Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(
                 self.executor.clone(),
@@ -195,6 +197,10 @@ impl PostgresAdapterFactory {
 
     pub(super) fn outbox(&self) -> Arc<dyn IOutboxRepository> {
         Arc::new(PostgresOutboxRepository::new(self.executor.clone()))
+    }
+
+    fn search(&self) -> Arc<dyn ISearchRepository> {
+        search_persistence_adapter(self.executor.clone())
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::migrate_and_connect_for_test;
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::conformance::search_persistence_conformance;
 use a3s_cloud_control_plane::modules::plugins::domain::entities::{
     NewPluginRegistry, PluginRegistry,
 };
@@ -14,9 +15,8 @@ use a3s_cloud_control_plane::modules::plugins::domain::value_objects::{
     PluginRegistryEndpoint, PluginTrustRoot,
 };
 use a3s_cloud_control_plane::modules::plugins::PostgresPluginRegistryRepository;
-use a3s_cloud_control_plane::modules::search::{
-    ISearchRepository, PostgresSearchRepository, SearchQuery, SearchResourceKind,
-};
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::search::{SearchQuery, SearchResourceKind, SearchVisibility};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     OrganizationId, PrincipalId, RepositoryError, ResourceName, Sha256Digest,
 };
@@ -266,34 +266,37 @@ pub(super) async fn exercise_plugin_registry_persistence(
         .await?
         .is_empty());
 
-    let search = PostgresSearchRepository::new(executor.clone());
-    let query = SearchQuery::parse("official").map_err(test_error)?;
-    let results = search
-        .search(
-            organization_id,
-            &query,
-            20,
-            &ResourceAccessEvaluator::organization_wide(),
-        )
-        .await?;
-    assert_eq!(results.len(), 1);
-    assert_eq!(results[0].kind, SearchResourceKind::PluginRegistry);
-    assert_eq!(results[0].id, enrolled.id.as_uuid());
-    assert_eq!(results[0].title, enrolled.name.as_str());
-    assert_eq!(
-        results[0].description,
-        "Plugin registry · https://registry.example/u0/"
-    );
-    assert_eq!(results[0].state.as_deref(), Some("active"));
-    assert!(search
-        .search(
-            foreign_organization_id,
-            &query,
-            20,
-            &ResourceAccessEvaluator::organization_wide(),
-        )
-        .await?
-        .is_empty());
+    #[cfg(feature = "persistence-conformance")]
+    {
+        let search = search_persistence_conformance(executor.clone());
+        let query = SearchQuery::parse("official").map_err(test_error)?;
+        let results = search
+            .search(
+                organization_id,
+                &query,
+                20,
+                &SearchVisibility::organization_wide(),
+            )
+            .await?;
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].kind, SearchResourceKind::PluginRegistry);
+        assert_eq!(results[0].id, enrolled.id.as_uuid());
+        assert_eq!(results[0].title, enrolled.name.as_str());
+        assert_eq!(
+            results[0].description,
+            "Plugin registry · https://registry.example/u0/"
+        );
+        assert_eq!(results[0].state.as_deref(), Some("active"));
+        assert!(search
+            .search(
+                foreign_organization_id,
+                &query,
+                20,
+                &SearchVisibility::organization_wide(),
+            )
+            .await?
+            .is_empty());
+    }
 
     assert_eq!(
         aggregate_write_counts(&database, enrolled.id.as_uuid(), "u0-postgres-official",).await?,
@@ -335,6 +338,7 @@ pub(super) async fn exercise_plugin_registry_persistence(
         Some(enrolled)
     );
 
+    #[cfg(feature = "persistence-conformance")]
     println!(
         "A3S_CLOUD_U0_POSTGRES_CERTIFIED store=postgresql schema=084 search=085 registries=1 outbox=1 audit=1 idempotency=1 checks=12/12"
     );

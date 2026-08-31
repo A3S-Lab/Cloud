@@ -4,4 +4,4 @@ mod value_objects;
 
 pub use entities::{SearchResourceKind, SearchResult};
 pub use repositories::ISearchRepository;
-pub use value_objects::SearchQuery;
+pub use value_objects::{SearchQuery, SearchVisibility, SearchVisibilityScope};

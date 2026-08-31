@@ -19,13 +19,18 @@ Run it from the Cloud repository root:
 bash tools/use-conformance/run_registry_gate.sh /absolute/evidence/directory
 ```
 
-The PostgreSQL gate exercises the existing `PostgresPluginRegistryRepository`
-and migrations 084-085. It proves active-human authorization is rechecked in
-the final transaction, concurrent enrollment replays exactly once, rejected
-writes leave no Registry, Outbox, audit, or idempotency residue, reads and the
-shared Search view stay tenant-scoped, and non-canonical stored rows fail
-closed. It does not add another Registry store, authorization evaluator,
-Outbox, audit log, idempotency implementation, or Search projection.
+The PostgreSQL gate first exercises the production Search adapter through the
+same Search-owned constructor selected by the typed process factory and the
+non-default `persistence-conformance` owner-port assembly, then exercises the
+existing
+`PostgresPluginRegistryRepository` and migrations 084-085. It proves
+Search tenant/grant isolation and literal-wildcard handling, active-human
+authorization is rechecked in the final Registry transaction, concurrent
+enrollment replays exactly once, rejected writes leave no Registry, Outbox,
+audit, or idempotency residue, reads and the shared Search view stay
+tenant-scoped, and non-canonical stored rows fail closed. It exposes no
+concrete Search adapter and does not add another Registry store, authorization
+evaluator, Outbox, audit log, idempotency implementation, or Search projection.
 
 Run it against an operator-owned PostgreSQL 17 administrative URL:
 

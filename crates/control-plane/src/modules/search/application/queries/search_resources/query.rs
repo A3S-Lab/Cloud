@@ -1,5 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::search::domain::SearchResult;
+use crate::modules::search::domain::{SearchResult, SearchVisibility};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use a3s_boot::Query;
@@ -9,7 +8,7 @@ pub struct SearchResources {
     pub organization_id: OrganizationId,
     pub query: String,
     pub limit: u16,
-    pub resource_access: ResourceAccessEvaluator,
+    pub visibility: SearchVisibility,
 }
 
 impl Query for SearchResources {

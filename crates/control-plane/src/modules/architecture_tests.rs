@@ -2,9 +2,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 /// These tests are executable architecture decisions, not a description of the
-/// desired end state. Existing violations are recorded as removable debt: a
-/// site may disappear, but a new site cannot be added without changing an
-/// explicit architecture decision in this file.
+/// desired end state. Existing violations are recorded as exact removable
+/// debt: new sites fail, and resolved sites must leave the allowlist.
 
 #[test]
 fn cross_context_outer_layer_debt_can_only_shrink() {
@@ -27,7 +26,6 @@ durable_cells/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/deployment_admission.rs -> workloads/presentation
 durable_cells/presentation/dto.rs -> edge/presentation
 durable_cells/presentation/dto.rs -> workloads/presentation
-edge/infrastructure/route_target_reader.rs -> workloads/infrastructure
 edge/presentation/controllers/domain_claim_commands_controller.rs -> identity/presentation
 edge/presentation/controllers/domain_claim_queries_controller.rs -> identity/presentation
 edge/presentation/controllers/gateway_scope_commands_controller.rs -> identity/presentation
@@ -51,7 +49,6 @@ operations/presentation/controllers/operations_query_controller.rs -> identity/p
 plugins/presentation/controllers/plugin_registry_queries_controller.rs -> identity/presentation
 projects/presentation/controllers/project_queries_controller.rs -> identity/presentation
 projects/presentation/controllers/projects_controller.rs -> identity/presentation
-search/presentation/controllers/search_controller.rs -> identity/presentation
 secrets/presentation/controllers/secret_queries_controller.rs -> identity/presentation
 secrets/presentation/controllers/secrets_controller.rs -> identity/presentation
 security/presentation/controller.rs -> identity/presentation
@@ -72,11 +69,17 @@ workloads/presentation/controllers/workloads_controller.rs -> identity/presentat
     );
     let actual = foreign_outer_layer_sites();
     let unexpected = difference(&actual, &allowed);
+    let resolved = difference(&allowed, &actual);
 
     assert!(
         unexpected.is_empty(),
         "new cross-context outer-layer dependencies bypass an owner port or published contract:\n{}",
         unexpected.join("\n")
+    );
+    assert!(
+        resolved.is_empty(),
+        "resolved cross-context outer-layer debt must be removed from the exact allowlist:\n{}",
+        resolved.join("\n")
     );
 }
 
@@ -108,11 +111,17 @@ workflow_runs @ workflow/infrastructure/persistence/workflow_run_postgres/schema
         })
         .collect::<BTreeSet<_>>();
     let unexpected = difference(&actual, &allowed);
+    let resolved = difference(&allowed, &actual);
 
     assert!(
         unexpected.is_empty(),
         "a physical table has more than one mapping authority:\n{}",
         unexpected.join("\n")
+    );
+    assert!(
+        resolved.is_empty(),
+        "resolved duplicate physical mappings must be removed from the exact allowlist:\n{}",
+        resolved.join("\n")
     );
 }
 
@@ -4556,6 +4565,179 @@ fn shared_kernel_never_depends_on_a_bounded_context() {
 }
 
 #[test]
+fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
+    let root = module_root();
+    let facade =
+        std::fs::read_to_string(root.join("search/mod.rs")).expect("read Search module facade");
+    for required in [
+        "mod infrastructure;",
+        "mod presentation;",
+        "use infrastructure::PostgresSearchRepository;",
+        "pub(crate) fn search_persistence_adapter(",
+        ") -> Arc<dyn ISearchRepository>",
+        "pub(crate) use presentation::{SearchModule, SearchResultResponse};",
+    ] {
+        assert!(
+            facade.contains(required),
+            "Search facade lost its crate-private composition boundary {required}"
+        );
+    }
+    for forbidden in [
+        "pub mod infrastructure;",
+        "pub mod presentation;",
+        "pub use infrastructure",
+        "pub use presentation",
+        "pub(crate) use infrastructure::PostgresSearchRepository",
+    ] {
+        assert!(
+            !facade.contains(forbidden),
+            "Search facade exposed an outer-layer implementation with {forbidden}"
+        );
+    }
+
+    for relative in [
+        "search/mod.rs",
+        "search/infrastructure/mod.rs",
+        "search/infrastructure/persistence/mod.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("PostgresSearchRepository"),
+            "Search production persistence disappeared from architecture scanning at {relative}"
+        );
+        assert!(
+            !production.contains("InMemorySearchRepository"),
+            "Search test persistence entered the production module graph through {relative}"
+        );
+    }
+    let postgres =
+        std::fs::read_to_string(root.join("search/infrastructure/persistence/postgres.rs"))
+            .expect("read Search PostgreSQL adapter");
+    assert!(postgres.contains("pub(in crate::modules::search) struct PostgresSearchRepository"));
+    assert!(postgres
+        .contains("pub(in crate::modules::search) const fn new(executor: PostgresExecutor)"));
+
+    let mut identity_dependencies = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("search")
+            || !matches!(
+                layer(relative),
+                Some("application" | "domain" | "infrastructure")
+            )
+        {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::identity"))
+        {
+            identity_dependencies.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+    assert!(
+        identity_dependencies.is_empty(),
+        "Search owner code imported Identity's evaluator instead of its bounded visibility contract:\n{}",
+        identity_dependencies.into_iter().collect::<Vec<_>>().join("\n")
+    );
+
+    let visibility =
+        std::fs::read_to_string(root.join("search/domain/value_objects/search_visibility.rs"))
+            .expect("read Search visibility contract");
+    for required in [
+        "pub enum SearchVisibilityScope",
+        "pub struct SearchVisibility",
+        "pub fn projected_resource_is_visible",
+    ] {
+        assert!(
+            visibility.contains(required),
+            "Search visibility contract lost {required}"
+        );
+    }
+    for forbidden in ["ResourceAccessEvaluator", "ResourceGrantScope"] {
+        assert!(
+            !visibility.contains(forbidden),
+            "Search visibility contract copied Identity authority {forbidden}"
+        );
+    }
+
+    let controller =
+        std::fs::read_to_string(root.join("search/presentation/controllers/search_controller.rs"))
+            .expect("read Search HTTP adapter");
+    for required in ["crate::presentation::{", "search_visibility", "request_id"] {
+        assert!(
+            controller.contains(required),
+            "Search HTTP adapter stopped using root Presentation {required}"
+        );
+    }
+    for forbidden in ["identity::presentation", "fn request_id("] {
+        assert!(
+            !controller.contains(forbidden),
+            "Search HTTP adapter regained duplicate outer-layer mechanism {forbidden}"
+        );
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/search.rs"),
+    )
+    .expect("read Search Management MCP adapter");
+    assert!(management_mcp.contains("crate::presentation::search_visibility"));
+    assert!(management_mcp.contains("search_visibility(&resource_access)"));
+    for forbidden in ["ResourceGrantScope", "SearchVisibility::"] {
+        assert!(
+            !management_mcp.contains(forbidden),
+            "Search Management MCP adapter duplicated visibility translation with {forbidden}"
+        );
+    }
+
+    let request_context = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/request_context.rs"),
+    )
+    .expect("read root Presentation request context");
+    assert_eq!(request_context.matches("fn search_visibility(").count(), 1);
+    assert!(request_context.contains("ResourceGrantScope::Project"));
+    assert!(request_context.contains("ResourceGrantScope::Environment"));
+    assert!(request_context.contains("ResourceGrantScope::Node"));
+
+    let conformance =
+        std::fs::read_to_string(root.parent().expect("src directory").join("conformance.rs"))
+            .expect("read persistence conformance assembly");
+    assert!(conformance.contains(") -> Arc<dyn ISearchRepository>"));
+    assert_eq!(
+        conformance
+            .matches("search_persistence_adapter(executor)")
+            .count(),
+        1
+    );
+    assert!(!conformance.contains("PostgresSearchRepository"));
+    for line in conformance
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with("pub "))
+    {
+        assert!(
+            !line.contains("PostgresSearchRepository") && !line.starts_with("pub use "),
+            "Search persistence conformance exposed a concrete adapter: {line}"
+        );
+    }
+
+    let adapters = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("app/postgres_adapters.rs"),
+    )
+    .expect("read sole PostgreSQL adapter factory");
+    assert!(adapters.contains("fn search(&self) -> Arc<dyn ISearchRepository>"));
+    assert!(adapters.contains("search_persistence_adapter(self.executor.clone())"));
+    assert!(!adapters.contains("PostgresSearchRepository"));
+}
+
+#[test]
 fn public_outer_layer_facade_debt_can_only_shrink() {
     let allowed = lines(
         r#"
@@ -4579,8 +4761,6 @@ executions -> infrastructure
 executions -> presentation
 fleet -> infrastructure
 fleet -> presentation
-forms -> infrastructure
-forms -> presentation
 identity -> infrastructure
 identity -> presentation
 integration_events -> infrastructure
@@ -4593,8 +4773,6 @@ plugins -> infrastructure
 plugins -> presentation
 projects -> infrastructure
 projects -> presentation
-search -> infrastructure
-search -> presentation
 secrets -> infrastructure
 secrets -> presentation
 security -> infrastructure
@@ -4640,10 +4818,16 @@ workloads -> presentation
     });
 
     let unexpected = difference(&actual, &allowed);
+    let resolved = difference(&allowed, &actual);
     assert!(
         unexpected.is_empty(),
         "a bounded context publicly exposed a new outer-layer declaration, re-export, or alias:\n{}",
         unexpected.join("\n")
+    );
+    assert!(
+        resolved.is_empty(),
+        "resolved public outer-layer facade debt must be removed from the exact allowlist:\n{}",
+        resolved.join("\n")
     );
 }
 

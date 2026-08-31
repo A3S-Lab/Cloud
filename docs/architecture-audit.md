@@ -64,7 +64,7 @@ The codebase has strong foundations:
 The audit also found structural gaps that prevent the stronger statement that
 all boundaries are interface-only:
 
-1. Public outer-layer exposure remains broad: 46 context/layer facade entries
+1. Public outer-layer exposure remains broad: 42 context/layer facade entries
    still expose Infrastructure or Presentation when public module declarations
    and equivalent public re-exports or aliases are treated as the same
    mechanism. This makes the intended facade only partially compiler-enforced.
@@ -142,7 +142,7 @@ snapshot or an application port result.
 | Projects | Project, Environment, tenant attribution lineage | Compact aggregates and repositories. Creation directly checks Identity ownership, while queries carry Identity's concrete evaluator. | Depend on an Identity organization-scope port and a published authorization contract, not Identity repositories or presentation types. |
 | Audit | Append-only security-relevant records, signed export, and retention policy | Authority is distinct. A periodic retention runner currently lives in application code. | Keep the deterministic retention pass in application; move ticker/shutdown policy behind the shared worker lifecycle. Audit remains observation, never domain state. |
 | Security | Authorized investigation projections over owner evidence | Correctly projection-only, but its domain imports Edge event types directly. | Consume versioned Edge published facts through a projection port. Keep evidence ownership and enforcement in Edge/Identity. |
-| Search | Rebuildable authorized read projections | Correctly non-authoritative, but repository and result domain shapes depend on Identity's concrete evaluator. | Accept a bounded published authorization scope at the application boundary; keep indexing and filtering behind Search ports. |
+| Search | Rebuildable authorized read projections | Search now accepts its own closed `SearchVisibility` contract. The root Presentation adapter translates Identity grants exactly once; Search Application, Domain, repositories, and PostgreSQL predicates no longer import Identity. Infrastructure and Presentation are crate-private. One Search-owned constructor returns only `ISearchRepository`; both the typed process factory and the non-default persistence conformance surface reuse it. | Keep indexing and filtering behind Search ports. Add projections only from owner facts or rebuildable database views; never turn Search into desired-state or authorization truth. |
 | Integration Events | Transactional Outbox publication and consumer coordination | Clear shared mechanism with dedicated ports. | Treat it as platform infrastructure rather than a business context in diagrams. Keep one relay, one event envelope, and explicit projectors. |
 
 `WI2-C2` closes the workload-Runtime evidence read boundary without changing
@@ -308,21 +308,22 @@ therefore Application policy, not a sixth I/O port.
    explicitly admitting pure published contracts at named execution boundaries.
 5. Add a narrow-facade test for every context.
 
-Baseline status updated on 2026-08-28: the source-level ratchets live in
+Baseline status updated on 2026-08-31: the source-level ratchets live in
 [`architecture_tests.rs`](../crates/control-plane/src/modules/architecture_tests.rs).
 They freeze exact cross-context outer-layer sites, duplicate physical ORM
 mappings, domain technical-dependency debt, named Runtime/Flow published
 contract entry points, Shared Kernel direction, and public Infrastructure /
 Presentation facades. Public facade detection now treats a public module,
 re-export, or alias of a private outer layer as the same exposure. The current
-allowlists contain 60 cross-context outer-layer import sites, 11 duplicate
-mapping sites across five tables, and 46 public outer-layer context/layer
+allowlists contain 56 cross-context outer-layer import sites, 11 duplicate
+mapping sites across five tables, and 42 public outer-layer context/layer
 surfaces; Domain technical dependency and Shared Kernel back-edge allowlists
 remain empty. Files Presentation and every Files adapter, the Data recovery
 runtime, and Developer Workflows module assembly are now crate-private. The
-baseline passes. This proves that these debt classes cannot silently expand;
-it does not certify the allowlisted sites as correct or replace the refactors
-in Waves 1-6.
+baseline passes. Each debt list is exact: the ratchets reject both a new site
+and a stale entry after its site is resolved. This proves that these debt
+classes cannot silently expand or remain over-reported; it does not certify the
+allowlisted sites as correct or replace the refactors in Waves 1-6.
 
 ### Wave 1: governance ports and module facades
 
@@ -332,12 +333,17 @@ in Waves 1-6.
 4. Make Infrastructure and Presentation crate-private; keep public contracts
    and application ports deliberate.
 
-The first facade hardening slice closes the Data recovery runtime, Developer
-Workflows module assembly, and all Files outer-layer leaks without changing
-behavior. Files module assembly and every adapter are crate-private. Its
-retained external PostgreSQL/object-store fixture compiles only with the
+The first facade hardening slices close the Data recovery runtime, Developer
+Workflows module assembly, all Files outer-layer leaks, and all Search
+outer-layer leaks without changing behavior. Files and Search module assembly
+and every concrete adapter are crate-private. Search consumes a bounded
+Search-owned visibility projection translated once by root Presentation. The
+Files retained external PostgreSQL/object-store fixture compiles only with the
 non-default `persistence-conformance` feature and receives the same repository
-and object-store owner ports used by production. The feature is not a
+and object-store owner ports used by production. Search's retained PostgreSQL
+fixture uses that same non-default test assembly and exposes only its repository
+port through the same Search-owned constructor selected by the typed process
+factory. The feature is not a
 second persistence mechanism or a product facade.
 
 Artifacts now satisfies item 4 for Presentation. Its node-artifact stream,

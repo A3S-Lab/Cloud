@@ -1,9 +1,11 @@
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::search::application::SearchResources;
 use crate::modules::search::presentation::dto::SearchResultResponse;
 use crate::modules::shared_kernel::domain::OrganizationId;
-use crate::presentation::application_error_response;
-use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use crate::presentation::{
+    application_error_response, request_id, resource_access_evaluator, search_visibility,
+    OrganizationTenantGuard,
+};
+use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
@@ -18,6 +20,7 @@ pub fn search_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
                 let request_id = request_id(&request)?;
                 let resource_access =
                     resource_access_evaluator(&request.require_auth_principal()?)?;
+                let visibility = search_visibility(&resource_access);
                 match bus
                     .execute(SearchResources {
                         organization_id: OrganizationId::from_uuid(
@@ -25,7 +28,7 @@ pub fn search_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
                         ),
                         query: parameters.query.unwrap_or_default(),
                         limit: parameters.limit,
-                        resource_access,
+                        visibility,
                     })
                     .await?
                 {
@@ -52,14 +55,4 @@ struct SearchParameters {
 
 const fn default_limit() -> u16 {
     20
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }

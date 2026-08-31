@@ -10,6 +10,21 @@ cd -- "$repository_root"
 
 set +e
 cargo test --locked -p a3s-cloud-control-plane \
+  --features persistence-conformance \
+  --test postgres_search \
+  postgres_search_uses_registered_tenant_projections \
+  -- --exact --nocapture --test-threads=1 \
+  2>&1 | tee "$evidence_directory/postgres-search.log"
+search_status=${PIPESTATUS[0]}
+set -e
+
+if ((search_status != 0)); then
+  exit "$search_status"
+fi
+
+set +e
+cargo test --locked -p a3s-cloud-control-plane \
+  --features persistence-conformance \
   --test postgres_integration \
   postgres_plugin_registry_is_atomic_tenant_scoped_and_searchable \
   -- --exact --nocapture --test-threads=1 \

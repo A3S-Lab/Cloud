@@ -1,8 +1,7 @@
 use super::postgres_schema::AuthorizedSearchProjections;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::search::domain::{
-    ISearchRepository, SearchQuery, SearchResourceKind, SearchResult,
+    ISearchRepository, SearchQuery, SearchResourceKind, SearchResult, SearchVisibility,
+    SearchVisibilityScope,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
 use a3s_orm::expression::{Expression, Selection};
@@ -68,12 +67,12 @@ impl FromRow for SearchRow {
 }
 
 #[derive(Clone)]
-pub struct PostgresSearchRepository {
+pub(in crate::modules::search) struct PostgresSearchRepository {
     executor: PostgresExecutor,
 }
 
 impl PostgresSearchRepository {
-    pub const fn new(executor: PostgresExecutor) -> Self {
+    pub(in crate::modules::search) const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
     }
 
@@ -82,7 +81,7 @@ impl PostgresSearchRepository {
         organization_id: OrganizationId,
         predicate: Expression,
         limit: u16,
-        resource_access: &ResourceAccessEvaluator,
+        visibility: &SearchVisibility,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         let rows = Database::new(PostgresDialect, self.executor.clone())
             .fetch_all_as(
@@ -93,7 +92,7 @@ impl PostgresSearchRepository {
                             .eq(organization_id.as_uuid()),
                     )
                     .filter(predicate)
-                    .filter(resource_visibility_predicate(resource_access))
+                    .filter(resource_visibility_predicate(visibility))
                     .order_by(
                         AuthorizedSearchProjections::resource_kind(),
                         OrderDirection::Asc,
@@ -122,7 +121,7 @@ impl ISearchRepository for PostgresSearchRepository {
         organization_id: OrganizationId,
         query: &SearchQuery,
         limit: u16,
-        resource_access: &ResourceAccessEvaluator,
+        visibility: &SearchVisibility,
     ) -> Result<Vec<SearchResult>, RepositoryError> {
         let query_text = query.as_str().to_owned();
         let exact = AuthorizedSearchProjections::title_key()
@@ -146,13 +145,13 @@ impl ISearchRepository for PostgresSearchRepository {
         .gt(0);
 
         let exact = self
-            .fetch_rank(organization_id, exact, limit, resource_access)
+            .fetch_rank(organization_id, exact, limit, visibility)
             .await?;
         let prefix = self
-            .fetch_rank(organization_id, prefix, limit, resource_access)
+            .fetch_rank(organization_id, prefix, limit, visibility)
             .await?;
         let contains = self
-            .fetch_rank(organization_id, contains, limit, resource_access)
+            .fetch_rank(organization_id, contains, limit, visibility)
             .await?;
         let mut seen = BTreeSet::new();
         let mut results = Vec::with_capacity(usize::from(limit));
@@ -168,23 +167,23 @@ impl ISearchRepository for PostgresSearchRepository {
     }
 }
 
-fn resource_visibility_predicate(resource_access: &ResourceAccessEvaluator) -> Expression {
-    if resource_access.is_organization_wide() {
+fn resource_visibility_predicate(visibility: &SearchVisibility) -> Expression {
+    if visibility.is_organization_wide() {
         return AuthorizedSearchProjections::organization_id()
             .eq_column(AuthorizedSearchProjections::organization_id());
     }
-    let mut predicates = resource_access.granted_scopes().map(|scope| match scope {
-        ResourceGrantScope::Project { project_id } => AuthorizedSearchProjections::project_id()
+    let mut predicates = visibility.granted_scopes().map(|scope| match scope {
+        SearchVisibilityScope::Project { project_id } => AuthorizedSearchProjections::project_id()
             .eq(Some(project_id.as_uuid()))
             .and(AuthorizedSearchProjections::resource_kind().ne("node".to_owned())),
-        ResourceGrantScope::Environment {
+        SearchVisibilityScope::Environment {
             project_id,
             environment_id,
         } => AuthorizedSearchProjections::project_id()
             .eq(Some(project_id.as_uuid()))
             .and(AuthorizedSearchProjections::environment_id().eq(Some(environment_id.as_uuid())))
             .and(AuthorizedSearchProjections::resource_kind().ne("node".to_owned())),
-        ResourceGrantScope::Node { node_id } => AuthorizedSearchProjections::resource_kind()
+        SearchVisibilityScope::Node { node_id } => AuthorizedSearchProjections::resource_kind()
             .eq("node".to_owned())
             .and(AuthorizedSearchProjections::resource_id().eq(node_id.as_uuid())),
     });

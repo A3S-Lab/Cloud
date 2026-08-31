@@ -1,10 +1,11 @@
+#![cfg(feature = "persistence-conformance")]
+
+use a3s_cloud_control_plane::conformance::search_persistence_conformance;
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, PostgresBootstrapError,
 };
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
-use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::search::{
-    ISearchRepository, PostgresSearchRepository, SearchQuery,
+    SearchQuery, SearchVisibility, SearchVisibilityScope,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
@@ -152,13 +153,13 @@ async fn exercise_search(
             .await?;
     }
 
-    let repository = PostgresSearchRepository::new(executor);
+    let repository = search_persistence_conformance(executor);
     let allowed = repository
         .search(
             allowed_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
-            &ResourceAccessEvaluator::organization_wide(),
+            &SearchVisibility::organization_wide(),
         )
         .await?;
     if allowed.len() != 1
@@ -172,7 +173,7 @@ async fn exercise_search(
             allowed_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
-            &ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+            &SearchVisibility::restricted([SearchVisibilityScope::Project {
                 project_id: ProjectId::from_uuid(allowed_project),
             }]),
         )
@@ -185,7 +186,7 @@ async fn exercise_search(
             allowed_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
-            &ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+            &SearchVisibility::restricted([SearchVisibilityScope::Project {
                 project_id: ProjectId::new(),
             }]),
         )
@@ -198,7 +199,7 @@ async fn exercise_search(
             denied_organization,
             &SearchQuery::parse("cloud").map_err(std::io::Error::other)?,
             20,
-            &ResourceAccessEvaluator::organization_wide(),
+            &SearchVisibility::organization_wide(),
         )
         .await?;
     if denied.len() != 1 || denied[0].id != denied_project {
@@ -209,7 +210,7 @@ async fn exercise_search(
             allowed_organization,
             &SearchQuery::parse("%").map_err(std::io::Error::other)?,
             20,
-            &ResourceAccessEvaluator::organization_wide(),
+            &SearchVisibility::organization_wide(),
         )
         .await?;
     if !wildcard.is_empty() {

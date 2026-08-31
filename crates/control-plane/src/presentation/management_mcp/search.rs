@@ -1,8 +1,8 @@
 use super::tool_result;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::search::presentation::SearchResultResponse;
-use crate::modules::search::SearchResources;
+use crate::modules::search::{SearchResources, SearchResultResponse};
 use crate::modules::shared_kernel::domain::OrganizationId;
+use crate::presentation::search_visibility;
 use a3s_boot::{QueryBus, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -24,12 +24,13 @@ pub async fn search(
     resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
+    let visibility = search_visibility(&resource_access);
     match bus
         .execute(SearchResources {
             organization_id,
             query: arguments.query,
             limit: arguments.limit,
-            resource_access,
+            visibility,
         })
         .await?
     {

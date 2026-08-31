@@ -8,6 +8,7 @@ use crate::modules::files::{
     IUserFileObjectStore, IUserFileRepository, PostgresUserFileRepository,
     SharedUserFileObjectStore, UserFileObjectError,
 };
+use crate::modules::search::{search_persistence_adapter, ISearchRepository};
 use a3s_orm::PostgresExecutor;
 use std::{path::PathBuf, sync::Arc};
 
@@ -26,4 +27,10 @@ pub fn user_file_persistence_conformance(
         repository: Arc::new(PostgresUserFileRepository::new(executor)),
         objects: Arc::new(SharedUserFileObjectStore::local(object_root)?),
     })
+}
+
+/// Builds the exact production Search persistence adapter through its owner
+/// constructor boundary and returns only its domain port.
+pub fn search_persistence_conformance(executor: PostgresExecutor) -> Arc<dyn ISearchRepository> {
+    search_persistence_adapter(executor)
 }
