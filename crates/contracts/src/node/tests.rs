@@ -185,12 +185,44 @@ fn enrollment_is_closed_and_requires_a_real_token_shape() {
     previous_runtime
         .runtime_capabilities
         .features
-        .push(RuntimeFeature::IdentityAttachment);
+        .push(RuntimeFeature::ServiceLifecycle);
     assert_eq!(
         previous_runtime
             .validate()
             .expect_err("previous capabilities cannot claim a current feature"),
-        "previous Runtime capabilities cannot advertise identity attachment support"
+        "previous Runtime capabilities cannot advertise service lifecycle support"
+    );
+
+    let mut legacy_runtime = request.clone();
+    legacy_runtime.runtime_capabilities.schema =
+        NodeEnrollmentRequest::LEGACY_RUNTIME_CAPABILITIES_SCHEMA.into();
+    legacy_runtime
+        .validate()
+        .expect("legacy Runtime capabilities remain valid for enrollment");
+    legacy_runtime
+        .runtime_capabilities
+        .features
+        .push(RuntimeFeature::IdentityAttachment);
+    assert_eq!(
+        legacy_runtime
+            .validate()
+            .expect_err("legacy capabilities cannot claim a newer feature"),
+        "legacy Runtime capabilities cannot advertise identity attachment or service lifecycle support"
+    );
+
+    legacy_runtime
+        .runtime_capabilities
+        .features
+        .retain(|feature| *feature != RuntimeFeature::IdentityAttachment);
+    legacy_runtime
+        .runtime_capabilities
+        .features
+        .push(RuntimeFeature::ServiceLifecycle);
+    assert_eq!(
+        legacy_runtime
+            .validate()
+            .expect_err("legacy capabilities cannot claim the current feature"),
+        "legacy Runtime capabilities cannot advertise identity attachment or service lifecycle support"
     );
 
     let mut unsupported_runtime = request.clone();
