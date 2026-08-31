@@ -7,12 +7,12 @@ mod request_context;
 mod request_id_middleware;
 mod sequence_stream;
 
+use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::presentation::OrganizationAdministratorGuard;
 pub(crate) use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationAdministratorGuard;
 use a3s_boot::{ControllerDefinition, Result, AUTH_SCOPES_METADATA};
 
 /// Applies the single root-owned HTTP policy for an organization administrator

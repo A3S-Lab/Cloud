@@ -4780,15 +4780,13 @@ fn security_composition_stays_behind_owner_and_root_presentation_boundaries() {
             "Security test persistence entered the production module graph through {relative}"
         );
     }
-    let postgres =
-        std::fs::read_to_string(root.join("security/infrastructure/postgres.rs"))
-            .expect("read Security PostgreSQL adapter");
+    let postgres = std::fs::read_to_string(root.join("security/infrastructure/postgres.rs"))
+        .expect("read Security PostgreSQL adapter");
     assert!(postgres.contains(
         "pub(in crate::modules::security) struct PostgresGatewayRoutePolicyTimelineRepository"
     ));
-    assert!(postgres.contains(
-        "pub(in crate::modules::security) const fn new(executor: PostgresExecutor)"
-    ));
+    assert!(postgres
+        .contains("pub(in crate::modules::security) const fn new(executor: PostgresExecutor)"));
 
     let controller = std::fs::read_to_string(root.join("security/presentation/controller.rs"))
         .expect("read Security HTTP adapter");

@@ -14,6 +14,8 @@ use a3s_cloud_control_plane::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::conformance::security_persistence_conformance;
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
     PostgresBootstrapError, PostgresMigrationReport, CLOUD_MIGRATION_COUNT,
@@ -41,8 +43,6 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationStatus, OperationSubject, PostgresOperationRepository,
     RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
-#[cfg(feature = "persistence-conformance")]
-use a3s_cloud_control_plane::conformance::security_persistence_conformance;
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::security::{
     GatewayRoutePolicyTimelineCursor, SecurityAuditCorrelation,
