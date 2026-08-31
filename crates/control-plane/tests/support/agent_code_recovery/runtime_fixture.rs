@@ -171,8 +171,8 @@ async fn enroll_node(
 fn agent_runtime_template() -> SourceWorkloadTemplate {
     SourceWorkloadTemplate {
         process: ServiceProcess {
-            command: vec!["/app/a3s-code".into()],
-            args: vec!["agent-protocol".into()],
+            command: Vec::new(),
+            args: Vec::new(),
             working_directory: None,
             environment: BTreeMap::new(),
         },
@@ -181,21 +181,10 @@ fn agent_runtime_template() -> SourceWorkloadTemplate {
             cpu_millis: 250,
             memory_bytes: 128 * 1024 * 1024,
             pids: 64,
-            ephemeral_storage_bytes: None,
+            ephemeral_storage_bytes: Some(64 * 1024 * 1024),
         },
-        ports: vec![ServicePort {
-            name: "agent".into(),
-            container_port: 49_152,
-        }],
-        health: Some(HttpHealthCheck {
-            port_name: "agent".into(),
-            path: "/health".into(),
-            interval_ms: 1_000,
-            timeout_ms: 500,
-            healthy_threshold: 1,
-            unhealthy_threshold: 3,
-            stabilization_window_ms: 1_000,
-        }),
+        ports: Vec::new(),
+        health: None,
     }
 }
 
