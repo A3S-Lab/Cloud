@@ -120,7 +120,7 @@ observation readiness logic or invoke A3S Box outside Runtime.
 
 **Component status on 2026-08-31:** Cloud pins `a3s-runtime` `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`cbab76702f640608aa52e15d7edf97f1ddfec13e`; Box resolves that exact Runtime
+`36086bd1b8ddafa6d1228251cefa55dacbbaee5c`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to

@@ -98,7 +98,7 @@ one exact OCI Runtime generation.
 | `BOX-R4` | Add node-pressure, image/weight cache accounting, drain, warm-pool primitives, and upgrade safety without cluster policy | Cloud can make placement decisions from fresh capacity evidence; Box never chooses another node or desired replica count |
 
 The `BOX-R3` identity-evidence and Service-lifecycle sub-slices are verified at
-`cbab76702f640608aa52e15d7edf97f1ddfec13e`: only the confidential provider
+`36086bd1b8ddafa6d1228251cefa55dacbbaee5c`: only the confidential provider
 advertises `IdentityAttachment`, restart/replay preserves the attachment in
 provider evidence and attestation, and readiness, liveness-triggered restart,
 graceful shutdown, and cleanup retain exact generation evidence. The exact
