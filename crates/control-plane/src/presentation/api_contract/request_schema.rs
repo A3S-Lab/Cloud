@@ -234,10 +234,11 @@ fn runtime_capabilities_schema() -> Value {
         json!({
             "schema": {
                 "type": "string",
-                "description": "Node enrollment accepts the current Runtime capabilities schema and the immediately previous v4 schema only for staged upgrades; v4 cannot advertise identity_attachment.",
+                "description": "Node enrollment accepts Runtime capabilities v6, v5, and v4 for staged upgrades; v5 cannot advertise service_lifecycle, and v4 cannot advertise identity_attachment or service_lifecycle.",
                 "enum": [
                     RuntimeCapabilities::SCHEMA,
-                    NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA
+                    NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA,
+                    NodeEnrollmentRequest::LEGACY_RUNTIME_CAPABILITIES_SCHEMA
                 ]
             },
             "provider_id": { "type": "string", "minLength": 1, "maxLength": 255 },
@@ -255,7 +256,7 @@ fn runtime_capabilities_schema() -> Value {
             "features": string_enum_array(&[
                 "durable_identity", "stop", "remove", "service_tcp", "service_udp",
                 "logs", "exec", "usage", "attestation", "identity_attachment",
-                "secret_references", "output_artifacts"
+                "secret_references", "output_artifacts", "service_lifecycle"
             ], false)
         }),
     )
@@ -852,16 +853,22 @@ mod tests {
             schema["properties"]["schema"]["enum"],
             json!([
                 RuntimeCapabilities::SCHEMA,
-                NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA
+                NodeEnrollmentRequest::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA,
+                NodeEnrollmentRequest::LEGACY_RUNTIME_CAPABILITIES_SCHEMA
             ])
         );
         assert!(schema["properties"]["schema"]["description"]
             .as_str()
-            .is_some_and(
-                |description| description.contains("v4 cannot advertise identity_attachment")
-            ));
+            .is_some_and(|description| {
+                description.contains("v5 cannot advertise service_lifecycle")
+                    && description
+                        .contains("v4 cannot advertise identity_attachment or service_lifecycle")
+            }));
         assert!(schema["properties"]["features"]["items"]["enum"]
             .as_array()
             .is_some_and(|features| features.contains(&json!("identity_attachment"))));
+        assert!(schema["properties"]["features"]["items"]["enum"]
+            .as_array()
+            .is_some_and(|features| features.contains(&json!("service_lifecycle"))));
     }
 }

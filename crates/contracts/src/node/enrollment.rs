@@ -34,7 +34,8 @@ impl std::fmt::Debug for NodeEnrollmentRequest {
 
 impl NodeEnrollmentRequest {
     pub const SCHEMA: &'static str = "a3s.cloud.node-enrollment-request.v1";
-    pub const PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA: &'static str = "a3s.runtime.capabilities.v4";
+    pub const PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA: &'static str = "a3s.runtime.capabilities.v5";
+    pub const LEGACY_RUNTIME_CAPABILITIES_SCHEMA: &'static str = "a3s.runtime.capabilities.v4";
 
     pub fn validate(&self) -> Result<(), String> {
         if self.schema != Self::SCHEMA {
@@ -64,17 +65,33 @@ impl NodeEnrollmentRequest {
         if self.runtime_capabilities.schema == RuntimeCapabilities::SCHEMA {
             return self.runtime_capabilities.validate();
         }
-        if self.runtime_capabilities.schema != Self::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA {
-            return self.runtime_capabilities.validate();
-        }
-        if self
-            .runtime_capabilities
-            .features
-            .contains(&RuntimeFeature::IdentityAttachment)
-        {
-            return Err(
-                "previous Runtime capabilities cannot advertise identity attachment support".into(),
-            );
+        match self.runtime_capabilities.schema.as_str() {
+            Self::PREVIOUS_RUNTIME_CAPABILITIES_SCHEMA => {
+                if self
+                    .runtime_capabilities
+                    .features
+                    .contains(&RuntimeFeature::ServiceLifecycle)
+                {
+                    return Err(
+                        "previous Runtime capabilities cannot advertise service lifecycle support"
+                            .into(),
+                    );
+                }
+            }
+            Self::LEGACY_RUNTIME_CAPABILITIES_SCHEMA => {
+                if self.runtime_capabilities.features.iter().any(|feature| {
+                    matches!(
+                        feature,
+                        RuntimeFeature::IdentityAttachment | RuntimeFeature::ServiceLifecycle
+                    )
+                }) {
+                    return Err(
+                        "legacy Runtime capabilities cannot advertise identity attachment or service lifecycle support"
+                            .into(),
+                    );
+                }
+            }
+            _ => return self.runtime_capabilities.validate(),
         }
         let mut admitted = self.runtime_capabilities.clone();
         admitted.schema = RuntimeCapabilities::SCHEMA.into();

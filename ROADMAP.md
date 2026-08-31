@@ -3271,12 +3271,13 @@ confidential-provider attestation; Runtime 0.5 also carries distinct Service
 readiness, liveness, and graceful-shutdown intent. The exact
 [Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33393067843) passes
 native and aarch64 OCI lifecycle plus Rust, Python, TypeScript, and Go SDK
-certification. Cloud REST/OpenAPI `1.82.0`, the current Node path and the frozen
+certification. Cloud REST/OpenAPI `1.82.1`, the current Node path and the frozen
 MCP fixture consume Runtime `capabilities.v6` and `unit-spec.v4` from those
 exact revisions; OpenAPI derives the current capability schema from Runtime
-rather than a second literal. Enrollment V1 alone retains bounded v4 admission
-for REST compatibility and rejects any v4 claim of the v5
-identity-attachment feature; the authenticated Node protocol and execution
+rather than a second schema identifier. Enrollment V1 alone retains bounded
+v5 and v4 admission for REST compatibility. It rejects v5 claims of the v6
+service-lifecycle feature and v4 claims of the v5 identity-attachment or v6
+service-lifecycle features; the authenticated Node protocol and execution
 evidence remain exact-version gates. Identity's
 canonical `cloud.identity.workload-runtime-evidence-binding.v1` binds that
 digest to the exact policy revision, Workloads Claim/generation/digests,

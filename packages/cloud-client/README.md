@@ -143,7 +143,7 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.82.0`. It exposes `reserveUserFile`,
+The client targets REST contract `1.82.1`. It exposes `reserveUserFile`,
 `listUserFiles`, `getUserFile`, `tombstoneUserFile`, and
 `getUserFileQuota` through the sole Files Application authority. It validates
 ACL byte, list, and optimistic-version transport bounds without parsing or
