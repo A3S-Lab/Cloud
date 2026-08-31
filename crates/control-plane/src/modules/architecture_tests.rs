@@ -883,6 +883,9 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
     for forbidden in [
         "::infrastructure",
         "::presentation",
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
         "Postgres",
         "reqwest",
         "tokio::spawn",
@@ -895,6 +898,139 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
             "Files Application introduced outer-layer or duplicate mechanism {forbidden}"
         );
     }
+    assert_eq!(
+        compact_service.matches("access:UserFileAccess").count(),
+        5,
+        "every Files request must carry the Files-owned access projection"
+    );
+
+    let access = std::fs::read_to_string(root.join("files/application/resource_access.rs"))
+        .expect("read Files access projection");
+    let production_access = production_source(&access);
+    for required in [
+        "pub struct UserFileAccess",
+        "pub(crate) fn organization_wide(",
+        "pub(crate) fn restricted_projects(",
+        "pub(crate) fn project_is_visible(",
+        "pub(crate) const fn organization_quota_is_visible(",
+    ] {
+        assert!(
+            production_access.contains(required),
+            "Files access projection lost closed operation {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Files access projection copied Identity authority {forbidden}"
+        );
+    }
+
+    let mut identity_dependencies = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("files") {
+            return;
+        }
+        for forbidden in [
+            "crate::modules::identity",
+            "ResourceAccessEvaluator",
+            "ResourceGrantScope",
+        ] {
+            if source.contains(forbidden) {
+                identity_dependencies.insert(format!(
+                    "{} contains Identity implementation authority {forbidden}",
+                    display(relative)
+                ));
+            }
+        }
+    });
+    assert!(
+        identity_dependencies.is_empty(),
+        "Files imported Identity instead of its bounded access projection:\n{}",
+        identity_dependencies
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let src = root.parent().expect("src directory");
+    let request_context = std::fs::read_to_string(src.join("presentation/request_context.rs"))
+        .expect("read root request-context ACL");
+    let production_request_context = production_source(&request_context);
+    for required in [
+        "pub(crate) fn user_file_access(",
+        "UserFileAccess::organization_wide()",
+        "UserFileAccess::restricted_projects(",
+        "ResourceGrantScope::Project { project_id } => Some(project_id)",
+        "ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None",
+    ] {
+        assert!(
+            production_request_context.contains(required),
+            "root Presentation ACL lost fail-closed Files translation {required}"
+        );
+    }
+    assert_eq!(
+        production_request_context
+            .matches("UserFileAccess::restricted_projects(")
+            .count(),
+        1,
+        "Identity access must enter Files through one root ACL mapping"
+    );
+
+    let presentation_policy = std::fs::read_to_string(src.join("presentation/mod.rs"))
+        .expect("read root Presentation policy");
+    for required in [
+        "organization_tenant_file_write_controller",
+        "organization_tenant_cloud_read_controller",
+        "ApiTokenScope::FILE_WRITE",
+        "ApiTokenScope::CLOUD_READ",
+    ] {
+        assert!(
+            presentation_policy.contains(required),
+            "root Presentation lost Files route policy {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(root.join("files/presentation/controller.rs"))
+        .expect("read Files HTTP adapter");
+    let production_controller = production_source(&controller);
+    for required in [
+        "organization_tenant_file_write_controller(controller)",
+        "organization_tenant_cloud_read_controller(controller)",
+        "access: user_file_access(&resource_access_evaluator(",
+    ] {
+        assert!(
+            production_controller.contains(required),
+            "Files HTTP adapter bypassed root Presentation boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ApiTokenScope",
+        "AUTH_SCOPES_METADATA",
+        "OrganizationTenantGuard",
+    ] {
+        assert!(
+            !production_controller.contains(forbidden),
+            "Files HTTP adapter duplicated Identity route policy {forbidden}"
+        );
+    }
+
+    let management_mcp = std::fs::read_to_string(src.join("presentation/management_mcp/files.rs"))
+        .expect("read Files Management MCP adapter");
+    assert_eq!(
+        production_source(&management_mcp)
+            .matches("access: user_file_access(&resource_access)")
+            .count(),
+        5,
+        "Files Management MCP must translate every request through the one root ACL"
+    );
 
     let postgres =
         std::fs::read_to_string(root.join("files/infrastructure/postgres_repository.rs"))
@@ -934,7 +1070,6 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         );
     }
 
-    let src = root.parent().expect("src directory");
     let app = std::fs::read_to_string(src.join("app.rs")).expect("read production composition");
     let production_app = production_source(&app);
     assert_eq!(

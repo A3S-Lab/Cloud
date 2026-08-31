@@ -27,6 +27,27 @@ pub(crate) fn organization_administrator_read_controller(
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])
 }
 
+fn organization_tenant_scoped_controller(
+    controller: ControllerDefinition,
+    required_scope: &'static str,
+) -> Result<ControllerDefinition> {
+    controller
+        .with_guard(OrganizationTenantGuard)
+        .with_metadata(AUTH_SCOPES_METADATA, vec![required_scope])
+}
+
+pub(crate) fn organization_tenant_file_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::FILE_WRITE)
+}
+
+pub(crate) fn organization_tenant_cloud_read_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::CLOUD_READ)
+}
+
 pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
 
 pub(crate) fn bounded_acl_document(
@@ -75,7 +96,7 @@ pub(crate) use oauth_transport::{
 };
 pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
 pub(crate) use request_context::{
-    actor_principal_id, request_id, request_identity, search_visibility,
+    actor_principal_id, request_id, request_identity, search_visibility, user_file_access,
 };
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{

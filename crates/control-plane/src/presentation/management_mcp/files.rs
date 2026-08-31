@@ -5,6 +5,7 @@ use crate::modules::files::{
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId, UserFileId};
+use crate::presentation::user_file_access;
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde::Deserialize;
 use serde_json::Value;
@@ -63,7 +64,7 @@ pub async fn reserve(
             project_id: ProjectId::from_uuid(arguments.project_id),
             admission_acl: arguments.admission_acl,
             actor_principal_id,
-            resource_access,
+            access: user_file_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -90,7 +91,7 @@ pub async fn list(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             limit: Some(arguments.limit),
-            resource_access,
+            access: user_file_access(&resource_access),
         })
         .await?
     {
@@ -118,7 +119,7 @@ pub async fn get(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             user_file_id: UserFileId::from_uuid(arguments.user_file_id),
-            resource_access,
+            access: user_file_access(&resource_access),
         })
         .await?
     {
@@ -142,7 +143,7 @@ pub async fn tombstone(
             user_file_id: UserFileId::from_uuid(arguments.user_file_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: user_file_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         }))
@@ -162,7 +163,7 @@ pub async fn quota(
     match bus
         .execute(GetUserFileQuota {
             organization_id,
-            resource_access,
+            access: user_file_access(&resource_access),
         })
         .await?
     {

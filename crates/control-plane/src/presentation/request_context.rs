@@ -1,3 +1,4 @@
+use crate::modules::files::UserFileAccess;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::presentation::authenticated_actor;
@@ -37,6 +38,18 @@ pub(crate) fn search_visibility(resource_access: &ResourceAccessEvaluator) -> Se
     }))
 }
 
+pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> UserFileAccess {
+    if resource_access.is_organization_wide() {
+        return UserFileAccess::organization_wide();
+    }
+    UserFileAccess::restricted_projects(resource_access.granted_scopes().filter_map(|scope| {
+        match scope {
+            ResourceGrantScope::Project { project_id } => Some(project_id),
+            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+        }
+    }))
+}
+
 pub(crate) fn request_id(request: &BootRequest) -> Result<Uuid> {
     request
         .header("x-request-id")
@@ -49,7 +62,7 @@ pub(crate) fn request_id(request: &BootRequest) -> Result<Uuid> {
 
 #[cfg(test)]
 mod tests {
-    use super::search_visibility;
+    use super::{search_visibility, user_file_access};
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::search::SearchVisibilityScope;
@@ -83,5 +96,30 @@ mod tests {
                 SearchVisibilityScope::Node { node_id },
             ]
         );
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_files_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_project_id = ProjectId::new();
+        let access = user_file_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id: environment_project_id,
+                environment_id: EnvironmentId::new(),
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.project_is_visible(project_id));
+        assert!(!access.project_is_visible(environment_project_id));
+        assert!(!access.project_is_visible(ProjectId::new()));
+        assert!(!access.organization_quota_is_visible());
+
+        let organization_wide = user_file_access(&ResourceAccessEvaluator::organization_wide());
+        assert!(organization_wide.project_is_visible(ProjectId::new()));
+        assert!(organization_wide.organization_quota_is_visible());
     }
 }
