@@ -1,5 +1,5 @@
 use super::execution_task_policy::ExecutionTaskPolicy;
-use super::execution_template::{valid_sha256, ExecutionTemplate};
+use super::{execution_template::ExecutionTemplate, validation::valid_sha256};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, ExecutionId, ExecutionTemplateId,
     ExecutionTemplateRevisionId, NodeCommandId, NodeId, OperationId, OrganizationId,

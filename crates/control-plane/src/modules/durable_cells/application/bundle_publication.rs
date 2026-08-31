@@ -19,7 +19,8 @@ use crate::modules::executions::application::{
 };
 use crate::modules::executions::domain::{
     Execution, ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
-    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTemplate, IExecutionRepository,
+    ExecutionTaskArtifactMount, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
+    ExecutionTaskSecretTarget, ExecutionTemplate, IExecutionRepository,
 };
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
@@ -32,7 +33,8 @@ use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
     IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
-use a3s_runtime::contract::{ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference};
+use a3s_cloud_contracts::CloudSecretReference;
+use a3s_runtime::contract::{ArtifactRef, SecretReference, SecretTarget as RuntimeSecretTarget};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -396,11 +398,12 @@ impl DurableCellBundlePublicationGate {
                     media_type: bundle.media_type,
                 },
                 secrets,
-                authority: ExecutionTaskAuthority {
-                    kind: PUBLICATION_AUTHORITY_KIND.into(),
-                    subject_id: request.workload_revision_id.as_uuid(),
-                    digest: authority_digest,
-                },
+                authority: ExecutionTaskAuthority::new(
+                    PUBLICATION_AUTHORITY_KIND,
+                    request.workload_revision_id.as_uuid(),
+                    authority_digest,
+                )
+                .map_err(CompositionError::failed)?,
                 input: serde_json::json!({
                 "schema": PUBLICATION_INPUT_SCHEMA,
                 "applicationRevisionId": correlation.projection.application_revision_id,
@@ -505,19 +508,46 @@ fn build_publication_task_definition(
             timeout_ms: publisher.timeout_ms(),
         },
     };
-    let task_policy = ExecutionTaskPolicy {
-        authority: definition.authority,
-        mounts: vec![RuntimeMount {
-            name: "durable-cell-application".into(),
-            source: RuntimeMountSource::Artifact {
-                artifact: definition.bundle,
-            },
-            target: publisher.bundle_mount().into(),
-            read_only: true,
-        }],
-        secrets: definition.secrets,
-        semantics_profile_digest: publisher.digest().clone(),
-    };
+    let ArtifactRef {
+        uri,
+        digest,
+        media_type,
+    } = definition.bundle;
+    let mount = ExecutionTaskArtifactMount::new(
+        "durable-cell-application",
+        uri,
+        Sha256Digest::parse(digest)?,
+        media_type,
+        publisher.bundle_mount(),
+    )?;
+    let secrets = definition
+        .secrets
+        .into_iter()
+        .map(|secret| {
+            let target = match secret.target {
+                RuntimeSecretTarget::Environment { variable } => {
+                    ExecutionTaskSecretTarget::Environment { variable }
+                }
+                RuntimeSecretTarget::File { path, mode } => {
+                    ExecutionTaskSecretTarget::File { path, mode }
+                }
+                RuntimeSecretTarget::RegistryCredential => {
+                    ExecutionTaskSecretTarget::RegistryCredential
+                }
+            };
+            ExecutionTaskSecret::new(
+                secret.name,
+                CloudSecretReference::parse(&secret.reference)?,
+                target,
+            )
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let task_policy = ExecutionTaskPolicy::new(
+        definition.authority,
+        vec![mount],
+        secrets,
+        publisher.digest().clone(),
+    )?;
     task_policy.validate(definition.node_id, &template)?;
     Ok(PublicationTaskDefinition {
         template,
@@ -660,8 +690,8 @@ fn validate_publication_execution(
         || execution.target_node_id.is_none()
         || execution.workflow.is_some()
         || task_policy.is_none_or(|policy| {
-            policy.authority.kind != PUBLICATION_AUTHORITY_KIND
-                || policy.authority.subject_id != request.workload_revision_id.as_uuid()
+            policy.authority().kind() != PUBLICATION_AUTHORITY_KIND
+                || policy.authority().subject_id() != request.workload_revision_id.as_uuid()
         })
     {
         return Err(RepositoryError::Conflict(

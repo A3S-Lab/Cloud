@@ -7,10 +7,11 @@ use super::{
 use crate::modules::executions::domain::events::{ExecutionRequested, ExecutionTemplatePublished};
 use crate::modules::executions::domain::{
     CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
-    ExecutionProcess, ExecutionResources, ExecutionStatus, ExecutionTaskAuthority,
-    ExecutionTaskPolicy, ExecutionTemplate, ExecutionTemplateDefinition,
-    ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
-    IExecutionTemplateRepository, EXECUTION_TEMPLATE_CAPABILITY,
+    ExecutionProcess, ExecutionResources, ExecutionStatus, ExecutionTaskArtifactMount,
+    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret, ExecutionTaskSecretTarget,
+    ExecutionTemplate, ExecutionTemplateDefinition, ExecutionTemplateDefinitionSpec,
+    ExecutionTemplateRevision, IExecutionRepository, IExecutionTemplateRepository,
+    EXECUTION_TEMPLATE_CAPABILITY,
 };
 use crate::modules::executions::infrastructure::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
@@ -32,9 +33,6 @@ use crate::modules::shared_kernel::domain::{
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     artifact_uri, CloudSecretReference, DomainEventEnvelope, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
-};
-use a3s_runtime::contract::{
-    ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget,
 };
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
@@ -85,37 +83,33 @@ fn bound_task(
         ExecutionId::new(),
         template(99),
         NodeId::new(),
-        ExecutionTaskPolicy {
-            authority: ExecutionTaskAuthority {
-                kind: "workload.prestart".into(),
+        ExecutionTaskPolicy::new(
+            ExecutionTaskAuthority::new(
+                "workload.prestart",
                 subject_id,
-                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
                     .expect("authority digest"),
-            },
-            mounts: vec![RuntimeMount {
-                name: "application-bundle".into(),
-                source: RuntimeMountSource::Artifact {
-                    artifact: ArtifactRef {
-                        uri: artifact_uri(&bundle_digest).expect("artifact URI"),
-                        digest: bundle_digest,
-                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
-                    },
-                },
-                target: "/workspace/bundle".into(),
-                read_only: true,
-            }],
-            secrets: vec![SecretReference {
-                name: "s0-access-key-id".into(),
-                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)
-                    .expect("Secret reference")
-                    .to_string(),
-                target: SecretTarget::Environment {
+            )
+            .expect("authority"),
+            vec![ExecutionTaskArtifactMount::new(
+                "application-bundle",
+                artifact_uri(&bundle_digest).expect("artifact URI"),
+                Sha256Digest::parse(bundle_digest).expect("bundle digest"),
+                DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+                "/workspace/bundle",
+            )
+            .expect("artifact mount")],
+            vec![ExecutionTaskSecret::new(
+                "s0-access-key-id",
+                CloudSecretReference::new(subject_id, Uuid::now_v7(), 1).expect("Secret reference"),
+                ExecutionTaskSecretTarget::Environment {
                     variable: "AWS_ACCESS_KEY_ID".into(),
                 },
-            }],
-            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))
-                .expect("semantics digest"),
-        },
+            )
+            .expect("Secret")],
+            Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("semantics digest"),
+        )
+        .expect("Task policy"),
         requested_at,
     )
     .expect("bound Task")

@@ -171,7 +171,6 @@ fn runtime_contracts_enter_domains_only_through_named_published_boundaries() {
     let allowed_files = lines(
         r#"
 artifacts/domain/entities/build_run.rs
-executions/domain/entities/execution_task_policy.rs
 fleet/domain/repositories/node_control_repository.rs
 workloads/domain/services/deployment_route_updater.rs
 "#,
@@ -200,6 +199,89 @@ workloads/domain/services/deployment_route_updater.rs
         "a domain imported runtime execution/provider authority instead of published language:\n{}",
         violations.into_iter().collect::<Vec<_>>().join("\n")
     );
+}
+
+#[test]
+fn executions_bound_task_policy_is_local_and_runtime_translation_has_one_adapter() {
+    let mut violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("executions")
+            && matches!(layer(relative), Some("application") | Some("domain"))
+            && source.contains("a3s_runtime::")
+        {
+            violations.insert(format!(
+                "{} imports a3s-runtime outside the Executions adapter edge",
+                display(relative)
+            ));
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "Executions product semantics imported Runtime protocol authority:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+
+    let policy = std::fs::read_to_string(
+        module_root().join("executions/domain/entities/execution_task_policy.rs"),
+    )
+    .expect("read Execution Task policy");
+    for required in [
+        "pub struct ExecutionTaskArtifactMount",
+        "pub struct ExecutionTaskSecret",
+        "pub enum ExecutionTaskSecretTarget",
+        "reference: CloudSecretReference",
+        "pub fn artifact_uri(&self) -> Result<String, String>",
+        "impl<'de> Deserialize<'de> for ExecutionTaskPolicy",
+        "migration-119 document",
+    ] {
+        assert!(
+            policy.contains(required),
+            "Executions Domain lost local bound-Task contract {required}"
+        );
+    }
+    for forbidden in [
+        "a3s_runtime::",
+        "RuntimeMount",
+        "RuntimeUnitSpec",
+        "RuntimeProcessSpec",
+        "Vec<SecretReference>",
+        "pub kind: String",
+        "pub subject_id: Uuid",
+        "pub digest: Sha256Digest",
+    ] {
+        assert!(
+            !production_source(&policy).contains(forbidden),
+            "Executions Domain regained Runtime protocol type {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(module_root().join("executions/infrastructure/task_spec.rs"))
+            .expect("read Execution Runtime Task adapter");
+    for required in [
+        "fn runtime_mount(",
+        "fn runtime_secret(",
+        "RuntimeMountSource::Artifact",
+        "SecretTarget::Environment",
+        "read_only: true",
+        "spec.validate()?",
+    ] {
+        assert!(
+            production_source(&adapter).contains(required),
+            "Executions Runtime adapter lost exact translation {required}"
+        );
+    }
+    let production_adapter = production_source(&adapter);
+    for projection in ["Ok(RuntimeMount {", "SecretReference {"] {
+        assert_eq!(
+            production_adapter
+                .lines()
+                .filter(|line| line.trim() == projection)
+                .count(),
+            1,
+            "Executions Runtime translation must have exactly one {projection} projection"
+        );
+    }
 }
 
 #[test]

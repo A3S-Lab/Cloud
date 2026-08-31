@@ -6,7 +6,8 @@ use a3s_cloud_control_plane::modules::executions::domain::events::{
 use a3s_cloud_control_plane::modules::executions::domain::{
     CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
     ExecutionOutcome, ExecutionProcess, ExecutionResources, ExecutionStatus,
-    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTemplate, ExecutionTemplateDefinition,
+    ExecutionTaskArtifactMount, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
+    ExecutionTaskSecretTarget, ExecutionTemplate, ExecutionTemplateDefinition,
     ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
     IExecutionTemplateRepository, TransitionExecution, WorkflowExecutionBinding,
 };
@@ -20,9 +21,6 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     RepositoryError, Sha256Digest, WorkflowRunId,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
-use a3s_runtime::contract::{
-    ArtifactRef, RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget,
-};
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
@@ -842,33 +840,28 @@ fn bound_execution(
             },
         },
         target_node_id,
-        ExecutionTaskPolicy {
-            authority: ExecutionTaskAuthority {
-                kind: "workload.prestart".into(),
+        ExecutionTaskPolicy::new(
+            ExecutionTaskAuthority::new(
+                "workload.prestart",
                 subject_id,
-                digest: Sha256Digest::parse(format!("sha256:{}", "1".repeat(64)))?,
-            },
-            mounts: vec![RuntimeMount {
-                name: "application-bundle".into(),
-                source: RuntimeMountSource::Artifact {
-                    artifact: ArtifactRef {
-                        uri: artifact_uri(&bundle_digest)?,
-                        digest: bundle_digest,
-                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
-                    },
-                },
-                target: "/workspace/bundle".into(),
-                read_only: true,
-            }],
-            secrets: vec![SecretReference {
-                name: "s0-access-key-id".into(),
-                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?.to_string(),
-                target: SecretTarget::Environment {
+                Sha256Digest::parse(format!("sha256:{}", "1".repeat(64)))?,
+            )?,
+            vec![ExecutionTaskArtifactMount::new(
+                "application-bundle",
+                artifact_uri(&bundle_digest)?,
+                Sha256Digest::parse(bundle_digest)?,
+                DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+                "/workspace/bundle",
+            )?],
+            vec![ExecutionTaskSecret::new(
+                "s0-access-key-id",
+                CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?,
+                ExecutionTaskSecretTarget::Environment {
                     variable: "AWS_ACCESS_KEY_ID".into(),
                 },
-            }],
-            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "2".repeat(64)))?,
-        },
+            )?],
+            Sha256Digest::parse(format!("sha256:{}", "2".repeat(64)))?,
+        )?,
         requested_at,
     )
 }
