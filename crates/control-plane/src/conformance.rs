@@ -6,7 +6,7 @@
 
 use crate::modules::files::{
     IUserFileObjectStore, IUserFileRepository, PostgresUserFileRepository,
-    SharedUserFileObjectStore, UserFileObjectError,
+    SharedUserFileObjectStore, UserFileAccess, UserFileObjectError,
 };
 use crate::modules::search::{search_persistence_adapter, ISearchRepository};
 use crate::modules::security::{
@@ -30,6 +30,14 @@ pub fn user_file_persistence_conformance(
         repository: Arc::new(PostgresUserFileRepository::new(executor)),
         objects: Arc::new(SharedUserFileObjectStore::local(object_root)?),
     })
+}
+
+/// Creates organization-wide access only for the retained external Files
+/// persistence gate. Product composition must derive this projection through
+/// the root Presentation ACL instead.
+#[doc(hidden)]
+pub fn user_file_organization_access_for_conformance() -> UserFileAccess {
+    UserFileAccess::organization_wide()
 }
 
 /// Builds the exact production Search persistence adapter through its owner

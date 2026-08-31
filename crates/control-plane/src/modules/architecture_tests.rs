@@ -1107,6 +1107,25 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
             "Files persistence conformance must compose the one production adapter {adapter}"
         );
     }
+    assert!(conformance
+        .contains("pub fn user_file_organization_access_for_conformance() -> UserFileAccess"));
+    let conformance_test = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/user_files.rs"),
+    )
+    .expect("read Files persistence conformance test");
+    assert_eq!(
+        conformance_test
+            .matches("access: user_file_organization_access_for_conformance()")
+            .count(),
+        7,
+        "every external Files transition must use the test-only projection factory"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "resource_access:"] {
+        assert!(
+            !conformance_test.contains(forbidden),
+            "Files persistence conformance bypassed its projection with {forbidden}"
+        );
+    }
     for line in conformance
         .lines()
         .map(str::trim)
