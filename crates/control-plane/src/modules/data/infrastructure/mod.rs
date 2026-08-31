@@ -1,4 +1,5 @@
 mod object_namespace_access;
+mod object_namespace_credentials;
 mod object_namespace_recovery_flow;
 mod shared_object_namespace;
 

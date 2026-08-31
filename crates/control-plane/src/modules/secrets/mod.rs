@@ -4,10 +4,10 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    CreateSecret, CreateSecretHandler, GetSecret, GetSecretHandler, ListSecrets,
-    ListSecretsHandler, ResolveSecretMaterial, ResolveSecretMaterialHandler, RevokeSecretVersion,
-    RevokeSecretVersionHandler, RotateSecret, RotateSecretHandler, SecretDetails,
-    SecretMutationResult, SecretPlaintext, SecretVersionResult,
+    CreateSecret, CreateSecretHandler, GetSecret, GetSecretHandler, IExactSecretMaterializer,
+    IExactSecretVersionAccess, ListSecrets, ListSecretsHandler, ResolveSecretMaterial,
+    ResolveSecretMaterialHandler, RevokeSecretVersion, RevokeSecretVersionHandler, RotateSecret,
+    RotateSecretHandler, SecretDetails, SecretMutationResult, SecretPlaintext, SecretVersionResult,
 };
 pub use domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,

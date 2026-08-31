@@ -167,6 +167,122 @@ fn domain_technical_dependency_debt_can_only_shrink() {
 }
 
 #[test]
+fn data_credentials_cross_one_secrets_owner_interface_and_one_adapter() {
+    let mut violations = BTreeSet::new();
+    let mut adapter_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("data") {
+            return;
+        }
+        if layer(relative) == Some("application") {
+            for forbidden in [
+                "modules::secrets::application",
+                "modules::secrets::domain",
+                "ISecretRepository",
+                "ISecretEncryptionService",
+                "ExactSecretVersionAccess::new",
+                "ExactSecretMaterializer::new",
+            ] {
+                if source.contains(forbidden) {
+                    violations.insert(format!(
+                        "{} imports Secrets implementation authority {forbidden}",
+                        display(relative)
+                    ));
+                }
+            }
+        }
+        if layer(relative) == Some("infrastructure")
+            && (source.contains("exact_secret_version_access")
+                || source.contains("exact_secret_materializer"))
+        {
+            adapter_sites.insert(display(relative));
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "Data Application bypassed the Secrets published interface:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+    assert_eq!(
+        adapter_sites,
+        lines("data/infrastructure/object_namespace_credentials.rs"),
+        "Data must translate the Secrets exact-version boundary at one adapter site"
+    );
+
+    let credentials = std::fs::read_to_string(
+        module_root().join("data/application/object_namespace_credentials.rs"),
+    )
+    .expect("read Data object namespace credentials");
+    let credentials = production_source(&credentials);
+    for required in [
+        "Arc<dyn IExactSecretVersionAccess>",
+        "Arc<dyn IExactSecretMaterializer>",
+        "from_secret_version_access",
+        "from_secret_materializer",
+        "SecretPlaintext",
+    ] {
+        assert!(
+            credentials.contains(required),
+            "Data credential boundary lost interface-owned dependency {required}"
+        );
+    }
+
+    let owner =
+        std::fs::read_to_string(module_root().join("secrets/application/materialization.rs"))
+            .expect("read Secrets exact-version owner boundary");
+    let owner = production_source(&owner);
+    for required in [
+        "pub trait IExactSecretVersionAccess",
+        "pub trait IExactSecretMaterializer",
+        "pub(crate) fn exact_secret_version_access(",
+        "pub(crate) fn exact_secret_materializer(",
+    ] {
+        assert!(
+            owner.contains(required),
+            "Secrets lost published exact-version boundary {required}"
+        );
+    }
+    assert_eq!(
+        owner.matches(".find_materializable_version(").count(),
+        1,
+        "Secrets must retain one active exact-version query mechanism"
+    );
+    assert_eq!(
+        owner.matches(".decrypt(").count(),
+        1,
+        "Secrets must retain one exact-version plaintext mechanism"
+    );
+
+    let adapter = std::fs::read_to_string(
+        module_root().join("data/infrastructure/object_namespace_credentials.rs"),
+    )
+    .expect("read Data-to-Secrets credential adapter");
+    let adapter = production_source(&adapter);
+    for required in [
+        "exact_secret_version_access(secrets)",
+        "exact_secret_materializer(secrets, encryption)",
+        "Self::from_secret_version_access",
+        "Self::from_secret_materializer",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Data credential adapter lost exact translation {required}"
+        );
+    }
+    for forbidden in [
+        "find_materializable_version",
+        ".decrypt(",
+        "SecretPlaintext::new",
+        "EncryptedSecretValue",
+    ] {
+        assert!(
+            !adapter.contains(forbidden),
+            "Data credential adapter duplicated Secrets mechanism {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn runtime_contracts_enter_domains_only_through_named_published_boundaries() {
     let allowed_files = lines(
         r#"

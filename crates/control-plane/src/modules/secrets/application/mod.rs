@@ -12,7 +12,11 @@ pub use commands::{
     RotateSecret, RotateSecretHandler,
 };
 pub(crate) use encryption::encryption_error;
-pub(crate) use materialization::{ExactSecretMaterializer, ExactSecretVersionAccess};
+pub(crate) use materialization::{
+    exact_secret_materializer, exact_secret_version_access, ExactSecretMaterializer,
+    ExactSecretVersionAccess,
+};
+pub use materialization::{IExactSecretMaterializer, IExactSecretVersionAccess};
 pub use plaintext::SecretPlaintext;
 pub use queries::{
     GetSecret, GetSecretHandler, ListSecrets, ListSecretsHandler, ResolveSecretMaterial,
