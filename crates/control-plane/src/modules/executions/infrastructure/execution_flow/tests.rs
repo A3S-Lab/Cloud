@@ -10,8 +10,9 @@ use super::{
 };
 use crate::modules::executions::domain::{
     CreateExecution, Execution, ExecutionArtifact, ExecutionOutcome, ExecutionProcess,
-    ExecutionResources, ExecutionStatus, ExecutionTaskAuthority, ExecutionTaskPolicy,
-    ExecutionTemplate, IExecutionRepository,
+    ExecutionResources, ExecutionStatus, ExecutionTaskArtifactMount, ExecutionTaskAuthority,
+    ExecutionTaskPolicy, ExecutionTaskSecret, ExecutionTaskSecretTarget, ExecutionTemplate,
+    IExecutionRepository,
 };
 use crate::modules::executions::infrastructure::InMemoryExecutionRepository;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
@@ -32,9 +33,8 @@ use a3s_cloud_contracts::{
     NodeHeartbeat, NodeObservationBatch, RuntimeObservationReport, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{
-    ArtifactRef, IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeCapabilities,
-    RuntimeEvidence, RuntimeFeature, RuntimeMount, RuntimeMountSource, RuntimeObservation,
-    RuntimeRemoval, RuntimeUnitClass, RuntimeUnitState, SecretReference, SecretTarget,
+    IsolationLevel, MountKind, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
+    RuntimeFeature, RuntimeObservation, RuntimeRemoval, RuntimeUnitClass, RuntimeUnitState,
 };
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
@@ -418,33 +418,28 @@ fn bound_execution(
         ExecutionId::new(),
         standard.template.clone(),
         target_node_id,
-        ExecutionTaskPolicy {
-            authority: ExecutionTaskAuthority {
-                kind: "workload.prestart".into(),
+        ExecutionTaskPolicy::new(
+            ExecutionTaskAuthority::new(
+                "workload.prestart",
                 subject_id,
-                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))?,
-            },
-            mounts: vec![RuntimeMount {
-                name: "application-bundle".into(),
-                source: RuntimeMountSource::Artifact {
-                    artifact: ArtifactRef {
-                        uri: artifact_uri(&bundle_digest)?,
-                        digest: bundle_digest,
-                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
-                    },
-                },
-                target: "/workspace/bundle".into(),
-                read_only: true,
-            }],
-            secrets: vec![SecretReference {
-                name: "s0-access-key-id".into(),
-                reference: CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?.to_string(),
-                target: SecretTarget::Environment {
+                Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))?,
+            )?,
+            vec![ExecutionTaskArtifactMount::new(
+                "application-bundle",
+                artifact_uri(&bundle_digest)?,
+                Sha256Digest::parse(bundle_digest)?,
+                DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+                "/workspace/bundle",
+            )?],
+            vec![ExecutionTaskSecret::new(
+                "s0-access-key-id",
+                CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)?,
+                ExecutionTaskSecretTarget::Environment {
                     variable: "AWS_ACCESS_KEY_ID".into(),
                 },
-            }],
-            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))?,
-        },
+            )?],
+            Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))?,
+        )?,
         at,
     )
 }

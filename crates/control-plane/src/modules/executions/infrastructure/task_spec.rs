@@ -1,7 +1,10 @@
-use crate::modules::executions::domain::Execution;
+use crate::modules::executions::domain::{
+    Execution, ExecutionTaskArtifactMount, ExecutionTaskSecret, ExecutionTaskSecretTarget,
+};
 use a3s_runtime::contract::{
-    ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeNetworkSpec,
-    RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec,
+    ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeMount,
+    RuntimeMountSource, RuntimeNetworkSpec, RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec,
+    SecretReference, SecretTarget,
 };
 use sha2::{Digest, Sha256};
 
@@ -27,29 +30,31 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
         execution.template_digest.clone(),
     );
     if let Some(policy) = &execution.task_policy {
-        environment.insert(
-            EXECUTION_AUTHORITY_KIND_ENV.into(),
-            policy.authority.kind.clone(),
-        );
+        let authority = policy.authority();
+        environment.insert(EXECUTION_AUTHORITY_KIND_ENV.into(), authority.kind().into());
         environment.insert(
             EXECUTION_AUTHORITY_SUBJECT_ENV.into(),
-            policy.authority.subject_id.to_string(),
+            authority.subject_id().to_string(),
         );
         environment.insert(
             EXECUTION_AUTHORITY_DIGEST_ENV.into(),
-            policy.authority.digest.to_string(),
+            authority.digest().to_string(),
         );
     }
     let template = &execution.template;
-    let mounts = execution
-        .task_policy
-        .as_ref()
-        .map(|policy| policy.mounts.clone())
-        .unwrap_or_default();
+    let mounts = if let Some(policy) = &execution.task_policy {
+        policy
+            .mounts()
+            .iter()
+            .map(runtime_mount)
+            .collect::<Result<Vec<_>, _>>()?
+    } else {
+        Vec::new()
+    };
     let secrets = execution
         .task_policy
         .as_ref()
-        .map(|policy| policy.secrets.clone())
+        .map(|policy| policy.secrets().iter().map(runtime_secret).collect())
         .unwrap_or_default();
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
@@ -90,7 +95,7 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
         outputs: Vec::new(),
         semantics_profile_digest: Some(execution.task_policy.as_ref().map_or_else(
             || format!("sha256:{:x}", Sha256::digest(SEMANTICS_PROFILE.as_bytes())),
-            |policy| policy.semantics_profile_digest.to_string(),
+            |policy| policy.semantics_profile_digest().to_string(),
         )),
         identity_attachment_digest: None,
     };
@@ -98,18 +103,50 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
     Ok(spec)
 }
 
+fn runtime_mount(mount: &ExecutionTaskArtifactMount) -> Result<RuntimeMount, String> {
+    Ok(RuntimeMount {
+        name: mount.name().into(),
+        source: RuntimeMountSource::Artifact {
+            artifact: ArtifactRef {
+                uri: mount.artifact_uri()?,
+                digest: mount.artifact_digest().to_string(),
+                media_type: mount.artifact_media_type().into(),
+            },
+        },
+        target: mount.target().into(),
+        read_only: true,
+    })
+}
+
+fn runtime_secret(secret: &ExecutionTaskSecret) -> SecretReference {
+    SecretReference {
+        name: secret.name().into(),
+        reference: secret.reference().to_string(),
+        target: match secret.target() {
+            ExecutionTaskSecretTarget::Environment { variable } => SecretTarget::Environment {
+                variable: variable.clone(),
+            },
+            ExecutionTaskSecretTarget::File { path, mode } => SecretTarget::File {
+                path: path.clone(),
+                mode: *mode,
+            },
+            ExecutionTaskSecretTarget::RegistryCredential => SecretTarget::RegistryCredential,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::executions::domain::{
-        ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTaskAuthority,
-        ExecutionTaskPolicy, ExecutionTemplate,
+        ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTaskArtifactMount,
+        ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
+        ExecutionTaskSecretTarget, ExecutionTemplate,
     };
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, ExecutionId, NodeId, OrganizationId, ProjectId, Sha256Digest,
     };
     use a3s_cloud_contracts::{artifact_uri, CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
-    use a3s_runtime::contract::{RuntimeMount, RuntimeMountSource, SecretReference, SecretTarget};
     use chrono::Utc;
     use std::collections::BTreeMap;
 
@@ -199,37 +236,33 @@ mod tests {
         let target_node_id = NodeId::new();
         let bundle_digest = format!("sha256:{}", "b".repeat(64));
         let secret_id = uuid::Uuid::now_v7();
-        let policy = ExecutionTaskPolicy {
-            authority: ExecutionTaskAuthority {
-                kind: "workload.prestart".into(),
+        let policy = ExecutionTaskPolicy::new(
+            ExecutionTaskAuthority::new(
+                "workload.prestart",
                 subject_id,
-                digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
+                Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
                     .expect("authority digest"),
-            },
-            mounts: vec![RuntimeMount {
-                name: "application-bundle".into(),
-                source: RuntimeMountSource::Artifact {
-                    artifact: ArtifactRef {
-                        uri: artifact_uri(&bundle_digest).expect("artifact URI"),
-                        digest: bundle_digest,
-                        media_type: DURABLE_CELL_BUNDLE_MEDIA_TYPE.into(),
-                    },
-                },
-                target: "/workspace/bundle".into(),
-                read_only: true,
-            }],
-            secrets: vec![SecretReference {
-                name: "s0-access-key-id".into(),
-                reference: CloudSecretReference::new(subject_id, secret_id, 4)
-                    .expect("Secret reference")
-                    .to_string(),
-                target: SecretTarget::Environment {
+            )
+            .expect("authority"),
+            vec![ExecutionTaskArtifactMount::new(
+                "application-bundle",
+                artifact_uri(&bundle_digest).expect("artifact URI"),
+                Sha256Digest::parse(&bundle_digest).expect("bundle digest"),
+                DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+                "/workspace/bundle",
+            )
+            .expect("artifact mount")],
+            vec![ExecutionTaskSecret::new(
+                "s0-access-key-id",
+                CloudSecretReference::new(subject_id, secret_id, 4).expect("Secret reference"),
+                ExecutionTaskSecretTarget::Environment {
                     variable: "AWS_ACCESS_KEY_ID".into(),
                 },
-            }],
-            semantics_profile_digest: Sha256Digest::parse(format!("sha256:{}", "d".repeat(64)))
-                .expect("semantics digest"),
-        };
+            )
+            .expect("Secret")],
+            Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("semantics digest"),
+        )
+        .expect("Task policy");
         let bound = Execution::create_bound_task(
             standard.organization_id,
             standard.project_id,
@@ -246,11 +279,34 @@ mod tests {
         assert_eq!(bound.target_node_id, Some(target_node_id));
         assert_eq!(spec.class, RuntimeUnitClass::Task);
         assert_eq!(spec.network.mode, NetworkMode::Outbound);
-        assert_eq!(spec.mounts, policy.mounts);
-        assert_eq!(spec.secrets, policy.secrets);
+        assert_eq!(spec.mounts.len(), 1);
+        assert_eq!(spec.mounts[0].name, policy.mounts()[0].name());
+        assert_eq!(spec.mounts[0].target, policy.mounts()[0].target());
+        assert!(spec.mounts[0].read_only);
+        let RuntimeMountSource::Artifact { artifact } = &spec.mounts[0].source else {
+            panic!("bound execution mount must project one Cloud artifact");
+        };
+        assert_eq!(
+            artifact.uri,
+            artifact_uri(&bundle_digest).expect("artifact URI")
+        );
+        assert_eq!(artifact.digest, bundle_digest);
+        assert_eq!(artifact.media_type, DURABLE_CELL_BUNDLE_MEDIA_TYPE);
+        assert_eq!(spec.secrets.len(), 1);
+        assert_eq!(spec.secrets[0].name, policy.secrets()[0].name());
+        assert_eq!(
+            spec.secrets[0].reference,
+            policy.secrets()[0].reference().to_string()
+        );
+        assert_eq!(
+            spec.secrets[0].target,
+            SecretTarget::Environment {
+                variable: "AWS_ACCESS_KEY_ID".into(),
+            }
+        );
         assert_eq!(
             spec.semantics_profile_digest.as_deref(),
-            Some(policy.semantics_profile_digest.as_str())
+            Some(policy.semantics_profile_digest().as_str())
         );
         assert_eq!(
             spec.process

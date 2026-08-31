@@ -1797,10 +1797,10 @@ fn publication_execution(
             node_id,
             storage_namespace_id,
             image_media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
-            authority: ExecutionTaskAuthority {
-                kind: PUBLICATION_AUTHORITY_KIND.into(),
+            authority: ExecutionTaskAuthority::new(
+                PUBLICATION_AUTHORITY_KIND,
                 subject_id,
-                digest: Sha256Digest::from_bytes(
+                Sha256Digest::from_bytes(
                     format!(
                         "cell0.5-c3:{}:{}:{}",
                         publisher.digest(),
@@ -1809,7 +1809,7 @@ fn publication_execution(
                     )
                     .as_bytes(),
                 ),
-            },
+            )?,
             input: serde_json::json!({
                 "schema": PUBLICATION_INPUT_SCHEMA,
                 "conformance": "cell0.5-c3",

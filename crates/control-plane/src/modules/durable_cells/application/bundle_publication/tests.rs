@@ -373,20 +373,20 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         ]
     );
     let policy = execution.task_policy.as_ref().ok_or("publication policy")?;
-    assert_eq!(policy.secrets, project_runtime_secrets(&workload_revision)?);
-    assert_eq!(policy.mounts.len(), 1);
-    assert_eq!(policy.mounts[0].target, publisher.bundle_mount());
-    assert!(policy.mounts[0].read_only);
-    let RuntimeMountSource::Artifact { artifact } = &policy.mounts[0].source else {
-        return Err("publication mount must use the built bundle".into());
-    };
-    assert_eq!(artifact.uri, bundle.uri);
-    assert_eq!(artifact.digest, bundle.digest);
-    assert_eq!(artifact.media_type, DURABLE_CELL_BUNDLE_MEDIA_TYPE);
-    assert_eq!(policy.semantics_profile_digest, *publisher.digest());
     assert_eq!(
-        policy.authority.digest,
-        publication_authority_digest(&correlation, node_id, &bundle, &publisher)?
+        serde_json::to_value(policy.secrets())?,
+        serde_json::to_value(project_runtime_secrets(&workload_revision)?)?
+    );
+    assert_eq!(policy.mounts().len(), 1);
+    let mount = &policy.mounts()[0];
+    assert_eq!(mount.target(), publisher.bundle_mount());
+    assert_eq!(mount.artifact_uri()?, bundle.uri);
+    assert_eq!(mount.artifact_digest().as_str(), bundle.digest);
+    assert_eq!(mount.artifact_media_type(), DURABLE_CELL_BUNDLE_MEDIA_TYPE);
+    assert_eq!(policy.semantics_profile_digest(), publisher.digest());
+    assert_eq!(
+        policy.authority().digest(),
+        &publication_authority_digest(&correlation, node_id, &bundle, &publisher)?
     );
 
     let replay = gate.reconcile(&request).await?;
