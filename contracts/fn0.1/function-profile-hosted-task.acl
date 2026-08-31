@@ -1,0 +1,35 @@
+function_profile {
+  asset_id = "22222222-2222-4222-8222-222222222222"
+  asset_release_id = "33333333-3333-4333-8333-333333333333"
+  mode = "hosted_task"
+  organization_id = "11111111-1111-4111-8111-111111111111"
+  schema = "cloud.function.profile.v1"
+  contract {
+    input_media_types = ["application/json"]
+    input_schema_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    output_media_types = ["application/json"]
+    output_schema_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+  policy {
+    isolation = "sandbox"
+    max_concurrency = 32
+    max_input_bytes = 1048576
+    max_output_bytes = 8388608
+    timeout_ms = 900000
+  }
+  security {
+    egress_class = "restricted"
+    grant_requirements = ["function.invoke", "function.network.restricted"]
+    secret "api-token" {
+      secret_id = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"
+      version = 3
+    }
+  }
+  hosted_task {
+    artifact_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    artifact_media_type = "application/vnd.oci.image.manifest.v1+json"
+    execution_template_id = "44444444-4444-4444-8444-444444444444"
+    execution_template_revision_id = "55555555-5555-4555-8555-555555555555"
+    projection_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

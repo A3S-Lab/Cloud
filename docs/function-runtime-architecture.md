@@ -19,7 +19,9 @@ Function release/profile to exactly one of these shapes. It owns no scheduler,
 queue, process, node journal, Runtime state, retry table, credential store,
 object client, route publisher, or autoscaler.
 
-This document is a target design. `FN0` remains unavailable until its gates in
+`FN0.1` now freezes the component-only value contracts and fixtures in
+[`contracts/fn0.1`](../contracts/fn0.1/README.md). `FN0` remains unavailable
+until the later owner-composition and retained production gates in
 [ROADMAP.md](../ROADMAP.md) pass.
 
 ## 2. First-principles boundary
@@ -47,7 +49,8 @@ Function scheduler would duplicate existing authority.
 
 ## 3. Immutable Function profile
 
-The planned `cloud.function.profile.v1` A3S ACL is owned with the immutable
+The implemented component-only `cloud.function.profile.v1` A3S ACL is owned
+with the immutable
 Function release and contains only product intent:
 
 ```text
@@ -63,6 +66,18 @@ traffic: optional protocol and route intent for hosted_service only
 It contains no plaintext Secret, mutable provider state, floating image tag,
 raw cloud credential, retry counter, node identity, or Runtime unit identity.
 Unknown fields and unsupported combinations fail closed through `a3s-acl`.
+
+The frozen mode matrix binds `hosted_task` to one exact ExecutionTemplate
+revision, `hosted_service` to one exact Workload revision, and `external` to
+one exact Connector revision. Hosted targets also bind the release artifact;
+external targets cannot copy Connector-owned Secret references. Only a hosted
+Service may declare optional traffic intent. The companion
+`cloud.function.invocation.v1` value binds tenant, immutable parent, slot and
+positive attempt, exact profile target, digest-bound input, deadline,
+idempotency, authorization, and egress. Its closed
+`cloud.function.invocation-failure.v1` result distinguishes terminal,
+caller-policy, and external indeterminate outcomes without acquiring retry
+authority.
 
 ## 4. One invocation authority envelope
 
@@ -193,7 +208,7 @@ idempotency, and owner evidence do not acquire a second implementation.
 
 | Gate | Outcome |
 | --- | --- |
-| `FN0.1` | Freeze the canonical Function release/profile ACL, mode matrix, invocation envelope, bounds, errors, and no-duplicate authority tests |
+| `FN0.1` | Implemented component-only: canonical Function release/profile ACL, closed mode/owner matrix, invocation envelope, bounds, errors, fixtures, and no-duplicate authority tests |
 | `FN0.2` | Hosted finite Function projection through the existing ExecutionTemplate/Execution/Runtime Task path with restart, cancellation, result, and cleanup evidence |
 | `FN0.3` | External FaaS projection through the existing Connector attempt/Secret/egress path with exact replay and indeterminate-outcome evidence |
 | `FN0.4` | Hosted stateless HTTP Service projection through Workloads/Fleet/Runtime/Box and Edge/Gateway, including scale-to-zero policy evidence |
@@ -213,4 +228,3 @@ Function Runtime does not add:
 - provider credentials in code, ACL, events, logs, or workspace;
 - synchronous success when an external outcome is indeterminate; or
 - a claim that stateful/streaming MCP is equivalent to a stateless Function.
-

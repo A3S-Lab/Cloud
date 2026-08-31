@@ -30,7 +30,8 @@ contract foundation; later gates compile semantic intent to the existing
 Operations and A3S Flow path. W0 does not add another workflow engine,
 scheduler, graph database authority, or task queue.
 
-Planned FN0 adds immutable Function profiles. A profile selects exactly one
+In-progress FN0 adds immutable Function profiles. Component-only `FN0.1`
+freezes their closed value contracts; a profile selects exactly one
 finite Execution/Runtime Task, stateless Workload/Runtime Service, or external
 Connector attempt. Workflow nodes and Agent Tools consume the same Function
 authority; no Function scheduler, queue, Runtime class, or provider retry

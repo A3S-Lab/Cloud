@@ -77,10 +77,13 @@ runtime stacks:
   definitions and plans, WorkflowRun, HumanTask, typed node order, and
   outcomes. A3S Flow coordinates Agent, Function, MCP, Inference, Cell, human,
   Connector, Task, and Service nodes; there is no duplicate Workflow runtime.
-- **FaaS — Function as a Service.** Functions owns immutable release/profile
-  and invocation semantics. A Function runs as a Runtime <code>Task</code>,
-  stateless <code>Service</code>, or external FaaS Connector. Sessionless MCP
-  and calls from A3S Code use the same modes.
+- **FaaS — Function as a Service.** Assets owns the immutable Function
+  release/profile; its application facade delegates each invocation to
+  Executions, Workloads, or Connectors without owning another lifecycle. A
+  Function runs as a Runtime <code>Task</code>, stateless
+  <code>Service</code>, or external FaaS Connector. Sessionless MCP and calls
+  from A3S Code use the same modes. `FN0.1` freezes these component contracts;
+  FaaS remains unavailable until the later owner and production gates pass.
 - **Durable Cell.** Durable Cells owns application revision, compatibility,
   retention, and deployment/storage correlation. An ordinary Runtime
   <code>Service</code> provides a named, serialized, hibernatable state space
