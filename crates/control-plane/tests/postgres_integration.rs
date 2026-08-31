@@ -47,9 +47,11 @@ use a3s_cloud_control_plane::modules::operations::{
 use a3s_cloud_control_plane::modules::security::{
     GatewayRoutePolicyTimelineCursor, SecurityAuditCorrelation,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::shared_kernel::domain::RouteId;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, EnvironmentId, IdempotencyRequest, InstallationId, OperationId, OrganizationId,
-    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, RouteId, ScopeContext,
+    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, ScopeContext,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
