@@ -1,12 +1,13 @@
 use super::*;
-use a3s_cloud_control_plane::conformance::user_file_persistence_conformance;
+use a3s_cloud_control_plane::conformance::{
+    user_file_organization_access_for_conformance, user_file_persistence_conformance,
+};
 use a3s_cloud_control_plane::modules::files::{
     RecordUserFileScan, RecordUserFileUpload, ReserveUserFileWrite, UserFile,
     UserFileAdmissionContract, UserFileAdmissionContractSpec, UserFileApplicationService,
     UserFileContentReference, UserFileLifecycleChanged, UserFileScanDecision, UserFileScanPolicy,
     UserFileState, UserFileTransition,
 };
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
@@ -307,7 +308,7 @@ pub(super) async fn exercise_user_file_persistence(
                 user_file_id: stored.id,
                 expected_version: stored.aggregate_version,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: user_file_organization_access_for_conformance(),
                 idempotency_key: upload_key.into(),
                 request_id: upload_request_id,
             },
@@ -329,7 +330,7 @@ pub(super) async fn exercise_user_file_persistence(
                 user_file_id: stored.id,
                 expected_version: stored.aggregate_version,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: user_file_organization_access_for_conformance(),
                 idempotency_key: upload_key.into(),
                 request_id: upload_request_id,
             },
@@ -371,7 +372,7 @@ pub(super) async fn exercise_user_file_persistence(
                 user_file_id: stored.id,
                 expected_version: uploaded.file.aggregate_version,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: user_file_organization_access_for_conformance(),
                 idempotency_key: scan_key.into(),
                 request_id: scan_request_id,
             },
@@ -390,7 +391,7 @@ pub(super) async fn exercise_user_file_persistence(
                 user_file_id: stored.id,
                 expected_version: uploaded.file.aggregate_version,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: user_file_organization_access_for_conformance(),
                 idempotency_key: scan_key.into(),
                 request_id: scan_request_id,
             },
@@ -414,7 +415,7 @@ pub(super) async fn exercise_user_file_persistence(
             user_file_id: stored.id,
             expected_version: admitted.file.aggregate_version,
             actor_principal_id,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: user_file_organization_access_for_conformance(),
             idempotency_key: tombstone_key.into(),
             request_id: tombstone_request_id,
         })
@@ -434,7 +435,7 @@ pub(super) async fn exercise_user_file_persistence(
             user_file_id: stored.id,
             expected_version: admitted.file.aggregate_version,
             actor_principal_id,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: user_file_organization_access_for_conformance(),
             idempotency_key: tombstone_key.into(),
             request_id: tombstone_request_id,
         })
@@ -452,7 +453,7 @@ pub(super) async fn exercise_user_file_persistence(
                 user_file_id: stored.id,
                 expected_version: admitted.file.aggregate_version,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: user_file_organization_access_for_conformance(),
                 idempotency_key: "postgres:user-file:stale-tombstone".into(),
                 request_id: Uuid::now_v7(),
             })

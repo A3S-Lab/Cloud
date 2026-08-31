@@ -11,6 +11,7 @@ pub use commands::{
 };
 pub use object_store::{IUserFileObjectStore, UserFileObjectError, UserFileObjectReader};
 pub use queries::{GetUserFileHandler, GetUserFileQuotaHandler, ListUserFilesHandler};
+pub use resource_access::UserFileAccess;
 pub use service::{
     GetUserFile, GetUserFileQuota, ListUserFiles, RecordUserFileScan, RecordUserFileUpload,
     ReserveUserFile, UserFileApplicationService, UserFileMutationResult, UserFileTransition,

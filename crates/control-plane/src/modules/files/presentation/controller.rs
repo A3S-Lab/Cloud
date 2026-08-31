@@ -8,25 +8,23 @@ use crate::modules::files::application::{
     GetUserFile, GetUserFileQuota, ListUserFiles, ReserveUserFile, TombstoneUserFile,
     UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
 };
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, UserFileId};
 use crate::presentation::{
-    actor_principal_id, application_error_response, request_id, request_identity,
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    actor_principal_id, application_error_response, organization_tenant_cloud_read_controller,
+    organization_tenant_file_write_controller, request_id, request_identity,
+    resource_access_evaluator, user_file_access, with_deferred_resource_scope,
+    DeferredResourceScope,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    RouteDefinition, AUTH_SCOPES_METADATA,
+    RouteDefinition,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let reserve_bus = Arc::clone(&bus);
-    ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::FILE_WRITE])?
+    let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
         .post(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&reserve_bus);
             async move {
@@ -40,9 +38,9 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                         project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
                         admission_acl: body.admission_acl,
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(
+                        access: user_file_access(&resource_access_evaluator(
                             &request.require_auth_principal()?,
-                        )?,
+                        )?),
                         idempotency_key,
                         request_id,
                     })
@@ -72,9 +70,9 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                         ),
                         expected_version: body.expected_version,
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(
+                        access: user_file_access(&resource_access_evaluator(
                             &request.require_auth_principal()?,
-                        )?,
+                        )?),
                         idempotency_key,
                         request_id,
                     }))
@@ -84,15 +82,14 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                     Err(error) => application_error_response(error, request_id),
                 }
             }
-        })
+        })?;
+    organization_tenant_file_write_controller(controller)
 }
 
 pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let list_bus = Arc::clone(&bus);
     let get_bus = Arc::clone(&bus);
-    ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+    let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
         .get(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&list_bus);
             async move {
@@ -104,9 +101,9 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                         ),
                         project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
                         limit: Some(list_limit(&request)?),
-                        resource_access: resource_access_evaluator(
+                        access: user_file_access(&resource_access_evaluator(
                             &request.require_auth_principal()?,
-                        )?,
+                        )?),
                     })
                     .await?
                 {
@@ -133,9 +130,9 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                         user_file_id: UserFileId::from_uuid(
                             request.param_as::<Uuid>("user_file_id")?,
                         ),
-                        resource_access: resource_access_evaluator(
+                        access: user_file_access(&resource_access_evaluator(
                             &request.require_auth_principal()?,
-                        )?,
+                        )?),
                     })
                     .await?
                 {
@@ -154,9 +151,9 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: user_file_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -166,7 +163,8 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                 }
             })?,
             DeferredResourceScope::Any,
-        )?)
+        )?)?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 fn list_limit(request: &BootRequest) -> Result<usize> {

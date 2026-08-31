@@ -1,11 +1,10 @@
-use super::resource_access::{organization_quota, project, user_file_not_found};
+use super::resource_access::{organization_quota, project, user_file_not_found, UserFileAccess};
 use super::{IUserFileObjectStore, UserFileObjectError, UserFileObjectReader};
 use crate::modules::files::domain::{
     IUserFileRepository, ReserveUserFileWrite, TransitionUserFileWrite, UserFile,
     UserFileAdmissionContract, UserFileLifecycleChanged, UserFileQuota, UserFileScanDecision,
     UserFileScanReceipt, UserFileState,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
@@ -42,7 +41,7 @@ impl UserFileApplicationService {
         &self,
         request: ReserveUserFile,
     ) -> ApplicationResult<UserFileMutationResult> {
-        project(request.project_id, &request.resource_access)?;
+        project(request.project_id, &request.access)?;
         let contract = UserFileAdmissionContract::parse_acl(&request.admission_acl)
             .map_err(ApplicationError::Invalid)?;
         if contract.spec().content.organization_id != request.organization_id
@@ -106,7 +105,7 @@ impl UserFileApplicationService {
         request: RecordUserFileUpload,
     ) -> ApplicationResult<UserFileMutationResult> {
         let RecordUserFileUpload { transition, reader } = request;
-        project(transition.project_id, &transition.resource_access)?;
+        project(transition.project_id, &transition.access)?;
         let idempotency = transition_idempotency(
             &transition,
             "upload",
@@ -141,10 +140,7 @@ impl UserFileApplicationService {
         &self,
         request: RecordUserFileScan,
     ) -> ApplicationResult<UserFileMutationResult> {
-        project(
-            request.transition.project_id,
-            &request.transition.resource_access,
-        )?;
+        project(request.transition.project_id, &request.transition.access)?;
         let evidence_digest =
             Sha256Digest::parse(&request.evidence_digest).map_err(ApplicationError::Invalid)?;
         let decision = request.decision.clone();
@@ -194,7 +190,7 @@ impl UserFileApplicationService {
         &self,
         request: UserFileTransition,
     ) -> ApplicationResult<UserFileMutationResult> {
-        project(request.project_id, &request.resource_access)?;
+        project(request.project_id, &request.access)?;
         let idempotency = transition_idempotency(
             &request,
             "expire",
@@ -224,7 +220,7 @@ impl UserFileApplicationService {
         &self,
         request: UserFileTransition,
     ) -> ApplicationResult<UserFileMutationResult> {
-        project(request.project_id, &request.resource_access)?;
+        project(request.project_id, &request.access)?;
         let idempotency = transition_idempotency(
             &request,
             "tombstone",
@@ -251,7 +247,7 @@ impl UserFileApplicationService {
     }
 
     pub async fn get(&self, request: GetUserFile) -> ApplicationResult<UserFile> {
-        project(request.project_id, &request.resource_access)?;
+        project(request.project_id, &request.access)?;
         match self
             .files
             .find(
@@ -268,7 +264,7 @@ impl UserFileApplicationService {
     }
 
     pub async fn list(&self, request: ListUserFiles) -> ApplicationResult<Vec<UserFile>> {
-        project(request.project_id, &request.resource_access)?;
+        project(request.project_id, &request.access)?;
         let limit = request.limit.unwrap_or(DEFAULT_USER_FILE_LIST_LIMIT);
         if limit == 0 || limit > MAXIMUM_USER_FILE_LIST_LIMIT {
             return Err(ApplicationError::Invalid(format!(
@@ -282,7 +278,7 @@ impl UserFileApplicationService {
     }
 
     pub async fn quota(&self, request: GetUserFileQuota) -> ApplicationResult<UserFileQuota> {
-        organization_quota(&request.resource_access)?;
+        organization_quota(&request.access)?;
         self.files
             .quota(request.organization_id)
             .await
@@ -370,7 +366,7 @@ pub struct ReserveUserFile {
     pub project_id: ProjectId,
     pub admission_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: UserFileAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -381,7 +377,7 @@ pub struct UserFileTransition {
     pub user_file_id: UserFileId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: UserFileAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -401,19 +397,19 @@ pub struct GetUserFile {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub user_file_id: UserFileId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: UserFileAccess,
 }
 
 pub struct ListUserFiles {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub limit: Option<usize>,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: UserFileAccess,
 }
 
 pub struct GetUserFileQuota {
     pub organization_id: OrganizationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: UserFileAccess,
 }
 
 #[derive(Serialize)]

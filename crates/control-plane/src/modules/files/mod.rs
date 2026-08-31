@@ -8,7 +8,7 @@ pub use application::{
     GetUserFileQuota, GetUserFileQuotaHandler, IUserFileObjectStore, ListUserFiles,
     ListUserFilesHandler, RecordUserFileScan, RecordUserFileScanHandler, RecordUserFileUpload,
     RecordUserFileUploadHandler, ReserveUserFile, ReserveUserFileHandler, TombstoneUserFile,
-    TombstoneUserFileHandler, UserFileApplicationService, UserFileMutationResult,
+    TombstoneUserFileHandler, UserFileAccess, UserFileApplicationService, UserFileMutationResult,
     UserFileObjectError, UserFileObjectReader, UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT,
     MAXIMUM_USER_FILE_LIST_LIMIT,
 };
