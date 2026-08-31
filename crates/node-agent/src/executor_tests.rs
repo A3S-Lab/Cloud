@@ -443,6 +443,7 @@ fn claim_runtime_spec() -> RuntimeUnitSpec {
         },
         isolation: IsolationLevel::Container,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
@@ -465,6 +466,7 @@ fn claim_observation(spec: &RuntimeUnitSpec, state: RuntimeUnitState) -> Runtime
         started_at_ms: Some(1_000),
         finished_at_ms: state.is_terminal().then_some(2_000),
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
@@ -1081,6 +1083,7 @@ async fn provider_and_legacy_code_commands_are_forwarded_once() {
         started_at_ms: Some(now_ms.saturating_sub(1)),
         finished_at_ms: None,
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
@@ -1279,6 +1282,7 @@ async fn durable_cell_operator_observation_is_sanitized_and_journaled_once() {
             checked_at_ms: now_ms,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

@@ -363,6 +363,7 @@ fn celld_runtime_spec(image: &str, service_profile_digest: &str) -> GateResult<R
             success_threshold: 1,
             failure_threshold: 20,
         }),
+        service_lifecycle: None,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: Some(service_profile_digest.into()),

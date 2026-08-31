@@ -18,6 +18,14 @@ use a3s_cloud_contracts::{
     AgentReleaseSecretRequirement, AgentReleaseSecretTarget,
 };
 
+const AGENT_RUNTIME_WORKING_DIRECTORY: &str = "/workspace";
+const AGENT_RUNTIME_PORT_NAME: &str = "agent";
+const AGENT_HEALTH_INTERVAL_MS: u64 = 1_000;
+const AGENT_HEALTH_TIMEOUT_MS: u64 = 500;
+const AGENT_HEALTHY_THRESHOLD: u16 = 1;
+const AGENT_UNHEALTHY_THRESHOLD: u16 = 3;
+const AGENT_HEALTH_STABILIZATION_WINDOW_MS: u64 = 1_000;
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct OciArtifact {
@@ -514,6 +522,28 @@ impl AgentReleaseRuntimeContract {
         Ok(())
     }
 
+    /// Re-admit the final Code manifest and fail closed unless every duplicated
+    /// Service field still matches the manifest-owned runtime intent. Resources
+    /// and Secret identities remain caller-selected within their admitted
+    /// bounds; entrypoint, networking, readiness, and lifecycle do not.
+    pub(crate) fn manifest_for_template(
+        &self,
+        template: &ServiceTemplate,
+    ) -> Result<AgentReleaseManifest, String> {
+        self.validate_for(&template.artifact)?;
+        let manifest = self.manifest()?;
+        if manifest.health().transport() != "http"
+            || template.process != agent_release_process(&manifest)
+            || template.ports != [agent_release_port(&manifest)]
+            || template.health.as_ref() != Some(&agent_release_readiness(&manifest))
+        {
+            return Err(
+                "Agent Service template changed its release-manifest runtime intent".into(),
+            );
+        }
+        Ok(manifest)
+    }
+
     pub const fn manifest_identity(&self) -> &Sha256Digest {
         &self.manifest_identity
     }
@@ -628,30 +658,42 @@ impl AgentReleaseAdmission {
         validate_agent_release_secrets(manifest.required_secrets(), &secrets)?;
         let template = ServiceTemplate {
             artifact: self.artifact.clone(),
-            process: ServiceProcess {
-                command: vec![manifest.entrypoint().command().into()],
-                args: manifest.entrypoint().args().to_vec(),
-                working_directory: Some("/workspace".into()),
-                environment: BTreeMap::new(),
-            },
+            process: agent_release_process(&manifest),
             secrets,
             resources,
-            ports: vec![ServicePort {
-                name: "agent".into(),
-                container_port: manifest.health().port(),
-            }],
-            health: Some(HttpHealthCheck {
-                port_name: "agent".into(),
-                path: manifest.health().readiness_path().into(),
-                interval_ms: 1_000,
-                timeout_ms: 500,
-                healthy_threshold: 1,
-                unhealthy_threshold: 3,
-                stabilization_window_ms: 1_000,
-            }),
+            ports: vec![agent_release_port(&manifest)],
+            health: Some(agent_release_readiness(&manifest)),
         };
-        template.validate()?;
+        self.runtime_contract.manifest_for_template(&template)?;
         Ok(template)
+    }
+}
+
+fn agent_release_process(manifest: &AgentReleaseManifest) -> ServiceProcess {
+    ServiceProcess {
+        command: vec![manifest.entrypoint().command().into()],
+        args: manifest.entrypoint().args().to_vec(),
+        working_directory: Some(AGENT_RUNTIME_WORKING_DIRECTORY.into()),
+        environment: BTreeMap::new(),
+    }
+}
+
+fn agent_release_port(manifest: &AgentReleaseManifest) -> ServicePort {
+    ServicePort {
+        name: AGENT_RUNTIME_PORT_NAME.into(),
+        container_port: manifest.health().port(),
+    }
+}
+
+fn agent_release_readiness(manifest: &AgentReleaseManifest) -> HttpHealthCheck {
+    HttpHealthCheck {
+        port_name: AGENT_RUNTIME_PORT_NAME.into(),
+        path: manifest.health().readiness_path().into(),
+        interval_ms: AGENT_HEALTH_INTERVAL_MS,
+        timeout_ms: AGENT_HEALTH_TIMEOUT_MS,
+        healthy_threshold: AGENT_HEALTHY_THRESHOLD,
+        unhealthy_threshold: AGENT_UNHEALTHY_THRESHOLD,
+        stabilization_window_ms: AGENT_HEALTH_STABILIZATION_WINDOW_MS,
     }
 }
 
@@ -750,6 +792,19 @@ impl AgentWorkloadRevisionBinding {
 
     pub const fn runtime_contract(&self) -> Option<&AgentReleaseRuntimeContract> {
         self.runtime_contract.as_ref()
+    }
+
+    pub(crate) fn runtime_manifest_for(
+        &self,
+        template: &ServiceTemplate,
+    ) -> Result<AgentReleaseManifest, String> {
+        self.validate_identity()?;
+        self.runtime_contract
+            .as_ref()
+            .ok_or_else(|| {
+                "Agent Workload binding predates the exact release manifest contract".to_owned()
+            })?
+            .manifest_for_template(template)
     }
 }
 
@@ -1088,6 +1143,7 @@ impl WorkloadRevision {
         if template.artifact != admission.artifact {
             return Err("Agent Workload artifact does not match its exact AssetRelease".into());
         }
+        admission.runtime_contract.manifest_for_template(template)?;
         let binding = AgentWorkloadRevisionBinding::restore_with_contract(
             workload.organization_id,
             admission.asset_id,
@@ -1128,9 +1184,7 @@ impl WorkloadRevision {
                 "Agent Workload release binding does not match its Workload revision".into(),
             );
         }
-        if let Some(contract) = binding.runtime_contract() {
-            contract.validate_for(&self.resolved_template()?.artifact)?;
-        }
+        binding.runtime_manifest_for(self.resolved_template()?)?;
         Ok(())
     }
 
@@ -1146,6 +1200,7 @@ impl WorkloadRevision {
         {
             return Err("Agent Workload release binding was restored more than once".into());
         }
+        binding.runtime_manifest_for(self.resolved_template()?)?;
         self.agent_binding = Some(binding);
         Ok(())
     }

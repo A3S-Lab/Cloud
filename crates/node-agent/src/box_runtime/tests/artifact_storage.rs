@@ -349,6 +349,7 @@ fn task_spec(
         },
         isolation: IsolationLevel::Sandbox,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Never,
         outputs: output
             .then(|| RuntimeOutputSpec {

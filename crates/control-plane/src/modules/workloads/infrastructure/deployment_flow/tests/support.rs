@@ -1033,6 +1033,7 @@ pub(super) fn healthy_observation(
             message: (health_state == RuntimeHealthState::Unhealthy)
                 .then(|| "HTTP probe did not stabilize".into()),
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
@@ -1077,6 +1078,7 @@ pub(super) fn stopped_observation(
         started_at_ms: Some(now_ms.saturating_sub(1)),
         finished_at_ms: Some(now_ms),
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence,

@@ -92,6 +92,7 @@ fn projects_digest_bound_service_without_provider_fields() {
     assert_eq!(spec.class, RuntimeUnitClass::Service);
     assert_eq!(spec.isolation, IsolationLevel::Sandbox);
     assert!(spec.health.is_some());
+    assert!(spec.service_lifecycle.is_none());
     assert_eq!(spec.secrets.len(), 2);
     assert_eq!(
         CloudSecretReference::parse(&spec.secrets[0].reference).expect("Secret reference"),
@@ -205,6 +206,21 @@ fn projects_digest_bound_service_without_provider_fields() {
         )
         .expect("restore Skill binding");
     let bound_spec = project_runtime_spec(&revision).expect("Skill-bound Runtime spec");
+    assert_eq!(bound_spec.process.command, ["/usr/bin/a3s"]);
+    assert_eq!(bound_spec.network.ports[0].name, "agent");
+    match &bound_spec.health.as_ref().expect("Agent readiness").probe {
+        HealthProbe::Http { path, .. } => assert_eq!(path, "/health/ready"),
+        probe => panic!("unexpected Agent readiness probe: {probe:?}"),
+    }
+    let lifecycle = bound_spec
+        .service_lifecycle
+        .as_ref()
+        .expect("Agent Service lifecycle");
+    assert_eq!(lifecycle.shutdown_grace_seconds, 30);
+    match &lifecycle.liveness.probe {
+        HealthProbe::Http { path, .. } => assert_eq!(path, "/health/live"),
+        probe => panic!("unexpected Agent liveness probe: {probe:?}"),
+    }
     assert_eq!(bound_spec.mounts.len(), 3);
     let mount = bound_spec
         .mounts

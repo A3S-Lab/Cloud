@@ -238,6 +238,7 @@ async fn record_runtime_observation(
             checked_at_ms: timing.observed_at_ms,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

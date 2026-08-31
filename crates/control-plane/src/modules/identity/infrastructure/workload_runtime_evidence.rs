@@ -434,6 +434,7 @@ mod tests {
             },
             isolation: IsolationLevel::Confidential,
             health: None,
+            service_lifecycle: None,
             restart: RestartPolicy::Always,
             outputs: vec![],
             semantics_profile_digest: Some(policy_spec.semantics_profile_digest.to_string()),
@@ -481,6 +482,7 @@ mod tests {
             started_at_ms: Some(observed_at_ms),
             finished_at_ms: None,
             health: None,
+            liveness: None,
             outputs: vec![],
             usage: None,
             evidence: Some(RuntimeEvidence {

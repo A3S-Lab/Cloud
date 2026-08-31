@@ -1,6 +1,6 @@
 use super::entities::{
     AgentReleaseAdmission, AgentReleaseRuntimeContract, AgentWorkloadRevisionBinding, OciArtifact,
-    SecretBinding, SecretBindingTarget, ServiceResources,
+    SecretBinding, SecretBindingTarget, ServiceResources, ServiceTemplate,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, OrganizationId, SecretId, Sha256Digest,
@@ -198,6 +198,58 @@ fn agent_template_requires_bounded_ephemeral_storage_and_exact_declared_secrets(
             resources(Some(64 * 1024 * 1024)),
         )
         .is_err());
+}
+
+#[test]
+fn release_manifest_runtime_intent_cannot_be_overridden() {
+    let admission = admission();
+    let template = admission
+        .resolve_template(
+            vec![environment_secret(), file_secret()],
+            resources(Some(64 * 1024 * 1024)),
+        )
+        .expect("exact Agent template");
+    let manifest = admission
+        .runtime_contract()
+        .manifest_for_template(&template)
+        .expect("manifest-owned Runtime intent");
+    assert_eq!(manifest.health().readiness_path(), "/health/ready");
+    assert_eq!(manifest.health().liveness_path(), "/health/live");
+    assert_eq!(manifest.health().shutdown_grace_seconds(), 30);
+
+    let mut overrides = Vec::<ServiceTemplate>::new();
+    let mut command = template.clone();
+    command.process.command = vec!["/bin/sh".into()];
+    overrides.push(command);
+    let mut arguments = template.clone();
+    arguments.process.args = vec!["serve".into()];
+    overrides.push(arguments);
+    let mut working_directory = template.clone();
+    working_directory.process.working_directory = Some("/tmp".into());
+    overrides.push(working_directory);
+    let mut environment = template.clone();
+    environment
+        .process
+        .environment
+        .insert("UNDECLARED".into(), "value".into());
+    overrides.push(environment);
+    let mut port = template.clone();
+    port.ports[0].container_port = 9_090;
+    overrides.push(port);
+    let mut readiness = template.clone();
+    readiness.health.as_mut().expect("readiness").path = "/caller-ready".into();
+    overrides.push(readiness);
+    let mut timing = template.clone();
+    timing.health.as_mut().expect("readiness").interval_ms = 60_000;
+    overrides.push(timing);
+
+    for overridden in overrides {
+        assert!(admission
+            .runtime_contract()
+            .manifest_for_template(&overridden)
+            .expect_err("caller Runtime override must fail closed")
+            .contains("runtime intent"));
+    }
 }
 
 #[test]

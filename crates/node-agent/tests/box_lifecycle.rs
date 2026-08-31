@@ -461,6 +461,7 @@ fn runtime_spec(
         },
         isolation: IsolationLevel::Sandbox,
         health: None,
+        service_lifecycle: None,
         restart: if class == RuntimeUnitClass::Task {
             RestartPolicy::Never
         } else {

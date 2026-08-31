@@ -41,9 +41,9 @@ use a3s_cloud_contracts::{
     REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
 use a3s_runtime::contract::{
-    IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities, RuntimeEvidence,
-    RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState, RuntimeObservation,
-    RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
+    HealthCheckKind, IsolationLevel, NetworkMode, ResourceControl, RuntimeCapabilities,
+    RuntimeEvidence, RuntimeFeature, RuntimeHealthObservation, RuntimeHealthState,
+    RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitClass, RuntimeUnitState,
 };
 use chrono::{DateTime, Duration, Utc};
 use std::collections::BTreeMap;
@@ -117,6 +117,8 @@ fn agent_flow_uses_the_provider_contract_without_owning_a_run_lifecycle() {
     assert!(source.contains("a3s-code-cancel-v1"));
     assert!(source.contains("a3s-code-recover-v1"));
     assert!(source.contains("list_active_runtime_targets"));
+    assert!(source.contains(".require_service_lifecycle()"));
+    assert!(source.contains("\"serviceLifecycle\": &spec.service_lifecycle"));
     for forbidden in [
         "AgentSession",
         "AgentProtocolHost",
@@ -728,6 +730,11 @@ async fn record_running_observation(
             checked_at_ms: observed_at_ms,
             message: None,
         }),
+        liveness: Some(RuntimeHealthObservation {
+            state: RuntimeHealthState::Healthy,
+            checked_at_ms: observed_at_ms,
+            message: None,
+        }),
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
@@ -780,13 +787,14 @@ fn runtime_capabilities() -> RuntimeCapabilities {
         isolation_levels: vec![IsolationLevel::Sandbox],
         network_modes: vec![NetworkMode::None, NetworkMode::Service],
         mount_kinds: Vec::new(),
-        health_check_kinds: Vec::new(),
+        health_check_kinds: vec![HealthCheckKind::Http],
         resource_controls: vec![ResourceControl::Cpu, ResourceControl::Memory],
         features: vec![
             RuntimeFeature::DurableIdentity,
             RuntimeFeature::Stop,
             RuntimeFeature::Remove,
             RuntimeFeature::ServiceTcp,
+            RuntimeFeature::ServiceLifecycle,
         ],
     }
 }

@@ -288,6 +288,7 @@ fn runtime_fixture(
         started_at_ms: Some(observed_at_ms.saturating_sub(1)),
         finished_at_ms: None,
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

@@ -386,6 +386,7 @@ fn artifact_task_spec(input: ArtifactRef) -> RuntimeUnitSpec {
         },
         isolation: IsolationLevel::Container,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Never,
         outputs: vec![RuntimeOutputSpec {
             name: "oci-layout".into(),

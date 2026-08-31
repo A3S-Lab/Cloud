@@ -50,6 +50,7 @@ pub(super) async fn ready(
         .ok_or_else(|| "Agent Runtime has no observation yet".to_owned())?;
     RuntimeConsumerRequirements::new(RuntimeUnitClass::Service)
         .require_health()
+        .require_service_lifecycle()
         .require_service_endpoints()
         .accept_observation(&spec, &observation.observation)
         .map_err(|error| error.to_string())?;
@@ -112,6 +113,8 @@ fn harness_invocation_profile(
         "mounts": &spec.mounts,
         "network": &spec.network,
         "resources": &spec.resources,
+        "health": &spec.health,
+        "serviceLifecycle": &spec.service_lifecycle,
         "restart": &spec.restart,
     });
     let environment_policy_digest = sha256_digest(&canonical_json_bounded(

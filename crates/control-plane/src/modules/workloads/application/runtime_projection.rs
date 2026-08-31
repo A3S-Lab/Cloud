@@ -13,8 +13,8 @@ use a3s_cloud_contracts::{
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
     RuntimeHealthCheck, RuntimeMount, RuntimeMountSource, RuntimeNetworkSpec, RuntimePort,
-    RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
-    TransportProtocol,
+    RuntimeProcessSpec, RuntimeServiceLifecycle, RuntimeUnitClass, RuntimeUnitSpec,
+    SecretReference, SecretTarget, TransportProtocol,
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
@@ -167,6 +167,31 @@ fn project_runtime_spec_from_template(
     template: &ServiceTemplate,
     semantics_profile_digest: Option<&str>,
 ) -> Result<RuntimeUnitSpec, String> {
+    let health = template.health.as_ref().map(project_readiness);
+    let service_lifecycle = revision
+        .agent_binding()
+        .map(|binding| -> Result<RuntimeServiceLifecycle, String> {
+            let manifest = binding.runtime_manifest_for(template)?;
+            let readiness = template.health.as_ref().ok_or_else(|| {
+                "Agent Service template omitted its manifest-owned readiness policy".to_owned()
+            })?;
+            Ok(RuntimeServiceLifecycle {
+                liveness: RuntimeHealthCheck {
+                    probe: HealthProbe::Http {
+                        port: readiness.port_name.clone(),
+                        path: manifest.health().liveness_path().into(),
+                        expected_statuses: vec![200],
+                    },
+                    interval_ms: readiness.interval_ms,
+                    timeout_ms: readiness.timeout_ms,
+                    start_period_ms: readiness.stabilization_window_ms,
+                    success_threshold: u32::from(readiness.healthy_threshold),
+                    failure_threshold: u32::from(readiness.unhealthy_threshold),
+                },
+                shutdown_grace_seconds: manifest.health().shutdown_grace_seconds(),
+            })
+        })
+        .transpose()?;
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
         unit_id: revision.runtime_unit_id(),
@@ -209,18 +234,8 @@ fn project_runtime_spec_from_template(
             execution_timeout_ms: None,
         },
         isolation: IsolationLevel::Sandbox,
-        health: template.health.as_ref().map(|health| RuntimeHealthCheck {
-            probe: HealthProbe::Http {
-                port: health.port_name.clone(),
-                path: health.path.clone(),
-                expected_statuses: vec![200],
-            },
-            interval_ms: health.interval_ms,
-            timeout_ms: health.timeout_ms,
-            start_period_ms: health.stabilization_window_ms,
-            success_threshold: u32::from(health.healthy_threshold),
-            failure_threshold: u32::from(health.unhealthy_threshold),
-        }),
+        health,
+        service_lifecycle,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: semantics_profile_digest.map(str::to_owned),
@@ -228,6 +243,23 @@ fn project_runtime_spec_from_template(
     };
     spec.validate()?;
     Ok(spec)
+}
+
+fn project_readiness(
+    health: &crate::modules::workloads::domain::entities::HttpHealthCheck,
+) -> RuntimeHealthCheck {
+    RuntimeHealthCheck {
+        probe: HealthProbe::Http {
+            port: health.port_name.clone(),
+            path: health.path.clone(),
+            expected_statuses: vec![200],
+        },
+        interval_ms: health.interval_ms,
+        timeout_ms: health.timeout_ms,
+        start_period_ms: health.stabilization_window_ms,
+        success_threshold: u32::from(health.healthy_threshold),
+        failure_threshold: u32::from(health.unhealthy_threshold),
+    }
 }
 
 fn project_runtime_mounts(

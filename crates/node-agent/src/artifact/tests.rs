@@ -597,6 +597,7 @@ fn task_spec(input: Option<ArtifactRef>, output: bool) -> RuntimeUnitSpec {
         },
         isolation: IsolationLevel::Container,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Never,
         outputs: output
             .then(|| RuntimeOutputSpec {
@@ -655,6 +656,7 @@ fn succeeded_observation(
         started_at_ms: Some(1),
         finished_at_ms: Some(2),
         health: None,
+        liveness: None,
         outputs: vec![output],
         usage: None,
         evidence: None,

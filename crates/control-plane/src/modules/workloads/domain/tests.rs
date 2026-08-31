@@ -1226,13 +1226,11 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
         ResourceName::parse("research-runtime").expect("workload name"),
         created_at + Duration::seconds(1),
     );
-    let mut service = template('e');
-    service.artifact.uri = build
-        .published_artifact
-        .as_ref()
-        .expect("published artifact")
-        .uri
-        .clone();
+    let mut agent_resources = template('e').resources;
+    agent_resources.ephemeral_storage_bytes = Some(64 * 1024 * 1024);
+    let service = admission
+        .resolve_template(Vec::new(), agent_resources)
+        .expect("manifest-owned Agent Service template");
     let mut revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,
@@ -1362,13 +1360,11 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
         ResourceName::parse("research-runtime").expect("Workload name"),
         created_at + Duration::seconds(1),
     );
-    let mut service = template('e');
-    service.artifact.uri = build
-        .published_artifact
-        .as_ref()
-        .expect("Agent publication")
-        .uri
-        .clone();
+    let mut agent_resources = template('e').resources;
+    agent_resources.ephemeral_storage_bytes = Some(64 * 1024 * 1024);
+    let service = admission
+        .resolve_template(Vec::new(), agent_resources)
+        .expect("manifest-owned Agent Service template");
     let mut revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,

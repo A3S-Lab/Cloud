@@ -91,6 +91,7 @@ pub fn project_execution_task(execution: &Execution) -> Result<RuntimeUnitSpec, 
         },
         isolation: IsolationLevel::Sandbox,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Never,
         outputs: Vec::new(),
         semantics_profile_digest: Some(execution.task_policy.as_ref().map_or_else(

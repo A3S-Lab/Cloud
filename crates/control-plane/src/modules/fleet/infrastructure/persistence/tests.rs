@@ -733,6 +733,7 @@ fn runtime_apply_draft(
                     },
                     isolation: IsolationLevel::Container,
                     health: None,
+                    service_lifecycle: None,
                     restart: RestartPolicy::Always,
                     outputs: Vec::new(),
                     semantics_profile_digest: None,

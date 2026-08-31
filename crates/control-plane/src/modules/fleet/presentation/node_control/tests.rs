@@ -1000,6 +1000,7 @@ fn runtime_observation(unit_id: &str, generation: u64, observed_at_ms: u64) -> R
         started_at_ms: None,
         finished_at_ms: None,
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: None,
