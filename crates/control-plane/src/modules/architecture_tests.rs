@@ -802,11 +802,19 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml"),
     )
     .expect("read CI workflow");
+    let user_file_gate = workflow_step(
+        &ci,
+        "Certify UserFile lifecycle and organization quota persistence",
+    );
     assert_eq!(
-        ci.matches("--features persistence-conformance").count(),
+        user_file_gate
+            .matches("--features persistence-conformance")
+            .count(),
         1,
         "the non-default Files conformance assembly must stay confined to its retained gate"
     );
+    assert!(user_file_gate
+        .contains("postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced"));
 
     let migration = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations/170_user_files.sql"),
@@ -4855,6 +4863,24 @@ fn security_composition_stays_behind_owner_and_root_presentation_boundaries() {
     );
     assert!(!conformance.contains("PostgresGatewayRoutePolicyTimelineRepository"));
 
+    let ci = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml"),
+    )
+    .expect("read CI workflow");
+    let security_gate = workflow_step(
+        &ci,
+        "Certify Gateway Route policy security timeline persistence",
+    );
+    for required in [
+        "--features persistence-conformance",
+        "postgres_gateway_route_policy_security_timeline_is_typed_correlated_and_tenant_scoped",
+    ] {
+        assert!(
+            security_gate.contains(required),
+            "Security persistence gate lost {required}"
+        );
+    }
+
     let adapters = std::fs::read_to_string(
         root.parent()
             .expect("src directory")
@@ -5566,6 +5592,14 @@ fn is_test_only(relative: &Path) -> bool {
 
 fn module_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src/modules")
+}
+
+fn workflow_step<'a>(workflow: &'a str, name: &str) -> &'a str {
+    let marker = format!("      - name: {name}");
+    let (_, tail) = workflow
+        .split_once(&marker)
+        .unwrap_or_else(|| panic!("workflow step is missing: {name}"));
+    tail.split("\n      - name: ").next().unwrap_or(tail)
 }
 
 fn context(path: &Path) -> Option<&str> {
