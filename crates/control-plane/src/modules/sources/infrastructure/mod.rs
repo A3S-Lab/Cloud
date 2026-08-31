@@ -5,6 +5,7 @@ mod github_app_client;
 mod github_installation_token_issuer;
 mod github_source_resolver;
 mod github_webhook_verifier;
+mod owner_scope_access;
 pub mod persistence;
 mod pull_request_preview_source_projector;
 mod revalidating_github_installation_tokens;

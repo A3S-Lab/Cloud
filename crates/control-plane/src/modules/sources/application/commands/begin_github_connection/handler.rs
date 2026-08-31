@@ -1,9 +1,10 @@
 use super::{BeginGithubConnection, BeginGithubConnectionResult};
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::shared_kernel::application::{
     generate_oauth_flow_secret, oauth_flow_digest, ApplicationError, ApplicationResult,
 };
-use crate::modules::sources::application::github_flow_security::map_authorization_error;
+use crate::modules::sources::application::{
+    github_flow_security::map_authorization_error, ISourceOrganizationAccess,
+};
 use crate::modules::sources::domain::{
     GithubConnectionFlow, IGithubAppAuthorizationService, IGithubConnectionRepository,
 };
@@ -13,15 +14,15 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct BeginGithubConnectionHandler {
-    organizations: Arc<dyn IOrganizationRepository>,
+    organization_access: Arc<dyn ISourceOrganizationAccess>,
     connections: Arc<dyn IGithubConnectionRepository>,
     authorization: Arc<dyn IGithubAppAuthorizationService>,
     state_ttl: Duration,
 }
 
 impl BeginGithubConnectionHandler {
-    pub fn new(
-        organizations: Arc<dyn IOrganizationRepository>,
+    pub(in crate::modules::sources) fn from_organization_access(
+        organization_access: Arc<dyn ISourceOrganizationAccess>,
         connections: Arc<dyn IGithubConnectionRepository>,
         authorization: Arc<dyn IGithubAppAuthorizationService>,
         state_ttl: Duration,
@@ -30,7 +31,7 @@ impl BeginGithubConnectionHandler {
             return Err("GitHub connection state TTL must be between 1 and 30 minutes".into());
         }
         Ok(Self {
-            organizations,
+            organization_access,
             connections,
             authorization,
             state_ttl,
@@ -47,19 +48,16 @@ impl CommandHandler<BeginGithubConnection> for BeginGithubConnectionHandler {
         'static,
         a3s_boot::Result<ApplicationResult<BeginGithubConnectionResult>>,
     > {
-        let organizations = Arc::clone(&self.organizations);
+        let organization_access = Arc::clone(&self.organization_access);
         let connections = Arc::clone(&self.connections);
         let authorization = Arc::clone(&self.authorization);
         let state_ttl = self.state_ttl;
         Box::pin(async move {
-            match organizations.find(command.organization_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "organization not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+            if let Err(error) = organization_access
+                .require_organization(command.organization_id)
+                .await
+            {
+                return Ok(Err(error));
             }
             let state = match generate_oauth_flow_secret("GitHub connection state") {
                 Ok(state) => state,

@@ -831,6 +831,193 @@ fn github_source_discovery_has_one_transient_interface_boundary_and_no_second_me
 }
 
 #[test]
+fn sources_owner_scope_uses_two_minimum_ports_and_one_adapter_module() {
+    let port_path = "sources/application/owner_scope_access.rs";
+    let port = std::fs::read_to_string(module_root().join(port_path))
+        .expect("read Sources owner-scope ports");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitISourceOrganizationAccess:Send+Sync",
+        "require_organization(&self,organization_id:OrganizationId)->ApplicationResult<()>;",
+        "pubtraitISourceEnvironmentAccess:Send+Sync",
+        "require_environment(&self,organization_id:OrganizationId,project_id:ProjectId,environment_id:EnvironmentId,)->ApplicationResult<()>;",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Sources owner-scope boundary lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "crate::modules::projects",
+        "IOrganizationRepository",
+        "IEnvironmentRepository",
+        "entities::Organization",
+        "entities::Environment",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Sources owner-scope port imported owner authority {forbidden}"
+        );
+    }
+
+    let mut application_violations = BTreeSet::new();
+    let mut repository_import_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("sources") {
+            return;
+        }
+        if layer(relative) == Some("application")
+            && [
+                "crate::modules::identity",
+                "crate::modules::projects",
+                "IOrganizationRepository",
+                "IEnvironmentRepository",
+            ]
+            .iter()
+            .any(|forbidden| source.contains(forbidden))
+        {
+            application_violations.insert(display(relative));
+        }
+        if source.contains("IOrganizationRepository") || source.contains("IEnvironmentRepository") {
+            repository_import_sites.insert(display(relative));
+        }
+    });
+    assert!(
+        application_violations.is_empty(),
+        "Sources Application bypassed its owner-scope ports:\n{}",
+        application_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let adapter_path = "sources/infrastructure/owner_scope_access.rs";
+    assert_eq!(
+        repository_import_sites,
+        lines(adapter_path),
+        "Sources owner repositories must be confined to one Infrastructure adapter module"
+    );
+    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
+        .expect("read Sources owner-scope adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implISourceOrganizationAccessforIdentitySourceOrganizationAccessAdapter",
+        "implISourceEnvironmentAccessforProjectsSourceEnvironmentAccessAdapter",
+        "organizations:Arc<dynIOrganizationRepository>",
+        "environments:Arc<dynIEnvironmentRepository>",
+        "Self::from_organization_access(",
+        "Self::from_environment_access(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Sources owner-scope adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".find(").count(),
+        2,
+        "Organization and Environment owner evidence must each have one query mechanism"
+    );
+    for forbidden in [
+        ".create(",
+        ".list(",
+        ".deactivate(",
+        ".accept(",
+        "CommandHandler",
+        "QueryHandler",
+        "IOutboxRepository",
+        "IEventPublisher",
+        "Postgres",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Sources owner-scope adapter introduced lifecycle or persistence authority {forbidden}"
+        );
+    }
+
+    for (relative, boundary, call, next) in [
+        (
+            "sources/application/commands/begin_github_connection/handler.rs",
+            "organization_access:Arc<dynISourceOrganizationAccess>",
+            ".require_organization(",
+            "letstate=matchgenerate_oauth_flow_secret",
+        ),
+        (
+            "sources/application/commands/create_github_repository_subscription/handler.rs",
+            "environment_access:Arc<dynISourceEnvironmentAccess>",
+            ".require_environment(",
+            "letconnection=matchconnections.find",
+        ),
+        (
+            "sources/application/commands/deactivate_github_repository_subscription/handler.rs",
+            "environment_access:Arc<dynISourceEnvironmentAccess>",
+            ".require_environment(",
+            "letmutsubscription=matchsubscriptions.find",
+        ),
+        (
+            "sources/application/commands/resolve_external_source_revision/handler.rs",
+            "environment_access:Arc<dynISourceEnvironmentAccess>",
+            ".require_environment(",
+            "letprovider=matchGitProvider::parse",
+        ),
+        (
+            "sources/application/queries/list_source_revisions/handler.rs",
+            "environment_access:Arc<dynISourceEnvironmentAccess>",
+            ".require_environment(",
+            "Ok(sources.list(",
+        ),
+        (
+            "sources/application/queries/list_github_repository_subscriptions/handler.rs",
+            "environment_access:Arc<dynISourceEnvironmentAccess>",
+            ".require_environment(",
+            "matchsubscriptions.list(",
+        ),
+    ] {
+        let handler = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let handler = production_source(&handler);
+        let compact = handler.split_whitespace().collect::<String>();
+        assert!(
+            compact.contains(boundary),
+            "{relative} stopped depending on Sources-owned boundary {boundary}"
+        );
+        assert_eq!(
+            compact.matches(call).count(),
+            1,
+            "{relative} must enter owner-scope validation exactly once"
+        );
+        let boundary_call = compact
+            .find(call)
+            .unwrap_or_else(|| panic!("{relative} lost owner-scope call"));
+        let first_domain_action = compact
+            .find(next)
+            .unwrap_or_else(|| panic!("{relative} lost expected domain action {next}"));
+        assert!(
+            boundary_call < first_domain_action,
+            "{relative} must validate owner scope before its first domain action"
+        );
+        for forbidden in [
+            "crate::modules::identity",
+            "crate::modules::projects",
+            "IOrganizationRepository",
+            "IEnvironmentRepository",
+            ".find(command.organization_id,command.project_id,command.environment_id)",
+            ".find(query.organization_id,query.project_id,query.environment_id)",
+        ] {
+            assert!(
+                !compact.contains(forbidden),
+                "{relative} bypassed the owner-scope boundary with {forbidden}"
+            );
+        }
+    }
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

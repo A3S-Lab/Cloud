@@ -1,11 +1,10 @@
 use super::{
     DockerfileBuildRecipeInput, ResolveExternalSourceRevision, ResolveExternalSourceRevisionResult,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, SourceRevisionId};
 use crate::modules::sources::application::{
-    ISourceRepositoryCredentialProvider, SourceRepositoryCredentialError,
+    ISourceEnvironmentAccess, ISourceRepositoryCredentialProvider, SourceRepositoryCredentialError,
     SourceRepositoryCredentialRequest,
 };
 use crate::modules::sources::domain::{
@@ -19,7 +18,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct ResolveExternalSourceRevisionHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environment_access: Arc<dyn ISourceEnvironmentAccess>,
     sources: Arc<dyn ISourceRevisionRepository>,
     credentials: Arc<dyn ISourceRepositoryCredentialProvider>,
     resolver: Arc<dyn ISourceResolver>,
@@ -27,15 +26,15 @@ pub struct ResolveExternalSourceRevisionHandler {
 }
 
 impl ResolveExternalSourceRevisionHandler {
-    pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+    pub(in crate::modules::sources) fn from_environment_access(
+        environment_access: Arc<dyn ISourceEnvironmentAccess>,
         sources: Arc<dyn ISourceRevisionRepository>,
         credentials: Arc<dyn ISourceRepositoryCredentialProvider>,
         resolver: Arc<dyn ISourceResolver>,
         policy: Arc<SourceRepositoryPolicy>,
     ) -> Self {
         Self {
-            environments,
+            environment_access,
             sources,
             credentials,
             resolver,
@@ -53,27 +52,21 @@ impl CommandHandler<ResolveExternalSourceRevision> for ResolveExternalSourceRevi
         'static,
         a3s_boot::Result<ApplicationResult<ResolveExternalSourceRevisionResult>>,
     > {
-        let environments = Arc::clone(&self.environments);
+        let environment_access = Arc::clone(&self.environment_access);
         let sources = Arc::clone(&self.sources);
         let credentials = Arc::clone(&self.credentials);
         let resolver = Arc::clone(&self.resolver);
         let policy = Arc::clone(&self.policy);
         Box::pin(async move {
-            match environments
-                .find(
+            if let Err(error) = environment_access
+                .require_environment(
                     command.organization_id,
                     command.project_id,
                     command.environment_id,
                 )
                 .await
             {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "environment not found in organization and project".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                return Ok(Err(error));
             }
             let provider = match GitProvider::parse(&command.repository_provider) {
                 Ok(value) => value,
