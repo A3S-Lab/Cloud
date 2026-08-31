@@ -118,14 +118,14 @@ for capability, semantics-profile, health, and endpoint admission. They retain
 their own product checks. No context may reproduce generic class/capability/
 observation readiness logic or invoke A3S Box outside Runtime.
 
-**Component status on 2026-08-31:** Cloud pins `a3s-runtime` `0.5.0` at
+**Component status on 2026-09-01:** Cloud pins `a3s-runtime` `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`17f307beb3dd7f7a57a8424b8c7a6561d30313bf`; Box resolves that exact Runtime
+`7604995e3cef057a8122ccc9b30e501e917e37f6`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to
 the exact provider resource. The exact
-[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33420859277) passes native
+[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33429756832) passes native
 and aarch64 OCI lifecycle and SDK certification, Linux and macOS build checks,
 Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
 placement-group Services, Agent readiness, and the Durable Cell provider gate
