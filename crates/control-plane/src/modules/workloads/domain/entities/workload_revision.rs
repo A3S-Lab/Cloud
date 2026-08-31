@@ -1,4 +1,4 @@
-use super::{SecretBinding, Workload};
+use super::{SecretBinding, SecretBindingTarget, Workload};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, AssetState,
     McpServiceProfile, McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
@@ -12,7 +12,19 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-use a3s_cloud_contracts::artifact_uri;
+use a3s_cloud_contracts::{
+    agent_harness_compatibility_v1, agent_release_builder_uri, agent_release_manifest_archive,
+    agent_release_source_uri, artifact_uri, AgentReleaseManifest, AgentReleasePersistentDataMode,
+    AgentReleaseSecretRequirement, AgentReleaseSecretTarget,
+};
+
+const AGENT_RUNTIME_WORKING_DIRECTORY: &str = "/workspace";
+const AGENT_RUNTIME_PORT_NAME: &str = "agent";
+const AGENT_HEALTH_INTERVAL_MS: u64 = 1_000;
+const AGENT_HEALTH_TIMEOUT_MS: u64 = 500;
+const AGENT_HEALTHY_THRESHOLD: u16 = 1;
+const AGENT_UNHEALTHY_THRESHOLD: u16 = 3;
+const AGENT_HEALTH_STABILIZATION_WINDOW_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -411,6 +423,142 @@ pub struct AgentWorkloadRevisionBinding {
     asset_id: AssetId,
     asset_release_id: AssetReleaseId,
     build_run_id: BuildRunId,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    runtime_contract: Option<AgentReleaseRuntimeContract>,
+}
+
+/// Exact Code-owned manifest bytes and mount artifact retained by one Agent
+/// Workload revision. Runtime semantics are re-derived from these bytes.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AgentReleaseRuntimeContract {
+    manifest_identity: Sha256Digest,
+    canonical_acl: String,
+    archive_uri: String,
+    archive_digest: Sha256Digest,
+    archive_size_bytes: u64,
+}
+
+impl AgentReleaseRuntimeContract {
+    pub(crate) fn new(
+        manifest_identity: impl Into<String>,
+        canonical_acl: impl Into<String>,
+        archive_uri: impl Into<String>,
+        archive_digest: impl Into<String>,
+        archive_size_bytes: u64,
+    ) -> Result<Self, String> {
+        let contract = Self {
+            manifest_identity: Sha256Digest::parse(manifest_identity.into())?,
+            canonical_acl: canonical_acl.into(),
+            archive_uri: archive_uri.into(),
+            archive_digest: Sha256Digest::parse(archive_digest.into())?,
+            archive_size_bytes,
+        };
+        contract.manifest()?;
+        contract.validate_archive()?;
+        Ok(contract)
+    }
+
+    pub(crate) fn manifest(&self) -> Result<AgentReleaseManifest, String> {
+        let manifest = AgentReleaseManifest::parse(&self.canonical_acl)
+            .map_err(|error| format!("Agent runtime release manifest is invalid: {error}"))?;
+        manifest
+            .verify_compatibility(&agent_harness_compatibility_v1())
+            .map_err(|error| format!("Agent runtime release manifest is incompatible: {error}"))?;
+        if manifest.canonical_acl() != self.canonical_acl
+            || manifest.identity() != self.manifest_identity.as_str()
+        {
+            return Err("Agent runtime release manifest changed its canonical identity".into());
+        }
+        Ok(manifest)
+    }
+
+    fn validate_archive(&self) -> Result<(), String> {
+        let archive = agent_release_manifest_archive(self.canonical_acl.as_bytes())?;
+        let expected_digest = Sha256Digest::from_bytes(&archive);
+        if self.archive_digest != expected_digest
+            || self.archive_uri != artifact_uri(expected_digest.as_str())?
+            || self.archive_size_bytes != archive.len() as u64
+        {
+            return Err("Agent runtime release manifest archive changed its exact bytes".into());
+        }
+        Ok(())
+    }
+
+    fn validate_provenance_for(&self, build_run_id: BuildRunId) -> Result<(), String> {
+        let manifest = self.manifest()?;
+        let builder_uri = agent_release_builder_uri(build_run_id.as_uuid())?;
+        let source = manifest
+            .provenance()
+            .iter()
+            .find(|reference| reference.kind() == "source");
+        let builder = manifest
+            .provenance()
+            .iter()
+            .find(|reference| reference.kind() == "builder");
+        if manifest.provenance().len() != 2
+            || source.is_none_or(
+                |reference| match agent_release_source_uri(reference.digest()) {
+                    Ok(uri) => uri != reference.uri(),
+                    Err(_) => true,
+                },
+            )
+            || builder.is_none_or(|reference| reference.uri() != builder_uri)
+        {
+            return Err("Agent runtime release manifest changed its provenance binding".into());
+        }
+        Ok(())
+    }
+
+    fn validate_for(&self, artifact: &OciArtifact) -> Result<(), String> {
+        artifact.validate()?;
+        let manifest = self.manifest()?;
+        self.validate_archive()?;
+        if manifest.artifact().digest() != artifact.digest
+            || manifest.artifact().media_type() != artifact.media_type
+        {
+            return Err("Agent runtime release manifest changed its OCI artifact".into());
+        }
+        Ok(())
+    }
+
+    /// Re-admit the final Code manifest and fail closed unless every duplicated
+    /// Service field still matches the manifest-owned runtime intent. Resources
+    /// and Secret identities remain caller-selected within their admitted
+    /// bounds; entrypoint, networking, readiness, and lifecycle do not.
+    pub(crate) fn manifest_for_template(
+        &self,
+        template: &ServiceTemplate,
+    ) -> Result<AgentReleaseManifest, String> {
+        self.validate_for(&template.artifact)?;
+        let manifest = self.manifest()?;
+        if manifest.health().transport() != "http"
+            || template.process != agent_release_process(&manifest)
+            || template.ports != [agent_release_port(&manifest)]
+            || template.health.as_ref() != Some(&agent_release_readiness(&manifest))
+        {
+            return Err(
+                "Agent Service template changed its release-manifest runtime intent".into(),
+            );
+        }
+        Ok(manifest)
+    }
+
+    pub const fn manifest_identity(&self) -> &Sha256Digest {
+        &self.manifest_identity
+    }
+
+    pub(crate) fn archive_uri(&self) -> &str {
+        &self.archive_uri
+    }
+
+    pub const fn archive_digest(&self) -> &Sha256Digest {
+        &self.archive_digest
+    }
+
+    pub const fn archive_size_bytes(&self) -> u64 {
+        self.archive_size_bytes
+    }
 }
 
 /// Workloads-owned admission facts for binding one published Agent release.
@@ -427,6 +575,7 @@ pub struct AgentReleaseAdmission {
     build_run_id: BuildRunId,
     published_at: DateTime<Utc>,
     artifact: OciArtifact,
+    runtime_contract: AgentReleaseRuntimeContract,
 }
 
 impl AgentReleaseAdmission {
@@ -437,6 +586,7 @@ impl AgentReleaseAdmission {
         build_run_id: BuildRunId,
         published_at: DateTime<Utc>,
         artifact: OciArtifact,
+        runtime_contract: AgentReleaseRuntimeContract,
     ) -> Result<Self, String> {
         let admission = Self {
             organization_id,
@@ -445,6 +595,7 @@ impl AgentReleaseAdmission {
             build_run_id,
             published_at: canonical_timestamp(published_at),
             artifact,
+            runtime_contract,
         };
         admission.validate()?;
         Ok(admission)
@@ -459,12 +610,123 @@ impl AgentReleaseAdmission {
         {
             return Err("Agent release admission identity is invalid".into());
         }
-        self.artifact.validate()
+        self.runtime_contract.validate_for(&self.artifact)?;
+        self.runtime_contract
+            .validate_provenance_for(self.build_run_id)
     }
 
     pub const fn artifact(&self) -> &OciArtifact {
         &self.artifact
     }
+
+    pub const fn runtime_contract(&self) -> &AgentReleaseRuntimeContract {
+        &self.runtime_contract
+    }
+
+    pub fn resolve_template(
+        &self,
+        secrets: Vec<SecretBinding>,
+        resources: ServiceResources,
+    ) -> Result<ServiceTemplate, String> {
+        self.validate()?;
+        let manifest = self.runtime_contract.manifest()?;
+        if matches!(
+            manifest.storage().persistent_data(),
+            AgentReleasePersistentDataMode::External
+        ) {
+            return Err(
+                "Agent release requests external persistent data without a versioned mount target"
+                    .into(),
+            );
+        }
+        let ephemeral_storage_bytes = resources.ephemeral_storage_bytes.ok_or_else(|| {
+            "Agent release requires a positive ephemeral storage limit".to_owned()
+        })?;
+        if ephemeral_storage_bytes == 0 {
+            return Err("Agent release requires a positive ephemeral storage limit".into());
+        }
+        validate_agent_release_secrets(manifest.required_secrets(), &secrets)?;
+        let template = ServiceTemplate {
+            artifact: self.artifact.clone(),
+            process: agent_release_process(&manifest),
+            secrets,
+            resources,
+            ports: vec![agent_release_port(&manifest)],
+            health: Some(agent_release_readiness(&manifest)),
+        };
+        self.runtime_contract.manifest_for_template(&template)?;
+        Ok(template)
+    }
+}
+
+fn agent_release_process(manifest: &AgentReleaseManifest) -> ServiceProcess {
+    ServiceProcess {
+        command: vec![manifest.entrypoint().command().into()],
+        args: manifest.entrypoint().args().to_vec(),
+        working_directory: Some(AGENT_RUNTIME_WORKING_DIRECTORY.into()),
+        environment: BTreeMap::new(),
+    }
+}
+
+fn agent_release_port(manifest: &AgentReleaseManifest) -> ServicePort {
+    ServicePort {
+        name: AGENT_RUNTIME_PORT_NAME.into(),
+        container_port: manifest.health().port(),
+    }
+}
+
+fn agent_release_readiness(manifest: &AgentReleaseManifest) -> HttpHealthCheck {
+    HttpHealthCheck {
+        port_name: AGENT_RUNTIME_PORT_NAME.into(),
+        path: manifest.health().readiness_path().into(),
+        interval_ms: AGENT_HEALTH_INTERVAL_MS,
+        timeout_ms: AGENT_HEALTH_TIMEOUT_MS,
+        healthy_threshold: AGENT_HEALTHY_THRESHOLD,
+        unhealthy_threshold: AGENT_UNHEALTHY_THRESHOLD,
+        stabilization_window_ms: AGENT_HEALTH_STABILIZATION_WINDOW_MS,
+    }
+}
+
+fn validate_agent_release_secrets(
+    required: &[AgentReleaseSecretRequirement],
+    bindings: &[SecretBinding],
+) -> Result<(), String> {
+    for binding in bindings {
+        binding.validate()?;
+    }
+    let declared = bindings
+        .iter()
+        .filter(|binding| !matches!(binding.target, SecretBindingTarget::RegistryCredential))
+        .collect::<Vec<_>>();
+    if declared.len() != required.len()
+        || bindings
+            .iter()
+            .filter(|binding| matches!(binding.target, SecretBindingTarget::RegistryCredential))
+            .count()
+            > 1
+    {
+        return Err("Agent Secret bindings do not match its release manifest".into());
+    }
+    for requirement in required {
+        let binding = declared
+            .iter()
+            .find(|binding| binding.name == requirement.name())
+            .ok_or_else(|| "Agent Secret bindings do not match its release manifest".to_owned())?;
+        let matches = match (requirement.target(), &binding.target) {
+            (
+                AgentReleaseSecretTarget::Environment,
+                SecretBindingTarget::Environment { variable },
+            ) => variable == requirement.destination(),
+            (AgentReleaseSecretTarget::File, SecretBindingTarget::File { path, mode }) => {
+                path == requirement.destination() && *mode == 0o400
+            }
+            _ => false,
+        };
+        if !matches {
+            return Err("Agent Secret bindings do not match its release manifest".into());
+        }
+    }
+    Ok(())
 }
 
 impl AgentWorkloadRevisionBinding {
@@ -484,17 +746,19 @@ impl AgentWorkloadRevisionBinding {
         self.build_run_id
     }
 
-    pub(crate) fn restore(
+    pub(crate) fn restore_with_contract(
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
         build_run_id: BuildRunId,
+        runtime_contract: Option<AgentReleaseRuntimeContract>,
     ) -> Result<Self, String> {
         let binding = Self {
             organization_id,
             asset_id,
             asset_release_id,
             build_run_id,
+            runtime_contract,
         };
         binding.validate_identity()?;
         Ok(binding)
@@ -508,7 +772,29 @@ impl AgentWorkloadRevisionBinding {
         {
             return Err("Agent Workload release binding identity is invalid".into());
         }
+        if let Some(contract) = &self.runtime_contract {
+            contract.manifest()?;
+            contract.validate_archive()?;
+            contract.validate_provenance_for(self.build_run_id)?;
+        }
         Ok(())
+    }
+
+    pub const fn runtime_contract(&self) -> Option<&AgentReleaseRuntimeContract> {
+        self.runtime_contract.as_ref()
+    }
+
+    pub(crate) fn runtime_manifest_for(
+        &self,
+        template: &ServiceTemplate,
+    ) -> Result<AgentReleaseManifest, String> {
+        self.validate_identity()?;
+        self.runtime_contract
+            .as_ref()
+            .ok_or_else(|| {
+                "Agent Workload binding predates the exact release manifest contract".to_owned()
+            })?
+            .manifest_for_template(template)
     }
 }
 
@@ -847,11 +1133,13 @@ impl WorkloadRevision {
         if template.artifact != admission.artifact {
             return Err("Agent Workload artifact does not match its exact AssetRelease".into());
         }
-        let binding = AgentWorkloadRevisionBinding::restore(
+        admission.runtime_contract.manifest_for_template(template)?;
+        let binding = AgentWorkloadRevisionBinding::restore_with_contract(
             workload.organization_id,
             admission.asset_id,
             admission.asset_release_id,
             admission.build_run_id,
+            Some(admission.runtime_contract.clone()),
         )?;
         match &self.agent_binding {
             Some(existing) if existing == &binding => Ok(false),
@@ -886,6 +1174,7 @@ impl WorkloadRevision {
                 "Agent Workload release binding does not match its Workload revision".into(),
             );
         }
+        binding.runtime_manifest_for(self.resolved_template()?)?;
         Ok(())
     }
 
@@ -901,6 +1190,7 @@ impl WorkloadRevision {
         {
             return Err("Agent Workload release binding was restored more than once".into());
         }
+        binding.runtime_manifest_for(self.resolved_template()?)?;
         self.agent_binding = Some(binding);
         Ok(())
     }

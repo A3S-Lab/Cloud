@@ -15,7 +15,7 @@ use crate::modules::agents::{
     InMemoryAgentRepository,
 };
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
 use crate::modules::artifacts::{HostedArtifactQueryService, InMemoryBuildRunRepository};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseVersion, AssetReleaseWrite, AssetWrite,
@@ -509,7 +509,8 @@ fn published_release(
         drafted_at,
     )
     .expect("draft release");
-    let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, drafted_at);
+    let build =
+        succeeded_hosted_agent_build(asset.organization_id, asset.id, release.id, drafted_at);
     let outcome = project_hosted_build_outcome(&build)
         .expect("project hosted outcome")
         .expect("successful hosted outcome");

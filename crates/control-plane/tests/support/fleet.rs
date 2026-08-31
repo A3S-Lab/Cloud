@@ -1079,6 +1079,7 @@ async fn exercise_observation_control(
                 started_at_ms: None,
                 finished_at_ms: None,
                 health: None,
+                liveness: None,
                 outputs: Vec::new(),
                 usage: None,
                 evidence: None,

@@ -1,6 +1,6 @@
 use super::*;
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseVersion, AssetReleaseWrite, AssetWrite,
     CreateAssetReleaseWrite, CreateAssetWrite, TransitionAssetWrite,
@@ -38,7 +38,7 @@ fn fixture() -> (Asset, AssetRelease, HostedBuildOutcome) {
         now(),
     )
     .expect("release");
-    let build = succeeded_hosted_build(
+    let build = succeeded_hosted_agent_build(
         asset.organization_id,
         asset.id,
         release.id,
@@ -250,7 +250,7 @@ async fn outbox_adapter_rejects_envelope_drift_before_mutating_assets() {
     let mut message = OutboxMessage {
         event_id: Uuid::now_v7(),
         event_key: crate::modules::artifacts::published::HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
-        schema_version: 1,
+        schema_version: 2,
         scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
             crate::modules::shared_kernel::domain::InstallationId::new(),
             crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
@@ -276,4 +276,71 @@ async fn outbox_adapter_rejects_envelope_drift_before_mutating_assets() {
     let state = repository.state.read().await;
     assert_eq!(state.transitions, 0);
     assert_eq!(state.release.state, AssetReleaseState::Draft);
+}
+
+#[tokio::test]
+async fn outbox_adapter_accepts_current_v2_and_pending_legacy_v1_facts() {
+    let (asset, release, outcome) = fixture();
+    let current_repository = Arc::new(TestAssetRepository::new(asset, release));
+    let current = OutboxMessage {
+        event_id: Uuid::now_v7(),
+        event_key: crate::modules::artifacts::published::HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
+        schema_version: 2,
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            outcome.organization_id(),
+        )
+        .expect("scope"),
+        aggregate_id: outcome.build_run_id().as_uuid(),
+        aggregate_version: outcome.build_run_version(),
+        occurred_at: outcome.finished_at(),
+        correlation_id: outcome.operation_id().as_uuid(),
+        causation_id: None,
+        payload: serde_json::to_value(&outcome).expect("current outcome JSON"),
+        delivery_attempts: 1,
+    };
+    HostedBuildOutcomeProjector::new(current_repository.clone())
+        .project(&current)
+        .await
+        .expect("project current v2 fact");
+    assert!(current_repository
+        .state
+        .read()
+        .await
+        .release
+        .agent_release_manifest
+        .is_some());
+
+    let (asset, release, outcome) = fixture();
+    let mut legacy_payload = serde_json::to_value(&outcome).expect("legacy outcome JSON");
+    legacy_payload["schema"] =
+        serde_json::json!(crate::modules::artifacts::published::LEGACY_HOSTED_BUILD_OUTCOME_SCHEMA);
+    let object = legacy_payload.as_object_mut().expect("outcome object");
+    object.remove("sourceContentDigest");
+    object.remove("agentReleaseManifest");
+    let legacy_repository = Arc::new(TestAssetRepository::new(asset, release));
+    let legacy = OutboxMessage {
+        event_id: Uuid::now_v7(),
+        event_key: crate::modules::artifacts::published::HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
+        schema_version: 1,
+        scope: crate::modules::shared_kernel::domain::ScopeContext::organization(
+            crate::modules::shared_kernel::domain::InstallationId::new(),
+            outcome.organization_id(),
+        )
+        .expect("scope"),
+        aggregate_id: outcome.build_run_id().as_uuid(),
+        aggregate_version: outcome.build_run_version(),
+        occurred_at: outcome.finished_at(),
+        correlation_id: outcome.operation_id().as_uuid(),
+        causation_id: None,
+        payload: legacy_payload,
+        delivery_attempts: 1,
+    };
+    HostedBuildOutcomeProjector::new(legacy_repository.clone())
+        .project(&legacy)
+        .await
+        .expect("project pending legacy v1 fact");
+    let state = legacy_repository.state.read().await;
+    assert_eq!(state.release.state, AssetReleaseState::Published);
+    assert!(state.release.agent_release_manifest.is_none());
 }

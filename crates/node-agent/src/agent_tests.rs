@@ -323,6 +323,7 @@ fn observation() -> RuntimeObservation {
             checked_at_ms: 1,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: None,

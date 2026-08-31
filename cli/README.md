@@ -67,7 +67,7 @@ exact command with the same key to receive the durable replay result.
 API starts a short-lived no-store browser installation flow instead of a
 replayable resource mutation.
 
-REST contract `1.81.0` exposes installation-scoped privileged management
+REST contract `1.82.0` exposes installation-scoped privileged management
 without requiring Organization, Project, or Environment context.
 `platform-role-policy current|get|accept` reads immutable revisions or accepts
 the exact next revision from `--file=<policy.acl>` with expected-current

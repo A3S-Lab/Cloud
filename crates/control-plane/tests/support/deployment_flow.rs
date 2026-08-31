@@ -865,6 +865,7 @@ pub(super) fn healthy_observation(
             checked_at_ms: now_ms,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

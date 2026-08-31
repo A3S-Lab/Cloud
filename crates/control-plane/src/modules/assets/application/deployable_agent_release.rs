@@ -4,6 +4,7 @@ use crate::modules::assets::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AssetId, AssetReleaseId, BuildRunId, OrganizationId};
+use a3s_cloud_contracts::NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE;
 use chrono::{DateTime, Utc};
 
 /// Assets-owned, immutable read model admitted for an Agent consumer.
@@ -21,6 +22,11 @@ pub struct DeployableAgentRelease {
     artifact_digest: String,
     artifact_media_type: String,
     artifact_size_bytes: u64,
+    manifest_identity: String,
+    manifest_acl: String,
+    manifest_artifact_uri: String,
+    manifest_artifact_digest: String,
+    manifest_artifact_size_bytes: u64,
 }
 
 impl DeployableAgentRelease {
@@ -58,6 +64,30 @@ impl DeployableAgentRelease {
 
     pub const fn artifact_size_bytes(&self) -> u64 {
         self.artifact_size_bytes
+    }
+
+    pub fn manifest_identity(&self) -> &str {
+        &self.manifest_identity
+    }
+
+    pub fn manifest_acl(&self) -> &str {
+        &self.manifest_acl
+    }
+
+    pub fn manifest_artifact_uri(&self) -> &str {
+        &self.manifest_artifact_uri
+    }
+
+    pub fn manifest_artifact_digest(&self) -> &str {
+        &self.manifest_artifact_digest
+    }
+
+    pub const fn manifest_artifact_media_type(&self) -> &'static str {
+        NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
+    }
+
+    pub const fn manifest_artifact_size_bytes(&self) -> u64 {
+        self.manifest_artifact_size_bytes
     }
 }
 
@@ -97,6 +127,13 @@ pub async fn load_deployable_agent_release(
     let artifact = release.artifact.as_ref().ok_or_else(|| {
         ApplicationError::Internal("published Agent release omitted its OCI artifact".into())
     })?;
+    let manifest = release.agent_release_manifest.as_ref().ok_or_else(|| {
+        ApplicationError::Internal("published Agent release omitted its final manifest".into())
+    })?;
+    manifest
+        .validate_for(artifact, provenance)
+        .map_err(ApplicationError::Internal)?;
+    let manifest_artifact_uri = manifest.archive_uri().map_err(ApplicationError::Internal)?;
     if artifact.kind() != AssetReleaseArtifactKind::OciService {
         return Err(ApplicationError::Internal(
             "published Agent release did not contain an OCI service artifact".into(),
@@ -133,5 +170,10 @@ pub async fn load_deployable_agent_release(
         artifact_digest: artifact.digest().to_string(),
         artifact_media_type: artifact.media_type().into(),
         artifact_size_bytes: artifact.size_bytes(),
+        manifest_identity: manifest.identity().to_string(),
+        manifest_acl: manifest.canonical_acl().into(),
+        manifest_artifact_uri,
+        manifest_artifact_digest: manifest.archive_digest().to_string(),
+        manifest_artifact_size_bytes: manifest.archive_size_bytes(),
     })
 }

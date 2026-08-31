@@ -13,6 +13,7 @@ pub use external_source_build_outcome::{
 };
 pub(in crate::modules::artifacts) use hosted_build_outcome::ValidatedHostedBuildOutcomeProjection;
 pub use hosted_build_outcome::{
-    HostedBuildArtifact, HostedBuildOutcome, HOSTED_BUILD_OUTCOME_EVENT_KEY,
-    HOSTED_BUILD_OUTCOME_SCHEMA,
+    HostedAgentReleaseManifest, HostedBuildArtifact, HostedBuildOutcome,
+    HOSTED_BUILD_OUTCOME_EVENT_KEY, HOSTED_BUILD_OUTCOME_SCHEMA,
+    LEGACY_HOSTED_BUILD_OUTCOME_SCHEMA,
 };

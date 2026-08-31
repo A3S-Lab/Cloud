@@ -1,5 +1,6 @@
 use a3s_orm::orm_table;
 use chrono::{DateTime, Utc};
+use serde_json::Value;
 use uuid::Uuid;
 
 orm_table! {
@@ -56,6 +57,7 @@ orm_table! {
         agent_asset_id: Option<Uuid> => "agent_asset_id",
         agent_asset_release_id: Option<Uuid> => "agent_asset_release_id",
         agent_build_run_id: Option<Uuid> => "agent_build_run_id",
+        agent_release_contract: Option<Value> => "agent_release_contract",
         mcp_organization_id: Option<Uuid> => "mcp_organization_id",
         mcp_asset_id: Option<Uuid> => "mcp_asset_id",
         mcp_asset_release_id: Option<Uuid> => "mcp_asset_release_id",

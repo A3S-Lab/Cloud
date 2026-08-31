@@ -1,6 +1,8 @@
 use super::*;
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::{
+    succeeded_hosted_agent_build, succeeded_hosted_build,
+};
 use crate::modules::artifacts::domain::{BuildRun, OCI_IMAGE_INDEX_MEDIA_TYPE};
 use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::shared_kernel::domain::{
@@ -98,7 +100,7 @@ fn release_publication_binds_immutable_source_and_artifact_before_yanking() {
         release.commit_sha.clone(),
         release.manifest_digest.clone(),
     );
-    let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, now());
+    let build = succeeded_hosted_agent_build(asset.organization_id, asset.id, release.id, now());
     let artifact = AssetReleaseArtifact::oci_service(
         Sha256Digest::parse(
             &build
@@ -322,7 +324,7 @@ fn repository_writes_reject_forged_event_metadata_and_payloads() {
 
     let draft = draft(&asset);
     let mut published = draft.clone();
-    let build = succeeded_hosted_build(asset.organization_id, asset.id, draft.id, now());
+    let build = succeeded_hosted_agent_build(asset.organization_id, asset.id, draft.id, now());
     published
         .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("publish");

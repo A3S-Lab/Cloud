@@ -253,6 +253,10 @@ async fn insert_revision(
         .transpose()?;
     let external_build = revision.external_build.as_ref();
     let agent_binding = revision.agent_binding();
+    let agent_release_contract = agent_binding
+        .and_then(|binding| binding.runtime_contract())
+        .map(serde_json::to_value)
+        .transpose()?;
     let mcp_binding = revision.mcp_binding();
     let result = execute(
         transaction,
@@ -341,6 +345,10 @@ async fn insert_revision(
             .value(
                 WorkloadRevisions::agent_build_run_id(),
                 agent_binding.map(|binding| binding.build_run_id().as_uuid()),
+            )
+            .value(
+                WorkloadRevisions::agent_release_contract(),
+                agent_release_contract,
             )
             .value(
                 WorkloadRevisions::mcp_organization_id(),

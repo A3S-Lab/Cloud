@@ -52,6 +52,7 @@ pub(super) fn runtime_observation(
         started_at_ms: None,
         finished_at_ms: None,
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: None,

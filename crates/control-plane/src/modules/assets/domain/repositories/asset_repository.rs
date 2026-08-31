@@ -294,11 +294,14 @@ fn validate_release_event(
     release: &AssetRelease,
     event_key: &str,
 ) -> Result<(), String> {
-    let schema_version = if event_key == "asset.release.published" && release.provenance.is_some() {
-        2
-    } else {
-        1
-    };
+    let schema_version =
+        if event_key == "asset.release.published" && release.agent_release_manifest.is_some() {
+            3
+        } else if event_key == "asset.release.published" && release.provenance.is_some() {
+            2
+        } else {
+            1
+        };
     if !event_metadata_matches(
         event,
         event_key,
@@ -347,6 +350,16 @@ fn validate_release_event(
                         .provenance
                         .as_ref()
                         .map(|provenance| provenance.provenance_digest().as_str())
+                && payload.agent_manifest_identity.as_deref()
+                    == release
+                        .agent_release_manifest
+                        .as_ref()
+                        .map(|manifest| manifest.identity().as_str())
+                && payload.agent_manifest_archive_digest.as_deref()
+                    == release
+                        .agent_release_manifest
+                        .as_ref()
+                        .map(|manifest| manifest.archive_digest().as_str())
             {
                 Ok(())
             } else {

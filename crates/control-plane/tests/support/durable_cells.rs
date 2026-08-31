@@ -1872,6 +1872,7 @@ async fn insert_typed_build_run(
         &format!("https://github.com/a3s-lab/cell-fixture-{marker}"),
         &marker_text.repeat(40),
         None,
+        false,
     )?;
     let expected = build.aggregate_version;
     build.record_evidence(evidence, at)?;

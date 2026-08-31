@@ -42,10 +42,10 @@ pub use workload_replica::{
     CANONICAL_REPLICA_ORDINAL,
 };
 pub use workload_revision::{
-    AgentReleaseAdmission, AgentWorkloadRevisionBinding, ExternalBuildReference, HttpHealthCheck,
-    McpWorkloadRevisionBinding, OciArtifact, OciArtifactReference, RequestedServiceTemplate,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
-    WorkloadRevision,
+    AgentReleaseAdmission, AgentReleaseRuntimeContract, AgentWorkloadRevisionBinding,
+    ExternalBuildReference, HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact,
+    OciArtifactReference, RequestedServiceTemplate, ServicePort, ServiceProcess, ServiceResources,
+    ServiceTemplate, SkillWorkloadRevisionBinding, WorkloadRevision,
 };
 pub use workload_writer_fence::{
     WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,

@@ -146,6 +146,10 @@ pub struct AssetReleasePublished {
     pub build_run_id: Option<Uuid>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub provenance_digest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_manifest_identity: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_manifest_archive_digest: Option<String>,
 }
 
 impl AssetReleasePublished {
@@ -172,6 +176,14 @@ impl AssetReleasePublished {
                 .provenance
                 .as_ref()
                 .map(|provenance| provenance.provenance_digest().as_str().into()),
+            agent_manifest_identity: release
+                .agent_release_manifest
+                .as_ref()
+                .map(|manifest| manifest.identity().to_string()),
+            agent_manifest_archive_digest: release
+                .agent_release_manifest
+                .as_ref()
+                .map(|manifest| manifest.archive_digest().to_string()),
         })
         .map_err(|error| error.to_string())?;
         Ok(release_event(
@@ -281,7 +293,11 @@ fn release_event(
     DomainEventEnvelope {
         event_id: Uuid::now_v7(),
         event_key: event_key.into(),
-        schema_version: if event_key == "asset.release.published" && release.provenance.is_some() {
+        schema_version: if event_key == "asset.release.published"
+            && release.agent_release_manifest.is_some()
+        {
+            3
+        } else if event_key == "asset.release.published" && release.provenance.is_some() {
             2
         } else {
             1

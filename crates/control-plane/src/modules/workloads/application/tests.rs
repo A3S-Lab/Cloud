@@ -6,7 +6,7 @@ use super::{
     UpdateWorkloadDeploymentHandler,
 };
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
 use crate::modules::artifacts::{BuildRun, HostedArtifactQueryService, InMemoryBuildRunRepository};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, AssetReleaseWrite,
@@ -26,9 +26,7 @@ use crate::modules::shared_kernel::domain::{
     IdempotentWrite, NodeCommandId, NodeId, NodePoolId, OrganizationId, ProjectId, RepositoryError,
     ResourceName, Sha256Digest,
 };
-use crate::modules::workloads::domain::entities::{
-    HttpHealthCheck, ServicePort, ServiceProcess, ServiceResources,
-};
+use crate::modules::workloads::domain::entities::{ServicePort, ServiceProcess, ServiceResources};
 use crate::modules::workloads::{IWorkloadRepository, InMemoryWorkloadRepository};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -107,6 +105,50 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         request_id: Uuid::now_v7(),
         requested_at,
     };
+
+    let mut process_override = create.clone();
+    process_override.template.process.command = vec!["/caller-selected-entrypoint".into()];
+    process_override.idempotency_key = "agent-release:process-override".into();
+    process_override.request_id = Uuid::now_v7();
+    let rejected = create_handler
+        .execute(process_override, context())
+        .await
+        .expect("process override handler");
+    assert!(matches!(
+        rejected,
+        Err(ApplicationError::Invalid(message))
+            if message.contains("derived from its release manifest")
+    ));
+
+    let mut port_override = create.clone();
+    port_override.template.ports = vec![ServicePort {
+        name: "caller".into(),
+        container_port: 9_999,
+    }];
+    port_override.idempotency_key = "agent-release:port-override".into();
+    port_override.request_id = Uuid::now_v7();
+    let rejected = create_handler
+        .execute(port_override, context())
+        .await
+        .expect("port override handler");
+    assert!(matches!(
+        rejected,
+        Err(ApplicationError::Invalid(message))
+            if message.contains("derived from its release manifest")
+    ));
+
+    let mut unbounded_storage = create.clone();
+    unbounded_storage.template.resources.ephemeral_storage_bytes = None;
+    unbounded_storage.idempotency_key = "agent-release:unbounded-storage".into();
+    unbounded_storage.request_id = Uuid::now_v7();
+    let rejected = create_handler
+        .execute(unbounded_storage, context())
+        .await
+        .expect("unbounded storage handler");
+    assert!(matches!(
+        rejected,
+        Err(ApplicationError::Invalid(message)) if message.contains("ephemeral storage")
+    ));
 
     let created = create_handler
         .execute(create.clone(), context())
@@ -569,7 +611,8 @@ fn published_release(
         drafted_at,
     )
     .expect("draft release");
-    let build = succeeded_hosted_build(asset.organization_id, asset.id, release.id, drafted_at);
+    let build =
+        succeeded_hosted_agent_build(asset.organization_id, asset.id, release.id, drafted_at);
     let outcome = project_hosted_build_outcome(&build)
         .expect("project hosted outcome")
         .expect("successful hosted outcome");
@@ -613,7 +656,7 @@ fn published_skill_release(
 fn source_template() -> SourceWorkloadTemplate {
     SourceWorkloadTemplate {
         process: ServiceProcess {
-            command: vec!["/app/agent".into()],
+            command: Vec::new(),
             args: Vec::new(),
             working_directory: None,
             environment: BTreeMap::new(),
@@ -623,21 +666,10 @@ fn source_template() -> SourceWorkloadTemplate {
             cpu_millis: 100,
             memory_bytes: 33_554_432,
             pids: 32,
-            ephemeral_storage_bytes: None,
+            ephemeral_storage_bytes: Some(64 * 1024 * 1024),
         },
-        ports: vec![ServicePort {
-            name: "http".into(),
-            container_port: 8080,
-        }],
-        health: Some(HttpHealthCheck {
-            port_name: "http".into(),
-            path: "/health".into(),
-            interval_ms: 1_000,
-            timeout_ms: 500,
-            healthy_threshold: 1,
-            unhealthy_threshold: 3,
-            stabilization_window_ms: 1_000,
-        }),
+        ports: Vec::new(),
+        health: None,
     }
 }
 

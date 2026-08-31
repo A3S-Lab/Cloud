@@ -1694,11 +1694,13 @@ worker, or another Flow.
 
 The current hosted publication boundary preserves one transaction per owner.
 Artifacts commits the BuildRun terminal CAS and one versioned, location-free
-`a3s.cloud.hosted-build-outcome.v1` fact to the existing transactional Outbox.
+`a3s.cloud.hosted-build-outcome.v2` fact to the existing transactional Outbox.
 Assets consumes that fact through the generic Relay, validates its exact
 envelope, source, artifact, provenance, and operation identity, then commits
-the draft-to-published release transition plus its schema-v2 Outbox fact in an
-Assets transaction. Exact replay validates the immutable binding and emits no
+the draft-to-published Agent transition plus its schema-v3 Outbox fact in an
+Assets transaction. The consumer also drains exact pending v1 facts from
+pre-upgrade transactions; v1 cannot contain the v2 source or final-manifest
+fields. Exact replay validates the immutable binding and emits no
 duplicate fact. A Draft release under an archived Asset acknowledges the
 outcome as a terminal no-op; it cannot reopen the Asset or rewrite a successful
 BuildRun as failure. No context writes the other context's table. Migration 150
@@ -1762,8 +1764,10 @@ same-generation provider-process recovery are also implemented locally. The
 verifies durable retention recovery, control-plane restart,
 recover-before-cancel ordering, a stable Runtime generation and provider
 identity across process death, a strictly newer process-incarnation timestamp,
-and cleanup. The same certified revision consumes exact crates.io releases
-`a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`. The
+and cleanup. That retained gate consumed exact crates.io releases
+`a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`. The current
+component pins the exact `a3s-code-core 8.0.4` Git revision for the Code-owned
+final release contract; it requires fresh retained real-provider evidence. The
 component-level `A1.3` foundation now freezes the provider-neutral contract and
 canonical immutable profile/capability evidence, migrates new Code command and
 event delivery through an adapter without invalidating durable legacy history,

@@ -4,12 +4,13 @@ use crate::modules::artifacts::{
     NodeArtifactWrite, OpenNodeArtifact,
 };
 use crate::modules::assets::domain::{
-    Asset, AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRepository,
-    AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse,
-    AssetGitService, AssetGitWriteJournal, AssetGitWriteLease, AssetManifestAdmission,
-    AssetRelease, AssetReleaseArtifact, AssetReleaseState, AssetReleaseVersion, AssetReleaseWrite,
-    AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite, IAssetGitRepository, IAssetRepository,
-    TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
+    AgentReleaseTemplate, Asset, AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle,
+    AssetGitRepository, AssetGitRepositoryError, AssetGitRepositoryWrite, AssetGitRpcLimits,
+    AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
+    AssetManifestAdmission, AssetRelease, AssetReleaseArtifact, AssetReleaseState,
+    AssetReleaseVersion, AssetReleaseWrite, AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite,
+    IAssetGitRepository, IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
+    SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::repositories::{
@@ -342,6 +343,9 @@ impl IAssetGitRepository for CatalogStore {
                 })
                 .transpose()
                 .map_err(AssetGitRepositoryError::Invalid)?,
+            agent_release_template: (asset.kind
+                == crate::modules::assets::domain::AssetKind::Agent)
+                .then(AgentReleaseTemplate::test_fixture),
         })
     }
 

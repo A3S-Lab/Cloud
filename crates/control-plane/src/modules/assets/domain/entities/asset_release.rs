@@ -1,6 +1,7 @@
 use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetReleaseArtifact, AssetReleaseProvenance, AssetReleaseVersion, AssetState,
+    Asset, AssetKind, AssetReleaseAgentManifest, AssetReleaseArtifact, AssetReleaseProvenance,
+    AssetReleaseVersion, AssetState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, GitCommitSha, OrganizationId, Sha256Digest,
@@ -48,6 +49,7 @@ pub struct AssetRelease {
     pub manifest_digest: Sha256Digest,
     pub artifact: Option<AssetReleaseArtifact>,
     pub provenance: Option<AssetReleaseProvenance>,
+    pub agent_release_manifest: Option<AssetReleaseAgentManifest>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -123,6 +125,7 @@ impl AssetRelease {
             manifest_digest,
             artifact: None,
             provenance: None,
+            agent_release_manifest: None,
             aggregate_version: 1,
             created_at,
             updated_at: created_at,
@@ -144,7 +147,7 @@ impl AssetRelease {
                 "Agent and MCP releases must be published by their successful BuildRun".into(),
             );
         }
-        self.publish_with(asset, artifact, None, published_at)
+        self.publish_with(asset, artifact, None, None, published_at)
     }
 
     pub fn publish_from_hosted_build(
@@ -152,9 +155,15 @@ impl AssetRelease {
         asset: &Asset,
         outcome: &HostedBuildOutcome,
     ) -> Result<(), String> {
-        let (artifact, provenance, published_at) =
+        let (artifact, provenance, agent_release_manifest, published_at) =
             self.admit_hosted_build_outcome(asset, outcome)?;
-        self.publish_with(asset, artifact, Some(provenance), published_at)
+        self.publish_with(
+            asset,
+            artifact,
+            Some(provenance),
+            agent_release_manifest,
+            published_at,
+        )
     }
 
     /// Validate a hosted outcome against release source identity without
@@ -179,10 +188,11 @@ impl AssetRelease {
         ) {
             return Err("Asset release is not a hosted build publication".into());
         }
-        let (artifact, provenance, published_at) =
+        let (artifact, provenance, agent_release_manifest, published_at) =
             self.admit_hosted_build_outcome(asset, outcome)?;
         if self.artifact.as_ref() != Some(&artifact)
             || self.provenance.as_ref() != Some(&provenance)
+            || self.agent_release_manifest != agent_release_manifest
             || self.published_at != Some(published_at)
         {
             return Err("Asset release changed its immutable BuildRun publication".into());
@@ -194,18 +204,35 @@ impl AssetRelease {
         &self,
         asset: &Asset,
         outcome: &HostedBuildOutcome,
-    ) -> Result<(AssetReleaseArtifact, AssetReleaseProvenance, DateTime<Utc>), String> {
+    ) -> Result<
+        (
+            AssetReleaseArtifact,
+            AssetReleaseProvenance,
+            Option<AssetReleaseAgentManifest>,
+            DateTime<Utc>,
+        ),
+        String,
+    > {
         self.validate_for(asset)?;
         if !matches!(asset.kind, AssetKind::Agent | AssetKind::Mcp) {
             return Err("only Agent and MCP releases use hosted BuildRun publication".into());
         }
-        self.hosted_build_publication(outcome)
+        self.hosted_build_publication(asset.kind, outcome)
     }
 
     fn hosted_build_publication(
         &self,
+        asset_kind: AssetKind,
         outcome: &HostedBuildOutcome,
-    ) -> Result<(AssetReleaseArtifact, AssetReleaseProvenance, DateTime<Utc>), String> {
+    ) -> Result<
+        (
+            AssetReleaseArtifact,
+            AssetReleaseProvenance,
+            Option<AssetReleaseAgentManifest>,
+            DateTime<Utc>,
+        ),
+        String,
+    > {
         outcome.validate()?;
         if outcome.organization_id() != self.organization_id
             || outcome.asset_id() != self.asset_id
@@ -228,7 +255,31 @@ impl AssetRelease {
             outcome.build_run_id(),
             outcome.provenance_digest().clone(),
         )?;
-        Ok((artifact, provenance, outcome.finished_at()))
+        let agent_release_manifest = match asset_kind {
+            AssetKind::Agent if outcome.agent_release_manifest().is_some() => {
+                Some(AssetReleaseAgentManifest::from_hosted_outcome(outcome)?)
+            }
+            AssetKind::Agent if outcome.is_legacy() => None,
+            AssetKind::Agent => {
+                return Err("hosted Agent build omitted its final release manifest".into())
+            }
+            AssetKind::Mcp if outcome.agent_release_manifest().is_none() => None,
+            AssetKind::Mcp => {
+                return Err("MCP hosted build cannot publish an Agent release manifest".into())
+            }
+            AssetKind::Skill => {
+                return Err("Skill release cannot use hosted build publication".into())
+            }
+        };
+        if let Some(manifest) = &agent_release_manifest {
+            manifest.validate_for(&artifact, &provenance)?;
+        }
+        Ok((
+            artifact,
+            provenance,
+            agent_release_manifest,
+            outcome.finished_at(),
+        ))
     }
 
     fn publish_with(
@@ -236,6 +287,7 @@ impl AssetRelease {
         asset: &Asset,
         artifact: AssetReleaseArtifact,
         provenance: Option<AssetReleaseProvenance>,
+        agent_release_manifest: Option<AssetReleaseAgentManifest>,
         published_at: DateTime<Utc>,
     ) -> Result<(), String> {
         self.validate_for(asset)?;
@@ -243,10 +295,19 @@ impl AssetRelease {
         if let Some(provenance) = &provenance {
             provenance.validate()?;
         }
+        match (&agent_release_manifest, &provenance) {
+            (Some(manifest), Some(provenance)) => manifest.validate_for(&artifact, provenance)?,
+            (None, _) => {}
+            (Some(_), None) => {
+                return Err("Agent release manifest requires hosted build provenance".into())
+            }
+        }
         match self.state {
             AssetReleaseState::Draft => {}
             AssetReleaseState::Published
-                if self.artifact.as_ref() == Some(&artifact) && self.provenance == provenance =>
+                if self.artifact.as_ref() == Some(&artifact)
+                    && self.provenance == provenance
+                    && self.agent_release_manifest == agent_release_manifest =>
             {
                 return Ok(())
             }
@@ -269,6 +330,7 @@ impl AssetRelease {
         self.state = AssetReleaseState::Published;
         self.artifact = Some(artifact);
         self.provenance = provenance;
+        self.agent_release_manifest = agent_release_manifest;
         self.updated_at = published_at;
         self.published_at = Some(published_at);
         Ok(())
@@ -302,6 +364,12 @@ impl AssetRelease {
         if let Some(artifact) = &self.artifact {
             artifact.validate_for(asset.kind)?;
         }
+        match asset.kind {
+            AssetKind::Mcp | AssetKind::Skill if self.agent_release_manifest.is_some() => {
+                return Err("non-Agent release cannot retain an Agent manifest".into())
+            }
+            _ => {}
+        }
         Ok(())
     }
 
@@ -327,6 +395,15 @@ impl AssetRelease {
         if let Some(provenance) = &self.provenance {
             provenance.validate()?;
         }
+        if let Some(manifest) = &self.agent_release_manifest {
+            let artifact = self.artifact.as_ref().ok_or_else(|| {
+                "Agent release manifest omitted its published artifact".to_owned()
+            })?;
+            let provenance = self.provenance.as_ref().ok_or_else(|| {
+                "Agent release manifest omitted its published provenance".to_owned()
+            })?;
+            manifest.validate_for(artifact, provenance)?;
+        }
         let publication_binding_is_valid = self.artifact.as_ref().is_none_or(|artifact| {
             matches!(
                 artifact.kind(),
@@ -337,6 +414,7 @@ impl AssetRelease {
             AssetReleaseState::Draft => {
                 self.artifact.is_none()
                     && self.provenance.is_none()
+                    && self.agent_release_manifest.is_none()
                     && self.published_at.is_none()
                     && self.yanked_at.is_none()
             }

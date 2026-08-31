@@ -107,6 +107,7 @@ pub struct AssetManifestAdmission {
     pub manifest_digest: Sha256Digest,
     pub kind: AssetKind,
     pub build_recipe: Option<BuildRecipe>,
+    pub agent_release_template: Option<super::AgentReleaseTemplate>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +166,16 @@ impl AssetManifestAdmission {
         if let Some(recipe) = &self.build_recipe {
             if self.kind == AssetKind::Skill || recipe.clone().validate()? != *recipe {
                 return Err("Asset manifest build recipe does not match its Asset kind".into());
+            }
+        }
+        match (self.kind, &self.agent_release_template) {
+            (AssetKind::Agent, Some(template)) => template.validate()?,
+            (AssetKind::Mcp | AssetKind::Skill, None) => {}
+            (AssetKind::Agent, None) => {
+                return Err("Agent Asset manifest omitted its Code release template".into())
+            }
+            (AssetKind::Mcp | AssetKind::Skill, Some(_)) => {
+                return Err("non-Agent Asset cannot contain a Code release template".into())
             }
         }
         Ok(())

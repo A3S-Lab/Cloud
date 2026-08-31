@@ -223,6 +223,7 @@ impl IBuildEvidenceGenerator for PersistentEvidenceGenerator {
             sbom_digest,
             provenance,
             provenance_digest,
+            agent_release_manifest: None,
             envelope: DsseEnvelope {
                 payload_type: DSSE_PAYLOAD_TYPE.into(),
                 payload: STANDARD.encode(&provenance_bytes),

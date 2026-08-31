@@ -22,6 +22,7 @@ pub struct BuildSource {
     pub manifest_digest: Option<Sha256Digest>,
     pub recipe: BuildRecipe,
     pub recipe_digest: String,
+    pub agent_release_template_acl: Option<String>,
 }
 
 impl BuildSource {
@@ -58,6 +59,7 @@ impl BuildSource {
             manifest_digest: None,
             recipe,
             recipe_digest,
+            agent_release_template_acl: None,
         };
         source.validate()?;
         Ok(source)
@@ -69,6 +71,7 @@ impl BuildSource {
         commit_sha: GitCommitSha,
         manifest_digest: Sha256Digest,
         recipe: BuildRecipe,
+        agent_release_template_acl: Option<String>,
     ) -> Result<Self, String> {
         let asset_id = subject
             .asset_id()
@@ -83,6 +86,7 @@ impl BuildSource {
             manifest_digest: Some(manifest_digest),
             recipe,
             recipe_digest,
+            agent_release_template_acl,
         };
         source.validate()?;
         Ok(source)
@@ -105,7 +109,11 @@ impl BuildSource {
                 BuildSourceLocation::ExternalGit { repository },
                 None,
                 BuildSubject::ExternalSourceRevision { .. },
-            ) if repository.canonical_url() == self.repository => Ok(()),
+            ) if repository.canonical_url() == self.repository
+                && self.agent_release_template_acl.is_none() =>
+            {
+                Ok(())
+            }
             (
                 BuildSourceLocation::HostedAssetGit { asset_id },
                 Some(manifest_digest),
@@ -116,6 +124,30 @@ impl BuildSource {
             ) if *asset_id == subject_asset_id
                 && Sha256Digest::parse(manifest_digest.as_str())? == *manifest_digest =>
             {
+                if let Some(source) = &self.agent_release_template_acl {
+                    let manifest = a3s_cloud_contracts::AgentReleaseManifest::parse(source)
+                        .map_err(|error| {
+                            format!("resolved Agent release template is invalid: {error}")
+                        })?;
+                    manifest
+                        .verify_compatibility(
+                            &a3s_cloud_contracts::agent_harness_compatibility_v1(),
+                        )
+                        .map_err(|error| {
+                            format!("resolved Agent release template is incompatible: {error}")
+                        })?;
+                    let provenance = manifest
+                        .provenance()
+                        .iter()
+                        .map(|reference| reference.kind())
+                        .collect::<Vec<_>>();
+                    if manifest.canonical_acl() != source || provenance != ["builder", "source"] {
+                        return Err(
+                            "resolved Agent release template changed its canonical authority"
+                                .into(),
+                        );
+                    }
+                }
                 Ok(())
             }
             _ => Err("resolved build source changed its typed source authority".into()),

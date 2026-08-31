@@ -18,7 +18,7 @@ use a3s_cloud_control_plane::modules::artifacts::{
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::assets::{
-    Asset, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
+    Asset, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseState, AssetReleaseVersion,
     CreateAssetReleaseWrite, HostedAssetBuildRequested, HostedBuildOutcomeProjector,
     IAssetRepository, PostgresAssetRepository,
 };
@@ -1383,6 +1383,7 @@ async fn drive_hosted_release_publication(
         &repository,
         release.commit_sha.as_str(),
         Some(release.manifest_digest.as_str()),
+        asset.kind == AssetKind::Agent,
     )?;
     let provenance_digest = evidence.provenance_digest.clone();
     let expected = build.aggregate_version;
@@ -1501,6 +1502,7 @@ async fn attest_and_complete_published_build(
         "https://github.com/A3S-Lab/Cloud",
         &"a".repeat(40),
         None,
+        false,
     )?;
     attested.record_evidence(evidence.clone(), attested_at)?;
     let attested = builds.save(attested, attesting.aggregate_version).await?;

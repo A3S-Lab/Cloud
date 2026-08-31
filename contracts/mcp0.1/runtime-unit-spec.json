@@ -1,5 +1,5 @@
 {
-  "schema": "a3s.runtime.unit-spec.v3",
+  "schema": "a3s.runtime.unit-spec.v4",
   "unit_id": "workload:mcp-weather:replica:1",
   "generation": 3,
   "class": "service",
@@ -49,6 +49,7 @@
     "success_threshold": 1,
     "failure_threshold": 3
   },
+  "service_lifecycle": null,
   "restart": {
     "kind": "always"
   },

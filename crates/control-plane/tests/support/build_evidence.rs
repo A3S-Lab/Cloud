@@ -1,5 +1,10 @@
+use a3s_cloud_contracts::{
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    artifact_uri, AgentReleaseManifest, AgentReleaseProvenance, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_cloud_control_plane::modules::artifacts::domain::BuildEvidenceAgentReleaseManifest;
 use a3s_cloud_control_plane::modules::artifacts::{
-    canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
+    canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildEvidence, BuildEvidenceBuilder,
     BuildEvidenceSigningKey, BuildEvidenceSubject, BuildEvidenceVerificationState, BuildRun,
     DsseEnvelope, DsseSignature, InTotoSubject, SlsaBuildDefinition, SlsaBuilder,
     SlsaExternalParameters, SlsaInternalParameters, SlsaProvenancePredicate,
@@ -21,6 +26,7 @@ pub(super) fn evidence_for(
     repository: &str,
     commit_sha: &str,
     manifest_digest: Option<&str>,
+    include_agent_release_manifest: bool,
 ) -> Result<BuildEvidence, Box<dyn std::error::Error>> {
     let attested_at = postgres_timestamp(attested_at);
     let repository = repository.to_owned();
@@ -191,6 +197,38 @@ pub(super) fn evidence_for(
     };
     let pae = dsse_pae(DSSE_PAYLOAD_TYPE, &provenance_bytes)?;
     let signature = signing_key_pair.sign(&pae);
+    let agent_release_manifest = if include_agent_release_manifest {
+        let template = AgentReleaseManifest::parse(agent_release_template_acl())?;
+        let manifest = template.bind_publication(
+            artifact.digest.clone(),
+            [
+                AgentReleaseProvenance::new(
+                    "source",
+                    agent_release_source_uri(&source_content_digest)?,
+                    source_content_digest.clone(),
+                )?,
+                AgentReleaseProvenance::new(
+                    "builder",
+                    agent_release_builder_uri(build.id.as_uuid())?,
+                    provenance_digest.clone(),
+                )?,
+            ],
+        )?;
+        let archive = agent_release_manifest_archive(manifest.canonical_acl().as_bytes())?;
+        let archive_digest = sha256_digest(&archive);
+        Some(BuildEvidenceAgentReleaseManifest {
+            identity: manifest.identity().into(),
+            canonical_acl: manifest.canonical_acl().into(),
+            archive: BuildArtifact::new(
+                artifact_uri(&archive_digest)?,
+                archive_digest,
+                NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+                archive.len() as u64,
+            )?,
+        })
+    } else {
+        None
+    };
     Ok(BuildEvidence::restore(BuildEvidence {
         schema: BUILD_EVIDENCE_SCHEMA.into(),
         build_run_id: build.id,
@@ -211,6 +249,7 @@ pub(super) fn evidence_for(
         sbom_digest,
         provenance,
         provenance_digest,
+        agent_release_manifest,
         envelope: DsseEnvelope {
             payload_type: DSSE_PAYLOAD_TYPE.into(),
             payload: STANDARD.encode(&provenance_bytes),
@@ -223,6 +262,24 @@ pub(super) fn evidence_for(
         verification_state: BuildEvidenceVerificationState::Verified,
         attested_at,
     })?)
+}
+
+fn agent_release_template_acl() -> &'static str {
+    concat!(
+        "agent_release {\n",
+        "  schema = \"a3s.code.agent-release.v1\"\n",
+        "  protocol = \"a3s.code.agent.v1\"\n",
+        "  artifact { digest = \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" media_type = \"application/vnd.oci.image.manifest.v1+json\" }\n",
+        "  entrypoint { command = \"/usr/bin/a3s\" args = [\"code\", \"harness\", \"--manifest\", \"/app/.a3s/asset.acl\"] }\n",
+        "  health { transport = \"http\" port = 8080 readiness_path = \"/health/ready\" liveness_path = \"/health/live\" shutdown_grace_seconds = 30 }\n",
+        "  storage { workspace = \"ephemeral\" cache = \"ephemeral\" persistent_data = \"none\" }\n",
+        "  capability \"runtime.service\" { level = 1 }\n",
+        "  capability \"secrets.external\" { level = 1 }\n",
+        "  capability \"workspace.local\" { level = 1 }\n",
+        "  provenance \"source\" { uri = \"urn:a3s:source:template\" digest = \"sha256:2222222222222222222222222222222222222222222222222222222222222222\" }\n",
+        "  provenance \"builder\" { uri = \"urn:a3s:builder:template\" digest = \"sha256:4444444444444444444444444444444444444444444444444444444444444444\" }\n",
+        "}\n",
+    )
 }
 
 fn digest_hex(value: &str) -> Result<&str, Box<dyn std::error::Error>> {

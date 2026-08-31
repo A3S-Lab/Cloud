@@ -129,6 +129,7 @@ async fn reference_provider_commands_use_only_the_common_provider_transport() {
         started_at_ms: Some(now_ms.saturating_sub(1)),
         finished_at_ms: None,
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

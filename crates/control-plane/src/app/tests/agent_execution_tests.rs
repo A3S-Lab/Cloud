@@ -2,7 +2,7 @@ use super::agent_checkpoint_support::{checkpoint_test_binding, checkpoint_test_f
 use super::*;
 use crate::modules::agents::{BindAgentCodeRunWrite, IAgentRepository};
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
 use crate::modules::assets::domain::{Asset, AssetKind, AssetRelease, AssetReleaseVersion};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentExecutionId, AssetId, AssetReleaseId, GitCommitSha, ResourceName,
@@ -926,7 +926,7 @@ fn published_agent_release(
         drafted_at,
     )
     .expect("Agent release");
-    let build = succeeded_hosted_build(organization_id, asset.id, release.id, drafted_at);
+    let build = succeeded_hosted_agent_build(organization_id, asset.id, release.id, drafted_at);
     let outcome = project_hosted_build_outcome(&build)
         .expect("project hosted outcome")
         .expect("successful hosted outcome");

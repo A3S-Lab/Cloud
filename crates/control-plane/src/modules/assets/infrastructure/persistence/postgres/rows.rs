@@ -1,6 +1,7 @@
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseArtifactKind,
-    AssetReleaseProvenance, AssetReleaseState, AssetReleaseVersion, AssetState,
+    Asset, AssetKind, AssetRelease, AssetReleaseAgentManifest, AssetReleaseArtifact,
+    AssetReleaseArtifactKind, AssetReleaseProvenance, AssetReleaseState, AssetReleaseVersion,
+    AssetState,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
@@ -11,7 +12,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 pub(super) const SELECT_ASSETS: &str = "select a.id, a.organization_id, a.name, a.kind, a.state, a.aggregate_version, a.created_at, a.updated_at, a.archived_at from assets a";
-pub(super) const SELECT_RELEASES: &str = "select r.id, r.organization_id, r.asset_id, r.version, r.state, r.commit_sha, r.manifest_digest, r.artifact_kind, r.artifact_digest, r.artifact_media_type, r.artifact_size_bytes, r.build_run_id, r.provenance_digest, r.aggregate_version, r.created_at, r.updated_at, r.published_at, r.yanked_at from asset_releases r";
+pub(super) const SELECT_RELEASES: &str = "select r.id, r.organization_id, r.asset_id, r.version, r.state, r.commit_sha, r.manifest_digest, r.artifact_kind, r.artifact_digest, r.artifact_media_type, r.artifact_size_bytes, r.build_run_id, r.provenance_digest, r.agent_manifest_identity, r.agent_manifest_acl, r.agent_manifest_archive_digest, r.agent_manifest_archive_size_bytes, r.agent_manifest_source_content_digest, r.aggregate_version, r.created_at, r.updated_at, r.published_at, r.yanked_at from asset_releases r";
 
 pub(super) struct AssetRow {
     id: Uuid,
@@ -39,6 +40,11 @@ pub(super) struct AssetReleaseRow {
     artifact_size_bytes: Option<u64>,
     build_run_id: Option<Uuid>,
     provenance_digest: Option<String>,
+    agent_manifest_identity: Option<String>,
+    agent_manifest_acl: Option<String>,
+    agent_manifest_archive_digest: Option<String>,
+    agent_manifest_archive_size_bytes: Option<u64>,
+    agent_manifest_source_content_digest: Option<String>,
     aggregate_version: u64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
@@ -78,11 +84,16 @@ impl FromRow for AssetReleaseRow {
             artifact_size_bytes: decode(row, 10)?,
             build_run_id: decode(row, 11)?,
             provenance_digest: decode(row, 12)?,
-            aggregate_version: decode(row, 13)?,
-            created_at: decode(row, 14)?,
-            updated_at: decode(row, 15)?,
-            published_at: decode(row, 16)?,
-            yanked_at: decode(row, 17)?,
+            agent_manifest_identity: decode(row, 13)?,
+            agent_manifest_acl: decode(row, 14)?,
+            agent_manifest_archive_digest: decode(row, 15)?,
+            agent_manifest_archive_size_bytes: decode(row, 16)?,
+            agent_manifest_source_content_digest: decode(row, 17)?,
+            aggregate_version: decode(row, 18)?,
+            created_at: decode(row, 19)?,
+            updated_at: decode(row, 20)?,
+            published_at: decode(row, 21)?,
+            yanked_at: decode(row, 22)?,
         })
     }
 }
@@ -114,6 +125,13 @@ impl AssetReleaseRow {
             self.artifact_size_bytes,
         )?;
         let provenance = restore_provenance(self.build_run_id, self.provenance_digest)?;
+        let agent_release_manifest = restore_agent_manifest(
+            self.agent_manifest_identity,
+            self.agent_manifest_acl,
+            self.agent_manifest_archive_digest,
+            self.agent_manifest_archive_size_bytes,
+            self.agent_manifest_source_content_digest,
+        )?;
         let release = AssetRelease {
             id: AssetReleaseId::from_uuid(self.id),
             organization_id: OrganizationId::from_uuid(self.organization_id),
@@ -127,6 +145,7 @@ impl AssetReleaseRow {
                 .map_err(stored("Asset release manifest digest"))?,
             artifact,
             provenance,
+            agent_release_manifest,
             aggregate_version: self.aggregate_version,
             created_at: self.created_at,
             updated_at: self.updated_at,
@@ -137,6 +156,43 @@ impl AssetReleaseRow {
             .validate()
             .map_err(stored("Asset release aggregate"))?;
         Ok(release)
+    }
+}
+
+fn restore_agent_manifest(
+    identity: Option<String>,
+    canonical_acl: Option<String>,
+    archive_digest: Option<String>,
+    archive_size_bytes: Option<u64>,
+    source_content_digest: Option<String>,
+) -> Result<Option<AssetReleaseAgentManifest>, RepositoryError> {
+    match (
+        identity,
+        canonical_acl,
+        archive_digest,
+        archive_size_bytes,
+        source_content_digest,
+    ) {
+        (None, None, None, None, None) => Ok(None),
+        (
+            Some(identity),
+            Some(canonical_acl),
+            Some(archive_digest),
+            Some(archive_size_bytes),
+            Some(source_content_digest),
+        ) => AssetReleaseAgentManifest::restore(
+            Sha256Digest::parse(identity).map_err(stored("Agent manifest identity"))?,
+            canonical_acl,
+            Sha256Digest::parse(archive_digest).map_err(stored("Agent manifest archive digest"))?,
+            archive_size_bytes,
+            Sha256Digest::parse(source_content_digest)
+                .map_err(stored("Agent manifest source content digest"))?,
+        )
+        .map(Some)
+        .map_err(stored("Agent release manifest")),
+        _ => Err(RepositoryError::Storage(
+            "stored Agent release manifest is incomplete".into(),
+        )),
     }
 }
 

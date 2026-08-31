@@ -30,7 +30,7 @@ client returns that report as diagnostics. A `503` error envelope remains a
 `CloudApiError`. Authenticated methods still require server-authorized
 credentials.
 
-REST contract `1.81.0` extends the installation-scoped privileged management
+REST contract `1.82.0` extends the installation-scoped privileged management
 surface with TrustDomain and WorkloadIdentityPolicy maintenance. The client
 reads current and exact revisions, bounded reverse revision history, and the
 current policy indexed by Workload. It also requests one fresh provider
@@ -143,7 +143,7 @@ before transport. Cloud remains authoritative for the correlated Operation,
 A3S Flow run, WorkflowStepProjection state, immutable replay checks,
 cancellation, timeout, output digest, and redacted history.
 
-The client targets REST contract `1.81.0`. It exposes `reserveUserFile`,
+The client targets REST contract `1.82.0`. It exposes `reserveUserFile`,
 `listUserFiles`, `getUserFile`, `tombstoneUserFile`, and
 `getUserFileQuota` through the sole Files Application authority. It validates
 ACL byte, list, and optimistic-version transport bounds without parsing or

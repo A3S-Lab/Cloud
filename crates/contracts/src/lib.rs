@@ -1,6 +1,7 @@
 //! Versioned public and node protocol contracts for A3S Cloud.
 
 mod agent_provider;
+mod agent_release;
 mod api;
 mod app_platform_manifest;
 mod cloud_scope_ref;
@@ -13,6 +14,13 @@ mod registry_credential;
 mod resource;
 mod workflow_node_profiles;
 
+pub use a3s_code_core::release::{
+    agent_harness_compatibility_v1, AgentReleaseCacheMode, AgentReleaseManifest,
+    AgentReleasePersistentDataMode, AgentReleaseProvenance, AgentReleaseSecretRequirement,
+    AgentReleaseSecretTarget, AgentReleaseWorkspaceMode, AGENT_RELEASE_CONTRACT_V1,
+    AGENT_RELEASE_ENTRYPOINT_ARGS_V1, AGENT_RELEASE_ENTRYPOINT_COMMAND_V1, AGENT_RELEASE_LIMITS,
+    AGENT_RELEASE_OCI_MEDIA_TYPE,
+};
 pub use a3s_code_core::{
     AgentEventTypeV1, AgentProtocolChangeSetRequestV1, AgentProtocolChangeSetV1,
     AgentProtocolCommandActionV1, AgentProtocolCommandReceiptV1, AgentProtocolCommandV1,
@@ -49,6 +57,10 @@ pub use agent_provider::{
     HARNESS_INVOCATION_PROFILE_MAX_BYTES, HARNESS_INVOCATION_PROFILE_SCHEMA_V1,
     NATIVE_CODE_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_KIND,
     REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
+};
+pub use agent_release::{
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    AGENT_RELEASE_MANIFEST_ARCHIVE_PATH,
 };
 pub use api::{ApiErrorResponse, ApiSuccessResponse};
 pub use app_platform_manifest::{

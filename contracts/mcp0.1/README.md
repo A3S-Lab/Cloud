@@ -5,7 +5,7 @@ MCP contract. It is not a production-readiness claim.
 
 - Protocol revision: `2026-07-28`
 - Projection schema: `a3s.cloud.mcp-gateway-projection.v1`
-- Runtime wire schema: `a3s.runtime.unit-spec.v3`
+- Runtime wire schema: `a3s.runtime.unit-spec.v4`
 - Gateway transport: one POST message, JSON or request-scoped SSE
 - Protocol sessions, sticky affinity, GET streams, DELETE sessions, and
   post-dispatch replay: forbidden
@@ -20,7 +20,7 @@ and exact target set are bound by the complete Gateway snapshot digest.
 | File | Consumer | SHA-256 of exact fixture bytes |
 | --- | --- | --- |
 | [`mcp-policy.acl`](mcp-policy.acl) | Cloud compiler and Gateway MCP policy parser | `5f30512ff696a7bbc25417819c2432027de20123f229d8ddbd29298d0da821e0` |
-| [`runtime-unit-spec.json`](runtime-unit-spec.json) | Runtime and Box generic Service substrate | `0d17ff2e32fbee223a9a8649bbeb14a74e919ce656d7f26bca817060f52861c6` |
+| [`runtime-unit-spec.json`](runtime-unit-spec.json) | Runtime and Box generic Service substrate | `f7e7b84867c5c646ad5a02d9e7be65a23ce7f6eb813ae1e1bf4786d4db602f4a` |
 | [`gateway-snapshot.acl`](gateway-snapshot.acl) | Gateway strict snapshot parser and fail-closed route ownership | `a3c12ad36e8c2c06787ec1b42899fa5cea5a10f00ce2ab42c1abaddec50036a5` |
 
 The three implementation worktrees started from these exact upstream

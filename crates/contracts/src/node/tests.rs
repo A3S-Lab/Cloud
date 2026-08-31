@@ -6,10 +6,9 @@ use crate::{
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceControl, ResourceLimits, RestartPolicy,
-    RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence, RuntimeFeature,
-    RuntimeHealthObservation, RuntimeHealthState, RuntimeLogChunk, RuntimeLogDiscontinuityReason,
-    RuntimeLogStream, RuntimeNetworkSpec, RuntimeObservation, RuntimeProcessSpec, RuntimeUnitClass,
-    RuntimeUnitSpec, RuntimeUnitState,
+    RuntimeApplyRequest, RuntimeCapabilities, RuntimeEvidence, RuntimeFeature, RuntimeLogChunk,
+    RuntimeLogDiscontinuityReason, RuntimeLogStream, RuntimeNetworkSpec, RuntimeObservation,
+    RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, RuntimeUnitState,
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
@@ -125,6 +124,7 @@ fn resource_bound_runtime_spec() -> RuntimeUnitSpec {
         },
         isolation: IsolationLevel::Container,
         health: None,
+        service_lifecycle: None,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
@@ -146,11 +146,8 @@ fn resource_bound_runtime_observation(spec: &RuntimeUnitSpec) -> RuntimeObservat
         observed_at_ms: 1_000,
         started_at_ms: Some(1_000),
         finished_at_ms: None,
-        health: Some(RuntimeHealthObservation {
-            state: RuntimeHealthState::Healthy,
-            checked_at_ms: 1_000,
-            message: None,
-        }),
+        health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

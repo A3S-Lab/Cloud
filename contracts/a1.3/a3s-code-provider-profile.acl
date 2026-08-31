@@ -2,6 +2,6 @@ agent_provider "a3s.code" {
   capabilities = ["cancellation", "change_set", "cleanup", "event_pages", "recovery", "streaming_output"]
   native_protocol = "a3s.code.agent.v1"
   protocol = "a3s.cloud.agent-provider.v1"
-  revision = "8.0.1"
+  revision = "8.0.4"
   schema = "a3s.cloud.agent-provider-profile.v1"
 }

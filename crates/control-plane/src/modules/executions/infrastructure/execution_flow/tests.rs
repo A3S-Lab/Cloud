@@ -588,6 +588,7 @@ fn succeeded_observation(
         started_at_ms: Some(now_ms.saturating_sub(1)),
         finished_at_ms: Some(now_ms),
         health: None,
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

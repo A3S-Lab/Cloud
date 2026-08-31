@@ -1,8 +1,8 @@
 use super::*;
 use crate::infrastructure::ImmutableObjectClient;
 use crate::modules::assets::domain::{
-    AssetGitRepositoryError, AssetGitRpcLimits, AssetGitService, AssetGitWriteLease,
-    AssetGitWriteOperation, AssetKind, AssetState, IAssetGitRepository,
+    AgentReleaseTemplate, AssetGitRepositoryError, AssetGitRpcLimits, AssetGitService,
+    AssetGitWriteLease, AssetGitWriteOperation, AssetKind, AssetState, IAssetGitRepository,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, ResourceName,
@@ -784,6 +784,7 @@ fn write_manifest(path: &Path, kind: AssetKind) {
         ),
     )
     .expect("Asset manifest");
+    write_agent_release_template(path, kind);
 }
 
 fn write_build_manifest(path: &Path, kind: AssetKind) {
@@ -807,6 +808,17 @@ fn write_build_manifest(path: &Path, kind: AssetKind) {
         ),
     )
     .expect("Asset build manifest");
+    write_agent_release_template(path, kind);
+}
+
+fn write_agent_release_template(path: &Path, kind: AssetKind) {
+    if kind == AssetKind::Agent {
+        std::fs::write(
+            path.join(".a3s/agent-release.acl"),
+            AgentReleaseTemplate::test_fixture().canonical_acl(),
+        )
+        .expect("Agent release template");
+    }
 }
 
 fn push_main(work: &Path, repository: &Path) {

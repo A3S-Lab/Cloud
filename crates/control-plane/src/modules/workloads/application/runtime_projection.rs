@@ -6,12 +6,15 @@ use crate::modules::workloads::domain::entities::{
     DeploymentReplicaBinding, DeploymentRuntimeExecutionBinding, ServiceTemplate,
     WorkloadPlacementGroupMemberPlan, WorkloadReplica, WorkloadReplicaLifecycle, WorkloadRevision,
 };
-use a3s_cloud_contracts::CloudSecretReference;
+use a3s_cloud_contracts::{
+    AgentReleaseCacheMode, AgentReleasePersistentDataMode, AgentReleaseWorkspaceMode,
+    CloudSecretReference,
+};
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy,
     RuntimeHealthCheck, RuntimeMount, RuntimeMountSource, RuntimeNetworkSpec, RuntimePort,
-    RuntimeProcessSpec, RuntimeUnitClass, RuntimeUnitSpec, SecretReference, SecretTarget,
-    TransportProtocol,
+    RuntimeProcessSpec, RuntimeServiceLifecycle, RuntimeUnitClass, RuntimeUnitSpec,
+    SecretReference, SecretTarget, TransportProtocol,
 };
 
 pub fn project_runtime_spec(revision: &WorkloadRevision) -> Result<RuntimeUnitSpec, String> {
@@ -164,6 +167,31 @@ fn project_runtime_spec_from_template(
     template: &ServiceTemplate,
     semantics_profile_digest: Option<&str>,
 ) -> Result<RuntimeUnitSpec, String> {
+    let health = template.health.as_ref().map(project_readiness);
+    let service_lifecycle = revision
+        .agent_binding()
+        .map(|binding| -> Result<RuntimeServiceLifecycle, String> {
+            let manifest = binding.runtime_manifest_for(template)?;
+            let readiness = template.health.as_ref().ok_or_else(|| {
+                "Agent Service template omitted its manifest-owned readiness policy".to_owned()
+            })?;
+            Ok(RuntimeServiceLifecycle {
+                liveness: RuntimeHealthCheck {
+                    probe: HealthProbe::Http {
+                        port: readiness.port_name.clone(),
+                        path: manifest.health().liveness_path().into(),
+                        expected_statuses: vec![200],
+                    },
+                    interval_ms: readiness.interval_ms,
+                    timeout_ms: readiness.timeout_ms,
+                    start_period_ms: readiness.stabilization_window_ms,
+                    success_threshold: u32::from(readiness.healthy_threshold),
+                    failure_threshold: u32::from(readiness.unhealthy_threshold),
+                },
+                shutdown_grace_seconds: manifest.health().shutdown_grace_seconds(),
+            })
+        })
+        .transpose()?;
     let spec = RuntimeUnitSpec {
         schema: RuntimeUnitSpec::SCHEMA.into(),
         unit_id: revision.runtime_unit_id(),
@@ -180,24 +208,7 @@ fn project_runtime_spec_from_template(
             working_directory: template.process.working_directory.clone(),
             environment: template.process.environment.clone(),
         },
-        mounts: revision
-            .skill_bindings()
-            .iter()
-            .map(|binding| {
-                Ok(RuntimeMount {
-                    name: binding.mount_name(),
-                    source: RuntimeMountSource::Artifact {
-                        artifact: ArtifactRef {
-                            uri: binding.artifact_uri()?,
-                            digest: binding.artifact_digest().as_str().into(),
-                            media_type: binding.artifact_media_type().into(),
-                        },
-                    },
-                    target: binding.mount_target(),
-                    read_only: true,
-                })
-            })
-            .collect::<Result<Vec<_>, String>>()?,
+        mounts: project_runtime_mounts(revision, template)?,
         secrets: project_runtime_secrets(revision)?,
         network: RuntimeNetworkSpec {
             mode: if template.ports.is_empty() {
@@ -223,18 +234,8 @@ fn project_runtime_spec_from_template(
             execution_timeout_ms: None,
         },
         isolation: IsolationLevel::Sandbox,
-        health: template.health.as_ref().map(|health| RuntimeHealthCheck {
-            probe: HealthProbe::Http {
-                port: health.port_name.clone(),
-                path: health.path.clone(),
-                expected_statuses: vec![200],
-            },
-            interval_ms: health.interval_ms,
-            timeout_ms: health.timeout_ms,
-            start_period_ms: health.stabilization_window_ms,
-            success_threshold: u32::from(health.healthy_threshold),
-            failure_threshold: u32::from(health.unhealthy_threshold),
-        }),
+        health,
+        service_lifecycle,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: semantics_profile_digest.map(str::to_owned),
@@ -242,6 +243,106 @@ fn project_runtime_spec_from_template(
     };
     spec.validate()?;
     Ok(spec)
+}
+
+fn project_readiness(
+    health: &crate::modules::workloads::domain::entities::HttpHealthCheck,
+) -> RuntimeHealthCheck {
+    RuntimeHealthCheck {
+        probe: HealthProbe::Http {
+            port: health.port_name.clone(),
+            path: health.path.clone(),
+            expected_statuses: vec![200],
+        },
+        interval_ms: health.interval_ms,
+        timeout_ms: health.timeout_ms,
+        start_period_ms: health.stabilization_window_ms,
+        success_threshold: u32::from(health.healthy_threshold),
+        failure_threshold: u32::from(health.unhealthy_threshold),
+    }
+}
+
+fn project_runtime_mounts(
+    revision: &WorkloadRevision,
+    template: &ServiceTemplate,
+) -> Result<Vec<RuntimeMount>, String> {
+    let mut mounts = revision
+        .skill_bindings()
+        .iter()
+        .map(|binding| {
+            Ok(RuntimeMount {
+                name: binding.mount_name(),
+                source: RuntimeMountSource::Artifact {
+                    artifact: ArtifactRef {
+                        uri: binding.artifact_uri()?,
+                        digest: binding.artifact_digest().as_str().into(),
+                        media_type: binding.artifact_media_type().into(),
+                    },
+                },
+                target: binding.mount_target(),
+                read_only: true,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let Some(binding) = revision.agent_binding() else {
+        return Ok(mounts);
+    };
+    let contract = binding.runtime_contract().ok_or_else(|| {
+        "Agent Workload binding predates the exact release manifest contract".to_owned()
+    })?;
+    let manifest = contract.manifest()?;
+    mounts.push(RuntimeMount {
+        name: "agent-release-manifest".into(),
+        source: RuntimeMountSource::Artifact {
+            artifact: ArtifactRef {
+                uri: contract.archive_uri().into(),
+                digest: contract.archive_digest().to_string(),
+                media_type: a3s_cloud_contracts::NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+            },
+        },
+        target: "/app/.a3s".into(),
+        read_only: true,
+    });
+    let storage_bytes = template
+        .resources
+        .ephemeral_storage_bytes
+        .ok_or_else(|| "Agent Workload omitted its ephemeral storage limit".to_owned())?;
+    let workspace_read_only = match manifest.storage().workspace() {
+        AgentReleaseWorkspaceMode::ReadOnly => true,
+        AgentReleaseWorkspaceMode::Ephemeral => false,
+        _ => return Err("Agent release workspace mode is unsupported".into()),
+    };
+    mounts.push(RuntimeMount {
+        name: "agent-workspace".into(),
+        source: RuntimeMountSource::Tmpfs {
+            size_bytes: storage_bytes,
+        },
+        target: "/workspace".into(),
+        read_only: workspace_read_only,
+    });
+    match manifest.storage().cache() {
+        AgentReleaseCacheMode::None => {}
+        AgentReleaseCacheMode::Ephemeral if workspace_read_only => mounts.push(RuntimeMount {
+            name: "agent-cache".into(),
+            source: RuntimeMountSource::Tmpfs {
+                size_bytes: storage_bytes,
+            },
+            target: "/workspace/.cache".into(),
+            read_only: false,
+        }),
+        AgentReleaseCacheMode::Ephemeral => {}
+        _ => return Err("Agent release cache mode is unsupported".into()),
+    }
+    match manifest.storage().persistent_data() {
+        AgentReleasePersistentDataMode::None => {}
+        AgentReleasePersistentDataMode::External => {
+            return Err(
+                "Agent release external persistent data has no versioned mount target".into(),
+            )
+        }
+        _ => return Err("Agent release persistent-data mode is unsupported".into()),
+    }
+    Ok(mounts)
 }
 
 /// Project the sole Workloads-owned Secret bindings into exact Runtime

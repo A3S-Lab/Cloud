@@ -2,8 +2,8 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodePoolId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    HttpHealthCheck, OciArtifact, SecretBinding, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate,
+    AgentReleaseAdmission, HttpHealthCheck, OciArtifact, SecretBinding, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate,
 };
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use a3s_boot::Command;
@@ -30,6 +30,24 @@ impl SourceWorkloadTemplate {
             ports: self.ports,
             health: self.health,
         }
+    }
+
+    pub fn resolve_agent(
+        self,
+        admission: &AgentReleaseAdmission,
+    ) -> Result<ServiceTemplate, String> {
+        if !self.process.command.is_empty()
+            || !self.process.args.is_empty()
+            || self.process.working_directory.is_some()
+            || !self.process.environment.is_empty()
+            || !self.ports.is_empty()
+            || self.health.is_some()
+        {
+            return Err(
+                "Agent process, ports, and health are derived from its release manifest".into(),
+            );
+        }
+        admission.resolve_template(self.secrets, self.resources)
     }
 }
 

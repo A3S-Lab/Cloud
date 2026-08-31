@@ -23,11 +23,13 @@ pub use services::{
     AssetGitRepositoryWrite, IAssetGitRepository, DEFAULT_ASSET_BRANCH,
 };
 pub use value_objects::{
-    AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle, AssetGitRpcLimits,
-    AssetGitRpcResponse, AssetGitService, AssetManifestAdmission, AssetManifestDefinition,
-    AssetReleaseArtifact, AssetReleaseArtifactKind, AssetReleaseProvenance, AssetReleaseVersion,
-    McpServiceProfile, McpServiceProfileSpec, ASSET_MANIFEST_MAX_ACL_BYTES, ASSET_MANIFEST_PATH,
-    ASSET_MANIFEST_SCHEMA, MCP_SERVICE_PROFILE_MAX_ACL_BYTES, SKILL_BUNDLE_MEDIA_TYPE,
+    AgentReleaseTemplate, AssetGitBackup, AssetGitBuildInput, AssetGitReleaseBundle,
+    AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetManifestAdmission,
+    AssetManifestDefinition, AssetReleaseAgentManifest, AssetReleaseArtifact,
+    AssetReleaseArtifactKind, AssetReleaseProvenance, AssetReleaseVersion, McpServiceProfile,
+    McpServiceProfileSpec, AGENT_RELEASE_TEMPLATE_MAX_ACL_BYTES, AGENT_RELEASE_TEMPLATE_PATH,
+    ASSET_MANIFEST_MAX_ACL_BYTES, ASSET_MANIFEST_PATH, ASSET_MANIFEST_SCHEMA,
+    MCP_SERVICE_PROFILE_MAX_ACL_BYTES, SKILL_BUNDLE_MEDIA_TYPE,
 };
 
 #[cfg(test)]

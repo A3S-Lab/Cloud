@@ -766,6 +766,7 @@ fn running_observation(spec: &RuntimeUnitSpec) -> Result<RuntimeObservation, Str
             checked_at_ms: now_ms,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

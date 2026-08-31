@@ -5,9 +5,9 @@ use crate::modules::shared_kernel::domain::{
     SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    AgentWorkloadRevisionBinding, Deployment, DeploymentStatus, ExternalBuildReference,
-    McpWorkloadRevisionBinding, RequestedServiceTemplate, ServiceTemplate, Workload,
-    WorkloadDesiredState, WorkloadRevision,
+    AgentReleaseRuntimeContract, AgentWorkloadRevisionBinding, Deployment, DeploymentStatus,
+    ExternalBuildReference, McpWorkloadRevisionBinding, RequestedServiceTemplate, ServiceTemplate,
+    Workload, WorkloadDesiredState, WorkloadRevision,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -69,6 +69,7 @@ impl Selection for RevisionSelection {
             WorkloadRevisions::agent_asset_id().expression(),
             WorkloadRevisions::agent_asset_release_id().expression(),
             WorkloadRevisions::agent_build_run_id().expression(),
+            WorkloadRevisions::agent_release_contract().expression(),
             WorkloadRevisions::mcp_organization_id().expression(),
             WorkloadRevisions::mcp_asset_id().expression(),
             WorkloadRevisions::mcp_asset_release_id().expression(),
@@ -142,6 +143,7 @@ pub(super) struct RevisionRow {
     agent_asset_id: Option<Uuid>,
     agent_asset_release_id: Option<Uuid>,
     agent_build_run_id: Option<Uuid>,
+    agent_release_contract: Option<Value>,
     mcp_organization_id: Option<Uuid>,
     mcp_asset_id: Option<Uuid>,
     mcp_asset_release_id: Option<Uuid>,
@@ -193,8 +195,9 @@ from_row!(RevisionRow, {
     external_build_project_id: 16, external_build_environment_id: 17,
     external_source_revision_id: 18, external_build_run_id: 19,
     agent_organization_id: 20, agent_asset_id: 21, agent_asset_release_id: 22,
-    agent_build_run_id: 23, mcp_organization_id: 24, mcp_asset_id: 25,
-    mcp_asset_release_id: 26, mcp_profile_digest: 27, mcp_profile_acl: 28,
+    agent_build_run_id: 23, agent_release_contract: 24, mcp_organization_id: 25,
+    mcp_asset_id: 26, mcp_asset_release_id: 27, mcp_profile_digest: 28,
+    mcp_profile_acl: 29,
 });
 from_row!(DeploymentRow, {
     id: 0, organization_id: 1, workload_id: 2, revision_id: 3, operation_id: 4,
@@ -338,14 +341,30 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
         row.agent_asset_id,
         row.agent_asset_release_id,
         row.agent_build_run_id,
+        row.agent_release_contract,
     ) {
-        (None, None, None, None) => {}
-        (Some(organization_id), Some(asset_id), Some(asset_release_id), Some(build_run_id)) => {
-            let binding = AgentWorkloadRevisionBinding::restore(
+        (None, None, None, None, None) => {}
+        (
+            Some(organization_id),
+            Some(asset_id),
+            Some(asset_release_id),
+            Some(build_run_id),
+            runtime_contract,
+        ) => {
+            let runtime_contract = runtime_contract
+                .map(serde_json::from_value::<AgentReleaseRuntimeContract>)
+                .transpose()
+                .map_err(|error| {
+                    corrupt(format!(
+                        "Agent release Runtime contract is invalid: {error}"
+                    ))
+                })?;
+            let binding = AgentWorkloadRevisionBinding::restore_with_contract(
                 OrganizationId::from_uuid(organization_id),
                 AssetId::from_uuid(asset_id),
                 AssetReleaseId::from_uuid(asset_release_id),
                 BuildRunId::from_uuid(build_run_id),
+                runtime_contract,
             )
             .map_err(|error| {
                 corrupt(format!(

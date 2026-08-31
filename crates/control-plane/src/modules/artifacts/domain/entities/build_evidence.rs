@@ -6,6 +6,11 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, OperationId, SourceRevisionId,
 };
 use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
+use a3s_cloud_contracts::{
+    agent_harness_compatibility_v1, agent_release_builder_uri, agent_release_manifest_archive,
+    agent_release_source_uri, artifact_uri, AgentReleaseManifest,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
@@ -22,6 +27,61 @@ pub const SPDX_VERSION: &str = "SPDX-2.3";
 
 const MAX_CANONICAL_DOCUMENT_BYTES: usize = 64 * 1024 * 1024;
 const MAX_SPDX_FILES: usize = 100_000;
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BuildEvidenceAgentReleaseManifest {
+    pub identity: String,
+    pub canonical_acl: String,
+    pub archive: BuildArtifact,
+}
+
+impl BuildEvidenceAgentReleaseManifest {
+    fn validate_for(&self, evidence: &BuildEvidence) -> Result<(), String> {
+        validate_sha256(&self.identity, "Agent release manifest identity")?;
+        self.archive.validate()?;
+        if self.archive.media_type != NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE {
+            return Err("Agent release manifest archive has the wrong media type".into());
+        }
+        let manifest = AgentReleaseManifest::parse(&self.canonical_acl)
+            .map_err(|error| format!("final Agent release manifest is invalid: {error}"))?;
+        manifest
+            .verify_compatibility(&agent_harness_compatibility_v1())
+            .map_err(|error| format!("final Agent release manifest is incompatible: {error}"))?;
+        if manifest.canonical_acl() != self.canonical_acl
+            || manifest.identity() != self.identity
+            || manifest.artifact().digest() != evidence.artifact.digest
+            || manifest.artifact().media_type() != evidence.artifact.media_type
+        {
+            return Err("final Agent release manifest changed its canonical OCI binding".into());
+        }
+        let source_uri = agent_release_source_uri(&evidence.source_content_digest)?;
+        let builder_uri = agent_release_builder_uri(evidence.build_run_id.as_uuid())?;
+        if manifest.provenance().len() != 2
+            || !manifest.provenance().iter().any(|reference| {
+                reference.kind() == "source"
+                    && reference.uri() == source_uri
+                    && reference.digest() == evidence.source_content_digest
+            })
+            || !manifest.provenance().iter().any(|reference| {
+                reference.kind() == "builder"
+                    && reference.uri() == builder_uri
+                    && reference.digest() == evidence.provenance_digest
+            })
+        {
+            return Err("final Agent release manifest changed its provenance binding".into());
+        }
+        let archive = agent_release_manifest_archive(self.canonical_acl.as_bytes())?;
+        let archive_digest = sha256_digest(&archive);
+        if self.archive.digest != archive_digest
+            || self.archive.uri != artifact_uri(&archive_digest)?
+            || self.archive.size_bytes != archive.len() as u64
+        {
+            return Err("final Agent release manifest archive changed its exact bytes".into());
+        }
+        Ok(())
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -47,6 +107,8 @@ pub struct BuildEvidence {
     pub sbom_digest: String,
     pub provenance: SlsaProvenanceStatement,
     pub provenance_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_release_manifest: Option<BuildEvidenceAgentReleaseManifest>,
     pub envelope: DsseEnvelope,
     pub signing_key: BuildEvidenceSigningKey,
     pub verification_state: BuildEvidenceVerificationState,
@@ -218,6 +280,15 @@ impl BuildEvidence {
             );
         }
         self.envelope.validate(&provenance, &self.signing_key)?;
+        if let Some(manifest) = &self.agent_release_manifest {
+            if !matches!(self.subject, BuildEvidenceSubject::AssetRelease { .. }) {
+                return Err(
+                    "external source build evidence cannot contain an Agent release manifest"
+                        .into(),
+                );
+            }
+            manifest.validate_for(self)?;
+        }
         self.validate_spdx_binding()?;
         self.validate_provenance_binding()?;
         Ok(())

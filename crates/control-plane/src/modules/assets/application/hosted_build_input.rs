@@ -3,7 +3,8 @@ use crate::modules::assets::domain::{
     IAssetGitRepository, IAssetRepository,
 };
 use crate::modules::assets::published::{
-    HostedAssetBuildInputSnapshot, ValidatedHostedAssetBuildInputProjection,
+    HostedAgentReleaseTemplate, HostedAssetBuildInputSnapshot,
+    ValidatedHostedAssetBuildInputProjection,
 };
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, GitCommitSha, OrganizationId, RepositoryError, Sha256Digest,
@@ -158,6 +159,16 @@ fn project_hosted_build_input(
             "Agent and MCP release publication requires one pinned Asset build block".into(),
         )
     })?;
+    let agent_release_template = admission
+        .agent_release_template
+        .map(|template| {
+            HostedAgentReleaseTemplate::from_validated_parts(
+                template.identity().into(),
+                template.canonical_acl().into(),
+            )
+        })
+        .transpose()
+        .map_err(HostedAssetBuildInputQueryError::Integrity)?;
     HostedAssetBuildInputSnapshot::from_validated_release(
         ValidatedHostedAssetBuildInputProjection {
             organization_id: release.organization_id,
@@ -166,6 +177,7 @@ fn project_hosted_build_input(
             commit_sha: release.commit_sha,
             manifest_digest: release.manifest_digest,
             recipe,
+            agent_release_template,
         },
     )
     .map_err(HostedAssetBuildInputQueryError::Integrity)
@@ -278,6 +290,7 @@ mod tests {
             manifest_digest,
             kind,
             build_recipe,
+            agent_release_template: (kind == AssetKind::Agent).then(agent_release_template),
         };
         (asset, release, admission)
     }
@@ -292,6 +305,25 @@ mod tests {
             vec!["linux/amd64".into()],
         )
         .expect("recipe")
+    }
+
+    fn agent_release_template() -> crate::modules::assets::domain::AgentReleaseTemplate {
+        crate::modules::assets::domain::AgentReleaseTemplate::parse(concat!(
+            "agent_release {\n",
+            "  schema = \"a3s.code.agent-release.v1\"\n",
+            "  protocol = \"a3s.code.agent.v1\"\n",
+            "  artifact { digest = \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" media_type = \"application/vnd.oci.image.manifest.v1+json\" }\n",
+            "  entrypoint { command = \"/usr/bin/a3s\" args = [\"code\", \"harness\", \"--manifest\", \"/app/.a3s/asset.acl\"] }\n",
+            "  health { transport = \"http\" port = 8080 readiness_path = \"/health/ready\" liveness_path = \"/health/live\" shutdown_grace_seconds = 30 }\n",
+            "  storage { workspace = \"ephemeral\" cache = \"ephemeral\" persistent_data = \"none\" }\n",
+            "  capability \"runtime.service\" { level = 1 }\n",
+            "  capability \"secrets.external\" { level = 1 }\n",
+            "  capability \"workspace.local\" { level = 1 }\n",
+            "  provenance \"source\" { uri = \"urn:a3s:source:template\" digest = \"sha256:2222222222222222222222222222222222222222222222222222222222222222\" }\n",
+            "  provenance \"builder\" { uri = \"urn:a3s:builder:template\" digest = \"sha256:4444444444444444444444444444444444444444444444444444444444444444\" }\n",
+            "}\n",
+        ))
+        .expect("Agent release template")
     }
 
     fn digest(fill: char) -> Sha256Digest {

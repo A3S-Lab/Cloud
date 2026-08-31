@@ -4089,8 +4089,8 @@ forge.
 | --- | --- | --- |
 | `A0.1` | Verified | Exact Asset/AssetRelease domain, immutable identities, tenant-scoped PostgreSQL schema and A3S ORM repository, optimistic concurrency, shared idempotency/Outbox, and real PostgreSQL behavior evidence |
 | `A0.2` | Verified | Tenant-authorized Git Smart HTTP, tenant-qualified durable bare repositories, immutable identity checks, atomic concurrent provisioning, shared Git runner, A3S ORM-backed leases/quotas/audit, same-lease recovery, immutable backup/restore, and pinned `.a3s/asset.acl` admission |
-| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, migration 150 boundary documentation, migration 152's owner-fact-fed Artifacts candidate projection, concurrent local-only reservation, restart repair, owner-atomic BuildRun-plus-outcome publication followed by an idempotent Assets release/provenance projection, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized REST/client/CLI management projections are implemented; retained execution of the exact `G0` external-provider gate still blocks verification |
-| `A0.4` | In progress | Exact published Agent releases bind immutably to ordinary Workload revisions through the existing Deployment, Operation, Flow, Fleet, and Runtime path. Server-side artifact injection, replay, update, rollback, Secret restart, persistence, REST, client, CLI projections are implemented; real-provider lifecycle evidence still blocks verification. Hosted MCP deployment is owned by `MCP0` |
+| `A0.3` | In progress | Typed external-or-hosted build admission, deterministic pinned hosted-Git input, the shared Build Flow/OCI/evidence path, migrations 063-064 typed persistence, migration 150 boundary documentation, migration 152's owner-fact-fed Artifacts candidate projection, concurrent local-only reservation, restart repair, owner-atomic BuildRun-plus-v2-outcome publication followed by an idempotent Assets release/provenance/final-Agent-manifest projection, closed v1 replay compatibility, failed-draft recovery, product yanking, semantic deterministic selection, and tenant-authorized REST/client/CLI management projections are implemented; retained execution of the exact `G0` external-provider gate still blocks verification |
+| `A0.4` | In progress | Exact published Agent releases bind immutably to ordinary Workload revisions through the existing Deployment, Operation, Flow, Fleet, and Runtime path. The Code-owned final manifest now derives process, port, readiness, Secret destinations, storage policy, and the read-only `/app/.a3s` mount; caller overrides, provenance drift, archive drift, and unsupported storage fail closed. Server-side artifact injection, replay, update, rollback, Secret restart, migration 182 persistence, REST, client, and CLI projections are implemented; fresh real-provider lifecycle evidence still blocks verification. Hosted MCP deployment is owned by `MCP0` |
 | `A0.5` | In progress | Exact Git archive publication, immutable Skill release binding/rebinding/unbinding, migration 067 persistence, read-only Runtime Artifact mounts, rollback-safe revisions, and authorized REST/client/CLI/catalog surfaces are implemented; focused and real PostgreSQL/Box lifecycle evidence still blocks verification |
 
 Migration 051 stores organization-scoped Asset names and immutable release
@@ -4160,9 +4160,11 @@ Migration 064 introduced the hosted publication shape; the current owner
 boundary is the migration 150 model. `IBuildRunRepository::finalize` locks and
 advances only the BuildRun and atomically stores one versioned
 `artifact.hosted-build.succeeded` Outbox fact. Assets consumes that immutable,
-location-free fact through `HostedBuildOutcomeProjector`, locks its own Asset
-and exact draft release, binds the BuildRun ID and verified provenance digest,
-and stores one schema-v2 `asset.release.published` fact in its own transaction.
+location-free v2 fact through `HostedBuildOutcomeProjector`, locks its own Asset
+and exact draft release, binds the BuildRun ID, verified provenance digest, and
+Code-owned final Agent manifest, and stores one schema-v3
+`asset.release.published` fact in its own transaction. Exact pending v1 facts
+remain drainable under their legacy shape.
 Exact replay validates the same binding. Ordinary BuildRun saves reject
 terminal transitions, and the generic Asset repository publishes only Skill
 bundles directly, so no second publication service, queue, worker, or foreign
@@ -6236,7 +6238,7 @@ CAS, and idempotency authority. `WI2` through `WI7` remain open, so no workload
 identity availability is claimed.
 
 `WI2-C1` now freezes the exact non-authorizing execution-evidence contract.
-The pinned Runtime `0.4.0` attachment is the canonical WorkloadIdentityPolicy
+The pinned Runtime `0.5.0` attachment is the canonical WorkloadIdentityPolicy
 ACL digest; Runtime preserves it in Unit Spec and evidence, and the pinned Box
 confidential provider binds it to provider attestation. Identity normalizes
 only the exact Claim/generation/digests, NodePool spec, Node Agent

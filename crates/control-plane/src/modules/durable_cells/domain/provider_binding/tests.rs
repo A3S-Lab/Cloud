@@ -537,6 +537,8 @@ fn runtime_stop_receipt(spec: &RuntimeUnitSpec) -> (NodeCommandEnvelope, NodeCom
     let mut observation = healthy_observation(spec, RuntimeHealthState::Healthy);
     observation.clear_service_endpoints();
     observation.state = RuntimeUnitState::Stopped;
+    observation.health = None;
+    observation.liveness = None;
     observation.observed_at_ms = observed_at_ms;
     observation.started_at_ms = Some(observed_at_ms.saturating_sub(1));
     observation.finished_at_ms = Some(observed_at_ms);
@@ -660,6 +662,7 @@ fn healthy_observation(
             checked_at_ms: now_ms,
             message: None,
         }),
+        liveness: None,
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {

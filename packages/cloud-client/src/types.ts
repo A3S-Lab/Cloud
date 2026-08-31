@@ -146,6 +146,14 @@ export interface AssetReleaseProvenance {
   provenanceDigest: string;
 }
 
+export interface AssetReleaseAgentManifest {
+  identity: string;
+  canonicalAcl: string;
+  archiveDigest: string;
+  archiveSizeBytes: number;
+  sourceContentDigest: string;
+}
+
 export interface AssetRelease {
   organizationId: string;
   assetId: string;
@@ -156,6 +164,7 @@ export interface AssetRelease {
   manifestDigest: string;
   artifact: AssetReleaseArtifact | null;
   provenance: AssetReleaseProvenance | null;
+  agentReleaseManifest: AssetReleaseAgentManifest | null;
   aggregateVersion: number;
   createdAt: string;
   updatedAt: string;

@@ -3611,6 +3611,13 @@ do not create an Automation, Task, WorkflowRun, queue, or Cloud timer. See the
   stores that exact `build_run_id` plus the SHA-256 identity of its locally
   verified provenance. The complete signed evidence remains authoritative on
   the BuildRun.
+- Every new Agent publication additionally stores the exact canonical
+  `a3s.code.agent-release.v1` bytes, manifest identity, deterministic read-only
+  archive digest and size, and source-content digest. The final manifest binds
+  the OCI artifact, exact source URI/digest, and exact BuildRun URI/provenance
+  digest. New Workload revisions derive process, port, readiness, storage,
+  Secret destinations, and `/app/.a3s` mount from those retained bytes; callers
+  cannot override them.
 - Hosted BuildRun completion and its versioned outcome fact are one Artifacts
   A3S ORM transaction. The generic Outbox Relay invokes the Assets-owned
   projector, which validates the fact and commits release publication,

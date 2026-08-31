@@ -451,6 +451,7 @@ fn provider_runtime_spec(provider_artifact: ArtifactRef) -> GateResult<RuntimeUn
             success_threshold: 1,
             failure_threshold: 40,
         }),
+        service_lifecycle: None,
         restart: RestartPolicy::Always,
         outputs: Vec::new(),
         semantics_profile_digest: None,
