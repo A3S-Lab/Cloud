@@ -120,12 +120,12 @@ observation readiness logic or invoke A3S Box outside Runtime.
 
 **Component status on 2026-08-31:** Cloud pins `a3s-runtime` `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`36086bd1b8ddafa6d1228251cefa55dacbbaee5c`; Box resolves that exact Runtime
+`17f307beb3dd7f7a57a8424b8c7a6561d30313bf`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to
 the exact provider resource. The exact
-[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33393067843) passes native
+[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33420859277) passes native
 and aarch64 OCI lifecycle and SDK certification, Linux and macOS build checks,
 Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
 placement-group Services, Agent readiness, and the Durable Cell provider gate
