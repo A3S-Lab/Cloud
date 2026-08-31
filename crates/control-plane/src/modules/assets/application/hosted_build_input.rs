@@ -290,7 +290,7 @@ mod tests {
             manifest_digest,
             kind,
             build_recipe,
-            agent_release_template: (kind == AssetKind::Agent).then(|| agent_release_template()),
+            agent_release_template: (kind == AssetKind::Agent).then(agent_release_template),
         };
         (asset, release, admission)
     }

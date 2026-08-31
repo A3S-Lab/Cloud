@@ -75,6 +75,14 @@ fn agent_release_admission(
         .agent_release_manifest
         .as_ref()
         .expect("published Agent release manifest");
+    let runtime_contract = AgentReleaseRuntimeContract::new(
+        manifest.identity().to_string(),
+        manifest.canonical_acl(),
+        manifest.archive_uri().expect("Agent manifest Artifact URI"),
+        manifest.archive_digest().to_string(),
+        manifest.archive_size_bytes(),
+    )
+    .expect("Agent runtime contract");
     AgentReleaseAdmission::new(
         asset.organization_id,
         asset.id,
@@ -86,11 +94,7 @@ fn agent_release_admission(
             digest: artifact.digest.clone(),
             media_type: artifact.media_type.clone(),
         },
-        manifest.identity().to_string(),
-        manifest.canonical_acl(),
-        manifest.archive_uri().expect("Agent manifest Artifact URI"),
-        manifest.archive_digest().to_string(),
-        manifest.archive_size_bytes(),
+        runtime_contract,
     )
     .expect("Agent release admission")
 }
@@ -1282,34 +1286,7 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
         build.id,
         release.published_at.expect("publication time"),
         admission.artifact().clone(),
-        release
-            .agent_release_manifest
-            .as_ref()
-            .expect("Agent manifest")
-            .identity()
-            .to_string(),
-        release
-            .agent_release_manifest
-            .as_ref()
-            .expect("Agent manifest")
-            .canonical_acl(),
-        release
-            .agent_release_manifest
-            .as_ref()
-            .expect("Agent manifest")
-            .archive_uri()
-            .expect("Agent manifest Artifact URI"),
-        release
-            .agent_release_manifest
-            .as_ref()
-            .expect("Agent manifest")
-            .archive_digest()
-            .to_string(),
-        release
-            .agent_release_manifest
-            .as_ref()
-            .expect("Agent manifest")
-            .archive_size_bytes(),
+        admission.runtime_contract().clone(),
     )
     .expect("well-formed foreign-tenant admission");
     let mut foreign_revision = WorkloadRevision::create(

@@ -3263,18 +3263,21 @@ issuance, enforcement, revocation, and federation remain owned by `WI2`
 through `WI7`.
 
 `H0.4-WI2-C1` is verified as the non-authorizing Runtime
-evidence contract. Cloud pins A3S Runtime `0.4.0` and the exact Box revision
-that preserve one opaque Identity policy digest across Unit Spec, provider
-evidence, restart/replay and confidential-provider attestation. Their exact
-[Runtime main CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095)
-and [Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002)
-pass. Cloud REST/OpenAPI `1.81.0`, the current Node path and the frozen MCP
-fixture consume Runtime `capabilities.v5` and `unit-spec.v3` from that exact
-revision; OpenAPI derives the current version from Runtime rather than a
-second literal. Enrollment V1 alone retains bounded v4 admission for REST
-compatibility and rejects any v4 claim of the v5 identity-attachment feature;
-the authenticated Node protocol and execution evidence remain exact-version
-gates. Identity's
+evidence contract. Cloud pins A3S Runtime `0.5.0` at
+`4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
+`cbab76702f640608aa52e15d7edf97f1ddfec13e`. They preserve one opaque Identity
+policy digest across Unit Spec, provider evidence, restart/replay and
+confidential-provider attestation; Runtime 0.5 also carries distinct Service
+readiness, liveness, and graceful-shutdown intent. The exact
+[Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33393067843) passes
+native and aarch64 OCI lifecycle plus Rust, Python, TypeScript, and Go SDK
+certification. Cloud REST/OpenAPI `1.82.0`, the current Node path and the frozen
+MCP fixture consume Runtime `capabilities.v6` and `unit-spec.v4` from those
+exact revisions; OpenAPI derives the current capability schema from Runtime
+rather than a second literal. Enrollment V1 alone retains bounded v4 admission
+for REST compatibility and rejects any v4 claim of the v5
+identity-attachment feature; the authenticated Node protocol and execution
+evidence remain exact-version gates. Identity's
 canonical `cloud.identity.workload-runtime-evidence-binding.v1` binds that
 digest to the exact policy revision, Workloads Claim/generation/digests,
 NodePool spec, Fleet Node Agent instance/capability observation, Runtime

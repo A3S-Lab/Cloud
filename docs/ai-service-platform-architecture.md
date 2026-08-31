@@ -118,19 +118,23 @@ for capability, semantics-profile, health, and endpoint admission. They retain
 their own product checks. No context may reproduce generic class/capability/
 observation readiness logic or invoke A3S Box outside Runtime.
 
-**Component status on 2026-08-30:** Cloud pins `a3s-runtime` `0.4.0` at
-`3b62bb3bae036636fee48c2725446e9ffc2a0c6c` and Box `3.2.0` at
-`331bc706749094f696d5f512e268266eabc3fa55`; both resolve that same Runtime
-source identity, and their exact
-[Runtime CI](https://github.com/A3S-Lab/Runtime/actions/runs/33295541095) and
-[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33296626002) pass. Runtime
-now preserves one opaque Identity attachment across
-Unit Spec and provider evidence, and confidential Box attestation binds it to
-the exact provider resource. Execution Tasks, ordinary and placement-group
-Services, Agent readiness, and the Durable Cell provider gate call
-`RuntimeConsumerRequirements` instead of maintaining local generic
-capability/readiness rules. This closes the library-adoption slice only;
-current provider, recovery, and product release gates still decide availability.
+**Component status on 2026-08-31:** Cloud pins `a3s-runtime` `0.5.0` at
+`4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
+`cbab76702f640608aa52e15d7edf97f1ddfec13e`; Box resolves that exact Runtime
+source identity. Runtime preserves one opaque Identity attachment across Unit
+Spec and provider evidence and now separates Service readiness, liveness, and
+graceful-shutdown intent. Confidential Box attestation binds the attachment to
+the exact provider resource. The exact
+[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33393067843) passes native
+and aarch64 OCI lifecycle and SDK certification, Linux and macOS build checks,
+Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
+placement-group Services, Agent readiness, and the Durable Cell provider gate
+call `RuntimeConsumerRequirements` instead of maintaining local generic
+capability/readiness rules. Hosted Agents additionally require the
+`ServiceLifecycle` feature and bind both health signals plus shutdown grace to
+the Code-owned manifest. This closes the pinned library and Box integration
+slice only; current hardware-provider, recovery, and product release gates
+still decide availability.
 
 ## 5. DDD context map
 

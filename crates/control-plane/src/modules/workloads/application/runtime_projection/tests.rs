@@ -13,10 +13,10 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    AgentReleaseAdmission, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
-    Workload, WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
-    WorkloadRuntimeExecutionBinding,
+    AgentReleaseAdmission, AgentReleaseRuntimeContract, HttpHealthCheck, OciArtifact,
+    SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources,
+    ServiceTemplate, SkillWorkloadRevisionBinding, Workload, WorkloadPlacementGroupMemberPlan,
+    WorkloadPlacementGroupMemberRole, WorkloadRuntimeExecutionBinding,
 };
 use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
 use chrono::{Duration, Utc};
@@ -145,6 +145,14 @@ fn projects_digest_bound_service_without_provider_fields() {
         .agent_release_manifest
         .as_ref()
         .expect("final Agent manifest");
+    let runtime_contract = AgentReleaseRuntimeContract::new(
+        manifest.identity().to_string(),
+        manifest.canonical_acl(),
+        manifest.archive_uri().expect("Agent manifest Artifact URI"),
+        manifest.archive_digest().to_string(),
+        manifest.archive_size_bytes(),
+    )
+    .expect("Agent runtime contract");
     let admission = AgentReleaseAdmission::new(
         organization_id,
         agent.id,
@@ -156,11 +164,7 @@ fn projects_digest_bound_service_without_provider_fields() {
             digest: published.digest.clone(),
             media_type: published.media_type.clone(),
         },
-        manifest.identity().to_string(),
-        manifest.canonical_acl(),
-        manifest.archive_uri().expect("Agent manifest Artifact URI"),
-        manifest.archive_digest().to_string(),
-        manifest.archive_size_bytes(),
+        runtime_contract,
     )
     .expect("Agent admission");
     let workload = Workload::create(

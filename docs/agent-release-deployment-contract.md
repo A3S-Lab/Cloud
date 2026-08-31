@@ -67,6 +67,8 @@ values are derived from the final Code manifest and cannot be overridden:
 | command and arguments | `entrypoint` |
 | service port | `health.port` |
 | readiness probe | `health.readiness_path` |
+| liveness probe | `health.liveness_path` |
+| graceful shutdown | `health.shutdown_grace_seconds` |
 | manifest mount | exact deterministic archive at `/app/.a3s` |
 | workspace mount | `storage.workspace` |
 | cache mount | `storage.cache` |
@@ -77,6 +79,14 @@ must match every declared name, target kind, environment variable or absolute
 file path exactly; file Secrets use mode `0400`. One separate registry
 credential may accompany those declared runtime Secrets. External persistent
 data is rejected until a versioned mount target exists.
+
+The selected Runtime provider must advertise `ServiceLifecycle` in addition to
+the ordinary HTTP health capability. Cloud treats readiness and liveness as
+different signals: readiness gates traffic, while repeated liveness failure
+causes the provider-owned restart policy to create a new generation. An Agent
+execution becomes ready only after both observations are healthy. The manifest
+also owns the bounded graceful-shutdown interval; callers cannot replace any
+of these lifecycle values at deployment time.
 
 Skill inputs remain independent, digest-bound read-only Artifact mounts on the
 same Workload revision. The final Agent manifest does not absorb Skill release
@@ -103,7 +113,7 @@ Publication or admission fails closed when any of these facts change:
 - OCI digest or media type;
 - source or builder provenance authority;
 - archive URI, digest, size, entry path, mode, ownership, timestamp, or bytes;
-- caller-selected process, port, or health policy;
+- caller-selected process, port, readiness, liveness, or shutdown policy;
 - required Secret mapping;
 - storage bounds or unsupported persistent-data mode;
 - Outbox payload/envelope version or aggregate identity.

@@ -64,6 +64,13 @@ fn admission_with_builder(
         .map_err(|error| error.to_string())?;
     let archive = agent_release_manifest_archive(manifest.canonical_acl().as_bytes())?;
     let archive_digest = Sha256Digest::from_bytes(&archive);
+    let runtime_contract = AgentReleaseRuntimeContract::new(
+        manifest.identity(),
+        manifest.canonical_acl(),
+        artifact_uri(archive_digest.as_str())?,
+        archive_digest.as_str(),
+        archive.len() as u64,
+    )?;
     AgentReleaseAdmission::new(
         OrganizationId::new(),
         AssetId::new(),
@@ -75,11 +82,7 @@ fn admission_with_builder(
             digest: OCI_DIGEST.into(),
             media_type: "application/vnd.oci.image.manifest.v1+json".into(),
         },
-        manifest.identity(),
-        manifest.canonical_acl(),
-        artifact_uri(archive_digest.as_str())?,
-        archive_digest.as_str(),
-        archive.len() as u64,
+        runtime_contract,
     )
 }
 

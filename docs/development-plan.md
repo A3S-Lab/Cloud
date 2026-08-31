@@ -6238,7 +6238,7 @@ CAS, and idempotency authority. `WI2` through `WI7` remain open, so no workload
 identity availability is claimed.
 
 `WI2-C1` now freezes the exact non-authorizing execution-evidence contract.
-The pinned Runtime `0.4.0` attachment is the canonical WorkloadIdentityPolicy
+The pinned Runtime `0.5.0` attachment is the canonical WorkloadIdentityPolicy
 ACL digest; Runtime preserves it in Unit Spec and evidence, and the pinned Box
 confidential provider binds it to provider attestation. Identity normalizes
 only the exact Claim/generation/digests, NodePool spec, Node Agent

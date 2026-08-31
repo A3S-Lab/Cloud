@@ -7,7 +7,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.81.0" src="https://img.shields.io/badge/REST_contract-1.81.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST contract 1.82.0" src="https://img.shields.io/badge/REST_contract-1.82.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
@@ -195,7 +195,9 @@ written to a CLI context file.
   inference, Static Web, and Cloud system-service releases.
 - Hosted Agents bind one canonical Code-owned final release manifest to the
   exact OCI and signed build provenance, then mount its deterministic archive
-  read-only through the ordinary Workloads/Runtime path.
+  read-only through the ordinary Workloads/Runtime path. That same manifest
+  owns the readiness path, liveness path, and graceful-shutdown interval;
+  callers cannot weaken the lifecycle contract at deployment time.
 
 ### Run, scale, and recover
 

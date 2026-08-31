@@ -337,7 +337,7 @@ mod tests {
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(RUNTIME)),
-            "0d17ff2e32fbee223a9a8649bbeb14a74e919ce656d7f26bca817060f52861c6"
+            "f7e7b84867c5c646ad5a02d9e7be65a23ce7f6eb813ae1e1bf4786d4db602f4a"
         );
         assert_eq!(
             format!("{:x}", Sha256::digest(GATEWAY)),

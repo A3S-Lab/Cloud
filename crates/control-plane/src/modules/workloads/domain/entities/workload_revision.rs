@@ -440,7 +440,7 @@ pub struct AgentReleaseRuntimeContract {
 }
 
 impl AgentReleaseRuntimeContract {
-    fn new(
+    pub(crate) fn new(
         manifest_identity: impl Into<String>,
         canonical_acl: impl Into<String>,
         archive_uri: impl Into<String>,
@@ -586,11 +586,7 @@ impl AgentReleaseAdmission {
         build_run_id: BuildRunId,
         published_at: DateTime<Utc>,
         artifact: OciArtifact,
-        manifest_identity: impl Into<String>,
-        manifest_acl: impl Into<String>,
-        manifest_artifact_uri: impl Into<String>,
-        manifest_artifact_digest: impl Into<String>,
-        manifest_artifact_size_bytes: u64,
+        runtime_contract: AgentReleaseRuntimeContract,
     ) -> Result<Self, String> {
         let admission = Self {
             organization_id,
@@ -599,13 +595,7 @@ impl AgentReleaseAdmission {
             build_run_id,
             published_at: canonical_timestamp(published_at),
             artifact,
-            runtime_contract: AgentReleaseRuntimeContract::new(
-                manifest_identity,
-                manifest_acl,
-                manifest_artifact_uri,
-                manifest_artifact_digest,
-                manifest_artifact_size_bytes,
-            )?,
+            runtime_contract,
         };
         admission.validate()?;
         Ok(admission)
