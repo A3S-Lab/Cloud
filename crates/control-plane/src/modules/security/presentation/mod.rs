@@ -2,5 +2,5 @@ mod controller;
 mod dto;
 mod security_module;
 
-pub use dto::{GatewayRoutePolicyTimelineEntryResponse, GatewayRoutePolicyTimelinePageResponse};
-pub use security_module::SecurityModule;
+pub(super) use dto::GatewayRoutePolicyTimelinePageResponse;
+pub(super) use security_module::SecurityModule;

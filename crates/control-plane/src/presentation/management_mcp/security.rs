@@ -1,6 +1,7 @@
 use super::tool_result;
-use crate::modules::security::presentation::GatewayRoutePolicyTimelinePageResponse;
-use crate::modules::security::ListGatewayRoutePolicyTimeline;
+use crate::modules::security::{
+    GatewayRoutePolicyTimelinePageResponse, ListGatewayRoutePolicyTimeline,
+};
 use crate::modules::shared_kernel::domain::{OrganizationId, RouteId};
 use a3s_boot::{QueryBus, Result};
 use serde::Deserialize;

@@ -11,6 +11,21 @@ pub(crate) use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
+use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::identity::presentation::OrganizationAdministratorGuard;
+use a3s_boot::{ControllerDefinition, Result, AUTH_SCOPES_METADATA};
+
+/// Applies the single root-owned HTTP policy for an organization administrator
+/// read. Product controllers do not import Identity presentation guards or
+/// reproduce their credential-scope metadata.
+pub(crate) fn organization_administrator_read_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    controller
+        .with_guard(OrganizationTenantGuard)
+        .with_guard(OrganizationAdministratorGuard)
+        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])
+}
 
 pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
 

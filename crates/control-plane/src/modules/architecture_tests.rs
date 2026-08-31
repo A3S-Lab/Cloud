@@ -51,7 +51,6 @@ projects/presentation/controllers/project_queries_controller.rs -> identity/pres
 projects/presentation/controllers/projects_controller.rs -> identity/presentation
 secrets/presentation/controllers/secret_queries_controller.rs -> identity/presentation
 secrets/presentation/controllers/secrets_controller.rs -> identity/presentation
-security/presentation/controller.rs -> identity/presentation
 sources/presentation/controllers/github_connections_controller.rs -> identity/presentation
 sources/presentation/controllers/github_repository_subscription_queries_controller.rs -> identity/presentation
 sources/presentation/controllers/github_repository_subscriptions_controller.rs -> identity/presentation
@@ -4738,6 +4737,140 @@ fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
 }
 
 #[test]
+fn security_composition_stays_behind_owner_and_root_presentation_boundaries() {
+    let root = module_root();
+    let facade =
+        std::fs::read_to_string(root.join("security/mod.rs")).expect("read Security facade");
+    for required in [
+        "mod infrastructure;",
+        "mod presentation;",
+        "use infrastructure::PostgresGatewayRoutePolicyTimelineRepository;",
+        "pub(crate) fn security_persistence_adapter(",
+        ") -> Arc<dyn IGatewayRoutePolicyTimelineRepository>",
+        "pub(crate) use presentation::{GatewayRoutePolicyTimelinePageResponse, SecurityModule};",
+    ] {
+        assert!(
+            facade.contains(required),
+            "Security facade lost its owner boundary {required}"
+        );
+    }
+    for forbidden in [
+        "pub mod infrastructure;",
+        "pub mod presentation;",
+        "pub use infrastructure",
+        "pub use presentation",
+        "pub(crate) use infrastructure::PostgresGatewayRoutePolicyTimelineRepository",
+    ] {
+        assert!(
+            !facade.contains(forbidden),
+            "Security facade exposed an outer-layer implementation with {forbidden}"
+        );
+    }
+
+    for relative in ["security/mod.rs", "security/infrastructure/mod.rs"] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("PostgresGatewayRoutePolicyTimelineRepository"),
+            "Security production persistence disappeared from architecture scanning at {relative}"
+        );
+        assert!(
+            !production.contains("InMemoryGatewayRoutePolicyTimelineRepository"),
+            "Security test persistence entered the production module graph through {relative}"
+        );
+    }
+    let postgres =
+        std::fs::read_to_string(root.join("security/infrastructure/postgres.rs"))
+            .expect("read Security PostgreSQL adapter");
+    assert!(postgres.contains(
+        "pub(in crate::modules::security) struct PostgresGatewayRoutePolicyTimelineRepository"
+    ));
+    assert!(postgres.contains(
+        "pub(in crate::modules::security) const fn new(executor: PostgresExecutor)"
+    ));
+
+    let controller = std::fs::read_to_string(root.join("security/presentation/controller.rs"))
+        .expect("read Security HTTP adapter");
+    for required in [
+        "crate::presentation::{",
+        "organization_administrator_read_controller",
+        "request_id",
+    ] {
+        assert!(
+            controller.contains(required),
+            "Security HTTP adapter stopped using root Presentation {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "OrganizationAdministratorGuard",
+        "OrganizationTenantGuard",
+        "AUTH_SCOPES_METADATA",
+        "fn request_id(",
+    ] {
+        assert!(
+            !controller.contains(forbidden),
+            "Security HTTP adapter regained duplicate authorization/request mechanism {forbidden}"
+        );
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/security.rs"),
+    )
+    .expect("read Security Management MCP adapter");
+    assert!(management_mcp.contains("crate::modules::security::{"));
+    assert!(!management_mcp.contains("security::presentation"));
+
+    let root_presentation = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/mod.rs"),
+    )
+    .expect("read root Presentation composition");
+    assert_eq!(
+        root_presentation
+            .matches("fn organization_administrator_read_controller(")
+            .count(),
+        1
+    );
+    for required in [
+        "OrganizationAdministratorGuard",
+        "OrganizationTenantGuard",
+        "ApiTokenScope::CLOUD_READ",
+        "AUTH_SCOPES_METADATA",
+    ] {
+        assert!(root_presentation.contains(required));
+    }
+
+    let conformance =
+        std::fs::read_to_string(root.parent().expect("src directory").join("conformance.rs"))
+            .expect("read persistence conformance assembly");
+    assert!(conformance.contains(") -> Arc<dyn IGatewayRoutePolicyTimelineRepository>"));
+    assert_eq!(
+        conformance
+            .matches("security_persistence_adapter(executor)")
+            .count(),
+        1
+    );
+    assert!(!conformance.contains("PostgresGatewayRoutePolicyTimelineRepository"));
+
+    let adapters = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("app/postgres_adapters.rs"),
+    )
+    .expect("read sole PostgreSQL adapter factory");
+    assert!(adapters.contains(
+        "fn security_investigations(&self) -> Arc<dyn IGatewayRoutePolicyTimelineRepository>"
+    ));
+    assert!(adapters.contains("security_persistence_adapter(self.executor.clone())"));
+    assert!(!adapters.contains("PostgresGatewayRoutePolicyTimelineRepository"));
+}
+
+#[test]
 fn public_outer_layer_facade_debt_can_only_shrink() {
     let allowed = lines(
         r#"
@@ -4775,8 +4908,6 @@ projects -> infrastructure
 projects -> presentation
 secrets -> infrastructure
 secrets -> presentation
-security -> infrastructure
-security -> presentation
 sources -> infrastructure
 sources -> presentation
 workflow -> infrastructure
