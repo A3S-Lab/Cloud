@@ -1,8 +1,7 @@
 use crate::modules::data::domain::ObjectNamespaceCredentialBinding;
-use crate::modules::secrets::application::{
-    ExactSecretMaterializer, ExactSecretVersionAccess, SecretPlaintext,
+use crate::modules::secrets::{
+    IExactSecretMaterializer, IExactSecretVersionAccess, SecretPlaintext,
 };
-use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{Sha256Digest, StorageNamespaceId};
 use std::sync::Arc;
@@ -11,14 +10,12 @@ use std::sync::Arc;
 /// binding. Secrets remains the sole active/revoked and tenant-scope authority.
 #[derive(Clone)]
 pub struct ObjectNamespaceCredentialAdmission {
-    secrets: ExactSecretVersionAccess,
+    secrets: Arc<dyn IExactSecretVersionAccess>,
 }
 
 impl ObjectNamespaceCredentialAdmission {
-    pub fn new(secrets: Arc<dyn ISecretRepository>) -> Self {
-        Self {
-            secrets: ExactSecretVersionAccess::new(secrets),
-        }
+    pub fn from_secret_version_access(secrets: Arc<dyn IExactSecretVersionAccess>) -> Self {
+        Self { secrets }
     }
 
     pub async fn require_active(
@@ -120,17 +117,12 @@ impl std::fmt::Debug for MaterializedObjectNamespaceCredentials {
 
 #[derive(Clone)]
 pub struct ObjectNamespaceCredentialMaterializer {
-    secrets: ExactSecretMaterializer,
+    secrets: Arc<dyn IExactSecretMaterializer>,
 }
 
 impl ObjectNamespaceCredentialMaterializer {
-    pub fn new(
-        secrets: Arc<dyn ISecretRepository>,
-        encryption: Arc<dyn ISecretEncryptionService>,
-    ) -> Self {
-        Self {
-            secrets: ExactSecretMaterializer::new(secrets, encryption),
-        }
+    pub fn from_secret_materializer(secrets: Arc<dyn IExactSecretMaterializer>) -> Self {
+        Self { secrets }
     }
 
     pub async fn materialize(
@@ -187,8 +179,8 @@ mod tests {
     use super::*;
     use crate::modules::data::domain::ObjectNamespaceCredentialBindingSpec;
     use crate::modules::secrets::domain::{
-        CreateSecretWrite, EncryptedSecretValue, Secret, SecretChanged, SecretEncryptionError,
-        TransitionSecretVersion,
+        CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
+        Secret, SecretChanged, SecretEncryptionError, TransitionSecretVersion,
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
