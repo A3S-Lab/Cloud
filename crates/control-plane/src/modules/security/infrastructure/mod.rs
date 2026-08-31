@@ -1,8 +1,10 @@
-mod in_memory;
 mod postgres;
+pub(super) use postgres::PostgresGatewayRoutePolicyTimelineRepository;
 
-pub use in_memory::InMemoryGatewayRoutePolicyTimelineRepository;
-pub use postgres::PostgresGatewayRoutePolicyTimelineRepository;
+#[cfg(test)]
+mod in_memory;
+#[cfg(test)]
+pub(crate) use in_memory::InMemoryGatewayRoutePolicyTimelineRepository;
 
 #[cfg(test)]
 mod typed_orm_tests;

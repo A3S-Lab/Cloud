@@ -14,6 +14,8 @@ use a3s_cloud_control_plane::config::{
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::conformance::security_persistence_conformance;
 use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, FlowInfrastructure, FlowOperationCoordinator,
     PostgresBootstrapError, PostgresMigrationReport, CLOUD_MIGRATION_COUNT,
@@ -41,13 +43,15 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationStatus, OperationSubject, PostgresOperationRepository,
     RebuildOperationProjectionsHandler, ReconcileOperationsHandler, WorkflowIdentity,
 };
+#[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::security::{
-    GatewayRoutePolicyTimelineCursor, IGatewayRoutePolicyTimelineRepository,
-    PostgresGatewayRoutePolicyTimelineRepository, SecurityAuditCorrelation,
+    GatewayRoutePolicyTimelineCursor, SecurityAuditCorrelation,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::shared_kernel::domain::RouteId;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, EnvironmentId, IdempotencyRequest, InstallationId, OperationId, OrganizationId,
-    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, RouteId, ScopeContext,
+    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, ScopeContext,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -2009,6 +2013,7 @@ async fn exercise_postgres_audit_query(url: String) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+#[cfg(feature = "persistence-conformance")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn postgres_gateway_route_policy_security_timeline_is_typed_correlated_and_tenant_scoped() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
@@ -2022,12 +2027,13 @@ async fn postgres_gateway_route_policy_security_timeline_is_typed_correlated_and
     .expect("PostgreSQL Gateway Route policy security timeline gate");
 }
 
+#[cfg(feature = "persistence-conformance")]
 async fn exercise_postgres_gateway_route_policy_security_timeline(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let executor = migrate_and_connect_for_test(&url, 4).await?;
     let database = Database::new(PostgresDialect, executor.clone());
-    let repository = PostgresGatewayRoutePolicyTimelineRepository::new(executor);
+    let repository = security_persistence_conformance(executor);
     let organization_id = OrganizationId::new();
     let hidden_organization_id = OrganizationId::new();
     let project_id = Uuid::now_v7();

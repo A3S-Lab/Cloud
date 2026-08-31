@@ -9,6 +9,9 @@ use crate::modules::files::{
     SharedUserFileObjectStore, UserFileObjectError,
 };
 use crate::modules::search::{search_persistence_adapter, ISearchRepository};
+use crate::modules::security::{
+    security_persistence_adapter, IGatewayRoutePolicyTimelineRepository,
+};
 use a3s_orm::PostgresExecutor;
 use std::{path::PathBuf, sync::Arc};
 
@@ -33,4 +36,12 @@ pub fn user_file_persistence_conformance(
 /// constructor boundary and returns only its domain port.
 pub fn search_persistence_conformance(executor: PostgresExecutor) -> Arc<dyn ISearchRepository> {
     search_persistence_adapter(executor)
+}
+
+/// Builds the exact production Security investigation persistence adapter
+/// through its owner constructor and returns only its domain port.
+pub fn security_persistence_conformance(
+    executor: PostgresExecutor,
+) -> Arc<dyn IGatewayRoutePolicyTimelineRepository> {
+    security_persistence_adapter(executor)
 }

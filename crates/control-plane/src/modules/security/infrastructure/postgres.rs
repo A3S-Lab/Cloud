@@ -20,12 +20,12 @@ use uuid::Uuid;
 type TimelineRow = (Value, Uuid, Option<Uuid>);
 
 #[derive(Clone)]
-pub struct PostgresGatewayRoutePolicyTimelineRepository {
+pub(in crate::modules::security) struct PostgresGatewayRoutePolicyTimelineRepository {
     executor: PostgresExecutor,
 }
 
 impl PostgresGatewayRoutePolicyTimelineRepository {
-    pub const fn new(executor: PostgresExecutor) -> Self {
+    pub(in crate::modules::security) const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
     }
 }

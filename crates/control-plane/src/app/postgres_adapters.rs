@@ -66,7 +66,7 @@ use crate::modules::projects::PostgresProjectsRepository;
 use crate::modules::search::{search_persistence_adapter, ISearchRepository};
 use crate::modules::secrets::{ISecretRepository, PostgresSecretRepository};
 use crate::modules::security::{
-    IGatewayRoutePolicyTimelineRepository, PostgresGatewayRoutePolicyTimelineRepository,
+    security_persistence_adapter, IGatewayRoutePolicyTimelineRepository,
 };
 use crate::modules::sources::domain::{
     IGithubConnectionRepository, ISourceRevisionRepository, ISourceSubscriptionRepository,
@@ -127,9 +127,7 @@ impl PostgresAdapterFactory {
             ),
             search: self.search(),
             audit_records: Arc::new(PostgresAuditRecordRepository::new(self.executor.clone())),
-            security_investigations: Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(
-                self.executor.clone(),
-            )),
+            security_investigations: self.security_investigations(),
             builds: artifacts.builds,
             build_projections: artifacts.build_projections,
             executions: Arc::new(PostgresExecutionRepository::new(self.executor.clone())),
@@ -201,6 +199,10 @@ impl PostgresAdapterFactory {
 
     fn search(&self) -> Arc<dyn ISearchRepository> {
         search_persistence_adapter(self.executor.clone())
+    }
+
+    fn security_investigations(&self) -> Arc<dyn IGatewayRoutePolicyTimelineRepository> {
+        security_persistence_adapter(self.executor.clone())
     }
 }
 

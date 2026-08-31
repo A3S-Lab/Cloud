@@ -1,7 +1,11 @@
-pub mod application;
-pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+mod application;
+mod domain;
+mod infrastructure;
+mod presentation;
+
+use a3s_orm::PostgresExecutor;
+use infrastructure::PostgresGatewayRoutePolicyTimelineRepository;
+use std::sync::Arc;
 
 pub use application::{
     ListGatewayRoutePolicyTimeline, ListGatewayRoutePolicyTimelineHandler,
@@ -12,7 +16,16 @@ pub use domain::{
     GatewayRoutePolicyTimelinePage, IGatewayRoutePolicyTimelineRepository,
     SecurityAuditCorrelation,
 };
-pub use infrastructure::{
-    InMemoryGatewayRoutePolicyTimelineRepository, PostgresGatewayRoutePolicyTimelineRepository,
-};
-pub use presentation::{GatewayRoutePolicyTimelinePageResponse, SecurityModule};
+pub(crate) use presentation::{GatewayRoutePolicyTimelinePageResponse, SecurityModule};
+
+/// Builds the production persistence adapter inside the Security owner
+/// boundary and exposes only its domain port to process composition and
+/// retained conformance gates.
+pub(crate) fn security_persistence_adapter(
+    executor: PostgresExecutor,
+) -> Arc<dyn IGatewayRoutePolicyTimelineRepository> {
+    Arc::new(PostgresGatewayRoutePolicyTimelineRepository::new(executor))
+}
+
+#[cfg(test)]
+pub(crate) use infrastructure::InMemoryGatewayRoutePolicyTimelineRepository;
