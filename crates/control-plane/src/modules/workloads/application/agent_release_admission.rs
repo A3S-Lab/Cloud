@@ -18,6 +18,11 @@ pub(crate) fn admit_deployable_agent_release(
             digest: release.artifact_digest().into(),
             media_type: release.artifact_media_type().into(),
         },
+        release.manifest_identity(),
+        release.manifest_acl(),
+        release.manifest_artifact_uri(),
+        release.manifest_artifact_digest(),
+        release.manifest_artifact_size_bytes(),
     )
     .map_err(ApplicationError::Internal)
 }

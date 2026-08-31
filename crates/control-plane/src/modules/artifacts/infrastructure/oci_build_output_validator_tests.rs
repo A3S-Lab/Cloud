@@ -1,24 +1,22 @@
 use super::*;
 use crate::modules::artifacts::application::{INodeArtifactStore, NodeArtifactDescriptor};
 use crate::modules::artifacts::domain::{
-    canonical_json, dsse_pae, sha256_digest, BuildRun, BuildSource, IBuildEvidenceGenerator,
-    IBuildOutputValidator, OciDescriptor, OciPublicationTarget, PublishedOciArtifact,
-    DSSE_PAYLOAD_TYPE,
+    canonical_json, dsse_pae, sha256_digest, BuildRun, BuildSource, BuildSubject,
+    IBuildEvidenceGenerator, IBuildOutputValidator, OciDescriptor, OciPublicationTarget,
+    PublishedOciArtifact, DSSE_PAYLOAD_TYPE,
 };
 use crate::modules::artifacts::infrastructure::{
     BoxBuildEvidenceGenerator, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
 };
+use crate::modules::assets::domain::AgentReleaseTemplate;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId, SourceRevisionId,
+    AssetId, AssetReleaseId, GitCommitSha, NodeCommandId, NodeId, OrganizationId, Sha256Digest,
 };
-use crate::modules::sources::domain::{
-    ExternalSourceRevision, GitCommitSha, GitProvider, GitRepository, NewExternalSourceRevision,
-};
-use crate::modules::sources::publish_source_build_input;
 use crate::modules::sources::published::BuildRecipe;
 use a3s_cloud_contracts::{
-    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-    NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    artifact_uri, AgentReleaseManifest, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
+    NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
@@ -32,6 +30,7 @@ use std::fs::File;
 use std::path::Path;
 use std::sync::Arc;
 use tar::{Builder, EntryType, Header};
+use tokio::io::AsyncReadExt;
 
 const OCI_INDEX: &str = "application/vnd.oci.image.index.v1+json";
 const OCI_MANIFEST: &str = "application/vnd.oci.image.manifest.v1+json";
@@ -173,7 +172,7 @@ async fn box_receipt_must_match_every_validated_oci_measurement(
 }
 
 #[tokio::test]
-async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa(
+async fn hosted_agent_build_evidence_is_replayable_and_publishes_the_exact_release_manifest(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let root = tempfile::tempdir()?;
     let layout = root.path().join("layout");
@@ -187,33 +186,29 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
     let artifact = admit(&store, &archive).await?;
     let box_output = receipt(&artifact, &fixture);
     let validation_root = root.path().join("validation");
-    let validator = Arc::new(validator(store, &validation_root)?);
+    let validator = Arc::new(validator(Arc::clone(&store), &validation_root)?);
     let recipe = recipe()?;
     let output = validator.validate(&box_output, &recipe).await?;
     assert_eq!(output.descriptor, fixture.descriptor);
 
     let organization_id = OrganizationId::new();
-    let project_id = ProjectId::new();
-    let environment_id = EnvironmentId::new();
-    let source_revision_id = SourceRevisionId::new();
+    let asset_id = AssetId::new();
+    let asset_release_id = AssetReleaseId::new();
     let requested_at = Utc::now() - Duration::seconds(1);
-    let revision = ExternalSourceRevision::accept(NewExternalSourceRevision {
+    let source = BuildSource::hosted_asset(
         organization_id,
-        project_id,
-        environment_id,
-        id: source_revision_id,
-        repository: GitRepository::parse(GitProvider::Github, "https://github.com/A3S-Lab/Cloud")?,
-        commit_sha: GitCommitSha::parse("a".repeat(40))?,
-        recipe,
-        accepted_at: requested_at,
-    })?;
-    let mut build = BuildRun::reserve(
-        organization_id,
-        project_id,
-        environment_id,
-        source_revision_id,
-        requested_at,
-    );
+        BuildSubject::asset_release(asset_id, asset_release_id),
+        GitCommitSha::parse("a".repeat(40))?,
+        Sha256Digest::parse(digest('b'))?,
+        recipe.clone(),
+        Some(
+            AgentReleaseTemplate::test_fixture()
+                .canonical_acl()
+                .to_owned(),
+        ),
+    )?;
+    let mut build =
+        BuildRun::reserve_asset_release(organization_id, asset_id, asset_release_id, requested_at);
     build.begin_preparation(requested_at + Duration::milliseconds(1))?;
     build.record_input(
         digest('1'),
@@ -245,13 +240,13 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
 
     let key_path = root.path().join("signing/build-evidence-ed25519.pk8");
     let signer = Arc::new(LocalBuildEvidenceSigner::load_or_create(&key_path).await?);
-    let generator = BoxBuildEvidenceGenerator::new(validator, signer)?;
+    let generator = BoxBuildEvidenceGenerator::new(validator, signer, store.clone())?;
     let attested_at = requested_at + Duration::milliseconds(10);
-    let input = publish_source_build_input(&revision)?;
-    let source = BuildSource::from_source_input(&input)?;
     let evidence = generator.generate(&build, &source, attested_at).await?;
+    let replay = generator.generate(&build, &source, attested_at).await?;
 
     evidence.validate()?;
+    assert_eq!(replay, evidence);
     assert_eq!(
         evidence.artifact,
         PublishedOciArtifact::from_target(&target)
@@ -266,11 +261,51 @@ async fn box_build_evidence_revalidates_oci_output_and_signs_bound_spdx_and_slsa
             .build_definition
             .external_parameters
             .recipe,
-        revision.recipe
+        source.recipe
     );
     assert_eq!(
         evidence.verification_state,
         crate::modules::artifacts::domain::BuildEvidenceVerificationState::Verified
+    );
+
+    let release = evidence
+        .agent_release_manifest
+        .as_ref()
+        .ok_or("hosted Agent evidence omitted its final release manifest")?;
+    let manifest = AgentReleaseManifest::parse(&release.canonical_acl)?;
+    assert_eq!(manifest.identity(), release.identity);
+    assert_eq!(manifest.artifact().digest(), evidence.artifact.digest);
+    assert_eq!(
+        manifest.artifact().media_type(),
+        evidence.artifact.media_type
+    );
+    assert_eq!(manifest.provenance().len(), 2);
+    assert!(manifest.provenance().iter().any(|reference| {
+        reference.kind() == "source"
+            && reference.uri()
+                == agent_release_source_uri(&evidence.source_content_digest)
+                    .expect("source provenance URI")
+            && reference.digest() == evidence.source_content_digest
+    }));
+    assert!(manifest.provenance().iter().any(|reference| {
+        reference.kind() == "builder"
+            && reference.uri()
+                == agent_release_builder_uri(build.id.as_uuid()).expect("builder provenance URI")
+            && reference.digest() == evidence.provenance_digest
+    }));
+
+    let manifest_artifact = ArtifactRef {
+        uri: release.archive.uri.clone(),
+        digest: release.archive.digest.clone(),
+        media_type: release.archive.media_type.clone(),
+    };
+    let mut opened = store.open(&manifest_artifact).await?;
+    assert_eq!(opened.descriptor.size_bytes, release.archive.size_bytes);
+    let mut stored_archive = Vec::new();
+    opened.reader.read_to_end(&mut stored_archive).await?;
+    assert_eq!(
+        stored_archive,
+        agent_release_manifest_archive(release.canonical_acl.as_bytes())?
     );
 
     let provenance = canonical_json(&evidence.provenance)?;

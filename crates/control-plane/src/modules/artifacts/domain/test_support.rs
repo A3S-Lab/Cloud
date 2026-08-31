@@ -1,13 +1,13 @@
 use super::{
-    canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildEvidence, BuildEvidenceBuilder,
-    BuildEvidenceSigningKey, BuildEvidenceSubject, BuildEvidenceVerificationState, BuildRun,
-    BuildSubject, DsseEnvelope, DsseSignature, InTotoSubject, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
-    SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
-    SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
-    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, ValidatedOciBuildOutput,
-    BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE,
-    SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
+    canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildEvidence,
+    BuildEvidenceAgentReleaseManifest, BuildEvidenceBuilder, BuildEvidenceSigningKey,
+    BuildEvidenceSubject, BuildEvidenceVerificationState, BuildRun, BuildSubject, DsseEnvelope,
+    DsseSignature, InTotoSubject, OciDescriptor, OciPublicationTarget, PublishedOciArtifact,
+    SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters,
+    SlsaProvenancePredicate, SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails,
+    SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage,
+    SpdxRelationship, ValidatedOciBuildOutput, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE,
+    IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId,
@@ -15,8 +15,10 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::sources::published::{BuildPlatform, BuildRecipe};
 use a3s_cloud_contracts::{
-    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-    NodeBoxBuildOutput, NodeBoxBuildPlatform, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    artifact_uri, AgentReleaseManifest, AgentReleaseProvenance, NodeBoxBuildCacheOutput,
+    NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
@@ -224,6 +226,7 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
         sbom_digest,
         provenance,
         provenance_digest,
+        agent_release_manifest: None,
         envelope: DsseEnvelope {
             payload_type: DSSE_PAYLOAD_TYPE.into(),
             payload: STANDARD.encode(&provenance_bytes),
@@ -239,15 +242,72 @@ pub(crate) fn evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> Buil
     .expect("valid build evidence fixture")
 }
 
+pub(crate) fn agent_evidence_for(build: &BuildRun, attested_at: DateTime<Utc>) -> BuildEvidence {
+    let mut evidence = evidence_for(build, attested_at);
+    let template = AgentReleaseManifest::parse(agent_release_template_acl())
+        .expect("Agent release manifest template");
+    let provenance = [
+        AgentReleaseProvenance::new(
+            "source",
+            agent_release_source_uri(&evidence.source_content_digest).expect("source URI"),
+            evidence.source_content_digest.clone(),
+        )
+        .expect("source provenance"),
+        AgentReleaseProvenance::new(
+            "builder",
+            agent_release_builder_uri(build.id.as_uuid()).expect("builder URI"),
+            evidence.provenance_digest.clone(),
+        )
+        .expect("builder provenance"),
+    ];
+    let manifest = template
+        .bind_publication(evidence.artifact.digest.clone(), provenance)
+        .expect("bound Agent release manifest");
+    let archive = agent_release_manifest_archive(manifest.canonical_acl().as_bytes())
+        .expect("Agent release manifest archive");
+    let archive_digest = sha256_digest(&archive);
+    evidence.agent_release_manifest = Some(BuildEvidenceAgentReleaseManifest {
+        identity: manifest.identity().into(),
+        canonical_acl: manifest.canonical_acl().into(),
+        archive: BuildArtifact::new(
+            artifact_uri(&archive_digest).expect("Agent manifest Artifact URI"),
+            archive_digest,
+            NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+            archive.len() as u64,
+        )
+        .expect("Agent manifest Artifact"),
+    });
+    BuildEvidence::restore(evidence).expect("valid Agent build evidence fixture")
+}
+
+fn agent_release_template_acl() -> &'static str {
+    concat!(
+        "agent_release {\n",
+        "  schema = \"a3s.code.agent-release.v1\"\n",
+        "  protocol = \"a3s.code.agent.v1\"\n",
+        "  artifact { digest = \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" media_type = \"application/vnd.oci.image.manifest.v1+json\" }\n",
+        "  entrypoint { command = \"/usr/bin/a3s\" args = [\"code\", \"harness\", \"--manifest\", \"/app/.a3s/asset.acl\"] }\n",
+        "  health { transport = \"http\" port = 8080 readiness_path = \"/health/ready\" liveness_path = \"/health/live\" shutdown_grace_seconds = 30 }\n",
+        "  storage { workspace = \"ephemeral\" cache = \"ephemeral\" persistent_data = \"none\" }\n",
+        "  capability \"runtime.service\" { level = 1 }\n",
+        "  capability \"secrets.external\" { level = 1 }\n",
+        "  capability \"workspace.local\" { level = 1 }\n",
+        "  provenance \"source\" { uri = \"urn:a3s:source:template\" digest = \"sha256:2222222222222222222222222222222222222222222222222222222222222222\" }\n",
+        "  provenance \"builder\" { uri = \"urn:a3s:builder:template\" digest = \"sha256:4444444444444444444444444444444444444444444444444444444444444444\" }\n",
+        "}\n",
+    )
+}
+
 fn digest_hex(value: &str) -> &str {
     value.strip_prefix("sha256:").expect("SHA-256 digest")
 }
 
-pub(crate) fn hosted_build_ready_for_completion(
+fn hosted_build_ready_for_completion_with_manifest(
     organization_id: OrganizationId,
     asset_id: AssetId,
     asset_release_id: AssetReleaseId,
     requested_at: DateTime<Utc>,
+    include_agent_manifest: bool,
 ) -> BuildRun {
     let mut build =
         BuildRun::reserve_asset_release(organization_id, asset_id, asset_release_id, requested_at);
@@ -319,7 +379,11 @@ pub(crate) fn hosted_build_ready_for_completion(
     build
         .begin_attestation(requested_at + Duration::milliseconds(9))
         .expect("begin hosted attestation");
-    let evidence = evidence_for(&build, requested_at + Duration::milliseconds(10));
+    let evidence = if include_agent_manifest {
+        agent_evidence_for(&build, requested_at + Duration::milliseconds(10))
+    } else {
+        evidence_for(&build, requested_at + Duration::milliseconds(10))
+    };
     build
         .record_evidence(evidence, requested_at + Duration::milliseconds(10))
         .expect("record hosted evidence");
@@ -330,6 +394,21 @@ pub(crate) fn hosted_build_ready_for_completion(
         )
         .expect("begin hosted cleanup");
     build
+}
+
+pub(crate) fn hosted_build_ready_for_completion(
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    requested_at: DateTime<Utc>,
+) -> BuildRun {
+    hosted_build_ready_for_completion_with_manifest(
+        organization_id,
+        asset_id,
+        asset_release_id,
+        requested_at,
+        false,
+    )
 }
 
 pub(crate) fn succeeded_hosted_build(
@@ -347,6 +426,25 @@ pub(crate) fn succeeded_hosted_build(
     build
         .complete(requested_at + Duration::milliseconds(12))
         .expect("complete hosted build");
+    build
+}
+
+pub(crate) fn succeeded_hosted_agent_build(
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    requested_at: DateTime<Utc>,
+) -> BuildRun {
+    let mut build = hosted_build_ready_for_completion_with_manifest(
+        organization_id,
+        asset_id,
+        asset_release_id,
+        requested_at,
+        true,
+    );
+    build
+        .complete(requested_at + Duration::milliseconds(12))
+        .expect("complete hosted Agent build");
     build
 }
 

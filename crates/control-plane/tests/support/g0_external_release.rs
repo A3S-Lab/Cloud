@@ -69,7 +69,7 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
         &inputs.box_output_archive,
     )
     .await?;
-    let outputs = fixture::output_validator(artifacts, root.path())?;
+    let outputs = fixture::output_validator(artifacts.clone(), root.path())?;
     let validated = outputs
         .validate(&inputs.box_release.output, &inputs.source.revision.recipe)
         .await?;
@@ -151,7 +151,7 @@ pub(super) async fn exercise_external_release(database_url: String) -> TestResul
         config.vault_signing_key.clone(),
         std::time::Duration::from_secs(30),
     )?);
-    let evidence_generator = BoxBuildEvidenceGenerator::new(outputs, signer)?;
+    let evidence_generator = BoxBuildEvidenceGenerator::new(outputs, signer, artifacts)?;
     let revision = &inputs.source.revision;
     let source_input = source_inputs
         .find_source_build_input(

@@ -83,6 +83,9 @@ impl IBuildSourceResolver for CloudBuildSourceResolver {
                     input.commit_sha().clone(),
                     input.manifest_digest().clone(),
                     input.recipe().clone(),
+                    input
+                        .agent_release_template()
+                        .map(|template| template.canonical_acl().to_owned()),
                 )
                 .map_err(BuildSourceResolutionError::Integrity)
             }

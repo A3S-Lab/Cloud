@@ -1,21 +1,32 @@
 use super::oci_layout::OciLayoutBlob;
 use super::OciBuildOutputValidator;
-use crate::modules::artifacts::domain::{
-    canonical_json, dsse_pae, sha256_digest, BuildEvidence, BuildEvidenceBuilder,
-    BuildEvidenceGenerationError, BuildEvidenceSigningError, BuildEvidenceSubject,
-    BuildEvidenceVerificationState, BuildRun, BuildRunStatus, BuildSource, DsseEnvelope,
-    DsseSignature, IBuildEvidenceGenerator, IBuildEvidenceSigner, InTotoSubject,
-    SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters, SlsaInternalParameters,
-    SlsaProvenancePredicate, SlsaProvenanceStatement, SlsaResourceDescriptor, SlsaRunDetails,
-    SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo, SpdxDocument, SpdxFile, SpdxPackage,
-    SpdxRelationship, BUILD_EVIDENCE_SCHEMA, DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE,
-    SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE, SPDX_VERSION,
+use crate::modules::artifacts::application::{
+    INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
+use crate::modules::artifacts::domain::{
+    canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildEvidence,
+    BuildEvidenceAgentReleaseManifest, BuildEvidenceBuilder, BuildEvidenceGenerationError,
+    BuildEvidenceSigningError, BuildEvidenceSubject, BuildEvidenceVerificationState, BuildRun,
+    BuildRunStatus, BuildSource, DsseEnvelope, DsseSignature, IBuildEvidenceGenerator,
+    IBuildEvidenceSigner, InTotoSubject, SlsaBuildDefinition, SlsaBuilder, SlsaExternalParameters,
+    SlsaInternalParameters, SlsaProvenancePredicate, SlsaProvenanceStatement,
+    SlsaResourceDescriptor, SlsaRunDetails, SlsaRunMetadata, SpdxChecksum, SpdxCreationInfo,
+    SpdxDocument, SpdxFile, SpdxPackage, SpdxRelationship, BUILD_EVIDENCE_SCHEMA,
+    DSSE_PAYLOAD_TYPE, IN_TOTO_STATEMENT_TYPE, SLSA_BUILD_TYPE, SLSA_PROVENANCE_PREDICATE_TYPE,
+    SPDX_VERSION,
+};
+use a3s_cloud_contracts::{
+    agent_harness_compatibility_v1, agent_release_builder_uri, agent_release_manifest_archive,
+    agent_release_source_uri, artifact_uri, AgentReleaseManifest, AgentReleaseProvenance,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+};
+use a3s_runtime::contract::ArtifactRef;
 use async_trait::async_trait;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
+use std::io::Cursor;
 use std::sync::Arc;
 
 pub const BOX_NATIVE_BUILDER_ID: &str = "https://a3s.dev/cloud/build/box-native/v1";
@@ -25,6 +36,7 @@ pub const BOX_NATIVE_BUILDER_DIGEST: &str =
 pub struct BoxBuildEvidenceGenerator {
     outputs: Arc<OciBuildOutputValidator>,
     signer: Arc<dyn IBuildEvidenceSigner>,
+    artifacts: Arc<dyn INodeArtifactStore>,
     builder: BuildEvidenceBuilder,
 }
 
@@ -32,6 +44,7 @@ impl BoxBuildEvidenceGenerator {
     pub fn new(
         outputs: Arc<OciBuildOutputValidator>,
         signer: Arc<dyn IBuildEvidenceSigner>,
+        artifacts: Arc<dyn INodeArtifactStore>,
     ) -> Result<Self, String> {
         let builder = BuildEvidenceBuilder {
             uri: BOX_NATIVE_BUILDER_ID.into(),
@@ -41,6 +54,7 @@ impl BoxBuildEvidenceGenerator {
         Ok(Self {
             outputs,
             signer,
+            artifacts,
             builder,
         })
     }
@@ -99,9 +113,23 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
         let provenance_bytes =
             canonical_json(&provenance).map_err(BuildEvidenceGenerationError::Integrity)?;
         let provenance_digest = sha256_digest(&provenance_bytes);
+        let source_content_digest = build.source_content_digest.clone().ok_or_else(|| {
+            BuildEvidenceGenerationError::Invalid(
+                "build evidence omitted its source content digest".into(),
+            )
+        })?;
         let pae = dsse_pae(DSSE_PAYLOAD_TYPE, &provenance_bytes)
             .map_err(BuildEvidenceGenerationError::Invalid)?;
         let signature = self.signer.sign(&pae).await.map_err(map_signing_error)?;
+        let agent_release_manifest = self
+            .publish_agent_release_manifest(
+                build,
+                source,
+                &artifact,
+                &source_content_digest,
+                &provenance_digest,
+            )
+            .await?;
         let envelope = DsseEnvelope {
             payload_type: DSSE_PAYLOAD_TYPE.into(),
             payload: STANDARD.encode(&provenance_bytes),
@@ -122,11 +150,7 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
                 .manifest_digest
                 .as_ref()
                 .map(|digest| digest.as_str().to_owned()),
-            source_content_digest: build.source_content_digest.clone().ok_or_else(|| {
-                BuildEvidenceGenerationError::Invalid(
-                    "build evidence omitted its source content digest".into(),
-                )
-            })?,
+            source_content_digest,
             recipe: source.recipe.clone(),
             recipe_digest: source.recipe_digest.clone(),
             build_request_digest: build.build_request_digest.clone().ok_or_else(|| {
@@ -141,12 +165,114 @@ impl IBuildEvidenceGenerator for BoxBuildEvidenceGenerator {
             sbom_digest,
             provenance,
             provenance_digest,
+            agent_release_manifest,
             envelope,
             signing_key: signature.key,
             verification_state: BuildEvidenceVerificationState::Verified,
             attested_at,
         })
         .map_err(BuildEvidenceGenerationError::Integrity)
+    }
+}
+
+impl BoxBuildEvidenceGenerator {
+    async fn publish_agent_release_manifest(
+        &self,
+        build: &BuildRun,
+        source: &BuildSource,
+        artifact: &crate::modules::artifacts::domain::PublishedOciArtifact,
+        source_content_digest: &str,
+        provenance_digest: &str,
+    ) -> Result<Option<BuildEvidenceAgentReleaseManifest>, BuildEvidenceGenerationError> {
+        let Some(template_acl) = &source.agent_release_template_acl else {
+            return Ok(None);
+        };
+        let template = AgentReleaseManifest::parse(template_acl).map_err(|error| {
+            BuildEvidenceGenerationError::Integrity(format!(
+                "could not admit Agent release template: {error}"
+            ))
+        })?;
+        let source_uri = agent_release_source_uri(source_content_digest)
+            .map_err(BuildEvidenceGenerationError::Integrity)?;
+        let builder_uri = agent_release_builder_uri(build.id.as_uuid())
+            .map_err(BuildEvidenceGenerationError::Integrity)?;
+        let provenance = [
+            AgentReleaseProvenance::new("source", source_uri, source_content_digest.to_owned()),
+            AgentReleaseProvenance::new("builder", builder_uri, provenance_digest.to_owned()),
+        ]
+        .into_iter()
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            BuildEvidenceGenerationError::Integrity(format!(
+                "could not bind Agent release provenance: {error}"
+            ))
+        })?;
+        let manifest = template
+            .bind_publication(artifact.digest.clone(), provenance)
+            .map_err(|error| {
+                BuildEvidenceGenerationError::Integrity(format!(
+                    "could not bind final Agent release manifest: {error}"
+                ))
+            })?;
+        manifest
+            .verify_compatibility(&agent_harness_compatibility_v1())
+            .map_err(|error| {
+                BuildEvidenceGenerationError::Integrity(format!(
+                    "final Agent release manifest is incompatible: {error}"
+                ))
+            })?;
+        if manifest.artifact().media_type() != artifact.media_type {
+            return Err(BuildEvidenceGenerationError::Integrity(
+                "final Agent release manifest media type changed its OCI artifact".into(),
+            ));
+        }
+        let archive = agent_release_manifest_archive(manifest.canonical_acl().as_bytes())
+            .map_err(BuildEvidenceGenerationError::Integrity)?;
+        let archive_digest = sha256_digest(&archive);
+        let archive_ref = ArtifactRef {
+            uri: artifact_uri(&archive_digest).map_err(BuildEvidenceGenerationError::Integrity)?,
+            digest: archive_digest,
+            media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+        };
+        let descriptor = NodeArtifactDescriptor::new(archive_ref, archive.len() as u64)
+            .map_err(BuildEvidenceGenerationError::Integrity)?;
+        let write = self
+            .artifacts
+            .put(&descriptor, Box::pin(Cursor::new(archive)))
+            .await
+            .map_err(map_artifact_store_error)?;
+        if write.descriptor != descriptor {
+            return Err(BuildEvidenceGenerationError::Integrity(
+                "Agent release manifest store changed its artifact receipt".into(),
+            ));
+        }
+        Ok(Some(BuildEvidenceAgentReleaseManifest {
+            identity: manifest.identity().into(),
+            canonical_acl: manifest.canonical_acl().into(),
+            archive: BuildArtifact::new(
+                descriptor.artifact.uri,
+                descriptor.artifact.digest,
+                descriptor.artifact.media_type,
+                descriptor.size_bytes,
+            )
+            .map_err(BuildEvidenceGenerationError::Integrity)?,
+        }))
+    }
+}
+
+fn map_artifact_store_error(error: NodeArtifactStoreError) -> BuildEvidenceGenerationError {
+    match error {
+        NodeArtifactStoreError::Invalid(message) => BuildEvidenceGenerationError::Invalid(message),
+        NodeArtifactStoreError::Conflict => BuildEvidenceGenerationError::Integrity(
+            "Agent release manifest artifact identity conflicts with stored content".into(),
+        ),
+        NodeArtifactStoreError::Integrity(message) => {
+            BuildEvidenceGenerationError::Integrity(message)
+        }
+        NodeArtifactStoreError::NotFound => BuildEvidenceGenerationError::Storage(
+            "Agent release manifest artifact store lost a completed write".into(),
+        ),
+        NodeArtifactStoreError::Storage(message) => BuildEvidenceGenerationError::Storage(message),
     }
 }
 

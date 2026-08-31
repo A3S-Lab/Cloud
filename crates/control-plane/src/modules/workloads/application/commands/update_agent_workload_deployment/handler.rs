@@ -220,7 +220,10 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                 WorkloadRevisionId::new(),
                 workload.id,
                 generation,
-                command.template.resolve(admission.artifact().clone()),
+                match command.template.resolve_agent(&admission) {
+                    Ok(template) => template,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                },
                 command.requested_at,
             ) {
                 Ok(revision) => revision,

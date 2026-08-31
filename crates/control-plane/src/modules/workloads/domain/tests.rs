@@ -1,7 +1,9 @@
 use super::entities::*;
 use super::services::plan_replica_set_reconfiguration;
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::{
+    succeeded_hosted_agent_build, succeeded_hosted_build,
+};
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::assets::domain::{
@@ -69,6 +71,10 @@ fn agent_release_admission(
         .published_artifact
         .as_ref()
         .expect("published OCI artifact");
+    let manifest = release
+        .agent_release_manifest
+        .as_ref()
+        .expect("published Agent release manifest");
     AgentReleaseAdmission::new(
         asset.organization_id,
         asset.id,
@@ -80,6 +86,11 @@ fn agent_release_admission(
             digest: artifact.digest.clone(),
             media_type: artifact.media_type.clone(),
         },
+        manifest.identity().to_string(),
+        manifest.canonical_acl(),
+        manifest.archive_uri().expect("Agent manifest Artifact URI"),
+        manifest.archive_digest().to_string(),
+        manifest.archive_size_bytes(),
     )
     .expect("Agent release admission")
 }
@@ -1202,7 +1213,7 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
         created_at,
     )
     .expect("release");
-    let build = succeeded_hosted_build(organization_id, asset.id, release.id, created_at);
+    let build = succeeded_hosted_agent_build(organization_id, asset.id, release.id, created_at);
     release
         .publish_from_hosted_build(&asset, &hosted_outcome(&build))
         .expect("publish from hosted BuildRun");
@@ -1273,6 +1284,34 @@ fn agent_revision_binds_one_exact_published_release_and_preserves_it_on_rollback
         build.id,
         release.published_at.expect("publication time"),
         admission.artifact().clone(),
+        release
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent manifest")
+            .identity()
+            .to_string(),
+        release
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent manifest")
+            .canonical_acl(),
+        release
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent manifest")
+            .archive_uri()
+            .expect("Agent manifest Artifact URI"),
+        release
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent manifest")
+            .archive_digest()
+            .to_string(),
+        release
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent manifest")
+            .archive_size_bytes(),
     )
     .expect("well-formed foreign-tenant admission");
     let mut foreign_revision = WorkloadRevision::create(
@@ -1309,7 +1348,8 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
         created_at,
     )
     .expect("Agent release");
-    let build = succeeded_hosted_build(organization_id, agent.id, agent_release.id, created_at);
+    let build =
+        succeeded_hosted_agent_build(organization_id, agent.id, agent_release.id, created_at);
     agent_release
         .publish_from_hosted_build(&agent, &hosted_outcome(&build))
         .expect("publish Agent");

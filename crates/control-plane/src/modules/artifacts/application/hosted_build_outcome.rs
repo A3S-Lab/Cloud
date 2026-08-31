@@ -1,6 +1,7 @@
 use crate::modules::artifacts::domain::{BuildRun, BuildRunStatus, BuildSubject};
 use crate::modules::artifacts::published::{
-    HostedBuildOutcome, ValidatedHostedBuildOutcomeProjection, HOSTED_BUILD_OUTCOME_EVENT_KEY,
+    HostedAgentReleaseManifest, HostedBuildOutcome, ValidatedHostedBuildOutcomeProjection,
+    HOSTED_BUILD_OUTCOME_EVENT_KEY,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use uuid::Uuid;
@@ -47,10 +48,23 @@ pub(crate) fn project_hosted_build_outcome(
         operation_id: build.operation_id,
         commit_sha: evidence.commit_sha.clone(),
         manifest_digest: manifest_digest.into(),
+        source_content_digest: evidence.source_content_digest.clone(),
         artifact_digest: artifact.digest.clone(),
         artifact_media_type: artifact.media_type.clone(),
         artifact_size_bytes: artifact.size_bytes,
         provenance_digest: evidence.provenance_digest.clone(),
+        agent_release_manifest: evidence
+            .agent_release_manifest
+            .as_ref()
+            .map(|manifest| {
+                HostedAgentReleaseManifest::from_validated_parts(
+                    manifest.identity.clone(),
+                    manifest.canonical_acl.clone(),
+                    manifest.archive.digest.clone(),
+                    manifest.archive.size_bytes,
+                )
+            })
+            .transpose()?,
         finished_at,
     })
     .map(Some)
@@ -65,7 +79,7 @@ pub(crate) fn hosted_build_outcome_event(
     Ok(Some(DomainEventEnvelope {
         event_id: Uuid::now_v7(),
         event_key: HOSTED_BUILD_OUTCOME_EVENT_KEY.into(),
-        schema_version: 1,
+        schema_version: 2,
         scope: a3s_cloud_contracts::CloudScopeRef::Organization {
             organization_id: outcome.organization_id().as_uuid(),
         },
@@ -102,6 +116,7 @@ mod tests {
             .expect("project outcome")
             .expect("hosted outcome");
         assert_eq!(event.event_key, HOSTED_BUILD_OUTCOME_EVENT_KEY);
+        assert_eq!(event.schema_version, 2);
         assert_eq!(event.aggregate_id, build.id.as_uuid());
         assert_eq!(event.aggregate_version, build.aggregate_version);
         assert_eq!(event.correlation_id, build.operation_id.as_uuid());

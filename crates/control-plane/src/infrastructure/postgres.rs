@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 181;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "181";
+pub const CLOUD_MIGRATION_COUNT: i64 = 182;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "182";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1657,6 +1657,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/181_workload_runtime_evidence_history.sql"
             )),
         ),
+        Migration::new(
+            "182",
+            "Retain exact Agent release manifests",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/182_agent_release_manifests.sql"
+            )),
+        ),
     ]
 }
 
@@ -1667,6 +1675,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
 mod cloud_migration_manifest_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/agent_release_manifest_migration.rs"]
+mod agent_release_manifest_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/installation_scoped_facts_migration.rs"]

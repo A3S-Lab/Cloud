@@ -1022,8 +1022,12 @@ async fn build_api_worker_application(
         let build_evidence_signer =
             build_evidence_signer(&config, vault_credentials.as_ref()).await?;
         let build_evidence: Arc<dyn IBuildEvidenceGenerator> = Arc::new(
-            BoxBuildEvidenceGenerator::new(oci_build_outputs, build_evidence_signer)
-                .map_err(ControlPlaneStartupError::Build)?,
+            BoxBuildEvidenceGenerator::new(
+                oci_build_outputs,
+                build_evidence_signer,
+                Arc::clone(&node_artifacts),
+            )
+            .map_err(ControlPlaneStartupError::Build)?,
         );
         let deployment_flow_config = DeploymentFlowConfig::from_milliseconds(
             config.deployments.command_ttl_ms,

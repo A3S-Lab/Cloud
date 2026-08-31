@@ -21,6 +21,16 @@ pub struct AssetReleaseProvenanceResponse {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AssetReleaseAgentManifestResponse {
+    pub identity: String,
+    pub canonical_acl: String,
+    pub archive_digest: String,
+    pub archive_size_bytes: u64,
+    pub source_content_digest: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AssetReleaseResponse {
     pub organization_id: Uuid,
     pub asset_id: Uuid,
@@ -31,6 +41,7 @@ pub struct AssetReleaseResponse {
     pub manifest_digest: String,
     pub artifact: Option<AssetReleaseArtifactResponse>,
     pub provenance: Option<AssetReleaseProvenanceResponse>,
+    pub agent_release_manifest: Option<AssetReleaseAgentManifestResponse>,
     pub aggregate_version: u64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -64,6 +75,15 @@ impl From<AssetRelease> for AssetReleaseResponse {
                     build_run_id: provenance.build_run_id().as_uuid(),
                     provenance_digest: provenance.provenance_digest().as_str().to_owned(),
                 }),
+            agent_release_manifest: release.agent_release_manifest.map(|manifest| {
+                AssetReleaseAgentManifestResponse {
+                    identity: manifest.identity().to_string(),
+                    canonical_acl: manifest.canonical_acl().into(),
+                    archive_digest: manifest.archive_digest().to_string(),
+                    archive_size_bytes: manifest.archive_size_bytes(),
+                    source_content_digest: manifest.source_content_digest().to_string(),
+                }
+            }),
             aggregate_version: release.aggregate_version,
             created_at: release.created_at,
             updated_at: release.updated_at,

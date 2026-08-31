@@ -1,17 +1,18 @@
-use super::test_support::{evidence_for, succeeded_hosted_build};
+use super::test_support::{evidence_for, succeeded_hosted_agent_build, succeeded_hosted_build};
 use super::{
-    BuildArtifact, BuildEvidence, BuildRun, BuildRunStatus, OciDescriptor, OciPublicationTarget,
-    PublishedOciArtifact, ValidatedOciBuildOutput,
+    BuildArtifact, BuildEvidence, BuildEvidenceAgentReleaseManifest, BuildRun, BuildRunStatus,
+    OciDescriptor, OciPublicationTarget, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::shared_kernel::domain::{
-    AssetId, AssetReleaseId, EnvironmentId, NodeCommandId, NodeId, OrganizationId, ProjectId,
-    SourceRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, SourceRevisionId,
 };
 use crate::modules::sources::published::BuildPlatform;
 use a3s_cloud_contracts::{
-    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-    NodeBoxBuildOutput, NodeBoxBuildPlatform, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    artifact_uri, AgentReleaseManifest, AgentReleaseProvenance, NodeBoxBuildCacheOutput,
+    NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 use base64::engine::general_purpose::STANDARD;
@@ -613,6 +614,82 @@ fn hosted_build_evidence_round_trips_its_closed_flattened_subject() {
 
     encoded["unexpectedSubjectIdentity"] = serde_json::json!("rejected");
     assert!(serde_json::from_value::<BuildEvidence>(encoded).is_err());
+}
+
+#[test]
+fn final_agent_release_manifest_rejects_archive_and_provenance_tampering() {
+    let now = Utc::now();
+    let build = succeeded_hosted_agent_build(
+        OrganizationId::new(),
+        AssetId::new(),
+        AssetReleaseId::new(),
+        now,
+    );
+    let evidence = build
+        .evidence
+        .as_deref()
+        .expect("Agent build evidence")
+        .clone();
+
+    let mut changed_archive = evidence.clone();
+    changed_archive
+        .agent_release_manifest
+        .as_mut()
+        .expect("Agent release manifest")
+        .archive
+        .size_bytes += 1;
+    assert!(BuildEvidence::restore(changed_archive)
+        .expect_err("changed archive must fail closed")
+        .contains("archive changed its exact bytes"));
+
+    let manifest = AgentReleaseManifest::parse(
+        &evidence
+            .agent_release_manifest
+            .as_ref()
+            .expect("Agent release manifest")
+            .canonical_acl,
+    )
+    .expect("final Agent release manifest");
+    let replacement_builder = BuildRunId::new();
+    assert_ne!(replacement_builder, build.id);
+    let changed_manifest = manifest
+        .bind_publication(
+            evidence.artifact.digest.clone(),
+            [
+                AgentReleaseProvenance::new(
+                    "source",
+                    agent_release_source_uri(&evidence.source_content_digest).expect("source URI"),
+                    evidence.source_content_digest.clone(),
+                )
+                .expect("source provenance"),
+                AgentReleaseProvenance::new(
+                    "builder",
+                    agent_release_builder_uri(replacement_builder.as_uuid())
+                        .expect("replacement builder URI"),
+                    evidence.provenance_digest.clone(),
+                )
+                .expect("replacement builder provenance"),
+            ],
+        )
+        .expect("internally valid changed manifest");
+    let archive = agent_release_manifest_archive(changed_manifest.canonical_acl().as_bytes())
+        .expect("changed manifest archive");
+    let archive_digest = super::sha256_digest(&archive);
+    let mut changed_provenance = evidence;
+    changed_provenance.agent_release_manifest = Some(BuildEvidenceAgentReleaseManifest {
+        identity: changed_manifest.identity().into(),
+        canonical_acl: changed_manifest.canonical_acl().into(),
+        archive: BuildArtifact::new(
+            artifact_uri(&archive_digest).expect("changed archive URI"),
+            archive_digest,
+            NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+            archive.len() as u64,
+        )
+        .expect("changed manifest Artifact"),
+    });
+    assert!(BuildEvidence::restore(changed_provenance)
+        .expect_err("changed provenance must fail closed")
+        .contains("changed its provenance binding"));
 }
 
 fn artifact(fill: char) -> BuildArtifact {

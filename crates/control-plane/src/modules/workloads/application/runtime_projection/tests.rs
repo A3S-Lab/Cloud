@@ -1,17 +1,19 @@
 use super::*;
 use crate::modules::artifacts::application::project_hosted_build_outcome;
-use crate::modules::artifacts::domain::test_support::succeeded_hosted_build;
+use crate::modules::artifacts::domain::test_support::{
+    succeeded_hosted_agent_build, succeeded_hosted_build,
+};
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseVersion, McpServiceProfile,
     McpServiceProfileBinding, McpServiceProfileSpec,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId,
-    GitCommitSha, NodeId, OrganizationId, ProjectId, ResourceName, SecretId, Sha256Digest,
-    WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
+    canonical_timestamp, AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GitCommitSha,
+    NodeId, OrganizationId, ProjectId, ResourceName, SecretId, Sha256Digest, WorkloadId,
+    WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    AgentWorkloadRevisionBinding, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget,
+    AgentReleaseAdmission, HttpHealthCheck, OciArtifact, SecretBinding, SecretBindingTarget,
     ServicePort, ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding,
     Workload, WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
     WorkloadRuntimeExecutionBinding,
@@ -25,7 +27,7 @@ fn projects_digest_bound_service_without_provider_fields() {
     let digest = format!("sha256:{}", "a".repeat(64));
     let revision_id = WorkloadRevisionId::new();
     let secret_id = SecretId::new();
-    let mut revision = WorkloadRevision::create(
+    let revision = WorkloadRevision::create(
         revision_id,
         WorkloadId::new(),
         3,
@@ -105,17 +107,91 @@ fn projects_digest_bound_service_without_provider_fields() {
     let organization_id = OrganizationId::new();
     let skill_digest =
         Sha256Digest::parse(format!("sha256:{}", "f".repeat(64))).expect("Skill digest");
-    revision
-        .restore_agent_binding(
-            AgentWorkloadRevisionBinding::restore(
-                organization_id,
-                AssetId::new(),
-                AssetReleaseId::new(),
-                BuildRunId::new(),
-            )
-            .expect("Agent binding"),
+    let agent = Asset::create(
+        AssetId::new(),
+        organization_id,
+        ResourceName::parse("skill-host-agent").expect("Agent name"),
+        AssetKind::Agent,
+        canonical_timestamp(Utc::now()),
+    )
+    .expect("Agent Asset");
+    let mut agent_release = AssetRelease::draft(
+        &agent,
+        AssetReleaseId::new(),
+        AssetReleaseVersion::parse("1.0.0").expect("Agent version"),
+        GitCommitSha::parse("a".repeat(40)).expect("Agent commit"),
+        Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("Agent Asset manifest"),
+        agent.created_at,
+    )
+    .expect("Agent release");
+    let build = succeeded_hosted_agent_build(
+        organization_id,
+        agent.id,
+        agent_release.id,
+        agent.created_at,
+    );
+    let outcome = project_hosted_build_outcome(&build)
+        .expect("project Agent outcome")
+        .expect("Agent outcome");
+    agent_release
+        .publish_from_hosted_build(&agent, &outcome)
+        .expect("publish Agent release");
+    let published = build
+        .published_artifact
+        .as_ref()
+        .expect("published Agent OCI artifact");
+    let manifest = agent_release
+        .agent_release_manifest
+        .as_ref()
+        .expect("final Agent manifest");
+    let admission = AgentReleaseAdmission::new(
+        organization_id,
+        agent.id,
+        agent_release.id,
+        build.id,
+        agent_release.published_at.expect("Agent publication time"),
+        OciArtifact {
+            uri: published.uri.clone(),
+            digest: published.digest.clone(),
+            media_type: published.media_type.clone(),
+        },
+        manifest.identity().to_string(),
+        manifest.canonical_acl(),
+        manifest.archive_uri().expect("Agent manifest Artifact URI"),
+        manifest.archive_digest().to_string(),
+        manifest.archive_size_bytes(),
+    )
+    .expect("Agent admission");
+    let workload = Workload::create(
+        WorkloadId::new(),
+        organization_id,
+        ProjectId::new(),
+        EnvironmentId::new(),
+        ResourceName::parse("skill-host-runtime").expect("Workload name"),
+        agent_release.updated_at + Duration::milliseconds(1),
+    );
+    let service = admission
+        .resolve_template(
+            Vec::new(),
+            ServiceResources {
+                cpu_millis: 250,
+                memory_bytes: 64 * 1024 * 1024,
+                pids: 64,
+                ephemeral_storage_bytes: Some(128 * 1024 * 1024),
+            },
         )
-        .expect("restore Agent binding");
+        .expect("Agent Service template");
+    let mut revision = WorkloadRevision::create(
+        WorkloadRevisionId::new(),
+        workload.id,
+        4,
+        service,
+        workload.created_at,
+    )
+    .expect("Agent revision");
+    revision
+        .bind_agent_release(&workload, &admission)
+        .expect("bind Agent release");
     revision
         .restore_skill_binding(
             SkillWorkloadRevisionBinding::restore(
@@ -129,8 +205,12 @@ fn projects_digest_bound_service_without_provider_fields() {
         )
         .expect("restore Skill binding");
     let bound_spec = project_runtime_spec(&revision).expect("Skill-bound Runtime spec");
-    assert_eq!(bound_spec.mounts.len(), 1);
-    let mount = &bound_spec.mounts[0];
+    assert_eq!(bound_spec.mounts.len(), 3);
+    let mount = bound_spec
+        .mounts
+        .iter()
+        .find(|mount| mount.name == format!("skill-{skill_asset_id}"))
+        .expect("Skill mount");
     assert_eq!(mount.name, format!("skill-{skill_asset_id}"));
     assert_eq!(mount.target, format!("/a3s/skills/{skill_asset_id}"));
     assert!(mount.read_only);
@@ -149,6 +229,20 @@ fn projects_digest_bound_service_without_provider_fields() {
         }
         source => panic!("unexpected Skill mount source: {source:?}"),
     }
+    let manifest_mount = bound_spec
+        .mounts
+        .iter()
+        .find(|mount| mount.name == "agent-release-manifest")
+        .expect("Agent manifest mount");
+    assert_eq!(manifest_mount.target, "/app/.a3s");
+    assert!(manifest_mount.read_only);
+    let workspace_mount = bound_spec
+        .mounts
+        .iter()
+        .find(|mount| mount.name == "agent-workspace")
+        .expect("Agent workspace mount");
+    assert_eq!(workspace_mount.target, "/workspace");
+    assert!(!workspace_mount.read_only);
     assert!(bound_spec.outputs.is_empty());
 }
 

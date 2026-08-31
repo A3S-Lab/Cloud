@@ -173,7 +173,7 @@ pub(super) async fn create_release(
                 let inserted = execute(
                     transaction,
                     sql_query::<()>(
-                        "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes, build_run_id, provenance_digest, aggregate_version, created_at, updated_at, published_at, yanked_at) values (",
+                        "insert into asset_releases (organization_id, asset_id, id, version, state, commit_sha, manifest_digest, artifact_kind, artifact_digest, artifact_media_type, artifact_size_bytes, build_run_id, provenance_digest, agent_manifest_identity, agent_manifest_acl, agent_manifest_archive_digest, agent_manifest_archive_size_bytes, agent_manifest_source_content_digest, aggregate_version, created_at, updated_at, published_at, yanked_at) values (",
                     )
                     .bind(bundle.release.organization_id.as_uuid())
                     .append(", ")
@@ -188,7 +188,7 @@ pub(super) async fn create_release(
                     .bind(bundle.release.commit_sha.as_str())
                     .append(", ")
                     .bind(bundle.release.manifest_digest.as_str())
-                    .append(", null, null, null, null, null, null, ")
+                    .append(", null, null, null, null, null, null, null, null, null, null, null, ")
                     .bind(bundle.release.aggregate_version)
                     .append(", ")
                     .bind(bundle.release.created_at)
@@ -312,6 +312,24 @@ pub(super) async fn persist_release_transition(
                     Some(provenance.provenance_digest().as_str()),
                 )
             });
+    let (
+        agent_manifest_identity,
+        agent_manifest_acl,
+        agent_manifest_archive_digest,
+        agent_manifest_archive_size_bytes,
+        agent_manifest_source_content_digest,
+    ) = release.agent_release_manifest.as_ref().map_or(
+        (None, None, None, None, None),
+        |manifest| {
+            (
+                Some(manifest.identity().as_str()),
+                Some(manifest.canonical_acl()),
+                Some(manifest.archive_digest().as_str()),
+                Some(manifest.archive_size_bytes()),
+                Some(manifest.source_content_digest().as_str()),
+            )
+        },
+    );
     require_one_row(
         "Asset release transition",
         execute(
@@ -330,6 +348,16 @@ pub(super) async fn persist_release_transition(
                 .bind(build_run_id)
                 .append(", provenance_digest = ")
                 .bind(provenance_digest)
+                .append(", agent_manifest_identity = ")
+                .bind(agent_manifest_identity)
+                .append(", agent_manifest_acl = ")
+                .bind(agent_manifest_acl)
+                .append(", agent_manifest_archive_digest = ")
+                .bind(agent_manifest_archive_digest)
+                .append(", agent_manifest_archive_size_bytes = ")
+                .bind(agent_manifest_archive_size_bytes)
+                .append(", agent_manifest_source_content_digest = ")
+                .bind(agent_manifest_source_content_digest)
                 .append(", aggregate_version = ")
                 .bind(release.aggregate_version)
                 .append(", updated_at = ")

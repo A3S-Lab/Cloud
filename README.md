@@ -193,6 +193,9 @@ written to a CLI context file.
   trust policy, and reconstructible node caches.
 - One Flow-backed CI/CD model for Agent, Workflow, Function/MCP, Durable Cell,
   inference, Static Web, and Cloud system-service releases.
+- Hosted Agents bind one canonical Code-owned final release manifest to the
+  exact OCI and signed build provenance, then mount its deterministic archive
+  read-only through the ordinary Workloads/Runtime path.
 
 ### Run, scale, and recover
 
@@ -433,6 +436,7 @@ Gateway revision](tools/gateway-conformance/gateway-revision).
 | [Product roadmap](ROADMAP.md) | Gate status, dependencies, evidence, and delivery order |
 | [Technical architecture](docs/architecture.md) | Stable ownership, topology, consistency, and failure behavior |
 | [AI service platform](docs/ai-service-platform-architecture.md) | AaaS, WaaS, FaaS, Durable Cell, Inference, Runtime, Box, and Gateway composition |
+| [Agent release deployment contract](docs/agent-release-deployment-contract.md) | Code-owned final manifest generation, provenance, persistence, replay, and Runtime projection |
 | [Agent Runtime](docs/agent-runtime-architecture.md) · [Function Runtime](docs/function-runtime-architecture.md) · [Durable Cell](docs/durable-cell-platform-plan.md) | Service semantics over the unified Runtime |
 | [Static Web](docs/static-web-hosting-architecture.md) · [model supply](docs/model-supply-architecture.md) · [inference](docs/inference-plan.md) | Tenant UI, models/weights, and serving architecture |
 | [Cluster deployment](docs/deployment-and-cluster-architecture.md) · [elastic services](docs/elastic-service-deployment-architecture.md) | System services, CPU/GPU scheduling, stateful/stateless convergence, and HA |

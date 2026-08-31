@@ -185,6 +185,12 @@ pub async fn exercise_assets(
         .artifact
         .clone()
         .ok_or("hosted Agent publication omitted its artifact")?;
+    let agent_manifest = published
+        .agent_release_manifest
+        .as_ref()
+        .ok_or("hosted Agent publication omitted its persisted final manifest")?;
+    assert!(agent_manifest.canonical_acl().ends_with('\n'));
+    assert!(agent_manifest.archive_size_bytes() > 0);
 
     let stale_publication = published.clone();
     assert!(matches!(

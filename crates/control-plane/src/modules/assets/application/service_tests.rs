@@ -1,10 +1,10 @@
 use super::{AssetGitApplicationService, AssetGitApplicationServiceOptions};
 use crate::modules::assets::domain::{
-    AcquireAssetGitWriteLease, Asset, AssetGitBackup, AssetGitBuildInput, AssetGitRepository,
-    AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRepositoryWrite,
-    AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal,
-    AssetGitWriteLease, AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind,
-    AssetManifestAdmission, AssetRelease, AssetReleaseWrite, AssetWrite,
+    AcquireAssetGitWriteLease, AgentReleaseTemplate, Asset, AssetGitBackup, AssetGitBuildInput,
+    AssetGitRepository, AssetGitRepositoryControlError, AssetGitRepositoryError,
+    AssetGitRepositoryWrite, AssetGitRpcLimits, AssetGitRpcResponse, AssetGitService,
+    AssetGitWriteJournal, AssetGitWriteLease, AssetGitWriteOperation, AssetGitWriteRecovery,
+    AssetKind, AssetManifestAdmission, AssetRelease, AssetReleaseWrite, AssetWrite,
     ClaimAssetGitWriteRecovery, CompleteAssetGitWriteLease, CreateAssetReleaseWrite,
     CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
@@ -227,6 +227,8 @@ impl IAssetGitRepository for TestStore {
             manifest_digest: digest('b'),
             kind: asset.kind,
             build_recipe: None,
+            agent_release_template: (asset.kind == AssetKind::Agent)
+                .then(AgentReleaseTemplate::test_fixture),
         })
     }
 
