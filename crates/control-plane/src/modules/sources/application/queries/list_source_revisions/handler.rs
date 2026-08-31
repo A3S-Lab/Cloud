@@ -1,22 +1,22 @@
 use super::ListSourceRevisions;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::sources::application::ISourceEnvironmentAccess;
 use crate::modules::sources::domain::{ExternalSourceRevision, ISourceRevisionRepository};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct ListSourceRevisionsHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environment_access: Arc<dyn ISourceEnvironmentAccess>,
     sources: Arc<dyn ISourceRevisionRepository>,
 }
 
 impl ListSourceRevisionsHandler {
-    pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+    pub(in crate::modules::sources) fn from_environment_access(
+        environment_access: Arc<dyn ISourceEnvironmentAccess>,
         sources: Arc<dyn ISourceRevisionRepository>,
     ) -> Self {
         Self {
-            environments,
+            environment_access,
             sources,
         }
     }
@@ -31,24 +31,18 @@ impl QueryHandler<ListSourceRevisions> for ListSourceRevisionsHandler {
         'static,
         a3s_boot::Result<ApplicationResult<Vec<ExternalSourceRevision>>>,
     > {
-        let environments = Arc::clone(&self.environments);
+        let environment_access = Arc::clone(&self.environment_access);
         let sources = Arc::clone(&self.sources);
         Box::pin(async move {
-            match environments
-                .find(
+            if let Err(error) = environment_access
+                .require_environment(
                     query.organization_id,
                     query.project_id,
                     query.environment_id,
                 )
                 .await
             {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "environment not found in organization and project".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                return Ok(Err(error));
             }
             Ok(sources
                 .list(

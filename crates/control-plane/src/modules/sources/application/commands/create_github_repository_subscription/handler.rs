@@ -1,8 +1,10 @@
 use super::{CreateGithubRepositorySubscription, CreateGithubRepositorySubscriptionResult};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, SourceSubscriptionId};
-use crate::modules::sources::application::commands::resolve_external_source_revision::DockerfileBuildRecipeInput;
+use crate::modules::sources::application::{
+    commands::resolve_external_source_revision::DockerfileBuildRecipeInput,
+    ISourceEnvironmentAccess,
+};
 use crate::modules::sources::domain::{
     BuildRecipe, CreateGithubRepositorySubscription as PersistGithubRepositorySubscription,
     GitProvider, GitReference, GitRepository, GithubRepositorySubscription,
@@ -14,21 +16,21 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct CreateGithubRepositorySubscriptionHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environment_access: Arc<dyn ISourceEnvironmentAccess>,
     connections: Arc<dyn IGithubConnectionRepository>,
     subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     policy: Arc<SourceRepositoryPolicy>,
 }
 
 impl CreateGithubRepositorySubscriptionHandler {
-    pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+    pub(in crate::modules::sources) fn from_environment_access(
+        environment_access: Arc<dyn ISourceEnvironmentAccess>,
         connections: Arc<dyn IGithubConnectionRepository>,
         subscriptions: Arc<dyn ISourceSubscriptionRepository>,
         policy: Arc<SourceRepositoryPolicy>,
     ) -> Self {
         Self {
-            environments,
+            environment_access,
             connections,
             subscriptions,
             policy,
@@ -47,26 +49,20 @@ impl CommandHandler<CreateGithubRepositorySubscription>
         'static,
         a3s_boot::Result<ApplicationResult<CreateGithubRepositorySubscriptionResult>>,
     > {
-        let environments = Arc::clone(&self.environments);
+        let environment_access = Arc::clone(&self.environment_access);
         let connections = Arc::clone(&self.connections);
         let subscriptions = Arc::clone(&self.subscriptions);
         let policy = Arc::clone(&self.policy);
         Box::pin(async move {
-            match environments
-                .find(
+            if let Err(error) = environment_access
+                .require_environment(
                     command.organization_id,
                     command.project_id,
                     command.environment_id,
                 )
                 .await
             {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "environment not found in organization and project".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                return Ok(Err(error));
             }
             let connection = match connections.find(command.organization_id).await {
                 Ok(Some(value)) if value.is_authoritative() => value,

@@ -1,7 +1,7 @@
 use super::{DeactivateGithubRepositorySubscription, DeactivateGithubRepositorySubscriptionResult};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
+use crate::modules::sources::application::ISourceEnvironmentAccess;
 use crate::modules::sources::domain::{
     DeactivateGithubRepositorySubscription as PersistDeactivation,
     GithubRepositorySubscriptionDeactivated, ISourceSubscriptionRepository,
@@ -10,17 +10,17 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct DeactivateGithubRepositorySubscriptionHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environment_access: Arc<dyn ISourceEnvironmentAccess>,
     subscriptions: Arc<dyn ISourceSubscriptionRepository>,
 }
 
 impl DeactivateGithubRepositorySubscriptionHandler {
-    pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+    pub(in crate::modules::sources) fn from_environment_access(
+        environment_access: Arc<dyn ISourceEnvironmentAccess>,
         subscriptions: Arc<dyn ISourceSubscriptionRepository>,
     ) -> Self {
         Self {
-            environments,
+            environment_access,
             subscriptions,
         }
     }
@@ -37,24 +37,18 @@ impl CommandHandler<DeactivateGithubRepositorySubscription>
         'static,
         a3s_boot::Result<ApplicationResult<DeactivateGithubRepositorySubscriptionResult>>,
     > {
-        let environments = Arc::clone(&self.environments);
+        let environment_access = Arc::clone(&self.environment_access);
         let subscriptions = Arc::clone(&self.subscriptions);
         Box::pin(async move {
-            match environments
-                .find(
+            if let Err(error) = environment_access
+                .require_environment(
                     command.organization_id,
                     command.project_id,
                     command.environment_id,
                 )
                 .await
             {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "environment not found in organization and project".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+                return Ok(Err(error));
             }
             let mut subscription = match subscriptions
                 .find(command.organization_id, command.subscription_id)
