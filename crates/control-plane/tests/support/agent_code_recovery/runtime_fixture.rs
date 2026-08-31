@@ -210,6 +210,11 @@ async fn record_runtime_observation(
         RuntimeServiceEndpoint::node_local_tcp(&port.name, host_port)?.insert_claim(&mut claims)?;
     }
     let spec_digest = spec.digest()?;
+    let healthy_observation = || RuntimeHealthObservation {
+        state: RuntimeHealthState::Healthy,
+        checked_at_ms: timing.observed_at_ms,
+        message: None,
+    };
     let observation = RuntimeObservation {
         schema: RuntimeObservation::SCHEMA.into(),
         unit_id: spec.unit_id.clone(),
@@ -222,12 +227,11 @@ async fn record_runtime_observation(
         observed_at_ms: timing.observed_at_ms,
         started_at_ms: Some(timing.started_at_ms),
         finished_at_ms: None,
-        health: Some(RuntimeHealthObservation {
-            state: RuntimeHealthState::Healthy,
-            checked_at_ms: timing.observed_at_ms,
-            message: None,
-        }),
-        liveness: None,
+        health: spec.health.as_ref().map(|_| healthy_observation()),
+        liveness: spec
+            .service_lifecycle
+            .as_ref()
+            .map(|_| healthy_observation()),
         outputs: Vec::new(),
         usage: None,
         evidence: Some(RuntimeEvidence {
