@@ -3265,11 +3265,13 @@ through `WI7`.
 `H0.4-WI2-C1` is verified as the non-authorizing Runtime
 evidence contract. Cloud pins A3S Runtime `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`7604995e3cef057a8122ccc9b30e501e917e37f6`. They preserve one opaque Identity
+`23c417ef2bbb87784e77f0dfbf725ca92f4e0913`. They preserve one opaque Identity
 policy digest across Unit Spec, provider evidence, restart/replay and
 confidential-provider attestation; Runtime 0.5 also carries distinct Service
-readiness, liveness, and graceful-shutdown intent. The exact
-[Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33429756832) passes
+readiness, liveness, and graceful-shutdown intent. Box now gives non-snapshot
+macOS MicroVMs a mount-free, guest-owned raw ext4 rootfs by default while
+retaining APFS only for snapshot and explicit legacy compatibility. The exact
+[Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33451209710) passes
 native and aarch64 OCI lifecycle plus Rust, Python, TypeScript, and Go SDK
 certification. Cloud REST/OpenAPI `1.82.1`, the current Node path and the frozen
 MCP fixture consume Runtime `capabilities.v6` and `unit-spec.v4` from those
