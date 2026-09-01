@@ -1,6 +1,7 @@
+use super::plugin_catalog_support::find_registry;
 use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PluginRegistryId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -33,16 +34,12 @@ impl QueryHandler<GetPluginRegistry> for GetPluginRegistryHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<PluginRegistry>>> {
         let registries = Arc::clone(&self.registries);
         Box::pin(async move {
-            match registries
-                .find(query.organization_id, query.registry_id)
-                .await
-            {
-                Ok(Some(registry)) => Ok(Ok(registry)),
-                Ok(None) => Ok(Err(ApplicationError::NotFound(
-                    "plugin registry not found".into(),
-                ))),
-                Err(error) => Ok(Err(error.into())),
-            }
+            Ok(find_registry(
+                registries.as_ref(),
+                query.organization_id,
+                query.registry_id,
+            )
+            .await)
         })
     }
 }

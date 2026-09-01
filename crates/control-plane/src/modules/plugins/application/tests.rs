@@ -9,8 +9,8 @@ use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::domain::services::{
     IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, IPluginTrustRootStore,
-    PluginRegistryCatalogError, PluginRegistryEnrollmentAuthorizationError,
-    PluginTrustRootStoreError, PluginTrustRootWrite,
+    PluginRegistryCatalogError, PluginRegistryEnrollmentAuthorization,
+    PluginRegistryEnrollmentAuthorizationError, PluginTrustRootStoreError, PluginTrustRootWrite,
 };
 use crate::modules::plugins::domain::value_objects::PluginTrustRoot;
 use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
@@ -59,12 +59,16 @@ impl FixedEnrollmentAuthorizer {
 impl IPluginRegistryEnrollmentAuthorizer for FixedEnrollmentAuthorizer {
     async fn authorize_enrollment(
         &self,
-        _organization_id: OrganizationId,
-        _actor_id: PrincipalId,
-    ) -> Result<(), PluginRegistryEnrollmentAuthorizationError> {
+        organization_id: OrganizationId,
+        actor_id: PrincipalId,
+    ) -> Result<PluginRegistryEnrollmentAuthorization, PluginRegistryEnrollmentAuthorizationError>
+    {
         self.calls.fetch_add(1, Ordering::SeqCst);
         match self.outcome {
-            AuthorizationOutcome::Allow => Ok(()),
+            AuthorizationOutcome::Allow => {
+                PluginRegistryEnrollmentAuthorization::new(organization_id, actor_id)
+                    .map_err(PluginRegistryEnrollmentAuthorizationError::Unavailable)
+            }
             AuthorizationOutcome::Forbid => {
                 Err(PluginRegistryEnrollmentAuthorizationError::Forbidden)
             }

@@ -46,14 +46,18 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::domain::value_objects::{
     ApiTokenName, ApiTokenScope, ApiTokenSecret, MembershipRole,
 };
-use crate::modules::identity::InMemoryIdentityRepository;
+use crate::modules::identity::{
+    ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort, InMemoryIdentityRepository,
+};
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::services::{
-    IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, PluginRegistryCatalogError,
-    PluginRegistryEnrollmentAuthorizationError,
+    IPluginRegistryCatalog, PluginRegistryCatalogError,
 };
-use crate::modules::plugins::{InMemoryPluginRegistryRepository, PluginTrustRootObjectStore};
+use crate::modules::plugins::{
+    IdentityPluginRegistryEnrollmentAuthorizerAdapter, InMemoryPluginRegistryRepository,
+    PluginTrustRootObjectStore,
+};
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::search::{ISearchRepository, InMemorySearchRepository};
 use crate::modules::secrets::{
@@ -366,7 +370,7 @@ struct EmptyWorkflowRunHistoryReader;
 
 struct InputWorkflowRunVariableReader;
 
-struct TestPluginRegistryEnrollmentAuthorizer;
+struct TestActiveHumanMembershipQuery;
 
 struct UnavailablePluginRegistryCatalog;
 
@@ -715,13 +719,12 @@ struct TestRuntimeRepositories {
 }
 
 #[async_trait::async_trait]
-impl IPluginRegistryEnrollmentAuthorizer for TestPluginRegistryEnrollmentAuthorizer {
-    async fn authorize_enrollment(
+impl IActiveHumanMembershipQueryPort for TestActiveHumanMembershipQuery {
+    async fn active_human_membership_exists(
         &self,
-        _organization_id: OrganizationId,
-        _actor_id: crate::modules::shared_kernel::domain::PrincipalId,
-    ) -> std::result::Result<(), PluginRegistryEnrollmentAuthorizationError> {
-        Ok(())
+        _scope: ActiveHumanMembershipScope,
+    ) -> std::result::Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -2193,7 +2196,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ),
             oci_artifacts: Arc::new(TestOciArtifactResolver),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
-            plugin_enrollment_authorizer: Arc::new(TestPluginRegistryEnrollmentAuthorizer),
+            plugin_enrollment_authorizer: Arc::new(
+                IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(Arc::new(
+                    TestActiveHumanMembershipQuery,
+                )),
+            ),
             assets: unavailable_assets,
             workloads: workload_port,
             builds,

@@ -1,5 +1,3 @@
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::plugins::application::{
     GetPluginRegistry, InspectCachedPluginCatalog, InspectPluginCatalog, ListPluginRegistries,
     SearchCachedPluginCatalog, SearchPluginCatalog,
@@ -8,11 +6,10 @@ use crate::modules::plugins::presentation::dto::{
     PluginCatalogInspectRequest, PluginCatalogSearchRequest, PluginRegistryResponse,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PluginRegistryId};
-use crate::presentation::application_error_response;
-use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+use crate::presentation::{
+    application_error_response, organization_tenant_cloud_read_controller, request_id,
 };
+use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,9 +19,7 @@ pub fn plugin_registry_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
     let online_search_bus = Arc::clone(&bus);
     let cached_search_bus = Arc::clone(&bus);
     let online_inspect_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+    let controller = ControllerDefinition::new("/organizations")?
         .get(
             "/{organization_id}/plugin-registries",
             move |request: BootRequest| {
@@ -157,7 +152,8 @@ pub fn plugin_registry_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                     }
                 }
             },
-        )
+        )?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 fn organization_id(request: &BootRequest) -> Result<OrganizationId> {
@@ -170,14 +166,4 @@ fn registry_id(request: &BootRequest) -> Result<PluginRegistryId> {
     request
         .param_as::<Uuid>("registry_id")
         .map(PluginRegistryId::from_uuid)
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }

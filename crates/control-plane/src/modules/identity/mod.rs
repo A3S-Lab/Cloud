@@ -5,6 +5,7 @@ pub mod presentation;
 pub mod published;
 
 pub use application::{
+    ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
     IWorkloadRuntimeExecutionAuthorizationQueryPort,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,

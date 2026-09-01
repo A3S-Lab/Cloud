@@ -54,12 +54,13 @@ impl CommandHandler<EnrollPluginRegistry> for EnrollPluginRegistryHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            if let Err(error) = authorizer
+            let authorization = match authorizer
                 .authorize_enrollment(command.organization_id, command.actor_id)
                 .await
             {
-                return Ok(Err(map_authorization_error(error)));
-            }
+                Ok(value) => value,
+                Err(error) => return Ok(Err(map_authorization_error(error))),
+            };
             let evidence = match inspect_bootstrap_root(&command.bootstrap_root) {
                 Ok(value) => value,
                 Err(error) => {
@@ -105,10 +106,9 @@ impl CommandHandler<EnrollPluginRegistry> for EnrollPluginRegistryHandler {
             }
             let write = match registries
                 .create(CreatePluginRegistryWrite {
-                    actor_id: command.actor_id,
-                    request_id: command.request_id,
                     registry,
                     event,
+                    authorization,
                     idempotency,
                 })
                 .await

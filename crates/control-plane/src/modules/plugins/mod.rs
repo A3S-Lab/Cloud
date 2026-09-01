@@ -16,7 +16,8 @@ pub use application::{
 
 pub use infrastructure::{
     persistence::{InMemoryPluginRegistryRepository, PostgresPluginRegistryRepository},
-    A3sUsePluginRegistryCatalog, PluginTrustRootObjectStore,
+    A3sUsePluginRegistryCatalog, IdentityPluginRegistryEnrollmentAuthorizerAdapter,
+    PluginTrustRootObjectStore,
 };
 pub use presentation::{
     PluginCatalogInspectRequest, PluginCatalogSearchRequest, PluginRegistryResponse, PluginsModule,

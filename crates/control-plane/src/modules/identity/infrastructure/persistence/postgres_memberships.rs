@@ -6,6 +6,9 @@ use crate::infrastructure::{
     execute, fetch_optional, idempotency_replay, is_unique_violation, store_audit,
     store_idempotency, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
 };
+use crate::modules::identity::application::{
+    ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
+};
 use crate::modules::identity::domain::entities::{IdentityPrincipal, Membership};
 use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
@@ -216,6 +219,28 @@ pub(super) async fn store_membership_audit(
         },
     )
     .await
+}
+
+#[async_trait]
+impl IActiveHumanMembershipQueryPort for PostgresIdentityRepository {
+    async fn active_human_membership_exists(
+        &self,
+        scope: ActiveHumanMembershipScope,
+    ) -> Result<bool, RepositoryError> {
+        Database::new(PostgresDialect, self.executor.clone())
+            .fetch_optional_as(
+                sql_query::<i32>(
+                    "select 1 from identity_principals principal join organization_memberships membership on membership.principal_id = principal.id where principal.id = ",
+                )
+                .bind(scope.principal_id().as_uuid())
+                .append(" and principal.kind = 'human' and principal.disabled_at is null and membership.organization_id = ")
+                .bind(scope.organization_id().as_uuid())
+                .append(" and membership.revoked_at is null"),
+            )
+            .await
+            .map(|row| row.is_some())
+            .map_err(|error| RepositoryError::Storage(error.to_string()))
+    }
 }
 
 #[async_trait]
