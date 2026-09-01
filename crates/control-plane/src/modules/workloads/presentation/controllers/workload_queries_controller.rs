@@ -1,7 +1,4 @@
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
-};
+use super::request::workload_access;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
 };
@@ -13,7 +10,8 @@ use crate::modules::workloads::presentation::dto::{
 };
 use crate::presentation::{
     application_error_response, decode_sequence_cursor, default_live_sequence_limit,
-    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
+    organization_tenant_workload_read_controller, request_id, resolve_sequence_cursor,
+    sequence_stream_error, stream_sequence_pages, with_deferred_project_scope,
     MAX_LIVE_SEQUENCE_RECORDS,
 };
 use a3s_boot::{
@@ -30,8 +28,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
     let get_deployment_bus = Arc::clone(&bus);
     let get_logs_bus = Arc::clone(&bus);
     let stream_logs_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
+    let controller = ControllerDefinition::new("/organizations")?
         .get(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/workloads",
             move |request: BootRequest| {
@@ -63,15 +60,14 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
             },
         )?
-        .route(with_deferred_resource_scope(
+        .route(with_deferred_project_scope(
             RouteDefinition::get(
                 "/{organization_id}/workloads/{workload_id}",
                 move |request: BootRequest| {
                 let bus = Arc::clone(&get_workload_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = workload_access(&request)?;
                     match bus
                         .execute(GetWorkload {
                             organization_id: OrganizationId::from_uuid(
@@ -80,7 +76,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             workload_id: WorkloadId::from_uuid(
                                 request.param_as::<Uuid>("workload_id")?,
                             ),
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -90,17 +86,15 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
                 },
             )?,
-            DeferredResourceScope::Project,
         )?)?
-        .route(with_deferred_resource_scope(
+        .route(with_deferred_project_scope(
             RouteDefinition::get(
                 "/{organization_id}/deployments/{deployment_id}",
                 move |request: BootRequest| {
                 let bus = Arc::clone(&get_deployment_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = workload_access(&request)?;
                     match bus
                         .execute(GetDeployment {
                             organization_id: OrganizationId::from_uuid(
@@ -109,7 +103,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             deployment_id: DeploymentId::from_uuid(
                                 request.param_as::<Uuid>("deployment_id")?,
                             ),
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -119,17 +113,15 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
                 },
             )?,
-            DeferredResourceScope::Project,
         )?)?
-        .route(with_deferred_resource_scope(
+        .route(with_deferred_project_scope(
             RouteDefinition::get(
                 "/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs",
                 move |request: BootRequest| {
                 let bus = Arc::clone(&get_logs_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = workload_access(&request)?;
                     let parameters: WorkloadLogsQuery = request.query()?;
                     match bus
                         .execute(GetWorkloadLogs {
@@ -142,7 +134,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             revision_id: WorkloadRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
-                            resource_access,
+                            access,
                             after_sequence: decode_sequence_cursor(
                                 parameters.cursor.as_deref(),
                                 "workload log",
@@ -158,9 +150,8 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
                 },
             )?,
-            DeferredResourceScope::Project,
         )?)?
-        .route(with_deferred_resource_scope(
+        .route(with_deferred_project_scope(
             RouteDefinition::sse(
                 "/{organization_id}/workloads/{workload_id}/revisions/{revision_id}/logs/stream",
                 move |request: BootRequest| {
@@ -177,8 +168,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                         parameters.cursor.as_deref(),
                         "workload log",
                     )?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = workload_access(&request)?;
                     workload_log_stream(
                         bus,
                         GetWorkloadLogs {
@@ -191,7 +181,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             revision_id: WorkloadRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
-                            resource_access,
+                            access,
                             after_sequence,
                             limit: parameters.limit,
                             stream: parameters.stream.map(Into::into),
@@ -201,8 +191,8 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 }
                 },
             )?,
-            DeferredResourceScope::Project,
-        )?)
+        )?)?;
+    organization_tenant_workload_read_controller(controller)
 }
 
 #[derive(Debug, Deserialize)]
@@ -259,14 +249,4 @@ async fn workload_log_stream(bus: Arc<QueryBus>, query: GetWorkloadLogs) -> Resu
         "workload log",
     )
     .await
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }

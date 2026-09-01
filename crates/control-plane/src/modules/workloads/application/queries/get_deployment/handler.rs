@@ -6,14 +6,14 @@ use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::{
     reader::WorkloadQueryReader, DeploymentQueryResult,
 };
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetDeploymentHandler {
     reader: WorkloadQueryReader,
-    resource_access: WorkloadResourceAccess,
+    resources: WorkloadResourceResolver,
 }
 
 impl GetDeploymentHandler {
@@ -24,7 +24,7 @@ impl GetDeploymentHandler {
     ) -> Self {
         Self {
             reader: WorkloadQueryReader::new(Arc::clone(&workloads), operations, node_control),
-            resource_access: WorkloadResourceAccess::new(workloads),
+            resources: WorkloadResourceResolver::new(workloads),
         }
     }
 }
@@ -37,14 +37,10 @@ impl QueryHandler<GetDeployment> for GetDeploymentHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<DeploymentQueryResult>>>
     {
         let reader = self.reader.clone();
-        let resource_access = self.resource_access.clone();
+        let resources = self.resources.clone();
         Box::pin(async move {
-            let deployment = match resource_access
-                .deployment(
-                    query.organization_id,
-                    query.deployment_id,
-                    &query.resource_access,
-                )
+            let deployment = match resources
+                .deployment(query.organization_id, query.deployment_id, &query.access)
                 .await
             {
                 Ok(deployment) => deployment,

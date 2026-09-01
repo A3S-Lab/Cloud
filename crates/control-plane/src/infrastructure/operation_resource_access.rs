@@ -1,4 +1,5 @@
 use crate::access_projection::artifact_access;
+use crate::access_projection::workload_access;
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::IAgentRepository;
 use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
@@ -15,7 +16,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::application::resource_access::workflow_run;
 use crate::modules::workflow::domain::IWorkflowRunRepository;
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -26,7 +27,7 @@ use std::sync::Arc;
 /// adapter is the only polymorphic dispatch point; it does not copy ownership into Operations or
 /// Identity.
 pub(crate) struct OperationResourceAccessResolver {
-    workloads: WorkloadResourceAccess,
+    workloads: WorkloadResourceResolver,
     builds: BuildRunResourceAccess,
     executions: ExecutionResourceAccess,
     agents: AgentResourceAccess,
@@ -42,7 +43,7 @@ impl OperationResourceAccessResolver {
         workflow_runs: Arc<dyn IWorkflowRunRepository>,
     ) -> Self {
         Self {
-            workloads: WorkloadResourceAccess::new(workloads),
+            workloads: WorkloadResourceResolver::new(workloads),
             builds: BuildRunResourceAccess::new(builds),
             executions: ExecutionResourceAccess::new(executions),
             agents: AgentResourceAccess::new(agents),
@@ -59,13 +60,14 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
         subject: &OperationSubject,
         evaluator: &ResourceAccessEvaluator,
     ) -> ApplicationResult<bool> {
+        let workloads_access = workload_access(evaluator);
         match OperationSubjectKind::parse(subject.kind()) {
             Some(OperationSubjectKind::Workload) => visible(
                 self.workloads
                     .workload(
                         organization_id,
                         WorkloadId::from_uuid(subject.id()),
-                        evaluator,
+                        &workloads_access,
                     )
                     .await,
             ),
@@ -74,7 +76,7 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                     .deployment(
                         organization_id,
                         DeploymentId::from_uuid(subject.id()),
-                        evaluator,
+                        &workloads_access,
                     )
                     .await,
             ),

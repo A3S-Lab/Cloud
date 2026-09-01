@@ -9,6 +9,7 @@ mod sequence_stream;
 
 pub(crate) use crate::access_projection::{
     artifact_access, asset_access, developer_workflow_access, search_visibility, user_file_access,
+    workload_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
@@ -16,7 +17,9 @@ pub(crate) use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
-use a3s_boot::{BootError, BootRequest, ControllerDefinition, Result, AUTH_SCOPES_METADATA};
+use a3s_boot::{
+    BootError, BootRequest, ControllerDefinition, Result, RouteDefinition, AUTH_SCOPES_METADATA,
+};
 
 /// Applies the single root-owned HTTP policy for an organization administrator
 /// read. Product controllers do not import Identity presentation guards or
@@ -34,9 +37,14 @@ fn organization_tenant_scoped_controller(
     controller: ControllerDefinition,
     required_scope: &'static str,
 ) -> Result<ControllerDefinition> {
-    controller
-        .with_guard(OrganizationTenantGuard)
+    organization_tenant_controller(controller)?
         .with_metadata(AUTH_SCOPES_METADATA, vec![required_scope])
+}
+
+fn organization_tenant_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    Ok(controller.with_guard(OrganizationTenantGuard))
 }
 
 pub(crate) fn organization_tenant_file_write_controller(
@@ -57,10 +65,30 @@ pub(crate) fn organization_tenant_build_write_controller(
     organization_tenant_scoped_controller(controller, ApiTokenScope::BUILD_WRITE)
 }
 
+pub(crate) fn organization_tenant_workload_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::WORKLOAD_WRITE)
+}
+
+/// Applies the Workloads read policy: tenant admission at the HTTP boundary,
+/// followed by Workloads-owned resource visibility in the application use case.
+pub(crate) fn organization_tenant_workload_read_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_controller(controller)
+}
+
 pub(crate) fn organization_tenant_cloud_read_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {
     organization_tenant_scoped_controller(controller, ApiTokenScope::CLOUD_READ)
+}
+
+/// Marks a route whose project ownership can only be resolved by its owning
+/// application handler after loading the indirect resource identifier.
+pub(crate) fn with_deferred_project_scope(route: RouteDefinition) -> Result<RouteDefinition> {
+    with_deferred_resource_scope(route, DeferredResourceScope::Project)
 }
 
 fn require_request_scope(request: &BootRequest, scope: &str) -> Result<()> {

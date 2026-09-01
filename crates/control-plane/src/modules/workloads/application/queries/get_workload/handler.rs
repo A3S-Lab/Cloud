@@ -6,14 +6,14 @@ use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::{
     reader::WorkloadQueryReader, WorkloadQueryResult,
 };
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetWorkloadHandler {
     reader: WorkloadQueryReader,
-    resource_access: WorkloadResourceAccess,
+    resources: WorkloadResourceResolver,
 }
 
 impl GetWorkloadHandler {
@@ -24,7 +24,7 @@ impl GetWorkloadHandler {
     ) -> Self {
         Self {
             reader: WorkloadQueryReader::new(Arc::clone(&workloads), operations, node_control),
-            resource_access: WorkloadResourceAccess::new(workloads),
+            resources: WorkloadResourceResolver::new(workloads),
         }
     }
 }
@@ -37,14 +37,10 @@ impl QueryHandler<GetWorkload> for GetWorkloadHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkloadQueryResult>>>
     {
         let reader = self.reader.clone();
-        let resource_access = self.resource_access.clone();
+        let resources = self.resources.clone();
         Box::pin(async move {
-            let workload = match resource_access
-                .workload(
-                    query.organization_id,
-                    query.workload_id,
-                    &query.resource_access,
-                )
+            let workload = match resources
+                .workload(query.organization_id, query.workload_id, &query.access)
                 .await
             {
                 Ok(workload) => workload,

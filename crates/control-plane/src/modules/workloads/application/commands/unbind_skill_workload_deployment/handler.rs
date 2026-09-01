@@ -6,10 +6,10 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
 use crate::modules::workloads::application::{
     commands::{load_direct_workload_control, validate_secret_bindings},
-    UpdateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    UpdateWorkloadDeploymentResult, WorkloadResourceResolver, DEPLOYMENT_WORKFLOW_NAME,
+    DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
@@ -43,14 +43,14 @@ impl CommandHandler<UnbindSkillWorkloadDeployment> for UnbindSkillWorkloadDeploy
         a3s_boot::Result<ApplicationResult<UpdateWorkloadDeploymentResult>>,
     > {
         let workloads = Arc::clone(&self.workloads);
-        let resource_access = WorkloadResourceAccess::new(Arc::clone(&workloads));
+        let resource_resolver = WorkloadResourceResolver::new(Arc::clone(&workloads));
         let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
-            let workload = match resource_access
+            let workload = match resource_resolver
                 .workload(
                     command.organization_id,
                     command.workload_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

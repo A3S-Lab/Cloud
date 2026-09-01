@@ -1,6 +1,6 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{NodePoolId, OrganizationId, WorkloadId};
+use crate::modules::workloads::application::WorkloadAccess;
 use crate::modules::workloads::domain::entities::RequestedServiceTemplate;
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use a3s_boot::Command;
@@ -12,7 +12,7 @@ use uuid::Uuid;
 pub struct UpdateWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub workload_id: WorkloadId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkloadAccess,
     pub expected_name: Option<String>,
     pub expected_node_pool_id: Option<Option<NodePoolId>>,
     pub template: RequestedServiceTemplate,
