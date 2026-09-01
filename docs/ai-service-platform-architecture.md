@@ -120,14 +120,16 @@ observation readiness logic or invoke A3S Box outside Runtime.
 
 **Component status on 2026-09-01:** Cloud pins `a3s-runtime` `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`23c417ef2bbb87784e77f0dfbf725ca92f4e0913`; Box resolves that exact Runtime
+`332ab93896a7293cda6f788103ca8f5559566f2d`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to
 the exact provider resource. Non-snapshot macOS MicroVMs now use a mount-free,
 guest-owned raw ext4 rootfs by default; APFS remains only for snapshot and
-explicit legacy compatibility. The exact
-[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33451209710) passes native
+explicit legacy compatibility. Route-identical preflight rejects unavailable
+dedicated-VM selection before named-volume or image mutation and never falls
+back to weaker isolation. The exact
+[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33466602542) passes native
 and aarch64 OCI lifecycle and SDK certification, Linux and macOS build checks,
 Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
 placement-group Services, Agent readiness, and the Durable Cell provider gate
