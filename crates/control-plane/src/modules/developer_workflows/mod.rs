@@ -4,6 +4,7 @@ pub mod infrastructure;
 mod presentation;
 pub mod published;
 
+pub(crate) use application::DeveloperWorkflowAccessScope;
 pub use application::{
     AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanResult, AcceptPullRequestPreviewPolicy,
     AcceptPullRequestPreviewPolicyHandler, AcceptPullRequestPreviewPolicyResult,
@@ -12,15 +13,15 @@ pub use application::{
     BuildPlanSourceLayoutRequest, BuildPlanSourceRevisionEvidence, CompileAcceptedWorkloadProfile,
     CompileAcceptedWorkloadProfileHandler, CompiledAcceptedWorkloadProfile,
     CompiledScheduledTaskProfile, CompiledServiceProfile, CompiledWorkloadProfile,
-    DetectBuildPlanProposals, DetectBuildPlanProposalsHandler, DeveloperWorkflowAction,
-    DeveloperWorkflowEnvironmentAccess, EnsurePreviewEnvironment, GetAcceptedBuildPlan,
+    DetectBuildPlanProposals, DetectBuildPlanProposalsHandler, DeveloperWorkflowAccess,
+    DeveloperWorkflowEnvironmentScope, EnsurePreviewEnvironment, GetAcceptedBuildPlan,
     GetAcceptedBuildPlanHandler, GetAcceptedPullRequestPreviewPolicyRevision,
     GetAcceptedPullRequestPreviewPolicyRevisionHandler, GetAcceptedWorkloadProfileRevision,
     GetAcceptedWorkloadProfileRevisionHandler, GetCurrentAcceptedPullRequestPreviewPolicyRevision,
     GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler,
     GetCurrentAcceptedWorkloadProfileRevision, GetCurrentAcceptedWorkloadProfileRevisionHandler,
     GetPullRequestPreview, GetPullRequestPreviewHandler, IBuildPlanSourceLayoutPort,
-    IBuildPlanSourceRevisionPort, IDeveloperWorkflowAuthorizationPort, IPreviewEnvironmentPort,
+    IBuildPlanSourceRevisionPort, IDeveloperWorkflowEnvironmentPort, IPreviewEnvironmentPort,
     IPreviewSourceSubscriptionQueryPort, IPullRequestPreviewProjectionPort,
     IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort, IWorkloadBuildOutcomePort,
     ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler,
@@ -41,11 +42,11 @@ pub use application::{
 pub use domain::*;
 pub use infrastructure::{
     ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, DockerfileBuildPlanDetector,
-    ExecutionsScheduledTaskProfileAdapter, IdentityProjectsDeveloperWorkflowAuthorizationAdapter,
-    InMemoryBuildPlanRepository, InMemoryPullRequestPreviewPolicyRepository,
-    InMemoryPullRequestPreviewProjectionRepository, InMemoryWorkloadProfileRepository,
-    PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,
-    PostgresPullRequestPreviewProjectionRepository, PostgresWorkloadProfileRepository,
+    ExecutionsScheduledTaskProfileAdapter, InMemoryBuildPlanRepository,
+    InMemoryPullRequestPreviewPolicyRepository, InMemoryPullRequestPreviewProjectionRepository,
+    InMemoryWorkloadProfileRepository, PostgresBuildPlanRepository,
+    PostgresPullRequestPreviewPolicyRepository, PostgresPullRequestPreviewProjectionRepository,
+    PostgresWorkloadProfileRepository, ProjectsDeveloperWorkflowEnvironmentAdapter,
     ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjector,
     RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
     WorkloadsServiceProfileAdapter,

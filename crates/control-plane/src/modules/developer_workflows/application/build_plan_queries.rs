@@ -1,12 +1,11 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    IDeveloperWorkflowAuthorizationPort,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{AcceptedBuildPlan, IBuildPlanRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    BuildPlanId, EnvironmentId, OrganizationId, PrincipalId, ProjectId, SourceRevisionId,
+    BuildPlanId, EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -14,27 +13,27 @@ use std::sync::Arc;
 pub const DEFAULT_BUILD_PLAN_LIST_LIMIT: usize = 50;
 pub const MAXIMUM_BUILD_PLAN_LIST_LIMIT: usize = 200;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetAcceptedBuildPlan {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub build_plan_id: BuildPlanId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetAcceptedBuildPlan {
     type Output = ApplicationResult<AcceptedBuildPlan>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAcceptedBuildPlans {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub source_revision_id: SourceRevisionId,
     pub limit: usize,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for ListAcceptedBuildPlans {
@@ -46,35 +45,35 @@ struct BuildPlanReadScope {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
-    principal_id: PrincipalId,
 }
 
 /// The single Application read authority for accepted BuildPlans.
 ///
 /// Public adapters dispatch typed queries through this service instead of
-/// reading the repository or repeating Identity/Projects authorization.
+/// reading the repository or repeating resource-visibility and Projects-owner checks.
 pub struct BuildPlanQueryService {
     plans: Arc<dyn IBuildPlanRepository>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl BuildPlanQueryService {
     pub fn new(
         plans: Arc<dyn IBuildPlanRepository>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             plans,
-            authorization,
+            environments,
         }
     }
 
     async fn get(
         &self,
         scope: BuildPlanReadScope,
+        access: &DeveloperWorkflowAccess,
         build_plan_id: BuildPlanId,
     ) -> ApplicationResult<AcceptedBuildPlan> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         if build_plan_id.as_uuid().is_nil() {
             return Err(ApplicationError::Invalid(
                 "BuildPlan identity is invalid".into(),
@@ -97,10 +96,11 @@ impl BuildPlanQueryService {
     async fn list(
         &self,
         scope: BuildPlanReadScope,
+        access: &DeveloperWorkflowAccess,
         source_revision_id: SourceRevisionId,
         limit: usize,
     ) -> ApplicationResult<Vec<AcceptedBuildPlan>> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         if source_revision_id.as_uuid().is_nil() {
             return Err(ApplicationError::Invalid(
                 "BuildPlan Source revision identity is invalid".into(),
@@ -140,16 +140,19 @@ impl BuildPlanQueryService {
         Ok(plans)
     }
 
-    async fn authorize(&self, scope: BuildPlanReadScope) -> ApplicationResult<()> {
-        authorize_environment_action(
-            self.authorization.as_ref(),
-            DeveloperWorkflowEnvironmentAccess {
+    async fn authorize(
+        &self,
+        scope: BuildPlanReadScope,
+        access: &DeveloperWorkflowAccess,
+    ) -> ApplicationResult<()> {
+        authorize_environment(
+            self.environments.as_ref(),
+            DeveloperWorkflowEnvironmentScope {
                 organization_id: scope.organization_id,
                 project_id: scope.project_id,
                 environment_id: scope.environment_id,
-                principal_id: scope.principal_id,
-                action: DeveloperWorkflowAction::ReadBuildPlan,
             },
+            access,
         )
         .await
     }
@@ -179,8 +182,8 @@ impl QueryHandler<GetAcceptedBuildPlan> for GetAcceptedBuildPlanHandler {
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.build_plan_id,
                 )
                 .await)
@@ -213,8 +216,8 @@ impl QueryHandler<ListAcceptedBuildPlans> for ListAcceptedBuildPlansHandler {
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.source_revision_id,
                     query.limit,
                 )

@@ -1,8 +1,8 @@
 use super::{
     AcceptBuildPlan, AcceptBuildPlanHandler, BuildPlanQueryService,
-    BuildPlanSourceRevisionEvidence, DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
+    BuildPlanSourceRevisionEvidence, DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope,
     GetAcceptedBuildPlan, GetAcceptedBuildPlanHandler, IBuildPlanSourceRevisionPort,
-    IDeveloperWorkflowAuthorizationPort, ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler,
+    IDeveloperWorkflowEnvironmentPort, ListAcceptedBuildPlans, ListAcceptedBuildPlansHandler,
     MAXIMUM_BUILD_PLAN_LIST_LIMIT,
 };
 use crate::modules::developer_workflows::domain::{
@@ -29,7 +29,7 @@ async fn acceptance_is_authorized_exact_and_replay_safe() {
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
     let handler =
-        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), authorization(true));
+        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), environments(true));
 
     let first = handler
         .execute(fixture.command("accept-1"), context())
@@ -69,7 +69,7 @@ async fn independent_idempotency_keys_converge_on_one_natural_acceptance() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
+    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, environments(true));
 
     let first = handler
         .execute(fixture.command("natural-1"), context())
@@ -108,7 +108,7 @@ async fn another_authorized_actor_can_adopt_and_replay_the_existing_acceptance()
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
     let handler =
-        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), authorization(true));
+        AcceptBuildPlanHandler::new(repository.clone(), source.clone(), environments(true));
     let first = handler
         .execute(fixture.command("first-actor"), context())
         .await
@@ -150,7 +150,7 @@ async fn source_evidence_drift_fails_before_persistence() {
     let mut evidence = fixture.evidence();
     evidence.recipe_digest = digest('f');
     let source = Arc::new(FakeSourcePort::new(Some(evidence)));
-    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
+    let handler = AcceptBuildPlanHandler::new(repository.clone(), source, environments(true));
 
     let error = handler
         .execute(fixture.command("drift"), context())
@@ -173,11 +173,11 @@ async fn source_evidence_drift_fails_before_persistence() {
 }
 
 #[tokio::test]
-async fn authorization_precedes_source_resolution_and_replay() {
+async fn environment_access_precedes_source_resolution_and_replay() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let handler = AcceptBuildPlanHandler::new(repository, source.clone(), authorization(false));
+    let handler = AcceptBuildPlanHandler::new(repository, source.clone(), environments(false));
     let mut command = fixture.command("forbidden");
     command.proposal_acl = "not an ACL document".into();
 
@@ -195,7 +195,7 @@ async fn accepted_build_plan_queries_share_one_authorized_scope() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryBuildPlanRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.evidence())));
-    let acceptance = AcceptBuildPlanHandler::new(repository.clone(), source, authorization(true));
+    let acceptance = AcceptBuildPlanHandler::new(repository.clone(), source, environments(true));
     let accepted = acceptance
         .execute(fixture.command("query-authority"), context())
         .await
@@ -203,10 +203,10 @@ async fn accepted_build_plan_queries_share_one_authorized_scope() {
         .expect("accepted BuildPlan")
         .plan;
 
-    let authorization = query_authorization(true);
+    let environment_authority = environments(true);
     let queries = Arc::new(BuildPlanQueryService::new(
         repository,
-        authorization.clone(),
+        environment_authority.clone(),
     ));
     let get = GetAcceptedBuildPlanHandler::new(Arc::clone(&queries));
     let list = ListAcceptedBuildPlansHandler::new(queries);
@@ -218,7 +218,7 @@ async fn accepted_build_plan_queries_share_one_authorized_scope() {
                 project_id: fixture.project_id,
                 environment_id: fixture.environment_id,
                 build_plan_id: accepted.id,
-                principal_id: fixture.actor_principal_id,
+                access: fixture.access(),
             },
             context(),
         )
@@ -233,7 +233,7 @@ async fn accepted_build_plan_queries_share_one_authorized_scope() {
                 environment_id: fixture.environment_id,
                 source_revision_id: fixture.source_revision_id,
                 limit: 50,
-                principal_id: fixture.actor_principal_id,
+                access: fixture.access(),
             },
             context(),
         )
@@ -243,16 +243,16 @@ async fn accepted_build_plan_queries_share_one_authorized_scope() {
 
     assert_eq!(found, accepted);
     assert_eq!(page, vec![accepted]);
-    assert_eq!(authorization.calls(), 2);
+    assert_eq!(environment_authority.calls(), 2);
 }
 
 #[tokio::test]
 async fn accepted_build_plan_queries_authorize_before_private_input_validation() {
     let fixture = Fixture::new();
-    let denied_authorization = query_authorization(false);
+    let denied_environment = environments(false);
     let denied = ListAcceptedBuildPlansHandler::new(Arc::new(BuildPlanQueryService::new(
         Arc::new(InMemoryBuildPlanRepository::new()),
-        denied_authorization.clone(),
+        denied_environment.clone(),
     )));
     let denied_error = denied
         .execute(
@@ -262,7 +262,7 @@ async fn accepted_build_plan_queries_authorize_before_private_input_validation()
                 environment_id: fixture.environment_id,
                 source_revision_id: SourceRevisionId::from_uuid(Uuid::nil()),
                 limit: 0,
-                principal_id: fixture.actor_principal_id,
+                access: fixture.access(),
             },
             context(),
         )
@@ -270,11 +270,11 @@ async fn accepted_build_plan_queries_authorize_before_private_input_validation()
         .expect("denied Boot result")
         .expect_err("denied query must be concealed");
     assert!(matches!(denied_error, ApplicationError::NotFound(_)));
-    assert_eq!(denied_authorization.calls(), 1);
+    assert_eq!(denied_environment.calls(), 1);
 
     let allowed = ListAcceptedBuildPlansHandler::new(Arc::new(BuildPlanQueryService::new(
         Arc::new(InMemoryBuildPlanRepository::new()),
-        query_authorization(true),
+        environments(true),
     )));
     for limit in [0, MAXIMUM_BUILD_PLAN_LIST_LIMIT + 1] {
         let error = allowed
@@ -285,7 +285,7 @@ async fn accepted_build_plan_queries_authorize_before_private_input_validation()
                     environment_id: fixture.environment_id,
                     source_revision_id: fixture.source_revision_id,
                     limit,
-                    principal_id: fixture.actor_principal_id,
+                    access: fixture.access(),
                 },
                 context(),
             )
@@ -303,7 +303,7 @@ async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
     let acceptance = AcceptBuildPlanHandler::new(
         repository,
         Arc::new(FakeSourcePort::new(Some(fixture.evidence()))),
-        authorization(true),
+        environments(true),
     );
     let accepted = acceptance
         .execute(fixture.command("query-drift"), context())
@@ -319,7 +319,7 @@ async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
             found: Some(wrong_scope),
             listed: Vec::new(),
         }),
-        query_authorization(true),
+        environments(true),
     )));
     let get_error = get
         .execute(
@@ -328,7 +328,7 @@ async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
                 project_id: fixture.project_id,
                 environment_id: fixture.environment_id,
                 build_plan_id: accepted.id,
-                principal_id: fixture.actor_principal_id,
+                access: fixture.access(),
             },
             context(),
         )
@@ -342,7 +342,7 @@ async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
             found: None,
             listed: vec![accepted.clone(), accepted],
         }),
-        query_authorization(true),
+        environments(true),
     )));
     let list_error = list
         .execute(
@@ -352,7 +352,7 @@ async fn accepted_build_plan_queries_reject_repository_scope_and_page_drift() {
                 environment_id: fixture.environment_id,
                 source_revision_id: fixture.source_revision_id,
                 limit: 2,
-                principal_id: fixture.actor_principal_id,
+                access: fixture.access(),
             },
             context(),
         )
@@ -395,47 +395,32 @@ impl IBuildPlanSourceRevisionPort for FakeSourcePort {
     }
 }
 
-struct FakeAuthorizationPort {
-    allowed: bool,
-    expected_action: DeveloperWorkflowAction,
+struct FakeEnvironmentPort {
+    exists: bool,
     calls: AtomicUsize,
 }
 
-impl FakeAuthorizationPort {
+impl FakeEnvironmentPort {
     fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for FakeEnvironmentPort {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
-        access.validate().map_err(RepositoryError::Forbidden)?;
+        scope.validate().map_err(RepositoryError::Forbidden)?;
         self.calls.fetch_add(1, Ordering::SeqCst);
-        if access.action != self.expected_action {
-            return Err(RepositoryError::Forbidden(
-                "unexpected Developer Workflow action".into(),
-            ));
-        }
-        Ok(self.allowed)
+        Ok(self.exists)
     }
 }
 
-fn authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
-    Arc::new(FakeAuthorizationPort {
-        allowed,
-        expected_action: DeveloperWorkflowAction::AcceptBuildPlan,
-        calls: AtomicUsize::new(0),
-    })
-}
-
-fn query_authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
-    Arc::new(FakeAuthorizationPort {
-        allowed,
-        expected_action: DeveloperWorkflowAction::ReadBuildPlan,
+fn environments(exists: bool) -> Arc<FakeEnvironmentPort> {
+    Arc::new(FakeEnvironmentPort {
+        exists,
         calls: AtomicUsize::new(0),
     })
 }
@@ -543,10 +528,15 @@ impl Fixture {
             environment_id: self.environment_id,
             source_revision_id: self.source_revision_id,
             proposal_acl: BUILD_PLAN_FIXTURE.into(),
+            access: self.access(),
             actor_principal_id: self.actor_principal_id,
             idempotency_key: idempotency_key.into(),
             request_id: Uuid::now_v7(),
         }
+    }
+
+    fn access(&self) -> DeveloperWorkflowAccess {
+        DeveloperWorkflowAccess::organization_wide()
     }
 }
 

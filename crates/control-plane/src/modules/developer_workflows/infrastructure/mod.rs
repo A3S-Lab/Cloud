@@ -1,7 +1,7 @@
 mod asset_acl_detector;
-mod authorization;
 mod build_outcome;
 mod dockerfile_detector;
+mod environment_access;
 mod in_memory;
 mod preview_environment;
 mod preview_policy_in_memory;
@@ -14,14 +14,14 @@ mod source_revision;
 mod workload_profile_in_memory;
 
 #[cfg(test)]
-mod authorization_tests;
+mod environment_access_tests;
 
 mod persistence;
 
 pub use asset_acl_detector::AssetAclBuildPlanDetector;
-pub use authorization::IdentityProjectsDeveloperWorkflowAuthorizationAdapter;
 pub use build_outcome::ArtifactsWorkloadBuildOutcomeAdapter;
 pub use dockerfile_detector::DockerfileBuildPlanDetector;
+pub use environment_access::ProjectsDeveloperWorkflowEnvironmentAdapter;
 pub use in_memory::InMemoryBuildPlanRepository;
 pub use persistence::{
     PostgresBuildPlanRepository, PostgresPullRequestPreviewPolicyRepository,

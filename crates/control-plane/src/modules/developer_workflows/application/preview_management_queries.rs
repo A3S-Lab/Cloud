@@ -1,7 +1,6 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    IDeveloperWorkflowAuthorizationPort,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptedPullRequestPreviewPolicyRevision, IPullRequestPreviewPolicyRepository,
@@ -10,7 +9,7 @@ use crate::modules::developer_workflows::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, PrincipalId, ProjectId, PullRequestPreviewPolicyRevisionId,
+    EnvironmentId, OrganizationId, ProjectId, PullRequestPreviewPolicyRevisionId,
     SourceSubscriptionId,
 };
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -20,55 +19,55 @@ pub const DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT: usize = 50;
 pub const MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT: usize =
     MAX_PULL_REQUEST_PREVIEW_POLICY_REVISIONS_PAGE;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetCurrentAcceptedPullRequestPreviewPolicyRevision {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub source_environment_id: EnvironmentId,
     pub source_subscription_id: SourceSubscriptionId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetCurrentAcceptedPullRequestPreviewPolicyRevision {
     type Output = ApplicationResult<AcceptedPullRequestPreviewPolicyRevision>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetAcceptedPullRequestPreviewPolicyRevision {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub source_environment_id: EnvironmentId,
     pub source_subscription_id: SourceSubscriptionId,
     pub preview_policy_revision_id: PullRequestPreviewPolicyRevisionId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetAcceptedPullRequestPreviewPolicyRevision {
     type Output = ApplicationResult<AcceptedPullRequestPreviewPolicyRevision>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAcceptedPullRequestPreviewPolicyRevisions {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub source_environment_id: EnvironmentId,
     pub source_subscription_id: SourceSubscriptionId,
     pub limit: usize,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for ListAcceptedPullRequestPreviewPolicyRevisions {
     type Output = ApplicationResult<Vec<AcceptedPullRequestPreviewPolicyRevision>>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetPullRequestPreview {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub source_environment_id: EnvironmentId,
     pub source_subscription_id: SourceSubscriptionId,
     pub pull_request_id: u64,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetPullRequestPreview {
@@ -80,35 +79,35 @@ struct PreviewReadScope {
     organization_id: OrganizationId,
     project_id: ProjectId,
     source_environment_id: EnvironmentId,
-    principal_id: PrincipalId,
 }
 
 /// The sole Application read authority for accepted Preview Policy revisions.
 ///
 /// Public adapters dispatch typed queries through this service. They never
-/// parse policy ACL, read the repository, or repeat Identity/Projects policy.
+/// parse policy ACL, read the repository, or repeat visibility/owner policy.
 pub struct PreviewPolicyQueryService {
     policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl PreviewPolicyQueryService {
     pub fn new(
         policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             policies,
-            authorization,
+            environments,
         }
     }
 
     async fn get_current(
         &self,
         scope: PreviewReadScope,
+        access: &DeveloperWorkflowAccess,
         source_subscription_id: SourceSubscriptionId,
     ) -> ApplicationResult<AcceptedPullRequestPreviewPolicyRevision> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_source_subscription_id(source_subscription_id)?;
         let revision = self
             .policies
@@ -127,10 +126,11 @@ impl PreviewPolicyQueryService {
     async fn get_revision(
         &self,
         scope: PreviewReadScope,
+        access: &DeveloperWorkflowAccess,
         source_subscription_id: SourceSubscriptionId,
         preview_policy_revision_id: PullRequestPreviewPolicyRevisionId,
     ) -> ApplicationResult<AcceptedPullRequestPreviewPolicyRevision> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_source_subscription_id(source_subscription_id)?;
         if preview_policy_revision_id.as_uuid().is_nil() {
             return Err(ApplicationError::Invalid(
@@ -162,10 +162,11 @@ impl PreviewPolicyQueryService {
     async fn list_revisions(
         &self,
         scope: PreviewReadScope,
+        access: &DeveloperWorkflowAccess,
         source_subscription_id: SourceSubscriptionId,
         limit: usize,
     ) -> ApplicationResult<Vec<AcceptedPullRequestPreviewPolicyRevision>> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_source_subscription_id(source_subscription_id)?;
         if limit == 0 || limit > MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT {
             return Err(ApplicationError::Invalid(format!(
@@ -209,16 +210,19 @@ impl PreviewPolicyQueryService {
         Ok(revisions)
     }
 
-    async fn authorize(&self, scope: PreviewReadScope) -> ApplicationResult<()> {
-        authorize_environment_action(
-            self.authorization.as_ref(),
-            DeveloperWorkflowEnvironmentAccess {
+    async fn authorize(
+        &self,
+        scope: PreviewReadScope,
+        access: &DeveloperWorkflowAccess,
+    ) -> ApplicationResult<()> {
+        authorize_environment(
+            self.environments.as_ref(),
+            DeveloperWorkflowEnvironmentScope {
                 organization_id: scope.organization_id,
                 project_id: scope.project_id,
                 environment_id: scope.source_environment_id,
-                principal_id: scope.principal_id,
-                action: DeveloperWorkflowAction::ReadPullRequestPreviewPolicy,
             },
+            access,
         )
         .await
     }
@@ -230,35 +234,35 @@ impl PreviewPolicyQueryService {
 /// public projection is allowed to observe it.
 pub struct PullRequestPreviewQueryService {
     previews: Arc<dyn IPullRequestPreviewProjectionRepository>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl PullRequestPreviewQueryService {
     pub fn new(
         previews: Arc<dyn IPullRequestPreviewProjectionRepository>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             previews,
-            authorization,
+            environments,
         }
     }
 
     async fn get(
         &self,
         scope: PreviewReadScope,
+        access: &DeveloperWorkflowAccess,
         source_subscription_id: SourceSubscriptionId,
         pull_request_id: u64,
     ) -> ApplicationResult<PullRequestPreview> {
-        authorize_environment_action(
-            self.authorization.as_ref(),
-            DeveloperWorkflowEnvironmentAccess {
+        authorize_environment(
+            self.environments.as_ref(),
+            DeveloperWorkflowEnvironmentScope {
                 organization_id: scope.organization_id,
                 project_id: scope.project_id,
                 environment_id: scope.source_environment_id,
-                principal_id: scope.principal_id,
-                action: DeveloperWorkflowAction::ReadPullRequestPreview,
             },
+            access,
         )
         .await?;
         validate_source_subscription_id(source_subscription_id)?;
@@ -309,6 +313,7 @@ impl QueryHandler<GetCurrentAcceptedPullRequestPreviewPolicyRevision>
             Ok(queries
                 .get_current(
                     scope_from_policy_query(&query),
+                    &query.access,
                     query.source_subscription_id,
                 )
                 .await)
@@ -345,8 +350,8 @@ impl QueryHandler<GetAcceptedPullRequestPreviewPolicyRevision>
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         source_environment_id: query.source_environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.source_subscription_id,
                     query.preview_policy_revision_id,
                 )
@@ -384,8 +389,8 @@ impl QueryHandler<ListAcceptedPullRequestPreviewPolicyRevisions>
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         source_environment_id: query.source_environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.source_subscription_id,
                     query.limit,
                 )
@@ -418,8 +423,8 @@ impl QueryHandler<GetPullRequestPreview> for GetPullRequestPreviewHandler {
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         source_environment_id: query.source_environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.source_subscription_id,
                     query.pull_request_id,
                 )
@@ -435,7 +440,6 @@ fn scope_from_policy_query(
         organization_id: query.organization_id,
         project_id: query.project_id,
         source_environment_id: query.source_environment_id,
-        principal_id: query.principal_id,
     }
 }
 

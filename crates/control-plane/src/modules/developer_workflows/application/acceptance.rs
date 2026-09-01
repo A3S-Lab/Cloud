@@ -1,7 +1,7 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceRevisionPort,
-    IDeveloperWorkflowAuthorizationPort,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IBuildPlanSourceRevisionPort,
+    IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptBuildPlanWrite, AcceptedBuildPlan, AcceptedBuildPlanContract, BuildPlanAccepted,
@@ -25,6 +25,7 @@ pub struct AcceptBuildPlan {
     pub environment_id: EnvironmentId,
     pub source_revision_id: SourceRevisionId,
     pub proposal_acl: String,
+    pub access: DeveloperWorkflowAccess,
     pub actor_principal_id: PrincipalId,
     pub idempotency_key: String,
     pub request_id: Uuid,
@@ -43,19 +44,19 @@ pub struct AcceptBuildPlanResult {
 pub struct AcceptBuildPlanHandler {
     plans: Arc<dyn IBuildPlanRepository>,
     sources: Arc<dyn IBuildPlanSourceRevisionPort>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl AcceptBuildPlanHandler {
     pub fn new(
         plans: Arc<dyn IBuildPlanRepository>,
         sources: Arc<dyn IBuildPlanSourceRevisionPort>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             plans,
             sources,
-            authorization,
+            environments,
         }
     }
 }
@@ -69,17 +70,16 @@ impl CommandHandler<AcceptBuildPlan> for AcceptBuildPlanHandler {
     {
         let plans = Arc::clone(&self.plans);
         let sources = Arc::clone(&self.sources);
-        let authorization = Arc::clone(&self.authorization);
+        let environments = Arc::clone(&self.environments);
         Box::pin(async move {
-            if let Err(error) = authorize_environment_action(
-                authorization.as_ref(),
-                DeveloperWorkflowEnvironmentAccess {
+            if let Err(error) = authorize_environment(
+                environments.as_ref(),
+                DeveloperWorkflowEnvironmentScope {
                     organization_id: command.organization_id,
                     project_id: command.project_id,
                     environment_id: command.environment_id,
-                    principal_id: command.actor_principal_id,
-                    action: DeveloperWorkflowAction::AcceptBuildPlan,
                 },
+                &command.access,
             )
             .await
             {

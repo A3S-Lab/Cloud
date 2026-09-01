@@ -2261,10 +2261,10 @@ fn developer_workflows_projects_boundaries_are_confined_to_two_infrastructure_ad
     assert_eq!(
         projects_imports,
         lines(
-            "developer_workflows/infrastructure/authorization.rs\n\
+            "developer_workflows/infrastructure/environment_access.rs\n\
              developer_workflows/infrastructure/preview_environment.rs",
         ),
-        "Developer Workflows must reach Projects only through its authorization-read and Preview-lifecycle Infrastructure adapters"
+        "Developer Workflows must reach Projects only through its environment-read and Preview-lifecycle Infrastructure adapters"
     );
 
     let projector = std::fs::read_to_string(
@@ -2501,10 +2501,10 @@ fn developer_workflows_build_plan_detection_query_keeps_concrete_detectors_out_o
     assert!(
         compact.contains("Arc<BuildPlanDetectionService>")
             && compact.contains("Arc<dynIBuildPlanSourceLayoutPort>")
-            && compact.contains("Arc<dynIDeveloperWorkflowAuthorizationPort>")
-            && compact.contains("authorize_environment_action(")
+            && compact.contains("Arc<dynIDeveloperWorkflowEnvironmentPort>")
+            && compact.contains("authorize_environment(")
             && compact.contains("implQueryHandler<DetectBuildPlanProposals>"),
-        "BuildPlan detection must enter Application through authorization, one source-layout port, and the local detector service"
+        "BuildPlan detection must enter Application through one environment port, one source-layout port, and the local detector service"
     );
     for forbidden in [
         "AssetAclBuildPlanDetector",
@@ -2537,8 +2537,8 @@ fn developer_workflows_build_plan_reads_have_one_application_authority() {
     for required in [
         "pubstructBuildPlanQueryService",
         "plans:Arc<dynIBuildPlanRepository>",
-        "authorization:Arc<dynIDeveloperWorkflowAuthorizationPort>",
-        "DeveloperWorkflowAction::ReadBuildPlan",
+        "environments:Arc<dynIDeveloperWorkflowEnvironmentPort>",
+        "access:DeveloperWorkflowAccess",
         "implQueryHandler<GetAcceptedBuildPlan>",
         "implQueryHandler<ListAcceptedBuildPlans>",
     ] {
@@ -2648,8 +2648,8 @@ fn developer_workflows_workload_profile_public_surface_has_one_application_autho
     for required in [
         "pubstructWorkloadProfileQueryService",
         "profiles:Arc<dynIWorkloadProfileRepository>",
-        "authorization:Arc<dynIDeveloperWorkflowAuthorizationPort>",
-        "DeveloperWorkflowAction::ReadWorkloadProfile",
+        "environments:Arc<dynIDeveloperWorkflowEnvironmentPort>",
+        "access:DeveloperWorkflowAccess",
         "implQueryHandler<GetCurrentAcceptedWorkloadProfileRevision>",
         "implQueryHandler<GetAcceptedWorkloadProfileRevision>",
         "implQueryHandler<ListAcceptedWorkloadProfileRevisions>",
@@ -5501,69 +5501,192 @@ fn build_plan_source_layout_acquisition_reuses_one_sources_access_authority() {
 }
 
 #[test]
-fn developer_workflows_acceptance_reuses_owner_authorization_interfaces() {
-    let adapter_path = "developer_workflows/infrastructure/authorization.rs";
-    let adapter = std::fs::read_to_string(module_root().join(adapter_path))
-        .expect("read Developer Workflows authorization adapter");
-    let production = production_source(&adapter);
-    let compact = production.split_whitespace().collect::<String>();
-
+fn developer_workflows_access_and_environment_have_one_bounded_authority() {
+    let root = module_root();
+    let access_path = "developer_workflows/application/resource_access.rs";
+    let access = std::fs::read_to_string(root.join(access_path))
+        .expect("read Developer Workflows resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
     for required in [
-        "Arc<dynIMembershipRepository>",
-        "Arc<dynIResourceGrantRepository>",
-        "Arc<dynIEnvironmentRepository>",
-        "ResourceAccessEvaluator::for_membership",
-        "implIDeveloperWorkflowAuthorizationPort",
+        "pubstructDeveloperWorkflowAccess",
+        "pubstructDeveloperWorkflowEnvironmentScope",
+        "pubtraitIDeveloperWorkflowEnvironmentPort:Send+Sync",
+        "asyncfnenvironment_exists(",
+        "pub(super)asyncfnauthorize_environment(",
+        "access.environment_is_visible(scope.project_id,scope.environment_id)",
     ] {
         assert!(
-            compact.contains(required),
-            "Developer Workflows acceptance lost its owner interface boundary {required}"
+            compact_access.contains(required),
+            "Developer Workflows lost its consumer-owned access boundary {required}"
+        );
+    }
+    let visibility_check = compact_access
+        .find("access.environment_is_visible(")
+        .expect("local visibility check");
+    let owner_read = compact_access
+        .find("environments.environment_exists(scope).await")
+        .expect("Projects owner read");
+    assert!(
+        visibility_check < owner_read,
+        "Developer Workflows must reject invisible environments before consulting Projects"
+    );
+
+    let mut identity_imports = BTreeSet::new();
+    let mut action_vocabulary = BTreeSet::new();
+    let mut access_fields = 0;
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("developer_workflows") {
+            return;
+        }
+        if source.contains("crate::modules::identity") {
+            identity_imports.insert(display(relative));
+        }
+        if source.contains("DeveloperWorkflowAction")
+            || source.contains("IDeveloperWorkflowAuthorizationPort")
+            || source.contains("authorize_environment_action")
+        {
+            action_vocabulary.insert(display(relative));
+        }
+        access_fields += source
+            .matches("pub access: DeveloperWorkflowAccess")
+            .count();
+    });
+    assert!(
+        identity_imports.is_empty(),
+        "Developer Workflows imported Identity instead of receiving its owned access projection:\n{}",
+        identity_imports.into_iter().collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        action_vocabulary.is_empty(),
+        "Developer Workflows regained the inert action-authorization mechanism:\n{}",
+        action_vocabulary.into_iter().collect::<Vec<_>>().join("\n")
+    );
+    assert_eq!(
+        access_fields, 13,
+        "all three acceptance commands and ten public queries must carry the context-owned access value"
+    );
+
+    let adapter_path = "developer_workflows/infrastructure/environment_access.rs";
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Developer Workflows Projects environment adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "Arc<dynIEnvironmentRepository>",
+        "implIDeveloperWorkflowEnvironmentPortforProjectsDeveloperWorkflowEnvironmentAdapter",
+        ".find(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Developer Workflows environment adapter lost its owner interface boundary {required}"
         );
     }
     for forbidden in [
+        "crate::modules::identity",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
+        "ResourceAccessEvaluator",
         "Postgres",
         "a3s_orm",
         "sqlx",
-        "ApiToken",
         "IOutboxRepository",
-        "IIntegrationEventProjector",
-        "CommandBus",
         "CommandHandler",
         "tokio::spawn",
     ] {
         assert!(
-            !production.contains(forbidden),
-            "Developer Workflows authorization adapter introduced a concrete or duplicate mechanism {forbidden}"
+            !production_adapter.contains(forbidden),
+            "Developer Workflows environment adapter introduced foreign policy or a duplicate mechanism {forbidden}"
         );
     }
 
-    for (label, relative) in [
-        ("BuildPlan", "developer_workflows/application/acceptance.rs"),
-        (
-            "workload profile",
-            "developer_workflows/application/workload_profile_acceptance.rs",
-        ),
-        (
-            "Preview Policy",
-            "developer_workflows/application/preview_policy_acceptance.rs",
-        ),
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fndeveloper_workflow_access(",
+        "DeveloperWorkflowAccess::organization_wide()",
+        "DeveloperWorkflowAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
     ] {
-        let acceptance = std::fs::read_to_string(module_root().join(relative))
-            .unwrap_or_else(|error| panic!("read {label} acceptance handler: {error}"));
-        let production_acceptance = production_source(&acceptance);
-        for forbidden in [
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Developer Workflows access mapping {required}"
+        );
+    }
+
+    let request = std::fs::read_to_string(root.join("developer_workflows/presentation/request.rs"))
+        .expect("read Developer Workflows request projection");
+    assert!(request.contains("developer_workflow_access(&resource_access_evaluator("));
+    for relative in [
+        "developer_workflows/presentation/controller.rs",
+        "developer_workflows/presentation/workload_profile_controller.rs",
+        "developer_workflows/presentation/preview_management_controller.rs",
+    ] {
+        let controller = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&controller);
+        assert!(production.contains("organization_tenant_build_write_controller(controller)"));
+        assert!(production.contains("organization_tenant_cloud_read_controller(controller)"));
+        for duplicate in [
             "crate::modules::identity",
-            "crate::modules::projects",
-            "crate::modules::sources",
+            "OrganizationTenantGuard",
+            "ApiTokenScope::",
+            "AUTH_SCOPES_METADATA",
             "ResourceAccessEvaluator",
-            "Postgres",
         ] {
             assert!(
-                !production_acceptance.contains(forbidden),
-                "{label} Application handler imported foreign owner policy or infrastructure {forbidden}"
+                !production.contains(duplicate),
+                "{relative} regained duplicate Identity entry policy {duplicate}"
             );
         }
     }
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/developer_workflows.rs"),
+    )
+    .expect("read Developer Workflows Management MCP adapter");
+    assert_eq!(
+        management_mcp
+            .matches("access: DeveloperWorkflowAccess")
+            .count(),
+        13,
+        "every Developer Workflows MCP entry must receive the consumer-owned projection"
+    );
+    let dispatch = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/dispatch.rs"),
+    )
+    .expect("read Management MCP dispatch");
+    assert_eq!(
+        dispatch
+            .matches("developer_workflow_access(&resource_access)")
+            .count(),
+        13,
+        "Management MCP must project Identity once at every Developer Workflows entry"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read application composition");
+    assert_eq!(
+        app.matches("ProjectsDeveloperWorkflowEnvironmentAdapter::new(")
+            .count(),
+        1,
+        "production must compose one Projects environment adapter"
+    );
+    assert_eq!(
+        app.matches("Arc::clone(&developer_workflow_environments)")
+            .count(),
+        8,
+        "all Developer Workflows use cases must share one environment owner port"
+    );
 }
 
 #[test]

@@ -1,7 +1,6 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    IDeveloperWorkflowAuthorizationPort,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptedWorkloadProfileRevision, IWorkloadProfileRepository,
@@ -9,8 +8,7 @@ use crate::modules::developer_workflows::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, PrincipalId, ProjectId, WorkloadProfileId,
-    WorkloadProfileRevisionId,
+    EnvironmentId, OrganizationId, ProjectId, WorkloadProfileId, WorkloadProfileRevisionId,
 };
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -18,41 +16,41 @@ use std::sync::Arc;
 pub const DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT: usize = 50;
 pub const MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT: usize = MAX_WORKLOAD_PROFILE_REVISIONS_PAGE;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetCurrentAcceptedWorkloadProfileRevision {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub workload_profile_id: WorkloadProfileId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetCurrentAcceptedWorkloadProfileRevision {
     type Output = ApplicationResult<AcceptedWorkloadProfileRevision>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetAcceptedWorkloadProfileRevision {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub workload_profile_id: WorkloadProfileId,
     pub workload_profile_revision_id: WorkloadProfileRevisionId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for GetAcceptedWorkloadProfileRevision {
     type Output = ApplicationResult<AcceptedWorkloadProfileRevision>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListAcceptedWorkloadProfileRevisions {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub workload_profile_id: WorkloadProfileId,
     pub limit: usize,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for ListAcceptedWorkloadProfileRevisions {
@@ -64,35 +62,35 @@ struct WorkloadProfileReadScope {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
-    principal_id: PrincipalId,
 }
 
 /// The single Application read authority for accepted WorkloadProfile revisions.
 ///
 /// Public adapters dispatch typed queries through this service instead of
-/// reading the revision repository or repeating Identity/Projects authorization.
+/// reading the revision repository or repeating resource-visibility and Projects-owner checks.
 pub struct WorkloadProfileQueryService {
     profiles: Arc<dyn IWorkloadProfileRepository>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl WorkloadProfileQueryService {
     pub fn new(
         profiles: Arc<dyn IWorkloadProfileRepository>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             profiles,
-            authorization,
+            environments,
         }
     }
 
     async fn get_current(
         &self,
         scope: WorkloadProfileReadScope,
+        access: &DeveloperWorkflowAccess,
         workload_profile_id: WorkloadProfileId,
     ) -> ApplicationResult<AcceptedWorkloadProfileRevision> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_profile_id(workload_profile_id)?;
         let revision = self
             .profiles
@@ -111,10 +109,11 @@ impl WorkloadProfileQueryService {
     async fn get_revision(
         &self,
         scope: WorkloadProfileReadScope,
+        access: &DeveloperWorkflowAccess,
         workload_profile_id: WorkloadProfileId,
         workload_profile_revision_id: WorkloadProfileRevisionId,
     ) -> ApplicationResult<AcceptedWorkloadProfileRevision> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_profile_id(workload_profile_id)?;
         if workload_profile_revision_id.as_uuid().is_nil() {
             return Err(ApplicationError::Invalid(
@@ -146,10 +145,11 @@ impl WorkloadProfileQueryService {
     async fn list_revisions(
         &self,
         scope: WorkloadProfileReadScope,
+        access: &DeveloperWorkflowAccess,
         workload_profile_id: WorkloadProfileId,
         limit: usize,
     ) -> ApplicationResult<Vec<AcceptedWorkloadProfileRevision>> {
-        self.authorize(scope).await?;
+        self.authorize(scope, access).await?;
         validate_profile_id(workload_profile_id)?;
         if limit == 0 || limit > MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT {
             return Err(ApplicationError::Invalid(format!(
@@ -193,16 +193,19 @@ impl WorkloadProfileQueryService {
         Ok(revisions)
     }
 
-    async fn authorize(&self, scope: WorkloadProfileReadScope) -> ApplicationResult<()> {
-        authorize_environment_action(
-            self.authorization.as_ref(),
-            DeveloperWorkflowEnvironmentAccess {
+    async fn authorize(
+        &self,
+        scope: WorkloadProfileReadScope,
+        access: &DeveloperWorkflowAccess,
+    ) -> ApplicationResult<()> {
+        authorize_environment(
+            self.environments.as_ref(),
+            DeveloperWorkflowEnvironmentScope {
                 organization_id: scope.organization_id,
                 project_id: scope.project_id,
                 environment_id: scope.environment_id,
-                principal_id: scope.principal_id,
-                action: DeveloperWorkflowAction::ReadWorkloadProfile,
             },
+            access,
         )
         .await
     }
@@ -237,8 +240,8 @@ impl QueryHandler<GetCurrentAcceptedWorkloadProfileRevision>
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.workload_profile_id,
                 )
                 .await)
@@ -275,8 +278,8 @@ impl QueryHandler<GetAcceptedWorkloadProfileRevision>
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.workload_profile_id,
                     query.workload_profile_revision_id,
                 )
@@ -314,8 +317,8 @@ impl QueryHandler<ListAcceptedWorkloadProfileRevisions>
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
                     },
+                    &query.access,
                     query.workload_profile_id,
                     query.limit,
                 )

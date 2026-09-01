@@ -5,12 +5,13 @@ use super::arguments::{
 use super::tool_result;
 use crate::modules::developer_workflows::{
     AcceptBuildPlan, AcceptPullRequestPreviewPolicy, AcceptWorkloadProfile,
-    DetectBuildPlanProposals, GetAcceptedBuildPlan, GetAcceptedPullRequestPreviewPolicyRevision,
-    GetAcceptedWorkloadProfileRevision, GetCurrentAcceptedPullRequestPreviewPolicyRevision,
-    GetCurrentAcceptedWorkloadProfileRevision, GetPullRequestPreview, ListAcceptedBuildPlans,
-    ListAcceptedPullRequestPreviewPolicyRevisions, ListAcceptedWorkloadProfileRevisions,
-    DEFAULT_BUILD_PLAN_LIST_LIMIT, DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
-    DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    DetectBuildPlanProposals, DeveloperWorkflowAccess, GetAcceptedBuildPlan,
+    GetAcceptedPullRequestPreviewPolicyRevision, GetAcceptedWorkloadProfileRevision,
+    GetCurrentAcceptedPullRequestPreviewPolicyRevision, GetCurrentAcceptedWorkloadProfileRevision,
+    GetPullRequestPreview, ListAcceptedBuildPlans, ListAcceptedPullRequestPreviewPolicyRevisions,
+    ListAcceptedWorkloadProfileRevisions, DEFAULT_BUILD_PLAN_LIST_LIMIT,
+    DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
 };
 use crate::modules::developer_workflows::{
     AcceptedBuildPlanResponse, AcceptedPullRequestPreviewPolicyRevisionResponse,
@@ -213,8 +214,8 @@ where
 pub async fn detect_build_plans(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: DetectBuildPlansArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -223,7 +224,7 @@ pub async fn detect_build_plans(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             source_revision_id: SourceRevisionId::from_uuid(arguments.source_revision_id),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -239,6 +240,7 @@ pub async fn accept_build_plan(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: AcceptBuildPlanArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -248,6 +250,7 @@ pub async fn accept_build_plan(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             source_revision_id: SourceRevisionId::from_uuid(arguments.source_revision_id),
             proposal_acl: arguments.proposal_acl,
+            access,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -265,8 +268,8 @@ pub async fn accept_build_plan(
 pub async fn list_build_plans(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: ListAcceptedBuildPlansArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -276,7 +279,7 @@ pub async fn list_build_plans(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             source_revision_id: SourceRevisionId::from_uuid(arguments.source_revision_id),
             limit: arguments.limit,
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -295,8 +298,8 @@ pub async fn list_build_plans(
 pub async fn get_build_plan(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetAcceptedBuildPlanArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -305,7 +308,7 @@ pub async fn get_build_plan(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             build_plan_id: BuildPlanId::from_uuid(arguments.build_plan_id),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -319,6 +322,7 @@ pub async fn accept_workload_profile(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: AcceptWorkloadProfileArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -328,6 +332,7 @@ pub async fn accept_workload_profile(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             build_plan_id: BuildPlanId::from_uuid(arguments.build_plan_id),
             profile_acl: arguments.profile_acl,
+            access,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -349,8 +354,8 @@ pub async fn accept_workload_profile(
 pub async fn get_current_workload_profile_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetCurrentAcceptedWorkloadProfileRevisionArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -359,7 +364,7 @@ pub async fn get_current_workload_profile_revision(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             workload_profile_id: WorkloadProfileId::from_uuid(arguments.workload_profile_id),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -375,8 +380,8 @@ pub async fn get_current_workload_profile_revision(
 pub async fn list_workload_profile_revisions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: ListAcceptedWorkloadProfileRevisionsArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -386,7 +391,7 @@ pub async fn list_workload_profile_revisions(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             workload_profile_id: WorkloadProfileId::from_uuid(arguments.workload_profile_id),
             limit: arguments.limit,
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -405,8 +410,8 @@ pub async fn list_workload_profile_revisions(
 pub async fn get_workload_profile_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetAcceptedWorkloadProfileRevisionArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -418,7 +423,7 @@ pub async fn get_workload_profile_revision(
             workload_profile_revision_id: WorkloadProfileRevisionId::from_uuid(
                 arguments.workload_profile_revision_id,
             ),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -436,6 +441,7 @@ pub async fn accept_pull_request_preview_policy(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: AcceptPullRequestPreviewPolicyArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -447,6 +453,7 @@ pub async fn accept_pull_request_preview_policy(
                 arguments.source_subscription_id,
             ),
             policy_acl: arguments.policy_acl,
+            access,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -468,8 +475,8 @@ pub async fn accept_pull_request_preview_policy(
 pub async fn get_current_pull_request_preview_policy_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetCurrentAcceptedPullRequestPreviewPolicyRevisionArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -480,7 +487,7 @@ pub async fn get_current_pull_request_preview_policy_revision(
             source_subscription_id: SourceSubscriptionId::from_uuid(
                 arguments.source_subscription_id,
             ),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -496,8 +503,8 @@ pub async fn get_current_pull_request_preview_policy_revision(
 pub async fn list_pull_request_preview_policy_revisions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: ListAcceptedPullRequestPreviewPolicyRevisionsArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -509,7 +516,7 @@ pub async fn list_pull_request_preview_policy_revisions(
                 arguments.source_subscription_id,
             ),
             limit: arguments.limit,
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -528,8 +535,8 @@ pub async fn list_pull_request_preview_policy_revisions(
 pub async fn get_pull_request_preview_policy_revision(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetAcceptedPullRequestPreviewPolicyRevisionArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -543,7 +550,7 @@ pub async fn get_pull_request_preview_policy_revision(
             preview_policy_revision_id: PullRequestPreviewPolicyRevisionId::from_uuid(
                 arguments.preview_policy_revision_id,
             ),
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {
@@ -559,8 +566,8 @@ pub async fn get_pull_request_preview_policy_revision(
 pub async fn get_pull_request_preview(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    actor_principal_id: PrincipalId,
     arguments: GetPullRequestPreviewArguments,
+    access: DeveloperWorkflowAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -572,7 +579,7 @@ pub async fn get_pull_request_preview(
                 arguments.source_subscription_id,
             ),
             pull_request_id: arguments.pull_request_id,
-            principal_id: actor_principal_id,
+            access,
         })
         .await?
     {

@@ -91,16 +91,17 @@ use crate::modules::developer_workflows::{
     GetAcceptedWorkloadProfileRevisionHandler,
     GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler,
     GetCurrentAcceptedWorkloadProfileRevisionHandler, GetPullRequestPreviewHandler,
-    IBuildPlanRepository, IBuildPlanSourceLayoutPort, IDeveloperWorkflowAuthorizationPort,
+    IBuildPlanRepository, IBuildPlanSourceLayoutPort, IDeveloperWorkflowEnvironmentPort,
     IPreviewEnvironmentPort, IPullRequestPreviewPolicyRepository,
     IPullRequestPreviewProjectionPort, IPullRequestPreviewProjectionRepository,
-    IWorkloadProfileRepository, IdentityProjectsDeveloperWorkflowAuthorizationAdapter,
-    ListAcceptedBuildPlansHandler, ListAcceptedPullRequestPreviewPolicyRevisionsHandler,
+    IWorkloadProfileRepository, ListAcceptedBuildPlansHandler,
+    ListAcceptedPullRequestPreviewPolicyRevisionsHandler,
     ListAcceptedWorkloadProfileRevisionsHandler, PreviewPolicyQueryService,
-    ProjectsPreviewEnvironmentAdapter, PullRequestPreviewProjectionService,
-    PullRequestPreviewProjector, PullRequestPreviewQueryService,
-    RepositoryBuildPlanSourceRevisionPort, RepositoryPreviewSourceSubscriptionQueryPort,
-    WorkloadProfileCompilationService, WorkloadProfileQueryService, WorkloadsServiceProfileAdapter,
+    ProjectsDeveloperWorkflowEnvironmentAdapter, ProjectsPreviewEnvironmentAdapter,
+    PullRequestPreviewProjectionService, PullRequestPreviewProjector,
+    PullRequestPreviewQueryService, RepositoryBuildPlanSourceRevisionPort,
+    RepositoryPreviewSourceSubscriptionQueryPort, WorkloadProfileCompilationService,
+    WorkloadProfileQueryService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
@@ -2251,15 +2252,12 @@ fn build_management_application_with_health(
         user_files,
         user_file_objects,
     ));
-    let developer_workflow_authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort> =
-        Arc::new(IdentityProjectsDeveloperWorkflowAuthorizationAdapter::new(
-            Arc::clone(&memberships),
-            Arc::clone(&resource_grants),
-            Arc::clone(&environments),
-        ));
+    let developer_workflow_environments: Arc<dyn IDeveloperWorkflowEnvironmentPort> = Arc::new(
+        ProjectsDeveloperWorkflowEnvironmentAdapter::new(Arc::clone(&environments)),
+    );
     let developer_build_plan_queries = Arc::new(BuildPlanQueryService::new(
         Arc::clone(&developer_workflow_build_plans),
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     ));
     let get_developer_build_plans =
         GetAcceptedBuildPlanHandler::new(Arc::clone(&developer_build_plan_queries));
@@ -2270,16 +2268,16 @@ fn build_management_application_with_health(
         Arc::new(RepositoryBuildPlanSourceRevisionPort::new(Arc::clone(
             &sources,
         ))),
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     );
     let accept_developer_workload_profiles = AcceptWorkloadProfileHandler::new(
         Arc::clone(&developer_workload_profiles),
         Arc::clone(&developer_workflow_build_plans),
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     );
     let developer_workload_profile_queries = Arc::new(WorkloadProfileQueryService::new(
         Arc::clone(&developer_workload_profiles),
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     ));
     let get_current_developer_workload_profiles =
         GetCurrentAcceptedWorkloadProfileRevisionHandler::new(Arc::clone(
@@ -2295,11 +2293,11 @@ fn build_management_application_with_health(
         Arc::new(RepositoryPreviewSourceSubscriptionQueryPort::new(
             Arc::clone(&source_subscriptions),
         )),
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     );
     let developer_preview_policy_queries = Arc::new(PreviewPolicyQueryService::new(
         developer_preview_policies,
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     ));
     let get_current_developer_preview_policy =
         GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler::new(Arc::clone(
@@ -2314,7 +2312,7 @@ fn build_management_application_with_health(
     let get_developer_pull_request_preview =
         GetPullRequestPreviewHandler::new(Arc::new(PullRequestPreviewQueryService::new(
             developer_preview_projections,
-            Arc::clone(&developer_workflow_authorization),
+            Arc::clone(&developer_workflow_environments),
         )));
     let detect_developer_build_plans = DetectBuildPlanProposalsHandler::new(
         Arc::new(
@@ -2325,7 +2323,7 @@ fn build_management_application_with_health(
             .map_err(BootError::Internal)?,
         ),
         developer_workflow_source_layouts,
-        Arc::clone(&developer_workflow_authorization),
+        Arc::clone(&developer_workflow_environments),
     );
     let developer_workflow_build_outcomes = Arc::new(ExternalSourceBuildOutcomeQueryService::new(
         Arc::clone(&builds),

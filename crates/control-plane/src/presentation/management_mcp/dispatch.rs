@@ -109,7 +109,7 @@ use super::{
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
 use crate::modules::workflow::HumanTaskAssignmentAction;
-use crate::presentation::artifact_access;
+use crate::presentation::{artifact_access, developer_workflow_access};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
@@ -1802,8 +1802,8 @@ pub async fn execute(
             developer_workflows::detect_build_plans(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1815,6 +1815,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1824,8 +1825,8 @@ pub async fn execute(
             developer_workflows::list_build_plans(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1835,8 +1836,8 @@ pub async fn execute(
             developer_workflows::get_build_plan(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1848,6 +1849,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1859,8 +1861,8 @@ pub async fn execute(
             developer_workflows::get_current_workload_profile_revision(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1872,8 +1874,8 @@ pub async fn execute(
             developer_workflows::list_workload_profile_revisions(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1884,8 +1886,8 @@ pub async fn execute(
             developer_workflows::get_workload_profile_revision(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1898,6 +1900,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1910,8 +1913,8 @@ pub async fn execute(
             developer_workflows::get_current_pull_request_preview_policy_revision(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1924,8 +1927,8 @@ pub async fn execute(
             developer_workflows::list_pull_request_preview_policy_revisions(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1937,8 +1940,8 @@ pub async fn execute(
             developer_workflows::get_pull_request_preview_policy_revision(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await
@@ -1948,8 +1951,8 @@ pub async fn execute(
             developer_workflows::get_pull_request_preview(
                 query_bus,
                 organization_id,
-                actor_principal_id,
                 arguments,
+                developer_workflow_access(&resource_access),
                 request_id,
             )
             .await

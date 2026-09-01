@@ -8,7 +8,7 @@ mod request_id_middleware;
 mod sequence_stream;
 
 pub(crate) use crate::access_projection::{
-    artifact_access, asset_access, search_visibility, user_file_access,
+    artifact_access, asset_access, developer_workflow_access, search_visibility, user_file_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
