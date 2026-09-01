@@ -254,7 +254,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "8.0.4"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=b90be88b5b10f7a9565680903646bef7a3b05d4f#b90be88b5b10f7a9565680903646bef7a3b05d4f"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=a1873e95f4c2cf606630fc5c1d418a8b69196bb4#a1873e95f4c2cf606630fc5c1d418a8b69196bb4"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -492,7 +492,7 @@ dependencies = [
 [[package]]
 name = "a3s-sandbox"
 version = "0.1.0"
-source = "git+https://github.com/A3S-Lab/Sandbox.git?rev=f0e74531b34b9ecab40e98ab25feb2f61b0031da#f0e74531b34b9ecab40e98ab25feb2f61b0031da"
+source = "git+https://github.com/A3S-Lab/Sandbox.git?rev=28a43329a824d8da36e07bdbebf88ae8ffaa05df#28a43329a824d8da36e07bdbebf88ae8ffaa05df"
 dependencies = [
  "anyhow",
  "async-trait",
