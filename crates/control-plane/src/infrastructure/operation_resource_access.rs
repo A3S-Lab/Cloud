@@ -1,3 +1,4 @@
+use crate::access_projection::artifact_access;
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::IAgentRepository;
 use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
@@ -77,16 +78,19 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                     )
                     .await,
             ),
-            Some(OperationSubjectKind::BuildRun) => visible(
-                self.builds
-                    .build_run(
-                        organization_id,
-                        BuildRunId::from_uuid(subject.id()),
-                        evaluator,
-                        "build run not found",
-                    )
-                    .await,
-            ),
+            Some(OperationSubjectKind::BuildRun) => {
+                let access = artifact_access(evaluator);
+                visible(
+                    self.builds
+                        .build_run(
+                            organization_id,
+                            BuildRunId::from_uuid(subject.id()),
+                            &access,
+                            "build run not found",
+                        )
+                        .await,
+                )
+            }
             Some(OperationSubjectKind::Execution) => visible(
                 self.executions
                     .execution(

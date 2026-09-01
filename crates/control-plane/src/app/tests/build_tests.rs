@@ -322,7 +322,7 @@ async fn restricted_build_run_boundaries_resolve_scope_before_reads_mutations_an
             json!({
                 "name": "Restricted build operator",
                 "token": RESTRICTED_BUILD_TOKEN,
-                "scopes": [ApiTokenScope::BUILD_WRITE],
+                "scopes": [ApiTokenScope::BUILD_WRITE, ApiTokenScope::CLOUD_READ],
                 "principalId": principal_id,
                 "expiresAt": null
             }),
@@ -429,6 +429,15 @@ async fn restricted_build_run_boundaries_resolve_scope_before_reads_mutations_an
         ))
         .await?;
     assert_eq!(visible_list.status(), 200);
+    let denied_list = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{denied_project}/environments/{denied_environment}/build-runs"
+            ),
+            RESTRICTED_BUILD_TOKEN,
+        ))
+        .await?;
+    assert_eq!(denied_list.status(), 403);
 
     let asset_detail = format!(
         "/api/v1/organizations/{organization}/build-runs/{}",

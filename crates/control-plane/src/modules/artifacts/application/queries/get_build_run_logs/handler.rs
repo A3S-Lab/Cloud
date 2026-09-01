@@ -63,7 +63,7 @@ impl QueryHandler<GetBuildRunLogs> for GetBuildRunLogsHandler {
                 .build_run(
                     query.organization_id,
                     query.build_run_id,
-                    &query.resource_access,
+                    &query.access,
                     "build run logs not found",
                 )
                 .await
@@ -111,9 +111,9 @@ fn map_log_query_error(error: BuildLogQueryError) -> ApplicationError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::application::ArtifactAccess;
     use crate::modules::artifacts::application::{BuildLogData, BuildLogRecord, BuildLogStream};
     use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
-    use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
     };
@@ -165,7 +165,7 @@ mod tests {
                 GetBuildRunLogs {
                     organization_id,
                     build_run_id: build.id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: ArtifactAccess::organization_wide(),
                     after_sequence: None,
                     limit: 100,
                     stream: None,
@@ -231,7 +231,7 @@ mod tests {
                 GetBuildRunLogs {
                     organization_id,
                     build_run_id: build.id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: ArtifactAccess::organization_wide(),
                     after_sequence: Some(6),
                     limit: 100,
                     stream: Some(BuildLogStream::Stdout),
@@ -308,7 +308,7 @@ mod tests {
                 GetBuildRunLogs {
                     organization_id,
                     build_run_id: build.id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: ArtifactAccess::organization_wide(),
                     after_sequence: None,
                     limit: 100,
                     stream: Some(BuildLogStream::Stdout),

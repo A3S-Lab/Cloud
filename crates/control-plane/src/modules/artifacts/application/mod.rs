@@ -1,6 +1,7 @@
 mod build_candidate;
 mod build_input_preparer;
 mod build_log_query;
+mod build_operation_scheduler;
 mod build_run_reconciler;
 mod commands;
 mod external_source_archive;
@@ -20,6 +21,9 @@ pub use build_log_query::{
     BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
     BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,
     BuildLogSourceGapReason, BuildLogStream, IBuildLogQueryPort, MAX_BUILD_LOG_PAGE_SIZE,
+};
+pub use build_operation_scheduler::{
+    BuildOperationRequest, BuildOperationScheduleOutcome, IBuildOperationScheduler,
 };
 pub use build_run_reconciler::{
     BuildRunReconcileReport, BuildRunReconciler, BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION,
@@ -55,3 +59,5 @@ pub use queries::{
     BuildRunLogPage, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler,
     GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns, ListBuildRunsHandler,
 };
+pub use resource_access::ArtifactAccess;
+pub(crate) use resource_access::ArtifactAccessScope;

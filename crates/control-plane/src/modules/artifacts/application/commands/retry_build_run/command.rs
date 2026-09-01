@@ -1,5 +1,5 @@
+use crate::modules::artifacts::application::ArtifactAccess;
 use crate::modules::artifacts::domain::BuildRun;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{BuildRunId, OrganizationId};
 use a3s_boot::Command;
@@ -10,7 +10,7 @@ use serde::Serialize;
 pub struct RetryBuildRun {
     pub organization_id: OrganizationId,
     pub build_run_id: BuildRunId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ArtifactAccess,
     pub idempotency_key: String,
     pub requested_at: DateTime<Utc>,
 }

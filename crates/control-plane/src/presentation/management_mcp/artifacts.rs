@@ -3,14 +3,13 @@ use super::arguments::{
 };
 use super::tool_result;
 use crate::modules::artifacts::{
+    ArtifactAccess, BuildLogStream, CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs,
+    ListBuildRuns, RetryBuildRun,
+};
+use crate::modules::artifacts::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse, CancelBuildRunResponse,
     RetryBuildRunResponse,
 };
-use crate::modules::artifacts::{
-    BuildLogStream, CancelBuildRun, GetBuildEvidence, GetBuildRun, GetBuildRunLogs, ListBuildRuns,
-    RetryBuildRun,
-};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -31,6 +30,7 @@ pub async fn list_build_runs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunListArguments,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -38,6 +38,7 @@ pub async fn list_build_runs(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            access,
             limit: arguments.limit,
         })
         .await?
@@ -58,14 +59,14 @@ pub async fn get_build_run(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -78,14 +79,14 @@ pub async fn get_build_run_logs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunLogArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildRunLogs {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
-            resource_access,
+            access,
             after_sequence: arguments.after_sequence,
             limit: arguments.limit,
             stream: arguments.stream.map(|stream| match stream {
@@ -104,14 +105,14 @@ pub async fn get_build_evidence(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: BuildRunArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetBuildEvidence {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -126,14 +127,14 @@ pub async fn cancel_build_run(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: BuildRunMutationArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CancelBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
-            resource_access,
+            access,
             idempotency_key: arguments.idempotency_key,
             requested_at: Utc::now(),
         })
@@ -151,14 +152,14 @@ pub async fn retry_build_run(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: BuildRunMutationArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: ArtifactAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(RetryBuildRun {
             organization_id,
             build_run_id: BuildRunId::from_uuid(arguments.build_run_id),
-            resource_access,
+            access,
             idempotency_key: arguments.idempotency_key,
             requested_at: Utc::now(),
         })

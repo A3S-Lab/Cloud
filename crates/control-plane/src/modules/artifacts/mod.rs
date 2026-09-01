@@ -4,23 +4,25 @@ pub mod infrastructure;
 mod presentation;
 pub mod published;
 
+pub(crate) use application::ArtifactAccessScope;
 pub use application::{
-    BuildCandidate, BuildCandidateEvidence, BuildInputPreparationError, BuildLogChunkGap,
-    BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage, BuildLogQueryError,
-    BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap, BuildLogSourceGapReason,
-    BuildLogStream, BuildRunLogPage, CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult,
-    ExternalSourceArchiveRequest, ExternalSourceBuildOutcomeQueryService, GetBuildEvidence,
-    GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler, GetBuildRunLogs,
-    GetBuildRunLogsHandler, HostedArtifactLocation, HostedArtifactQueryService,
-    IArtifactBuildProjectionPort, IBuildCandidateProjectionPort, IBuildInputPreparer,
-    IBuildLogQueryPort, IExternalSourceArchivePort, IExternalSourceBuildOutcomeQueryPort,
-    IHostedArtifactQueryPort, INodeArtifactStore, IPreviewBuildLifecycleProjectionPort,
-    ListBuildRuns, ListBuildRunsHandler, NodeArtifactDescriptor, NodeArtifactReader,
-    NodeArtifactStoreError, NodeArtifactWrite, OpenExternalSourceArchive, OpenNodeArtifact,
-    PreparedBuildInput, PreviewBuildLifecycleProjectionOutcome,
-    PreviewBuildLifecycleProjectionReceipt, PreviewBuildLifecycleState, PreviewBuildRetirement,
-    PreviewBuildSourceRevision, ProjectPreviewBuildLifecycle, RetryBuildRun, RetryBuildRunHandler,
-    RetryBuildRunResult, MAX_BUILD_LOG_PAGE_SIZE,
+    ArtifactAccess, BuildCandidate, BuildCandidateEvidence, BuildInputPreparationError,
+    BuildLogChunkGap, BuildLogChunkGapReason, BuildLogCompactedRange, BuildLogData, BuildLogPage,
+    BuildLogQueryError, BuildLogReadRequest, BuildLogRecord, BuildLogSourceGap,
+    BuildLogSourceGapReason, BuildLogStream, BuildRunLogPage, CancelBuildRun,
+    CancelBuildRunHandler, CancelBuildRunResult, ExternalSourceArchiveRequest,
+    ExternalSourceBuildOutcomeQueryService, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun,
+    GetBuildRunHandler, GetBuildRunLogs, GetBuildRunLogsHandler, HostedArtifactLocation,
+    HostedArtifactQueryService, IArtifactBuildProjectionPort, IBuildCandidateProjectionPort,
+    IBuildInputPreparer, IBuildLogQueryPort, IExternalSourceArchivePort,
+    IExternalSourceBuildOutcomeQueryPort, IHostedArtifactQueryPort, INodeArtifactStore,
+    IPreviewBuildLifecycleProjectionPort, ListBuildRuns, ListBuildRunsHandler,
+    NodeArtifactDescriptor, NodeArtifactReader, NodeArtifactStoreError, NodeArtifactWrite,
+    OpenExternalSourceArchive, OpenNodeArtifact, PreparedBuildInput,
+    PreviewBuildLifecycleProjectionOutcome, PreviewBuildLifecycleProjectionReceipt,
+    PreviewBuildLifecycleState, PreviewBuildRetirement, PreviewBuildSourceRevision,
+    ProjectPreviewBuildLifecycle, RetryBuildRun, RetryBuildRunHandler, RetryBuildRunResult,
+    MAX_BUILD_LOG_PAGE_SIZE,
 };
 pub use domain::{
     canonical_json, dsse_pae, sha256_digest, BuildArtifact, BuildArtifactPublicationError,

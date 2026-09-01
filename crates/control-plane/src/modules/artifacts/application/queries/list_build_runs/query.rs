@@ -1,3 +1,4 @@
+use crate::modules::artifacts::application::ArtifactAccess;
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
@@ -8,6 +9,7 @@ pub struct ListBuildRuns {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: ArtifactAccess,
     pub limit: usize,
 }
 

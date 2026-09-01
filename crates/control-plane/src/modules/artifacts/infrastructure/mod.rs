@@ -2,6 +2,7 @@ mod build_candidate_projector;
 mod build_evidence_generator;
 mod build_evidence_signing;
 mod build_flow;
+mod build_operation_scheduler;
 mod build_source_resolver;
 mod node_artifact_object_store;
 mod oci_build_output_validator;

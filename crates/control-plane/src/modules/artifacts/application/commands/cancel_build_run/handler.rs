@@ -29,7 +29,7 @@ impl CommandHandler<CancelBuildRun> for CancelBuildRunHandler {
                 .build_run(
                     command.organization_id,
                     command.build_run_id,
-                    &command.resource_access,
+                    &command.access,
                     "build run not found",
                 )
                 .await

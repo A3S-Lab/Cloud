@@ -1,5 +1,6 @@
 //! A3S Cloud modular control plane.
 
+mod access_projection;
 pub mod app;
 pub mod config;
 #[cfg(feature = "persistence-conformance")]
