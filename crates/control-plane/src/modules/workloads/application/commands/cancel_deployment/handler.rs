@@ -1,7 +1,7 @@
 use super::{CancelDeployment, CancelDeploymentResult};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::events::DeploymentCancellationRequested;
 use crate::modules::workloads::domain::repositories::{
     IWorkloadRepository, RequestDeploymentCancellationBundle,
@@ -27,13 +27,13 @@ impl CommandHandler<CancelDeployment> for CancelDeploymentHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<CancelDeploymentResult>>>
     {
         let workloads = Arc::clone(&self.workloads);
-        let resource_access = WorkloadResourceAccess::new(Arc::clone(&workloads));
+        let resource_resolver = WorkloadResourceResolver::new(Arc::clone(&workloads));
         Box::pin(async move {
-            let mut deployment = match resource_access
+            let mut deployment = match resource_resolver
                 .deployment(
                     command.organization_id,
                     command.deployment_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

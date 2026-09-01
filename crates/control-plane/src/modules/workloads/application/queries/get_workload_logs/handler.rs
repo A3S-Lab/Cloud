@@ -5,14 +5,14 @@ use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::WorkloadLogPage;
-use crate::modules::workloads::application::resource_access::WorkloadResourceAccess;
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{BootError, CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct GetWorkloadLogsHandler {
     workloads: Arc<dyn IWorkloadRepository>,
-    resource_access: WorkloadResourceAccess,
+    resources: WorkloadResourceResolver,
     logs: NodeLogReader,
 }
 
@@ -24,7 +24,7 @@ impl GetWorkloadLogsHandler {
     ) -> Self {
         Self {
             workloads: Arc::clone(&workloads),
-            resource_access: WorkloadResourceAccess::new(workloads),
+            resources: WorkloadResourceResolver::new(workloads),
             logs: NodeLogReader::new(metadata, objects),
         }
     }
@@ -37,7 +37,7 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkloadLogPage>>> {
         let workloads = Arc::clone(&self.workloads);
-        let resource_access = self.resource_access.clone();
+        let resources = self.resources.clone();
         let logs = self.logs.clone();
         Box::pin(async move {
             if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
@@ -45,12 +45,8 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
                     "workload log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
                 ))));
             }
-            let workload = match resource_access
-                .workload(
-                    query.organization_id,
-                    query.workload_id,
-                    &query.resource_access,
-                )
+            let workload = match resources
+                .workload(query.organization_id, query.workload_id, &query.access)
                 .await
             {
                 Ok(workload) => workload,

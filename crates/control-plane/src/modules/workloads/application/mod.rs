@@ -2,7 +2,7 @@ mod agent_release_admission;
 mod bound_runtime_claim;
 pub mod commands;
 pub mod queries;
-pub(crate) mod resource_access;
+mod resource_access;
 mod runtime_execution_admission;
 mod runtime_projection;
 mod workflow;
@@ -49,6 +49,8 @@ pub use queries::{
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
     WorkloadReplicaQueryResult,
 };
+pub use resource_access::WorkloadAccess;
+pub(crate) use resource_access::{WorkloadAccessScope, WorkloadResourceResolver};
 pub use runtime_execution_admission::{
     AdmittedWorkloadRuntimeExecution, DeploymentRuntimeExecutionAdmissionRequest,
     IWorkloadRuntimeExecutionAdmissionPort, NoWorkloadRuntimeExecutionAdmission,

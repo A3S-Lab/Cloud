@@ -2,7 +2,6 @@ use super::arguments::{
     DeploymentArguments, EnvironmentScopeArguments, WorkloadArguments, WorkloadLogArguments,
 };
 use super::tool_result;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, OrganizationId, ProjectId, WorkloadId, WorkloadRevisionId,
 };
@@ -12,7 +11,7 @@ use crate::modules::workloads::presentation::{
 };
 use crate::modules::workloads::{
     CancelDeployment, GetDeployment, GetWorkload, GetWorkloadLogs, ListWorkloads,
-    RollbackWorkloadDeployment, StopWorkload,
+    RollbackWorkloadDeployment, StopWorkload, WorkloadAccess,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -76,14 +75,14 @@ pub async fn get_workload(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkloadArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetWorkload {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -96,14 +95,14 @@ pub async fn get_deployment(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: DeploymentArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetDeployment {
             organization_id,
             deployment_id: DeploymentId::from_uuid(arguments.deployment_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -118,7 +117,7 @@ pub async fn get_workload_logs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: WorkloadLogArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -126,7 +125,7 @@ pub async fn get_workload_logs(
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
             revision_id: WorkloadRevisionId::from_uuid(arguments.revision_id),
-            resource_access,
+            access,
             after_sequence: arguments.after_sequence,
             limit: arguments.limit,
             stream: arguments.stream.map(Into::into),
@@ -142,14 +141,14 @@ pub async fn stop_workload(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: StopWorkloadArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(StopWorkload {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
-            resource_access,
+            access,
             idempotency_key: arguments.idempotency_key,
             request_id,
             requested_at: Utc::now(),
@@ -168,14 +167,14 @@ pub async fn rollback_workload(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: RollbackWorkloadArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(RollbackWorkloadDeployment {
             organization_id,
             workload_id: WorkloadId::from_uuid(arguments.workload_id),
-            resource_access,
+            access,
             source_revision_id: WorkloadRevisionId::from_uuid(arguments.source_revision_id),
             idempotency_key: arguments.idempotency_key,
             request_id,
@@ -195,14 +194,14 @@ pub async fn cancel_deployment(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: CancelDeploymentArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CancelDeployment {
             organization_id,
             deployment_id: DeploymentId::from_uuid(arguments.deployment_id),
-            resource_access,
+            access,
             idempotency_key: arguments.idempotency_key,
             request_id,
             requested_at: Utc::now(),

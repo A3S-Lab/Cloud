@@ -55,8 +55,6 @@ workflow/presentation/controllers/request.rs -> identity/presentation
 workflow/presentation/controllers/workflow_commands_controller.rs -> identity/presentation
 workflow/presentation/controllers/workflow_queries_controller.rs -> identity/presentation
 workloads/infrastructure/persistence/postgres/resource_claims.rs -> fleet/infrastructure
-workloads/presentation/controllers/workload_queries_controller.rs -> identity/presentation
-workloads/presentation/controllers/workloads_controller.rs -> identity/presentation
 "#,
     );
     let actual = foreign_outer_layer_sites();
@@ -5687,6 +5685,211 @@ fn developer_workflows_access_and_environment_have_one_bounded_authority() {
         8,
         "all Developer Workflows use cases must share one environment owner port"
     );
+}
+
+#[test]
+fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
+    let root = module_root();
+    let access_path = "workloads/application/resource_access.rs";
+    let access = std::fs::read_to_string(root.join(access_path))
+        .expect("read Workloads resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumWorkloadAccessScope",
+        "pubstructWorkloadAccess",
+        "pub(crate)structWorkloadResourceResolver",
+        "access.environment_is_visible(workload.project_id,workload.environment_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Workloads lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+        "IResourceGrantRepository",
+        "IMembershipRepository",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Workloads resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let mut identity_imports = BTreeSet::new();
+    let mut access_fields = 0;
+    let mut resolver_constructors = 0;
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("workloads") {
+            return;
+        }
+        if source.contains("crate::modules::identity") {
+            identity_imports.insert(display(relative));
+        }
+        access_fields += source.matches("pub access: WorkloadAccess").count();
+        resolver_constructors += source.matches("WorkloadResourceResolver::new(").count();
+    });
+    assert_eq!(
+        identity_imports,
+        lines("workloads/infrastructure/identity_runtime_execution_admission.rs"),
+        "Workloads must isolate its one Identity integration behind the runtime-admission port"
+    );
+    assert_eq!(
+        access_fields, 10,
+        "all seven indirect-resource commands and three queries must carry Workloads-owned access"
+    );
+    assert_eq!(
+        resolver_constructors, 10,
+        "all indirect-resource use cases must share the one Workloads resource resolver"
+    );
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnworkload_access(",
+        "WorkloadAccess::organization_wide()",
+        "WorkloadAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Workloads access mapping {required}"
+        );
+    }
+
+    let request_path = "workloads/presentation/controllers/request.rs";
+    let request = std::fs::read_to_string(root.join(request_path))
+        .expect("read Workloads request projection");
+    let production_request = production_source(&request);
+    let compact_request = production_request.split_whitespace().collect::<String>();
+    assert!(compact_request.contains("project_workload_access(&resource_access_evaluator("));
+    assert_eq!(
+        production_request
+            .matches("resource_access_evaluator(")
+            .count(),
+        1
+    );
+    assert!(!production_request.contains("crate::modules::identity"));
+
+    for (relative, policy, deferred_routes) in [
+        (
+            "workloads/presentation/controllers/workloads_controller.rs",
+            "organization_tenant_workload_write_controller(controller)",
+            7,
+        ),
+        (
+            "workloads/presentation/controllers/workload_queries_controller.rs",
+            "organization_tenant_workload_read_controller(controller)",
+            4,
+        ),
+    ] {
+        let controller = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&controller);
+        assert!(
+            production.contains(policy),
+            "{relative} lost its root-owned HTTP entry policy"
+        );
+        assert_eq!(
+            production.matches("with_deferred_project_scope(").count(),
+            deferred_routes,
+            "{relative} lost an indirect project-owned route boundary"
+        );
+        for duplicate in [
+            "crate::modules::identity",
+            "OrganizationTenantGuard",
+            "ApiTokenScope::",
+            "AUTH_SCOPES_METADATA",
+            "ResourceAccessEvaluator",
+            "ResourceGrantScope",
+            "DeferredResourceScope",
+            "with_deferred_resource_scope",
+            "fn request_identity(",
+            "fn request_id(",
+        ] {
+            assert!(
+                !production.contains(duplicate),
+                "{relative} regained duplicate Identity or request entry mechanism {duplicate}"
+            );
+        }
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/workloads.rs"),
+    )
+    .expect("read Workloads Management MCP adapter");
+    assert_eq!(
+        management_mcp.matches("access: WorkloadAccess").count(),
+        6,
+        "every indirect-resource Workloads MCP entry must receive the consumer-owned projection"
+    );
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "resource_access:",
+    ] {
+        assert!(
+            !management_mcp.contains(forbidden),
+            "Workloads Management MCP regained foreign access authority {forbidden}"
+        );
+    }
+    let dispatch = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/dispatch.rs"),
+    )
+    .expect("read Management MCP dispatch");
+    assert_eq!(
+        dispatch
+            .matches("workload_access(&resource_access)")
+            .count(),
+        6,
+        "Management MCP must project Identity once at every indirect Workloads entry"
+    );
+
+    let operation_access = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("infrastructure/operation_resource_access.rs"),
+    )
+    .expect("read root Operation resource access adapter");
+    for required in [
+        "use crate::access_projection::workload_access;",
+        "WorkloadResourceResolver",
+        "let workloads_access = workload_access(evaluator);",
+    ] {
+        assert!(
+            operation_access.contains(required),
+            "Operation resource access lost its Workloads anti-corruption mapping {required}"
+        );
+    }
+    assert_eq!(
+        operation_access.matches("&workloads_access").count(),
+        2,
+        "Operation workload and deployment subjects must reuse one projected access value"
+    );
+    for forbidden in [
+        "workloads::application::resource_access",
+        "WorkloadResourceAccess",
+    ] {
+        assert!(
+            !operation_access.contains(forbidden),
+            "Operation resource access bypassed the Workloads facade with {forbidden}"
+        );
+    }
 }
 
 #[test]

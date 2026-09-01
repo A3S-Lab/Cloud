@@ -4,6 +4,7 @@ pub mod infrastructure;
 pub mod presentation;
 pub mod published;
 
+pub(crate) use application::WorkloadAccessScope;
 pub use application::{
     project_replica_runtime_spec, project_runtime_spec, AdmittedWorkloadRuntimeExecution,
     BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, BoundRuntimeClaimQuery,
@@ -20,8 +21,9 @@ pub use application::{
     StopWorkload, StopWorkloadHandler, StopWorkloadResult, UnbindSkillWorkloadDeployment,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
-    UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadLogGapReason,
-    WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult, WorkloadReplicaQueryResult,
+    UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadAccess,
+    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
+    WorkloadReplicaQueryResult,
 };
 pub use domain::entities::{
     AgentReleaseAdmission, AgentWorkloadRevisionBinding, AtomicResourceClaimReservation,

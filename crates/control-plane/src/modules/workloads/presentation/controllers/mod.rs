@@ -1,3 +1,4 @@
+mod request;
 mod workload_queries_controller;
 mod workloads_controller;
 
