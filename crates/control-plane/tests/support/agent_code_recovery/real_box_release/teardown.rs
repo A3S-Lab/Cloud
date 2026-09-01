@@ -176,12 +176,15 @@ pub(super) fn verify_clean_state(home: &Path, node_state: &Path) -> TestResult {
     let store = BoxStateStore::load_readonly(&state_path)?;
     if !store.records().is_empty()
         || directory_has_entries(&home.join("boxes"))?
+        || directory_has_entries(&home.join("runtime-secrets"))?
         || directory_has_entries(&node_state.join("artifacts/mounts"))?
         || directory_has_entries(&node_state.join("artifacts/outputs"))?
         || directory_has_entries(&node_state.join("artifacts/blobs/sha256"))?
         || directory_has_entries(&node_state.join("artifacts/staging"))?
     {
-        return Err(invalid("published Agent cleanup retained Box or Artifact state").into());
+        return Err(
+            invalid("published Agent cleanup retained Box, Secret, or Artifact state").into(),
+        );
     }
     for path in [
         state_path,

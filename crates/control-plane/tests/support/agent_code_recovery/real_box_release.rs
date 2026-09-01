@@ -1,10 +1,11 @@
 use super::*;
 use a3s_box_runtime::BoxStateStore;
 use a3s_cloud_contracts::{
-    agent_release_manifest_archive, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
-    NodeArtifactUploadRequest, NodeResourceInventory, NodeResourceSlot, ResourceAllocation,
-    ResourceKind, ResourceUnit, RuntimeObservationReport, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
-    OCI_IMAGE_MANIFEST_MEDIA_TYPE,
+    agent_release_manifest_archive, CloudSecretReference, NodeArtifactDownloadRequest,
+    NodeArtifactUploadReceipt, NodeArtifactUploadRequest, NodeResourceInventory, NodeResourceSlot,
+    ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
+    AGENT_RELEASE_ENTRYPOINT_ARGS_V1, AGENT_RELEASE_ENTRYPOINT_COMMAND_V1,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 use a3s_cloud_control_plane::modules::operations::{
@@ -12,7 +13,11 @@ use a3s_cloud_control_plane::modules::operations::{
     OperationStatus, OperationSubject, PostgresOperationRepository, ReconcileOperationsHandler,
     WorkflowIdentity,
 };
-use a3s_cloud_control_plane::modules::shared_kernel::domain::OperationId;
+use a3s_cloud_control_plane::modules::secrets::{
+    CreateSecret, CreateSecretHandler, EncryptedSecretValue, ISecretEncryptionService,
+    SecretEncryptionError, SecretPlaintext,
+};
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, SecretId};
 use a3s_cloud_control_plane::modules::workloads::application::{
     STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
@@ -20,17 +25,18 @@ use a3s_cloud_control_plane::modules::workloads::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
     IOciArtifactResolver, OciArtifact, OciArtifactReference, OciArtifactResolutionError,
     OciRegistryCredentialReference, PostgresResourceClaimRepository, RequestWorkloadStopBundle,
-    UnroutedDeploymentRouteUpdater, WorkloadDesiredState, WorkloadStopRequested,
+    SecretBinding, SecretBindingTarget, UnroutedDeploymentRouteUpdater, WorkloadDesiredState,
+    WorkloadStopRequested,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
     CommandExecutor, DownloadedNodeArtifact, FileCommandJournal, NodeArtifactManager,
     NodeArtifactTransport, NodeControlClientError, NodeResourceInventoryAuthority,
-    ResourceInventoryError,
+    NodeSecretTransport, ResourceInventoryError, SecretMaterial,
 };
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeHealthState, RuntimeInspection,
-    RuntimeMountSource,
+    RuntimeMountSource, SecretTarget,
 };
 use a3s_runtime::RuntimeClient;
 use async_trait::async_trait;
@@ -39,16 +45,20 @@ use std::time::{Duration as StdDuration, Instant};
 
 #[path = "real_box_release/fixtures.rs"]
 mod fixtures;
+#[path = "real_box_release/manifest.rs"]
+mod manifest;
 #[path = "real_box_release/teardown.rs"]
 mod teardown;
 
 use fixtures::*;
+use manifest::*;
 use teardown::*;
 
 const AGENT_RUNTIME_IMAGE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE";
 const AGENT_RUNTIME_MEDIA_TYPE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE";
 const AGENT_RUNTIME_SIZE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES";
-const AGENT_RUNTIME_SCRIPT: &str = "mkdir -p /tmp/a3s-health/health; : > /tmp/a3s-health/health/ready; : > /tmp/a3s-health/health/live; exec httpd -f -p 8080 -h /tmp/a3s-health";
+const PROVIDER_SECRET_MATERIAL: &[u8] = b"a0-4-provider-fixture-key";
+const SIGNING_SECRET_MATERIAL: &[u8] = b"a0-4-signing-fixture-key";
 const MAX_MANIFEST_ARCHIVE_BYTES: u64 = 1024 * 1024;
 
 pub(super) async fn exercise(postgres_url: String) -> TestResult {
@@ -77,6 +87,27 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let secrets = Arc::new(PostgresSecretRepository::new(executor.clone()));
     let workloads = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+
+    let provider_secret_id = create_agent_secret(
+        projects.clone(),
+        secrets.clone(),
+        organization_id,
+        project_id,
+        environment_id,
+        "A0.4 Provider API Key",
+        PROVIDER_SECRET_MATERIAL,
+    )
+    .await?;
+    let signing_secret_id = create_agent_secret(
+        projects.clone(),
+        secrets.clone(),
+        organization_id,
+        project_id,
+        environment_id,
+        "A0.4 Signing Key",
+        SIGNING_SECRET_MATERIAL,
+    )
+    .await?;
 
     let asset = create_agent_asset(assets.as_ref(), organization_id, created_at).await?;
     let release = create_agent_release(assets.as_ref(), &asset, created_at).await?;
@@ -145,8 +176,12 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
         },
         runtime_state.path(),
     )?;
+    let secret_transport = Arc::new(PublishedAgentSecretTransport::new([
+        (provider_secret_id, PROVIDER_SECRET_MATERIAL.to_vec()),
+        (signing_secret_id, SIGNING_SECRET_MATERIAL.to_vec()),
+    ]));
     let runtime = provider
-        .into_artifact_bound_client(artifact_manager.clone())
+        .into_bound_client(secret_transport.clone(), artifact_manager.clone())
         .await?;
     let runtime_capabilities = runtime.capabilities().await?;
     runtime_capabilities.validate()?;
@@ -183,7 +218,7 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
             asset_release_id: published.id,
             name: "a0-4-real-box-agent".into(),
             node_pool_id: None,
-            template: agent_runtime_template(),
+            template: published_agent_runtime_template(provider_secret_id, signing_secret_id),
             idempotency_key: "deploy-a0-4-real-box-agent".into(),
             request_id: Uuid::now_v7(),
             requested_at: canonical_timestamp(Utc::now())
@@ -196,12 +231,25 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     let deployment_id = workload.bundle.deployment.id;
     let workload_id = workload.bundle.workload.id;
     let deployment_operation_id = workload.bundle.operation.id;
+    secret_transport.bind_revision(workload.bundle.revision.id.as_uuid())?;
+    let provider_secret_reference = CloudSecretReference::new(
+        workload.bundle.revision.id.as_uuid(),
+        provider_secret_id.as_uuid(),
+        1,
+    )?;
+    let signing_secret_reference = CloudSecretReference::new(
+        workload.bundle.revision.id.as_uuid(),
+        signing_secret_id.as_uuid(),
+        1,
+    )?;
     let spec = project_runtime_spec(&workload.bundle.revision)?;
     verify_projected_runtime(
         &spec,
         publication.artifact(),
         &manifest_artifact,
         manifest.identity().as_str(),
+        provider_secret_reference,
+        signing_secret_reference,
     )?;
 
     let flow_runtime = DeploymentFlowRuntime::new(
@@ -279,6 +327,12 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     .await?;
     let first_observation = applied_observation(&apply_ack)?.clone();
     verify_running_observation(&first_observation, &spec)?;
+    verify_secret_materializations(
+        secret_transport.as_ref(),
+        provider_secret_id,
+        signing_secret_id,
+        1,
+    )?;
     drive_until_active(
         &coordinator,
         workloads.as_ref(),
@@ -310,6 +364,12 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     let recovered_started_at_ms = recovered
         .started_at_ms
         .ok_or_else(|| invalid("recovered Agent Runtime omitted its start time"))?;
+    verify_secret_materializations(
+        secret_transport.as_ref(),
+        provider_secret_id,
+        signing_secret_id,
+        2,
+    )?;
     record_recovered_observation(
         nodes.as_ref(),
         node_id,
@@ -454,7 +514,7 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     }
 
     println!(
-        "A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box observations=3 process_restarts=1 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed artifact_digest={} manifest_identity={} first_started_at_ms={} recovered_started_at_ms={}",
+        "A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed artifact_digest={} manifest_identity={} first_started_at_ms={} recovered_started_at_ms={}",
         spec.artifact.digest,
         manifest.identity(),
         first_started_at_ms,
@@ -521,6 +581,34 @@ async fn create_agent_release(
     Ok(release)
 }
 
+#[allow(clippy::too_many_arguments)]
+async fn create_agent_secret(
+    projects: Arc<PostgresProjectsRepository>,
+    secrets: Arc<PostgresSecretRepository>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    name: &str,
+    material: &[u8],
+) -> TestResult<SecretId> {
+    let result = CreateSecretHandler::new(projects, secrets, Arc::new(FixtureSecretEncryption))
+        .execute(
+            CreateSecret {
+                organization_id,
+                project_id,
+                environment_id,
+                name: name.into(),
+                value: SecretPlaintext::new(material.to_vec())?,
+                idempotency_key: format!("create-{}", name.to_ascii_lowercase().replace(' ', "-")),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await?
+        .map_err(|error| invalid(format!("could not create Agent fixture Secret: {error}")))?;
+    Ok(result.secret.id)
+}
+
 fn verify_publication(
     release: &AssetRelease,
     expected: &crate::build_runs_support::HostedAgentRuntimeArtifact,
@@ -538,70 +626,20 @@ fn verify_publication(
     Ok(())
 }
 
-fn release_manifest_template(media_type: &str) -> String {
-    format!(
-        concat!(
-            "agent_release {{\n",
-            "  schema = \"a3s.code.agent-release.v1\"\n",
-            "  protocol = \"a3s.code.agent.v1\"\n",
-            "  artifact {{ digest = \"sha256:1111111111111111111111111111111111111111111111111111111111111111\" media_type = \"{}\" }}\n",
-            "  entrypoint {{ command = \"/bin/sh\" args = [\"-c\", \"{}\"] }}\n",
-            "  health {{ transport = \"http\" port = 8080 readiness_path = \"/health/ready\" liveness_path = \"/health/live\" shutdown_grace_seconds = 30 }}\n",
-            "  storage {{ workspace = \"ephemeral\" cache = \"ephemeral\" persistent_data = \"none\" }}\n",
-            "  capability \"runtime.service\" {{ level = 1 }}\n",
-            "  capability \"secrets.external\" {{ level = 1 }}\n",
-            "  capability \"workspace.local\" {{ level = 1 }}\n",
-            "  provenance \"source\" {{ uri = \"urn:a3s:source:template\" digest = \"sha256:2222222222222222222222222222222222222222222222222222222222222222\" }}\n",
-            "  provenance \"builder\" {{ uri = \"urn:a3s:builder:template\" digest = \"sha256:4444444444444444444444444444444444444444444444444444444444444444\" }}\n",
-            "}}\n"
-        ),
-        media_type, AGENT_RUNTIME_SCRIPT
-    )
-}
-
-fn verify_projected_runtime(
-    spec: &RuntimeUnitSpec,
-    image: &ArtifactRef,
-    manifest_artifact: &ArtifactRef,
-    manifest_identity: &str,
+fn verify_secret_materializations(
+    transport: &PublishedAgentSecretTransport,
+    provider_secret_id: SecretId,
+    signing_secret_id: SecretId,
+    expected_calls: usize,
 ) -> TestResult {
-    if &spec.artifact != image
-        || spec.process.command != ["/bin/sh"]
-        || spec.process.args != ["-c", AGENT_RUNTIME_SCRIPT]
-        || spec.generation != 1
+    if transport.calls(provider_secret_id)? != expected_calls
+        || transport.calls(signing_secret_id)? != expected_calls
     {
-        return Err(invalid("Agent Workload changed its release-owned Runtime intent").into());
+        return Err(invalid(format!(
+            "real Agent Secret materializations did not reach {expected_calls} per binding"
+        ))
+        .into());
     }
-    let Some(health) = &spec.health else {
-        return Err(invalid("Agent Workload omitted its readiness probe").into());
-    };
-    let Some(lifecycle) = &spec.service_lifecycle else {
-        return Err(invalid("Agent Workload omitted its liveness policy").into());
-    };
-    if !matches!(
-        &health.probe,
-        HealthProbe::Http { path, .. } if path == "/health/ready"
-    ) || !matches!(
-        &lifecycle.liveness.probe,
-        HealthProbe::Http { path, .. } if path == "/health/live"
-    ) {
-        return Err(invalid("Agent Workload changed its manifest-owned health policy").into());
-    }
-    let manifest_mount = spec
-        .mounts
-        .iter()
-        .find(|mount| mount.name == "agent-release-manifest")
-        .ok_or_else(|| invalid("Agent Workload omitted its release manifest mount"))?;
-    if manifest_mount.target != "/app/.a3s"
-        || !manifest_mount.read_only
-        || !matches!(
-            &manifest_mount.source,
-            RuntimeMountSource::Artifact { artifact } if artifact == manifest_artifact
-        )
-    {
-        return Err(invalid("Agent Workload changed its exact manifest Artifact mount").into());
-    }
-    Sha256Digest::parse(manifest_identity)?;
     Ok(())
 }
 

@@ -1,4 +1,140 @@
 use super::*;
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
+pub(super) struct FixtureSecretEncryption;
+
+#[async_trait]
+impl ISecretEncryptionService for FixtureSecretEncryption {
+    async fn encrypt(
+        &self,
+        plaintext: &[u8],
+        context: &[u8],
+    ) -> Result<EncryptedSecretValue, SecretEncryptionError> {
+        let mut bound = Vec::with_capacity(context.len() + plaintext.len());
+        bound.extend_from_slice(context);
+        bound.extend_from_slice(plaintext);
+        EncryptedSecretValue::new("test:a0-4", Sha256Digest::from_bytes(&bound).to_string())
+            .map_err(SecretEncryptionError::Rejected)
+    }
+
+    async fn decrypt(
+        &self,
+        _value: &EncryptedSecretValue,
+        _context: &[u8],
+    ) -> Result<Vec<u8>, SecretEncryptionError> {
+        Err(SecretEncryptionError::Rejected(
+            "A0.4 fixture ciphertext is admission-only".into(),
+        ))
+    }
+
+    async fn health(&self) -> Result<bool, SecretEncryptionError> {
+        Ok(true)
+    }
+}
+
+pub(super) struct PublishedAgentSecretTransport {
+    expected_revision: Mutex<Option<Uuid>>,
+    materials: BTreeMap<(Uuid, u64), Vec<u8>>,
+    calls: Mutex<BTreeMap<Uuid, usize>>,
+}
+
+impl PublishedAgentSecretTransport {
+    pub(super) fn new(materials: impl IntoIterator<Item = (SecretId, Vec<u8>)>) -> Self {
+        let materials = materials
+            .into_iter()
+            .map(|(secret_id, material)| ((secret_id.as_uuid(), 1), material))
+            .collect::<BTreeMap<_, _>>();
+        let calls = materials
+            .keys()
+            .map(|(secret_id, _)| (*secret_id, 0))
+            .collect();
+        Self {
+            expected_revision: Mutex::new(None),
+            materials,
+            calls: Mutex::new(calls),
+        }
+    }
+
+    pub(super) fn bind_revision(&self, revision_id: Uuid) -> Result<(), String> {
+        if revision_id.is_nil() {
+            return Err("published Agent Secret transport received a nil revision".into());
+        }
+        let mut expected = self
+            .expected_revision
+            .lock()
+            .map_err(|_| "published Agent Secret revision lock was poisoned")?;
+        match *expected {
+            Some(current) if current != revision_id => {
+                Err("published Agent Secret transport changed its revision".into())
+            }
+            _ => {
+                *expected = Some(revision_id);
+                Ok(())
+            }
+        }
+    }
+
+    pub(super) fn calls(&self, secret_id: SecretId) -> Result<usize, String> {
+        self.calls
+            .lock()
+            .map_err(|_| "published Agent Secret call lock was poisoned".to_owned())?
+            .get(&secret_id.as_uuid())
+            .copied()
+            .ok_or_else(|| "published Agent Secret call counter is missing".into())
+    }
+}
+
+#[async_trait]
+impl NodeSecretTransport for PublishedAgentSecretTransport {
+    async fn resolve_secret(
+        &self,
+        reference: CloudSecretReference,
+    ) -> Result<SecretMaterial, NodeControlClientError> {
+        reference
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        let expected_revision = self
+            .expected_revision
+            .lock()
+            .map_err(|_| {
+                NodeControlClientError::Transport(
+                    "published Agent Secret revision lock was poisoned".into(),
+                )
+            })?
+            .ok_or_else(|| {
+                NodeControlClientError::Invalid(
+                    "published Agent Secret transport is not revision-bound".into(),
+                )
+            })?;
+        if reference.workload_revision_id != expected_revision {
+            return Err(NodeControlClientError::Invalid(
+                "published Agent requested a Secret for another revision".into(),
+            ));
+        }
+        let material = self
+            .materials
+            .get(&(reference.secret_id, reference.version))
+            .cloned()
+            .ok_or_else(|| {
+                NodeControlClientError::Invalid(
+                    "published Agent requested an unknown Secret version".into(),
+                )
+            })?;
+        let mut calls = self.calls.lock().map_err(|_| {
+            NodeControlClientError::Transport(
+                "published Agent Secret call lock was poisoned".into(),
+            )
+        })?;
+        let count = calls.get_mut(&reference.secret_id).ok_or_else(|| {
+            NodeControlClientError::Invalid("published Agent Secret call counter is missing".into())
+        })?;
+        *count = count.checked_add(1).ok_or_else(|| {
+            NodeControlClientError::Invalid("published Agent Secret call counter overflowed".into())
+        })?;
+        SecretMaterial::new(material).map_err(NodeControlClientError::Invalid)
+    }
+}
 
 pub(super) struct PublishedRuntimeImage {
     pub(super) artifact: ArtifactRef,
