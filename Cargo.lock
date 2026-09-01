@@ -254,13 +254,14 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "8.0.4"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=97942a959a6c96b5616daf0f8c09692ec959e013#97942a959a6c96b5616daf0f8c09692ec959e013"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=7d235727e3ca0167f0cd23256ac5bf5b2210269f#7d235727e3ca0167f0cd23256ac5bf5b2210269f"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
  "a3s-flow",
  "a3s-lane",
  "a3s-memory",
+ "a3s-sandbox",
  "a3s-search",
  "anyhow",
  "async-stream",
@@ -486,6 +487,24 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
+]
+
+[[package]]
+name = "a3s-sandbox"
+version = "0.1.0"
+source = "git+https://github.com/A3S-Lab/Sandbox.git?rev=52ce66212cbdf7e83ba97e127f618720eec07355#52ce66212cbdf7e83ba97e127f618720eec07355"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "base64 0.21.7",
+ "dirs 5.0.1",
+ "libc",
+ "serde_json",
+ "sha2 0.10.9",
+ "tempfile",
+ "tokio",
+ "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
