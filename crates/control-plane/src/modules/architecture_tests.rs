@@ -39,8 +39,6 @@ notifications/presentation/controller.rs -> identity/presentation
 operations/presentation/controllers/operations_query_controller.rs -> identity/presentation
 projects/presentation/controllers/project_queries_controller.rs -> identity/presentation
 projects/presentation/controllers/projects_controller.rs -> identity/presentation
-secrets/presentation/controllers/secret_queries_controller.rs -> identity/presentation
-secrets/presentation/controllers/secrets_controller.rs -> identity/presentation
 sources/presentation/controllers/github_connections_controller.rs -> identity/presentation
 sources/presentation/controllers/github_repository_subscription_queries_controller.rs -> identity/presentation
 sources/presentation/controllers/github_repository_subscriptions_controller.rs -> identity/presentation
@@ -3101,6 +3099,9 @@ fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter(
     let workload_query =
         std::fs::read_to_string(root.join("workloads/application/bound_runtime_claim.rs"))
             .expect("read Workloads bound Runtime Claim query");
+    let workload_owner_snapshot =
+        std::fs::read_to_string(root.join("workloads/application/owner_snapshot.rs"))
+            .expect("read Workloads owner snapshot consistency mechanism");
     let fleet_query =
         std::fs::read_to_string(root.join("fleet/application/runtime_node_evidence.rs"))
             .expect("read Fleet Runtime Node evidence query");
@@ -3129,7 +3130,8 @@ fn workload_runtime_evidence_uses_one_owner_port_chain_and_one_identity_adapter(
     );
     assert!(
         workload_query.contains("require_stable_owner_snapshot")
-            && workload_query.contains("current_claim != *claim")
+            && workload_query.contains("require_unchanged_owner_snapshot(")
+            && workload_owner_snapshot.contains("if current != expected")
             && fleet_query.contains("require_stable_owner_snapshot")
             && fleet_query.contains("current_record != *record"),
         "owner facts must use an optimistic double collect instead of emitting a torn concurrent read"
@@ -6148,6 +6150,367 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
         1,
         "Form creation must receive the one composed project owner port"
     );
+}
+
+#[test]
+fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("secrets/application/resource_access.rs"))
+        .expect("read Secrets access model");
+    let compact_access = production_source(&access)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructSecretAccess",
+        "pub(crate)enumSecretAccessScope",
+        "fnallows(self,project_id:ProjectId,environment_id:EnvironmentId)->bool",
+        "pub(crate)fnenvironment_is_visible(",
+        "pub(crate)structSecretResourceResolver",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Secrets lost its consumer-owned access vocabulary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+    ] {
+        assert!(
+            !production_source(&access).contains(forbidden),
+            "Secrets access regained Identity authority {forbidden}"
+        );
+    }
+    let projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let projection = production_source(&projection);
+    assert_eq!(
+        projection.matches("pub(crate) fn secret_access(").count(),
+        1
+    );
+    assert_eq!(
+        projection
+            .matches("SecretAccess::organization_wide()")
+            .count(),
+        1
+    );
+    assert_eq!(projection.matches("SecretAccess::restricted(").count(), 1);
+    assert!(projection.contains("ResourceGrantScope::Node { .. } => None"));
+
+    let mut inner_foreign_imports = BTreeSet::new();
+    let mut projects_imports = BTreeSet::new();
+    let mut workloads_imports = BTreeSet::new();
+    let mut authorization_issuers = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("secrets") {
+            return;
+        }
+        if matches!(layer(relative), Some("application" | "domain")) {
+            for foreign in [
+                "crate::modules::identity",
+                "crate::modules::projects",
+                "crate::modules::workloads",
+            ] {
+                if source.contains(foreign) {
+                    inner_foreign_imports.insert(format!("{} -> {foreign}", display(relative)));
+                }
+            }
+        }
+        if source.contains("crate::modules::projects") {
+            projects_imports.insert(display(relative));
+        }
+        if source.contains("crate::modules::workloads") {
+            workloads_imports.insert(display(relative));
+        }
+        if source.contains("SecretMaterializationAuthorization::new(") {
+            authorization_issuers.insert(display(relative));
+        }
+    });
+    assert!(
+        inner_foreign_imports.is_empty(),
+        "Secrets Application or Domain bypassed a consumer-owned port:\n{}",
+        inner_foreign_imports
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        projects_imports,
+        lines("secrets/infrastructure/project_environment_access.rs"),
+        "Secrets must isolate Projects behind one environment adapter"
+    );
+    assert_eq!(
+        workloads_imports,
+        lines("secrets/infrastructure/workload_materialization_authorization.rs"),
+        "Secrets must isolate Workloads behind one materialization adapter"
+    );
+    assert_eq!(
+        authorization_issuers,
+        lines("secrets/infrastructure/workload_materialization_authorization.rs"),
+        "only the Secrets anti-corruption adapter may issue materialization evidence"
+    );
+
+    let environment_port =
+        std::fs::read_to_string(root.join("secrets/application/environment_access.rs"))
+            .expect("read Secrets environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructSecretEnvironmentScope",
+        "pubtraitISecretEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+        "Result<bool,RepositoryError>",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Secrets lost its narrow Projects boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+    let create =
+        std::fs::read_to_string(root.join("secrets/application/commands/create_secret/handler.rs"))
+            .expect("read CreateSecret handler");
+    let create = production_source(&create);
+    assert!(create.contains("Arc<dyn ISecretEnvironmentAccess>"));
+    assert_eq!(create.matches(".environment_exists(").count(), 1);
+    assert!(!create.contains("IEnvironmentRepository"));
+
+    let owner = std::fs::read_to_string(
+        root.join("workloads/application/secret_materialization_authorization.rs"),
+    )
+    .expect("read Workloads Secret materialization authority");
+    let owner_snapshot_mechanism =
+        std::fs::read_to_string(root.join("workloads/application/owner_snapshot.rs"))
+            .expect("read Workloads owner snapshot consistency mechanism");
+    let compact_owner = production_source(&owner)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIWorkloadSecretMaterializationAuthorizationQueryPort:Send+Sync",
+        ".find_revision(query.organization_id,query.workload_revision_id)",
+        ".find_workload(query.organization_id,revision.workload_id)",
+        ".list_deployments(query.organization_id,workload.id)",
+        ".list_deployment_replica_member_bindings(",
+        ".find_workload_replica(",
+        ".find_workload_replica_member(",
+        ".is_current_runtime_assignment(",
+        ".require_stable_owner_snapshot(&owner_snapshot)",
+        "DeploymentStatus::Scheduled",
+        "DeploymentStatus::Applying",
+        "DeploymentStatus::Verifying",
+        "DeploymentStatus::Retiring|DeploymentStatus::Active",
+        "workload.active_revision_id==Some(revision.id)",
+        "revision.request.secrets.iter().any(",
+        "AuthorizedWorkloadSecretMaterialization::from_validated_workload(",
+    ] {
+        assert!(
+            compact_owner.contains(required),
+            "Workloads lost owner-side materialization policy {required}"
+        );
+    }
+    assert!(!production_source(&owner).contains("crate::modules::secrets"));
+    assert!(
+        compact_owner.contains("require_unchanged_owner_snapshot(")
+            && owner_snapshot_mechanism.contains("pub(super) fn require_unchanged_owner_snapshot")
+            && !production_source(&owner).contains("fn owner_snapshot_changed("),
+        "Secret authorization must reuse the one Workloads owner snapshot mechanism"
+    );
+    assert!(
+        !compact_owner.contains("deployment.node_id==Some(query.node_id)"),
+        "historical Deployment node identity must not bypass the live replica-member authority"
+    );
+
+    let replica_binding =
+        std::fs::read_to_string(root.join("workloads/domain/entities/workload_replica.rs"))
+            .expect("read Workloads replica binding model");
+    let compact_replica_binding = production_source(&replica_binding)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubfnis_current_runtime_assignment(",
+        "replica.lifecycle!=WorkloadReplicaLifecycle::Desired",
+        "self.node_id!=member.node_id",
+        "self.runtime_unit_id!=replica.runtime_unit_id_for_member(revision,member)?",
+    ] {
+        assert!(
+            compact_replica_binding.contains(required),
+            "Workloads lost live replica-member authorization invariant {required}"
+        );
+    }
+
+    let published = std::fs::read_to_string(
+        root.join("workloads/published/authorized_secret_materialization.rs"),
+    )
+    .expect("read Workloads published Secret authorization");
+    let compact_published = production_source(&published)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(compact_published.contains("pubstructAuthorizedWorkloadSecretMaterialization"));
+    assert!(
+        compact_published.contains("pub(incrate::modules::workloads)fnfrom_validated_workload(")
+    );
+    assert!(!published.contains("crate::modules::secrets"));
+
+    let authorization =
+        std::fs::read_to_string(root.join("secrets/application/materialization_authorization.rs"))
+            .expect("read Secrets materialization authorization contract");
+    let compact_authorization = production_source(&authorization)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructSecretMaterializationAuthorizationRequest",
+        "pubstructSecretMaterializationAuthorization",
+        "pub(incrate::modules::secrets)fnnew(",
+        "pubtraitISecretMaterializationAuthorizer:Send+Sync",
+        "fnvalidate_for(",
+    ] {
+        assert!(
+            compact_authorization.contains(required),
+            "Secrets lost consumer-owned authorization evidence {required}"
+        );
+    }
+    assert!(!authorization.contains("crate::modules::workloads"));
+
+    let adapter = std::fs::read_to_string(
+        root.join("secrets/infrastructure/workload_materialization_authorization.rs"),
+    )
+    .expect("read Secrets Workloads adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "workloads:Arc<dynIWorkloadSecretMaterializationAuthorizationQueryPort>",
+        "implISecretMaterializationAuthorizerforWorkloadsSecretMaterializationAuthorizerAdapter",
+        ".find_authorization(query)",
+        "SecretMaterializationAuthorization::new(",
+        ".validate_for(&request)",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Secrets Workloads adapter lost boundary behavior {required}"
+        );
+    }
+    for forbidden in [
+        "IWorkloadRepository",
+        "DeploymentStatus",
+        "WorkloadDesiredState",
+        "ISecretRepository",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "Secrets Workloads adapter introduced a second policy mechanism {forbidden}"
+        );
+    }
+
+    let resolve = std::fs::read_to_string(
+        root.join("secrets/application/queries/resolve_secret_material/handler.rs"),
+    )
+    .expect("read ResolveSecretMaterial handler");
+    let resolve = production_source(&resolve);
+    assert_eq!(resolve.matches(".authorize(request)").count(), 1);
+    assert_eq!(resolve.matches(".materialize(").count(), 1);
+    assert!(resolve.contains("Arc<dyn ISecretMaterializationAuthorizer>"));
+    for forbidden in [
+        "crate::modules::workloads",
+        "IWorkloadRepository",
+        "DeploymentStatus",
+        "WorkloadDesiredState",
+    ] {
+        assert!(
+            !resolve.contains(forbidden),
+            "ResolveSecretMaterial regained Workloads policy {forbidden}"
+        );
+    }
+
+    for (relative, deferred_routes, access_projections, entry_policy) in [
+        (
+            "secrets/presentation/controllers/secrets_controller.rs",
+            2,
+            2,
+            "organization_tenant_secret_write_controller(controller)",
+        ),
+        (
+            "secrets/presentation/controllers/secret_queries_controller.rs",
+            1,
+            1,
+            "organization_tenant_secret_read_controller(controller)",
+        ),
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let source = production_source(&source);
+        assert_eq!(
+            source.matches("with_deferred_project_scope(").count(),
+            deferred_routes,
+            "{relative} lost an indirect project boundary"
+        );
+        assert_eq!(
+            source
+                .matches("secret_access(&resource_access_evaluator(")
+                .count(),
+            access_projections,
+            "{relative} must project Identity exactly once per indirect route"
+        );
+        assert!(source.contains(entry_policy));
+        for duplicate in [
+            "crate::modules::identity",
+            "OrganizationTenantGuard",
+            "ApiTokenScope::",
+            "AUTH_SCOPES_METADATA",
+            "ResourceAccessEvaluator",
+            "ResourceGrantScope",
+            "DeferredResourceScope",
+            "fn request_identity(",
+            "fn request_id(",
+        ] {
+            assert!(
+                !source.contains(duplicate),
+                "{relative} regained duplicate entry policy {duplicate}"
+            );
+        }
+    }
+
+    let node_control = std::fs::read_to_string(root.join("fleet/presentation/node_control/api.rs"))
+        .expect("read Fleet NodeControl API");
+    let node_control = production_source(&node_control);
+    assert!(node_control.contains("resolve_secret_material: ResolveSecretMaterialHandler"));
+    for forbidden in [
+        "ResolveSecretMaterialHandler::new(",
+        "IWorkloadRepository",
+        "ISecretRepository",
+        "ISecretEncryptionService",
+    ] {
+        assert!(
+            !node_control.contains(forbidden),
+            "Fleet presentation regained composition authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    for (mechanism, expected) in [
+        ("ProjectsSecretEnvironmentAccessAdapter::new(", 1),
+        (
+            "WorkloadSecretMaterializationAuthorizationQueryService::new(",
+            1,
+        ),
+        ("WorkloadsSecretMaterializationAuthorizerAdapter::new(", 1),
+        ("ResolveSecretMaterialHandler::new(", 1),
+    ] {
+        assert_eq!(
+            app.matches(mechanism).count(),
+            expected,
+            "root composition must contain exactly one {mechanism}"
+        );
+    }
 }
 
 #[test]

@@ -1,26 +1,28 @@
 use super::ResolveSecretMaterial;
-use crate::modules::secrets::application::{ExactSecretMaterializer, SecretPlaintext};
+use crate::modules::secrets::application::{
+    ExactSecretMaterializer, ISecretMaterializationAuthorizer,
+    SecretMaterializationAuthorizationError, SecretMaterializationAuthorizationRequest,
+    SecretPlaintext,
+};
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{RepositoryError, SecretId, WorkloadRevisionId};
-use crate::modules::workloads::domain::entities::{DeploymentStatus, WorkloadDesiredState};
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::shared_kernel::domain::{SecretId, WorkloadRevisionId};
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
 
 pub struct ResolveSecretMaterialHandler {
-    workloads: Arc<dyn IWorkloadRepository>,
+    authorizer: Arc<dyn ISecretMaterializationAuthorizer>,
     materializer: ExactSecretMaterializer,
 }
 
 impl ResolveSecretMaterialHandler {
     pub fn new(
-        workloads: Arc<dyn IWorkloadRepository>,
+        authorizer: Arc<dyn ISecretMaterializationAuthorizer>,
         secrets: Arc<dyn ISecretRepository>,
         encryption: Arc<dyn ISecretEncryptionService>,
     ) -> Self {
         Self {
-            workloads,
+            authorizer,
             materializer: ExactSecretMaterializer::new(secrets, encryption),
         }
     }
@@ -32,7 +34,7 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
         query: ResolveSecretMaterial,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<SecretPlaintext>>> {
-        let workloads = Arc::clone(&self.workloads);
+        let authorizer = Arc::clone(&self.authorizer);
         let materializer = self.materializer.clone();
         Box::pin(async move {
             if let Err(error) = query.reference.validate() {
@@ -40,54 +42,39 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
             }
             let revision_id = WorkloadRevisionId::from_uuid(query.reference.workload_revision_id);
             let secret_id = SecretId::from_uuid(query.reference.secret_id);
-            let revision = match workloads
-                .find_revision(query.organization_id, revision_id)
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(authorization_repository_error(error))),
+            let request = match SecretMaterializationAuthorizationRequest::new(
+                query.organization_id,
+                query.authenticated_node_id,
+                revision_id,
+                secret_id,
+                query.reference.version,
+            ) {
+                Ok(request) => request,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let workload = match workloads
-                .find_workload(query.organization_id, revision.workload_id)
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(authorization_repository_error(error))),
+            let authorization = match authorizer.authorize(request).await {
+                Ok(authorization) => authorization,
+                Err(SecretMaterializationAuthorizationError::Forbidden) => {
+                    return Ok(Err(not_authorized()))
+                }
+                Err(SecretMaterializationAuthorizationError::Unavailable(_)) => {
+                    return Ok(Err(ApplicationError::Unavailable(
+                        "Secret materialization authorization is unavailable".into(),
+                    )))
+                }
             };
-            let deployments = match workloads
-                .list_deployments(query.organization_id, workload.id)
-                .await
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(authorization_repository_error(error))),
-            };
-            let assigned = deployments.iter().any(|deployment| {
-                deployment.revision_id == revision.id
-                    && deployment.node_id == Some(query.authenticated_node_id)
-                    && match deployment.status {
-                        DeploymentStatus::Scheduled
-                        | DeploymentStatus::Applying
-                        | DeploymentStatus::Verifying => true,
-                        DeploymentStatus::Retiring | DeploymentStatus::Active => {
-                            workload.desired_state == WorkloadDesiredState::Running
-                                && workload.active_revision_id == Some(revision.id)
-                        }
-                        _ => false,
-                    }
-            });
-            let bound = revision.request.secrets.iter().any(|binding| {
-                binding.secret_id == secret_id && binding.version == query.reference.version
-            });
-            if !assigned || !bound {
-                return Ok(Err(not_authorized()));
+            if authorization.validate_for(&request).is_err() {
+                return Ok(Err(ApplicationError::Unavailable(
+                    "Secret materialization authorization is inconsistent".into(),
+                )));
             }
             let plaintext = match materializer
                 .materialize(
-                    query.organization_id,
-                    workload.project_id,
-                    workload.environment_id,
-                    secret_id,
-                    query.reference.version,
+                    authorization.organization_id(),
+                    authorization.project_id(),
+                    authorization.environment_id(),
+                    authorization.secret_id(),
+                    authorization.secret_version(),
                 )
                 .await
             {
@@ -97,13 +84,6 @@ impl QueryHandler<ResolveSecretMaterial> for ResolveSecretMaterialHandler {
             };
             Ok(Ok(plaintext))
         })
-    }
-}
-
-fn authorization_repository_error(error: RepositoryError) -> ApplicationError {
-    match error {
-        RepositoryError::NotFound => not_authorized(),
-        other => other.into(),
     }
 }
 
@@ -120,6 +100,7 @@ mod tests {
         CreateSecretWrite, EncryptedSecretValue, Secret, SecretChanged, SecretEncryptionError,
     };
     use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+    use crate::modules::secrets::infrastructure::WorkloadsSecretMaterializationAuthorizerAdapter;
     use crate::modules::shared_kernel::domain::{
         DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId,
         OrganizationId, ProjectId, ResourceName, SecretId, WorkloadId, WorkloadRevisionId,
@@ -130,8 +111,14 @@ mod tests {
         Workload, WorkloadRevision,
     };
     use crate::modules::workloads::domain::events::DeploymentRequested;
-    use crate::modules::workloads::domain::repositories::CreateDeploymentBundle;
+    use crate::modules::workloads::domain::repositories::{
+        CreateDeploymentBundle, IWorkloadRepository,
+    };
     use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+    use crate::modules::workloads::{
+        IWorkloadSecretMaterializationAuthorizationQueryPort,
+        WorkloadSecretMaterializationAuthorizationQueryService,
+    };
     use a3s_boot::QueryHandler;
     use a3s_cloud_contracts::CloudSecretReference;
     use async_trait::async_trait;
@@ -274,11 +261,15 @@ mod tests {
             .await
             .expect("assign deployment");
 
-        let handler = ResolveSecretMaterialHandler::new(
-            workloads.clone(),
-            secrets,
-            Arc::new(FixedEncryption),
+        let workload_authorization: Arc<dyn IWorkloadSecretMaterializationAuthorizationQueryPort> =
+            Arc::new(WorkloadSecretMaterializationAuthorizationQueryService::new(
+                workloads.clone(),
+            ));
+        let authorizer: Arc<dyn ISecretMaterializationAuthorizer> = Arc::new(
+            WorkloadsSecretMaterializationAuthorizerAdapter::new(workload_authorization),
         );
+        let handler =
+            ResolveSecretMaterialHandler::new(authorizer, secrets, Arc::new(FixedEncryption));
         let reference =
             CloudSecretReference::new(revision.id.as_uuid(), secret_id.as_uuid(), version.version)
                 .expect("Secret reference");

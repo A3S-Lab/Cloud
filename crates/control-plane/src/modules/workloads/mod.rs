@@ -15,15 +15,16 @@ pub use application::{
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     DeploymentRuntimeExecutionAdmissionRequest, GetDeployment, GetDeploymentHandler, GetWorkload,
     GetWorkloadHandler, GetWorkloadLogs, GetWorkloadLogsHandler, IBoundRuntimeClaimQueryPort,
-    IWorkloadRuntimeExecutionAdmissionPort, ListWorkloads, ListWorkloadsHandler,
-    NoWorkloadRuntimeExecutionAdmission, RollbackWorkloadDeployment,
-    RollbackWorkloadDeploymentHandler, RollbackWorkloadDeploymentResult, SourceWorkloadTemplate,
-    StopWorkload, StopWorkloadHandler, StopWorkloadResult, UnbindSkillWorkloadDeployment,
-    UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
-    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
+    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
+    ListWorkloads, ListWorkloadsHandler, NoWorkloadRuntimeExecutionAdmission,
+    RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler,
+    RollbackWorkloadDeploymentResult, SourceWorkloadTemplate, StopWorkload, StopWorkloadHandler,
+    StopWorkloadResult, UnbindSkillWorkloadDeployment, UnbindSkillWorkloadDeploymentHandler,
+    UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadAccess,
     WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
-    WorkloadReplicaQueryResult,
+    WorkloadReplicaQueryResult, WorkloadSecretMaterializationAuthorizationQuery,
+    WorkloadSecretMaterializationAuthorizationQueryService,
 };
 pub use domain::entities::{
     AgentReleaseAdmission, AgentWorkloadRevisionBinding, AtomicResourceClaimReservation,
@@ -90,3 +91,6 @@ pub use infrastructure::{
     RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION,
 };
 pub use presentation::WorkloadsModule;
+pub use published::{
+    AuthorizedWorkloadSecretMaterialization, AUTHORIZED_WORKLOAD_SECRET_MATERIALIZATION_SCHEMA,
+};

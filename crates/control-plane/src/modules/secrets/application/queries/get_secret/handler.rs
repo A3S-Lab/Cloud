@@ -1,6 +1,7 @@
 use super::GetSecret;
-use crate::modules::secrets::application::resource_access::SecretResourceAccess;
-use crate::modules::secrets::application::{SecretDetails, SecretVersionResult};
+use crate::modules::secrets::application::{
+    SecretDetails, SecretResourceResolver, SecretVersionResult,
+};
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -24,12 +25,8 @@ impl QueryHandler<GetSecret> for GetSecretHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<SecretDetails>>> {
         let secrets = Arc::clone(&self.secrets);
         Box::pin(async move {
-            let secret = match SecretResourceAccess::new(Arc::clone(&secrets))
-                .secret(
-                    query.organization_id,
-                    query.secret_id,
-                    &query.resource_access,
-                )
+            let secret = match SecretResourceResolver::new(Arc::clone(&secrets))
+                .secret(query.organization_id, query.secret_id, &query.access)
                 .await
             {
                 Ok(value) => value,

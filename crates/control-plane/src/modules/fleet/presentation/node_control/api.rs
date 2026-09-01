@@ -27,9 +27,7 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::domain::value_objects::NodeProtocolPolicy;
 use crate::modules::secrets::application::{ResolveSecretMaterial, ResolveSecretMaterialHandler};
-use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, RepositoryError};
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     artifact_uri, GatewayCertificateSigningRequest, NodeArtifactDownloadRequest,
@@ -112,9 +110,7 @@ impl NodeControlApi {
         gateway_certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         logs: Arc<dyn ILogChunkStore>,
         certificate_authority: Arc<dyn ICertificateAuthority>,
-        workloads: Arc<dyn IWorkloadRepository>,
-        secrets: Arc<dyn ISecretRepository>,
-        secret_encryption: Arc<dyn ISecretEncryptionService>,
+        resolve_secret_material: ResolveSecretMaterialHandler,
         gateway_certificate_ttl: Duration,
         certificate_ttl: Duration,
         certificate_rotation_window: Duration,
@@ -167,11 +163,7 @@ impl NodeControlApi {
                     gateway_certificate_ttl,
                 )?,
                 rotate_certificate,
-                resolve_secret_material: ResolveSecretMaterialHandler::new(
-                    workloads,
-                    secrets,
-                    secret_encryption,
-                ),
+                resolve_secret_material,
                 artifact_authorizer,
                 artifacts,
                 certificate_rotation_window,

@@ -1,5 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::secrets::application::SecretMutationResult;
+use crate::modules::secrets::application::{SecretAccess, SecretMutationResult};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, SecretId};
 use a3s_boot::Command;
@@ -9,7 +8,7 @@ use uuid::Uuid;
 pub struct RevokeSecretVersion {
     pub organization_id: OrganizationId,
     pub secret_id: SecretId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: SecretAccess,
     pub version: u64,
     pub idempotency_key: String,
     pub request_id: Uuid,

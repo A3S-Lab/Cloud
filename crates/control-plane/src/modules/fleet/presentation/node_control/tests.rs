@@ -13,11 +13,17 @@ use crate::modules::fleet::domain::services::{ICertificateAuthority, NodeCertifi
 use crate::modules::fleet::domain::value_objects::{EnrollmentTokenCredential, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+use crate::modules::secrets::{
+    ISecretMaterializationAuthorizer, InMemorySecretRepository, ResolveSecretMaterialHandler,
+    WorkloadsSecretMaterializationAuthorizerAdapter,
+};
 use crate::modules::shared_kernel::domain::{
     EnrollmentTokenId, IdempotencyRequest, NodeCertificateId, NodeCommandId, NodeId, OrganizationId,
 };
-use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+use crate::modules::workloads::{
+    IWorkloadRepository, IWorkloadSecretMaterializationAuthorizationQueryPort,
+    InMemoryWorkloadRepository, WorkloadSecretMaterializationAuthorizationQueryService,
+};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
     DomainEventEnvelope, GatewayAckState, GatewaySnapshot, NodeCertificateRotationRequest,
@@ -40,6 +46,7 @@ use chrono::{Duration, Utc};
 use rcgen::{CertificateParams, DistinguishedName, DnType, KeyPair};
 use sha2::{Digest, Sha256};
 use std::net::SocketAddr;
+use std::path::Path;
 use std::sync::{Arc, RwLock};
 use std::time::Duration as StdDuration;
 use tower::ServiceExt;
@@ -99,14 +106,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         ),
         log_store,
         authority.clone(),
-        Arc::new(InMemoryWorkloadRepository::new()),
-        Arc::new(InMemorySecretRepository::new()),
-        Arc::new(
-            crate::modules::fleet::infrastructure::LocalKeyEncryptionService::load_or_create(
-                directory.path().join("secret-key"),
-            )
-            .expect("Secret encryption"),
-        ),
+        test_secret_material_handler(directory.path()),
         Duration::days(30),
         Duration::hours(1),
         rotation_replay_window,
@@ -869,6 +869,25 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         .await
         .expect("node-control task")
         .expect("node-control shutdown");
+}
+
+fn test_secret_material_handler(directory: &Path) -> ResolveSecretMaterialHandler {
+    let workloads: Arc<dyn IWorkloadRepository> = Arc::new(InMemoryWorkloadRepository::new());
+    let owner: Arc<dyn IWorkloadSecretMaterializationAuthorizationQueryPort> = Arc::new(
+        WorkloadSecretMaterializationAuthorizationQueryService::new(workloads),
+    );
+    let authorizer: Arc<dyn ISecretMaterializationAuthorizer> =
+        Arc::new(WorkloadsSecretMaterializationAuthorizerAdapter::new(owner));
+    ResolveSecretMaterialHandler::new(
+        authorizer,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(
+            crate::modules::fleet::infrastructure::LocalKeyEncryptionService::load_or_create(
+                directory.join("secret-key"),
+            )
+            .expect("Secret encryption"),
+        ),
+    )
 }
 
 async fn enroll_node(

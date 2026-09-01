@@ -1,5 +1,5 @@
 use super::super::api::PeerCertificate;
-use super::{enroll_node, NodeControlApi};
+use super::{enroll_node, test_secret_material_handler, NodeControlApi};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentConversation, AgentConversationCreated, AgentEventContent,
     AgentExecution, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStarted,
@@ -15,13 +15,11 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId, BuildRunId, DeploymentId,
     EnvironmentId, IdempotencyRequest, NodeId, OperationId, OrganizationId, ProjectId,
     Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
-use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_cloud_contracts::{
     AgentProtocolEventPageV1, AgentProtocolEventRecordV1, AgentProtocolRunIdentityV1,
     AgentProtocolRunStateV1, NodeAgentProviderEventBatchV1, NodeAgentProviderEventReceiptV1,
@@ -71,14 +69,7 @@ async fn authenticated_node_accepts_legacy_and_provider_event_batches_with_exact
         ),
         Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store")),
         authority,
-        Arc::new(InMemoryWorkloadRepository::new()),
-        Arc::new(InMemorySecretRepository::new()),
-        Arc::new(
-            crate::modules::fleet::infrastructure::LocalKeyEncryptionService::load_or_create(
-                directory.path().join("secret-key"),
-            )
-            .expect("Secret encryption"),
-        ),
+        test_secret_material_handler(directory.path()),
         Duration::days(30),
         Duration::hours(1),
         Duration::minutes(5),
