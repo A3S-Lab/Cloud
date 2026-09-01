@@ -27,7 +27,7 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
 ] }
 a3s-box-core = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "332ab93896a7293cda6f788103ca8f5559566f2d" }
 a3s-box-runtime = { version = "=3.2.0", git = "https://github.com/A3S-Lab/Box.git", rev = "332ab93896a7293cda6f788103ca8f5559566f2d", default-features = false, features = ["build", "vm"] }
-a3s-code-core = { version = "=8.0.4", git = "https://github.com/A3S-Lab/Code.git", rev = "a1873e95f4c2cf606630fc5c1d418a8b69196bb4", default-features = false }
+a3s-code-core = { version = "=8.0.4", git = "https://github.com/A3S-Lab/Code.git", rev = "f4dd885e516f359e0259ce79bce43eb6c6f282fe", default-features = false }
 a3s-event = { version = "=0.3.0", default-features = false, features = ["nats"] }
 a3s-flow = { version = "=1.1.0", default-features = false, features = ["boot", "postgres"] }
 a3s-form-core = { version = "=0.1.0", git = "https://github.com/A3S-Lab/UI.git", rev = "3c5499cba6dc116230b859fac6a8e32653024a8f" }
