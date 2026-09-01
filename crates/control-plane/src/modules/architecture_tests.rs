@@ -37,7 +37,6 @@ fleet/presentation/controllers/node_pool_queries_controller.rs -> identity/prese
 fleet/presentation/controllers/node_queries_controller.rs -> identity/presentation
 notifications/presentation/controller.rs -> identity/presentation
 operations/presentation/controllers/operations_query_controller.rs -> identity/presentation
-plugins/presentation/controllers/plugin_registry_queries_controller.rs -> identity/presentation
 projects/presentation/controllers/project_queries_controller.rs -> identity/presentation
 projects/presentation/controllers/projects_controller.rs -> identity/presentation
 secrets/presentation/controllers/secret_queries_controller.rs -> identity/presentation
@@ -6149,6 +6148,261 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
         1,
         "Form creation must receive the one composed project owner port"
     );
+}
+
+#[test]
+fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
+    let root = module_root();
+    let identity_port =
+        std::fs::read_to_string(root.join("identity/application/active_human_membership.rs"))
+            .expect("read Identity active-human membership port");
+    let compact_identity_port = production_source(&identity_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructActiveHumanMembershipScope",
+        "pubtraitIActiveHumanMembershipQueryPort:Send+Sync",
+        "active_human_membership_exists(",
+        "Result<bool,RepositoryError>",
+    ] {
+        assert!(
+            compact_identity_port.contains(required),
+            "Identity lost its narrow active-human membership contract {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::plugins",
+        "PluginRegistry",
+        "Postgres",
+        "InMemory",
+        "a3s_orm",
+    ] {
+        assert!(
+            !production_source(&identity_port).contains(forbidden),
+            "Identity membership contract acquired consumer or adapter detail {forbidden}"
+        );
+    }
+
+    let mut identity_imports = BTreeSet::new();
+    let mut foreign_tables = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("plugins") {
+            return;
+        }
+        if source.contains("crate::modules::identity") {
+            identity_imports.insert(display(relative));
+        }
+        for table in ["identity_principals", "organization_memberships"] {
+            if source.contains(table) {
+                foreign_tables.insert(format!("{} -> {table}", display(relative)));
+            }
+        }
+    });
+    assert_eq!(
+        identity_imports,
+        lines("plugins/infrastructure/identity_enrollment_authorization.rs"),
+        "Plugins must isolate Identity behind one anti-corruption adapter"
+    );
+    assert!(
+        foreign_tables.is_empty(),
+        "Plugins persistence regained Identity table ownership:\n{}",
+        foreign_tables.into_iter().collect::<Vec<_>>().join("\n")
+    );
+
+    let authorization = std::fs::read_to_string(
+        root.join("plugins/domain/services/plugin_registry_enrollment_authorizer.rs"),
+    )
+    .expect("read Plugins enrollment authorization contract");
+    let compact_authorization = production_source(&authorization)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructPluginRegistryEnrollmentAuthorization",
+        "pub(incrate::modules::plugins)fnnew(",
+        "pubtraitIPluginRegistryEnrollmentAuthorizer:Send+Sync",
+        "Result<PluginRegistryEnrollmentAuthorization,PluginRegistryEnrollmentAuthorizationError>",
+        "self.organization_id!=organization_id||self.actor_id!=actor_id",
+    ] {
+        assert!(
+            compact_authorization.contains(required),
+            "Plugins lost its consumer-owned authorization evidence {required}"
+        );
+    }
+    assert!(!authorization.contains("crate::modules::identity"));
+
+    let mut evidence_issuers = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("plugins")
+            && source.contains("PluginRegistryEnrollmentAuthorization::new(")
+        {
+            evidence_issuers.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        evidence_issuers,
+        lines("plugins/infrastructure/identity_enrollment_authorization.rs"),
+        "only the Plugins anti-corruption adapter may issue enrollment evidence"
+    );
+
+    let adapter = std::fs::read_to_string(
+        root.join("plugins/infrastructure/identity_enrollment_authorization.rs"),
+    )
+    .expect("read Plugins Identity authorization adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "memberships:Arc<dynIActiveHumanMembershipQueryPort>",
+        "implIPluginRegistryEnrollmentAuthorizerforIdentityPluginRegistryEnrollmentAuthorizerAdapter",
+        ".active_human_membership_exists(scope)",
+        "PluginRegistryEnrollmentAuthorization::new(organization_id,actor_id)",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Plugins Identity adapter lost boundary behavior {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "identity_principals",
+        "organization_memberships",
+        "IPluginRegistryRepository",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "Plugins Identity adapter introduced a second mechanism {forbidden}"
+        );
+    }
+
+    let write = std::fs::read_to_string(
+        root.join("plugins/domain/repositories/plugin_registry_repository.rs"),
+    )
+    .expect("read Plugins registry write contract");
+    let compact_write = production_source(&write)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(compact_write.contains("pubauthorization:PluginRegistryEnrollmentAuthorization"));
+    assert!(
+        compact_write.contains(".validate_for(registry.organization_id,registry.last_actor_id)?")
+    );
+    assert!(compact_write.contains("replayed.last_actor_id!=requested.last_actor_id"));
+    for redundant in ["pubactor_id:PrincipalId", "pubrequest_id:Uuid"] {
+        assert!(
+            !compact_write.contains(redundant),
+            "Plugins write duplicated aggregate evidence with {redundant}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        root.join("plugins/application/commands/enroll_plugin_registry/handler.rs"),
+    )
+    .expect("read Plugins enrollment handler");
+    let production_handler = production_source(&handler);
+    assert_eq!(
+        production_handler.matches(".authorize_enrollment(").count(),
+        1,
+        "registry enrollment must authorize exactly once"
+    );
+    assert!(production_handler.contains("authorization,"));
+    assert!(!production_handler.contains("crate::modules::identity"));
+
+    let postgres =
+        std::fs::read_to_string(root.join("plugins/infrastructure/persistence/postgres.rs"))
+            .expect("read Plugins PostgreSQL repository");
+    for forbidden in [
+        "IPluginRegistryEnrollmentAuthorizer",
+        "active_human_member_query",
+        "identity_principals",
+        "organization_memberships",
+    ] {
+        assert!(
+            !production_source(&postgres).contains(forbidden),
+            "Plugins PostgreSQL repository regained foreign authorization {forbidden}"
+        );
+    }
+    assert_eq!(
+        production_source(&postgres)
+            .matches("write.validate()")
+            .count(),
+        1
+    );
+
+    let identity_postgres = std::fs::read_to_string(
+        root.join("identity/infrastructure/persistence/postgres_memberships.rs"),
+    )
+    .expect("read Identity PostgreSQL membership owner");
+    let compact_identity_postgres = production_source(&identity_postgres)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(compact_identity_postgres
+        .contains("implIActiveHumanMembershipQueryPortforPostgresIdentityRepository"));
+    for required in [
+        "identity_principals",
+        "organization_memberships",
+        "principal.kind = 'human'",
+        "membership.revoked_at is null",
+    ] {
+        assert!(
+            identity_postgres.contains(required),
+            "Identity lost active-human membership ownership {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("plugins/presentation/controllers/plugin_registry_queries_controller.rs"),
+    )
+    .expect("read Plugins query controller");
+    let production_controller = production_source(&controller);
+    assert!(production_controller.contains("organization_tenant_cloud_read_controller(controller)"));
+    for forbidden in [
+        "crate::modules::identity",
+        "OrganizationTenantGuard",
+        "ApiTokenScope::",
+        "AUTH_SCOPES_METADATA",
+        "fn request_id(",
+    ] {
+        assert!(
+            !production_controller.contains(forbidden),
+            "Plugins HTTP adapter regained duplicate entry policy {forbidden}"
+        );
+    }
+
+    let get_handler =
+        std::fs::read_to_string(root.join("plugins/application/queries/get_plugin_registry.rs"))
+            .expect("read Plugins get-registry handler");
+    assert_eq!(
+        production_source(&get_handler)
+            .matches("find_registry(")
+            .count(),
+        1
+    );
+    assert!(!production_source(&get_handler).contains("plugin registry not found"));
+
+    let src = root.parent().expect("control-plane source root");
+    let app = std::fs::read_to_string(src.join("app.rs")).expect("read application composition");
+    assert_eq!(
+        app.matches("IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(")
+            .count(),
+        1,
+        "production must compose one Identity-to-Plugins adapter"
+    );
+    let adapters = std::fs::read_to_string(src.join("app/postgres_adapters.rs"))
+        .expect("read PostgreSQL adapter families");
+    let plugin_family = adapters
+        .split("pub(super) struct PluginPostgresAdapters")
+        .nth(1)
+        .and_then(|source| {
+            source
+                .split("pub(super) struct FleetPostgresAdapters")
+                .next()
+        })
+        .expect("Plugins PostgreSQL adapter family");
+    assert!(plugin_family.contains("registries: Arc<dyn IPluginRegistryRepository>"));
+    assert!(!plugin_family.contains("enrollment_authorizer"));
 }
 
 #[test]

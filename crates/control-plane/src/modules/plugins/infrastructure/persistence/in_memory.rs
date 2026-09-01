@@ -56,8 +56,7 @@ impl IPluginRegistryRepository for InMemoryPluginRegistryRepository {
             if digest != &idempotency.request_digest {
                 return Err(RepositoryError::IdempotencyConflict);
             }
-            CreatePluginRegistryWrite::validate_replay(&registry, existing)
-                .map_err(RepositoryError::Storage)?;
+            CreatePluginRegistryWrite::validate_replay(&registry, existing)?;
             return Ok(IdempotentWrite {
                 value: existing.clone(),
                 replayed: true,
@@ -133,6 +132,7 @@ mod tests {
     use crate::modules::plugins::domain::repositories::{
         CreatePluginRegistryWrite, IPluginRegistryRepository,
     };
+    use crate::modules::plugins::domain::services::PluginRegistryEnrollmentAuthorization;
     use crate::modules::plugins::domain::value_objects::{PluginRegistryEndpoint, PluginTrustRoot};
     use crate::modules::shared_kernel::domain::{
         OrganizationId, PluginRegistryId, PrincipalId, RepositoryError, ResourceName, Sha256Digest,
@@ -164,8 +164,11 @@ mod tests {
     }
 
     fn write(registry: PluginRegistry, key: &str) -> CreatePluginRegistryWrite {
-        let actor_id = registry.last_actor_id;
-        let request_id = registry.last_request_id;
+        let authorization = PluginRegistryEnrollmentAuthorization::new(
+            registry.organization_id,
+            registry.last_actor_id,
+        )
+        .expect("authorization");
         let event = PluginRegistryEnrolled::envelope(&registry).expect("event");
         let idempotency =
             CreatePluginRegistryWrite::idempotency_for(&registry, key).expect("idempotency");
@@ -173,8 +176,7 @@ mod tests {
             idempotency,
             registry,
             event,
-            actor_id,
-            request_id,
+            authorization,
         }
     }
 
@@ -227,6 +229,55 @@ mod tests {
             .await
             .expect("list")
             .is_empty());
+    }
+
+    #[tokio::test]
+    async fn mismatched_enrollment_authorization_fails_without_writing_state() {
+        let repository = InMemoryPluginRegistryRepository::new();
+        let organization_id = OrganizationId::new();
+        let registry = registry(organization_id, PrincipalId::new(), Uuid::now_v7());
+        let mut write = write(registry, "wrong-authorization");
+        write.authorization = PluginRegistryEnrollmentAuthorization::new(
+            OrganizationId::new(),
+            write.authorization.actor_id(),
+        )
+        .expect("foreign authorization");
+
+        let error = repository
+            .create(write)
+            .await
+            .expect_err("authorization mismatch");
+
+        assert!(matches!(error, RepositoryError::Storage(_)));
+        assert!(repository
+            .list(organization_id)
+            .await
+            .expect("registry list")
+            .is_empty());
+    }
+
+    #[tokio::test]
+    async fn idempotency_replay_is_bound_to_the_authorized_actor() {
+        let repository = InMemoryPluginRegistryRepository::new();
+        let organization_id = OrganizationId::new();
+        repository
+            .create(write(
+                registry(organization_id, PrincipalId::new(), Uuid::now_v7()),
+                "actor-bound",
+            ))
+            .await
+            .expect("first actor enrollment");
+
+        let error = repository
+            .create(write(
+                registry(organization_id, PrincipalId::new(), Uuid::now_v7()),
+                "actor-bound",
+            ))
+            .await
+            .expect_err("different actor replay");
+
+        assert_eq!(error, RepositoryError::IdempotencyConflict);
+        assert_eq!(repository.outbox_events().await.len(), 1);
     }
 
     #[tokio::test]

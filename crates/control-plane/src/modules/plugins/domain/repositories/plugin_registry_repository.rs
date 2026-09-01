@@ -1,20 +1,18 @@
 use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::events::PluginRegistryEnrolled;
+use crate::modules::plugins::domain::services::PluginRegistryEnrollmentAuthorization;
 use crate::modules::plugins::domain::value_objects::PluginRegistryState;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, OrganizationId, PluginRegistryId, PrincipalId,
-    RepositoryError,
+    IdempotencyRequest, IdempotentWrite, OrganizationId, PluginRegistryId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
-use uuid::Uuid;
 
 #[derive(Debug, Clone)]
 pub struct CreatePluginRegistryWrite {
     pub registry: PluginRegistry,
     pub event: DomainEventEnvelope,
-    pub actor_id: PrincipalId,
-    pub request_id: Uuid,
+    pub authorization: PluginRegistryEnrollmentAuthorization,
     pub idempotency: IdempotencyRequest,
 }
 
@@ -47,12 +45,12 @@ impl CreatePluginRegistryWrite {
         self.idempotency.validate()?;
         let registry = &self.registry;
         let event = &self.event;
+        self.authorization
+            .validate_for(registry.organization_id, registry.last_actor_id)?;
         let expected_idempotency = Self::idempotency_for(registry, self.idempotency.key.clone())?;
         if registry.state != PluginRegistryState::Active
             || registry.aggregate_version != 1
             || registry.created_at != registry.updated_at
-            || registry.last_actor_id != self.actor_id
-            || registry.last_request_id != self.request_id
             || event.event_id.is_nil()
             || event.event_key != "plugins.registry.enrolled"
             || event.schema_version != 1
@@ -60,7 +58,7 @@ impl CreatePluginRegistryWrite {
             || event.aggregate_id != registry.id.as_uuid()
             || event.aggregate_version != registry.aggregate_version
             || event.occurred_at != registry.created_at
-            || event.correlation_id != self.request_id
+            || event.correlation_id != registry.last_request_id
             || event.causation_id.is_some_and(|id| id.is_nil())
             || self.idempotency != expected_idempotency
         {
@@ -85,8 +83,11 @@ impl CreatePluginRegistryWrite {
     pub(crate) fn validate_replay(
         requested: &PluginRegistry,
         replayed: &PluginRegistry,
-    ) -> Result<(), String> {
-        replayed.validate()?;
+    ) -> Result<(), RepositoryError> {
+        replayed.validate().map_err(RepositoryError::Storage)?;
+        if replayed.last_actor_id != requested.last_actor_id {
+            return Err(RepositoryError::IdempotencyConflict);
+        }
         if replayed.organization_id != requested.organization_id
             || replayed.name != requested.name
             || replayed.endpoint != requested.endpoint
@@ -95,7 +96,9 @@ impl CreatePluginRegistryWrite {
             || replayed.aggregate_version != 1
             || replayed.created_at != replayed.updated_at
         {
-            return Err("plugin registry idempotency replay is inconsistent".into());
+            return Err(RepositoryError::Storage(
+                "plugin registry idempotency replay is inconsistent".into(),
+            ));
         }
         Ok(())
     }

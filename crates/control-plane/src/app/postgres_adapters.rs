@@ -50,7 +50,7 @@ use crate::modules::identity::domain::repositories::{
     IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
     ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
-use crate::modules::identity::PostgresIdentityRepository;
+use crate::modules::identity::{IActiveHumanMembershipQueryPort, PostgresIdentityRepository};
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
@@ -59,7 +59,6 @@ use crate::modules::notifications::{
 };
 use crate::modules::operations::{IOperationRepository, PostgresOperationRepository};
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
-use crate::modules::plugins::domain::services::IPluginRegistryEnrollmentAuthorizer;
 use crate::modules::plugins::PostgresPluginRegistryRepository;
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::PostgresProjectsRepository;
@@ -333,6 +332,7 @@ impl ArtifactPostgresAdapters {
 }
 
 pub(super) struct IdentityPostgresAdapters {
+    pub(super) active_human_memberships: Arc<dyn IActiveHumanMembershipQueryPort>,
     pub(super) identity_bootstrap: Arc<dyn IIdentityBootstrapRepository>,
     pub(super) organizations: Arc<dyn IOrganizationRepository>,
     pub(super) api_tokens: Arc<dyn IApiTokenRepository>,
@@ -356,6 +356,7 @@ impl IdentityPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         let repository = Arc::new(PostgresIdentityRepository::new(executor));
         Self {
+            active_human_memberships: repository.clone(),
             identity_bootstrap: repository.clone(),
             organizations: repository.clone(),
             api_tokens: repository.clone(),
@@ -437,15 +438,12 @@ impl NotificationPostgresAdapters {
 
 pub(super) struct PluginPostgresAdapters {
     pub(super) registries: Arc<dyn IPluginRegistryRepository>,
-    pub(super) enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
 }
 
 impl PluginPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
-        let repository = Arc::new(PostgresPluginRegistryRepository::new(executor));
         Self {
-            registries: repository.clone(),
-            enrollment_authorizer: repository,
+            registries: Arc::new(PostgresPluginRegistryRepository::new(executor)),
         }
     }
 }

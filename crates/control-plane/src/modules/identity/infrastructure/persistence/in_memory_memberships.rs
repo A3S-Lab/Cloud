@@ -1,5 +1,8 @@
 use super::in_memory::{remember, replay, InMemoryIdentityRepository, State};
-use crate::modules::identity::domain::entities::Membership;
+use crate::modules::identity::application::{
+    ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
+};
+use crate::modules::identity::domain::entities::{IdentityPrincipalKind, Membership};
 use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
     ChangeMembershipRoleWrite, CreateMembershipWrite, IMembershipRepository, MembershipRecord,
@@ -56,6 +59,25 @@ fn require_another_owner(state: &State, membership: &Membership) -> Result<(), R
         ));
     }
     Ok(())
+}
+
+#[async_trait]
+impl IActiveHumanMembershipQueryPort for InMemoryIdentityRepository {
+    async fn active_human_membership_exists(
+        &self,
+        scope: ActiveHumanMembershipScope,
+    ) -> Result<bool, RepositoryError> {
+        let state = self.state.read().await;
+        let membership_exists =
+            actor_membership(&state, scope.organization_id(), scope.principal_id()).is_some();
+        let active_human = state
+            .principals
+            .get(&scope.principal_id())
+            .is_some_and(|principal| {
+                principal.kind == IdentityPrincipalKind::Human && principal.is_active()
+            });
+        Ok(membership_exists && active_human)
+    }
 }
 
 #[async_trait]
@@ -262,5 +284,72 @@ impl IMembershipRepository for InMemoryIdentityRepository {
             value,
             replayed: false,
         })
+    }
+}
+
+#[cfg(test)]
+mod active_human_membership_tests {
+    use super::*;
+    use crate::modules::identity::domain::entities::IdentityPrincipal;
+    use crate::modules::shared_kernel::domain::{MembershipId, ResourceName};
+    use chrono::Utc;
+
+    #[tokio::test]
+    async fn owner_query_requires_the_same_active_human_and_membership_scope() {
+        let repository = InMemoryIdentityRepository::new();
+        let organization_id = OrganizationId::new();
+        let principal_id = PrincipalId::new();
+        let membership = Membership::create(
+            MembershipId::new(),
+            organization_id,
+            principal_id,
+            MembershipRole::Member,
+            Utc::now(),
+        );
+        {
+            let mut state = repository.state.write().await;
+            state.principals.insert(
+                principal_id,
+                IdentityPrincipal::create(
+                    principal_id,
+                    IdentityPrincipalKind::Human,
+                    ResourceName::parse("Plugin operator").expect("principal name"),
+                    Utc::now(),
+                ),
+            );
+            state
+                .membership_subjects
+                .insert((organization_id, principal_id), membership.id);
+            state.memberships.insert(membership.id, membership);
+        }
+
+        assert!(repository
+            .active_human_membership_exists(
+                ActiveHumanMembershipScope::new(organization_id, principal_id).expect("scope"),
+            )
+            .await
+            .expect("membership query"));
+        assert!(!repository
+            .active_human_membership_exists(
+                ActiveHumanMembershipScope::new(OrganizationId::new(), principal_id)
+                    .expect("foreign scope"),
+            )
+            .await
+            .expect("foreign membership query"));
+
+        repository
+            .state
+            .write()
+            .await
+            .principals
+            .get_mut(&principal_id)
+            .expect("principal")
+            .kind = IdentityPrincipalKind::Service;
+        assert!(!repository
+            .active_human_membership_exists(
+                ActiveHumanMembershipScope::new(organization_id, principal_id).expect("scope"),
+            )
+            .await
+            .expect("service membership query"));
     }
 }

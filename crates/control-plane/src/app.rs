@@ -246,9 +246,9 @@ use crate::modules::plugins::domain::services::{
 };
 use crate::modules::plugins::{
     A3sUsePluginRegistryCatalog, EnrollPluginRegistryHandler, GetPluginRegistryHandler,
-    InspectCachedPluginCatalogHandler, InspectPluginCatalogHandler, ListPluginRegistriesHandler,
-    PluginTrustRootObjectStore, PluginsModule, SearchCachedPluginCatalogHandler,
-    SearchPluginCatalogHandler,
+    IdentityPluginRegistryEnrollmentAuthorizerAdapter, InspectCachedPluginCatalogHandler,
+    InspectPluginCatalogHandler, ListPluginRegistriesHandler, PluginTrustRootObjectStore,
+    PluginsModule, SearchCachedPluginCatalogHandler, SearchPluginCatalogHandler,
 };
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
@@ -588,6 +588,7 @@ async fn build_api_worker_application(
     let preview_source_revision_projection =
         run_relay.then(|| postgres_adapters.preview_source_revision_projection());
     let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
+    let active_human_memberships = adapters.identity.active_human_memberships;
     let identity_bootstrap = adapters.identity.identity_bootstrap;
     let organizations = adapters.identity.organizations;
     let api_tokens = adapters.identity.api_tokens;
@@ -627,7 +628,9 @@ async fn build_api_worker_application(
     let outbound_notification_deliveries = adapters.notifications.outbound_deliveries;
     let outbound_notification_smtp_attempts = adapters.notifications.outbound_smtp_attempts;
     let plugin_registries = adapters.plugins.registries;
-    let plugin_enrollment_authorizer = adapters.plugins.enrollment_authorizer;
+    let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> = Arc::new(
+        IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(active_human_memberships),
+    );
     let nodes = adapters.fleet.nodes;
     let node_availability = adapters.fleet.node_availability;
     let scheduling_nodes = adapters.fleet.scheduling_nodes;

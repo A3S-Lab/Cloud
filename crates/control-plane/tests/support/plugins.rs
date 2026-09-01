@@ -1,6 +1,7 @@
 use crate::migrate_and_connect_for_test;
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::conformance::search_persistence_conformance;
+use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::plugins::domain::entities::{
     NewPluginRegistry, PluginRegistry,
 };
@@ -9,12 +10,15 @@ use a3s_cloud_control_plane::modules::plugins::domain::repositories::{
     CreatePluginRegistryWrite, IPluginRegistryRepository,
 };
 use a3s_cloud_control_plane::modules::plugins::domain::services::{
-    IPluginRegistryEnrollmentAuthorizer, PluginRegistryEnrollmentAuthorizationError,
+    IPluginRegistryEnrollmentAuthorizer, PluginRegistryEnrollmentAuthorization,
+    PluginRegistryEnrollmentAuthorizationError,
 };
 use a3s_cloud_control_plane::modules::plugins::domain::value_objects::{
     PluginRegistryEndpoint, PluginTrustRoot,
 };
-use a3s_cloud_control_plane::modules::plugins::PostgresPluginRegistryRepository;
+use a3s_cloud_control_plane::modules::plugins::{
+    IdentityPluginRegistryEnrollmentAuthorizerAdapter, PostgresPluginRegistryRepository,
+};
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::search::{SearchQuery, SearchResourceKind, SearchVisibility};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -23,6 +27,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{Duration, Utc};
 use std::io;
+use std::sync::Arc;
 use uuid::Uuid;
 
 pub(super) async fn exercise_plugin_registry_persistence(
@@ -33,7 +38,7 @@ pub(super) async fn exercise_plugin_registry_persistence(
     let organization_id = OrganizationId::new();
     let foreign_organization_id = OrganizationId::new();
     let active_actor = PrincipalId::new();
-    let revoked_after_preflight_actor = PrincipalId::new();
+    let revoked_actor = PrincipalId::new();
     let service_actor = PrincipalId::new();
     let disabled_actor = PrincipalId::new();
     let created_at = Utc::now();
@@ -69,12 +74,7 @@ pub(super) async fn exercise_plugin_registry_persistence(
 
     for (id, kind, name, disabled_at) in [
         (active_actor, "human", "Registry operator", None),
-        (
-            revoked_after_preflight_actor,
-            "human",
-            "Revoked registry operator",
-            None,
-        ),
+        (revoked_actor, "human", "Revoked registry operator", None),
         (service_actor, "service", "Registry automation", None),
         (
             disabled_actor,
@@ -119,8 +119,10 @@ pub(super) async fn exercise_plugin_registry_persistence(
             .await?;
     }
 
-    let repository = PostgresPluginRegistryRepository::new(executor.clone());
-    repository
+    let authorizer = IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(Arc::new(
+        PostgresIdentityRepository::new(executor.clone()),
+    ));
+    let active_authorization = authorizer
         .authorize_enrollment(organization_id, active_actor)
         .await?;
     for (tenant, actor) in [
@@ -129,14 +131,11 @@ pub(super) async fn exercise_plugin_registry_persistence(
         (organization_id, disabled_actor),
     ] {
         assert!(matches!(
-            repository.authorize_enrollment(tenant, actor).await,
+            authorizer.authorize_enrollment(tenant, actor).await,
             Err(PluginRegistryEnrollmentAuthorizationError::Forbidden)
         ));
     }
 
-    repository
-        .authorize_enrollment(organization_id, revoked_after_preflight_actor)
-        .await?;
     let revoked_at = created_at + Duration::seconds(2);
     database
         .execute(
@@ -149,31 +148,28 @@ pub(super) async fn exercise_plugin_registry_persistence(
             .append(" where organization_id = ")
             .bind(organization_id.as_uuid())
             .append(" and principal_id = ")
-            .bind(revoked_after_preflight_actor.as_uuid()),
+            .bind(revoked_actor.as_uuid()),
         )
         .await?;
     let rejected_registry = registry(
         organization_id,
-        revoked_after_preflight_actor,
+        revoked_actor,
         "Rejected registry",
         "https://rejected.registry.example/u0",
         'f',
         created_at + Duration::seconds(3),
     )?;
     assert!(matches!(
-        repository
-            .create(write(
-                rejected_registry.clone(),
-                "u0-postgres-revoked-after-preflight"
-            )?)
+        authorizer
+            .authorize_enrollment(organization_id, revoked_actor)
             .await,
-        Err(RepositoryError::Forbidden(_))
+        Err(PluginRegistryEnrollmentAuthorizationError::Forbidden)
     ));
     assert_eq!(
         aggregate_write_counts(
             &database,
             rejected_registry.id.as_uuid(),
-            "u0-postgres-revoked-after-preflight",
+            "u0-postgres-revoked-owner",
         )
         .await?,
         (0, 0, 0, 0)
@@ -187,7 +183,12 @@ pub(super) async fn exercise_plugin_registry_persistence(
         'a',
         created_at + Duration::seconds(4),
     )?;
-    let create = write(enrolled.clone(), "u0-postgres-official")?;
+    let repository = PostgresPluginRegistryRepository::new(executor.clone());
+    let create = write(
+        enrolled.clone(),
+        active_authorization,
+        "u0-postgres-official",
+    )?;
     let (left, right) = tokio::join!(
         repository.create(create.clone()),
         repository.create(create.clone())
@@ -212,7 +213,11 @@ pub(super) async fn exercise_plugin_registry_persistence(
     )?;
     assert_eq!(
         reconstructed
-            .create(write(changed_root, "u0-postgres-official")?)
+            .create(write(
+                changed_root,
+                active_authorization,
+                "u0-postgres-official",
+            )?)
             .await
             .expect_err("changed enrollment input must not replay"),
         RepositoryError::IdempotencyConflict
@@ -228,7 +233,11 @@ pub(super) async fn exercise_plugin_registry_persistence(
     )?;
     assert!(matches!(
         reconstructed
-            .create(write(duplicate_name, "u0-postgres-duplicate-name")?)
+            .create(write(
+                duplicate_name,
+                active_authorization,
+                "u0-postgres-duplicate-name",
+            )?)
             .await,
         Err(RepositoryError::Conflict(_))
     ));
@@ -242,7 +251,11 @@ pub(super) async fn exercise_plugin_registry_persistence(
     )?;
     assert!(matches!(
         reconstructed
-            .create(write(duplicate_endpoint, "u0-postgres-duplicate-endpoint")?)
+            .create(write(
+                duplicate_endpoint,
+                active_authorization,
+                "u0-postgres-duplicate-endpoint",
+            )?)
             .await,
         Err(RepositoryError::Conflict(_))
     ));
@@ -371,11 +384,14 @@ fn registry(
     .map_err(test_error)
 }
 
-fn write(registry: PluginRegistry, key: &str) -> Result<CreatePluginRegistryWrite, io::Error> {
+fn write(
+    registry: PluginRegistry,
+    authorization: PluginRegistryEnrollmentAuthorization,
+    key: &str,
+) -> Result<CreatePluginRegistryWrite, io::Error> {
     Ok(CreatePluginRegistryWrite {
         event: PluginRegistryEnrolled::envelope(&registry).map_err(test_error)?,
-        actor_id: registry.last_actor_id,
-        request_id: registry.last_request_id,
+        authorization,
         idempotency: CreatePluginRegistryWrite::idempotency_for(&registry, key)
             .map_err(test_error)?,
         registry,

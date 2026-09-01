@@ -1,3 +1,4 @@
+mod active_human_membership;
 pub mod commands;
 mod membership_invitation_result;
 mod membership_result;
@@ -11,6 +12,7 @@ mod workload_runtime_evidence;
 mod workload_runtime_evidence_recorder;
 mod workload_runtime_execution_authorization;
 
+pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort};
 pub use membership_invitation_result::{
     MembershipInvitationAcceptanceResult, MembershipInvitationMutationResult,
 };
