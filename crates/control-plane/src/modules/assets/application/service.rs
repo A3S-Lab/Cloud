@@ -1,4 +1,4 @@
-use crate::modules::assets::application::resource_access::AssetResourceAccess;
+use crate::modules::assets::application::resource_access::{AssetAccess, AssetResourceAccess};
 use crate::modules::assets::domain::{
     validate_asset_repository_mutation, AcquireAssetGitWriteLease, Asset, AssetGitBackup,
     AssetGitRepositoryControlError, AssetGitRepositoryError, AssetGitRpcLimits,
@@ -6,7 +6,6 @@ use crate::modules::assets::domain::{
     AssetGitWriteRecovery, AssetManifestAdmission, ClaimAssetGitWriteRecovery,
     CompleteAssetGitWriteLease, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AssetId, GitCommitSha, OrganizationId};
 use chrono::Utc;
@@ -58,13 +57,13 @@ impl AssetGitApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         service: AssetGitService,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
     ) -> ApplicationResult<Vec<u8>> {
         let asset = self
             .load_consistent_authorized_asset(
                 organization_id,
                 asset_id,
-                evaluator,
+                access,
                 AssetGitAccess::Read,
             )
             .await?;
@@ -79,13 +78,13 @@ impl AssetGitApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         request: Vec<u8>,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
     ) -> ApplicationResult<AssetGitRpcResponse> {
         let asset = self
             .load_consistent_authorized_asset(
                 organization_id,
                 asset_id,
-                evaluator,
+                access,
                 AssetGitAccess::Read,
             )
             .await?;
@@ -108,14 +107,14 @@ impl AssetGitApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
         actor_id: Uuid,
         request_id: Uuid,
         request: Vec<u8>,
     ) -> ApplicationResult<AssetGitRpcResponse> {
         validate_actor_request(actor_id, request_id)?;
         let asset = self
-            .load_authorized_asset(organization_id, asset_id, evaluator)
+            .load_authorized_asset(organization_id, asset_id, access)
             .await?;
         let lease = self
             .acquire_and_prepare(
@@ -277,13 +276,13 @@ impl AssetGitApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
     ) -> ApplicationResult<Asset> {
         self.resource_access
             .asset(
                 organization_id,
                 asset_id,
-                evaluator,
+                access,
                 "hosted Git repository not found",
             )
             .await
@@ -293,13 +292,13 @@ impl AssetGitApplicationService {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
-        evaluator: &ResourceAccessEvaluator,
-        access: AssetGitAccess,
+        access: &AssetAccess,
+        repository_access: AssetGitAccess,
     ) -> ApplicationResult<Asset> {
         let asset = self
-            .load_authorized_asset(organization_id, asset_id, evaluator)
+            .load_authorized_asset(organization_id, asset_id, access)
             .await?;
-        self.recover_pending(&asset, access).await?;
+        self.recover_pending(&asset, repository_access).await?;
         Ok(asset)
     }
 

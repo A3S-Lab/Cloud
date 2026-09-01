@@ -13,7 +13,7 @@ pub(crate) use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
-use a3s_boot::{ControllerDefinition, Result, AUTH_SCOPES_METADATA};
+use a3s_boot::{BootError, BootRequest, ControllerDefinition, Result, AUTH_SCOPES_METADATA};
 
 /// Applies the single root-owned HTTP policy for an organization administrator
 /// read. Product controllers do not import Identity presentation guards or
@@ -42,10 +42,33 @@ pub(crate) fn organization_tenant_file_write_controller(
     organization_tenant_scoped_controller(controller, ApiTokenScope::FILE_WRITE)
 }
 
+pub(crate) fn organization_tenant_asset_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::ASSET_WRITE)
+}
+
 pub(crate) fn organization_tenant_cloud_read_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {
     organization_tenant_scoped_controller(controller, ApiTokenScope::CLOUD_READ)
+}
+
+fn require_request_scope(request: &BootRequest, scope: &str) -> Result<()> {
+    if request.require_auth_principal()?.has_scope(scope) {
+        return Ok(());
+    }
+    Err(BootError::Forbidden(
+        "authenticated token does not have the required scope".into(),
+    ))
+}
+
+pub(crate) fn require_asset_write_scope(request: &BootRequest) -> Result<()> {
+    require_request_scope(request, ApiTokenScope::ASSET_WRITE)
+}
+
+pub(crate) fn require_cloud_read_scope(request: &BootRequest) -> Result<()> {
+    require_request_scope(request, ApiTokenScope::CLOUD_READ)
 }
 
 pub(crate) const A3S_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.acl";
@@ -96,7 +119,8 @@ pub(crate) use oauth_transport::{
 };
 pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
 pub(crate) use request_context::{
-    actor_principal_id, request_id, request_identity, search_visibility, user_file_access,
+    actor_principal_id, asset_access, request_id, request_identity, search_visibility,
+    user_file_access,
 };
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{

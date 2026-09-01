@@ -1,39 +1,35 @@
-use super::asset_request::{asset_release_ids, request_id};
+use super::asset_request::asset_release_ids;
 use crate::modules::assets::application::queries::GetMcpServiceProfile;
 use crate::modules::assets::presentation::dto::McpServiceProfileResponse;
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+use crate::presentation::{
+    application_error_response, asset_access, organization_tenant_cloud_read_controller,
+    request_id, resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
 };
-use crate::presentation::application_error_response;
 use a3s_boot::{
     BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
-    AUTH_SCOPES_METADATA,
 };
 use std::sync::Arc;
 
 pub fn mcp_service_profile_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+    let controller = ControllerDefinition::new("/organizations")?
         .route(with_deferred_resource_scope(
-            RouteDefinition::get(
-                "/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile",
-                move |request: BootRequest| {
+        RouteDefinition::get(
+            "/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile",
+            move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
                 async move {
                     let (organization_id, asset_id, asset_release_id) =
                         asset_release_ids(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = asset_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let request_id = request_id(&request)?;
                     match bus
                         .execute(GetMcpServiceProfile {
                             organization_id,
                             asset_id,
                             asset_release_id,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -44,7 +40,8 @@ pub fn mcp_service_profile_queries_controller(bus: Arc<QueryBus>) -> Result<Cont
                     }
                 }
             },
-            )?,
-            DeferredResourceScope::Any,
-        )?)
+        )?,
+        DeferredResourceScope::Any,
+    )?)?;
+    organization_tenant_cloud_read_controller(controller)
 }

@@ -1,6 +1,5 @@
-use crate::modules::assets::application::AssetCatalogApplicationService;
+use crate::modules::assets::application::{AssetAccess, AssetCatalogApplicationService};
 use crate::modules::assets::domain::AssetWrite;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{Command, CommandHandler, CqrsContext};
@@ -11,7 +10,7 @@ use uuid::Uuid;
 pub struct ArchiveAsset {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AssetAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -42,7 +41,7 @@ impl CommandHandler<ArchiveAsset> for ArchiveAssetHandler {
                 .archive_asset(
                     command.organization_id,
                     command.asset_id,
-                    &command.resource_access,
+                    &command.access,
                     command.idempotency_key,
                     command.request_id,
                 )

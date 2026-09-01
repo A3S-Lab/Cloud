@@ -15,11 +15,6 @@ applications/presentation/controller.rs -> identity/presentation
 applications/presentation/delivery_controller.rs -> identity/presentation
 artifacts/presentation/controllers/build_run_commands_controller.rs -> identity/presentation
 artifacts/presentation/controllers/build_run_queries_controller.rs -> identity/presentation
-assets/presentation/controllers/asset_commands_controller.rs -> identity/presentation
-assets/presentation/controllers/asset_queries_controller.rs -> identity/presentation
-assets/presentation/controllers/mcp_service_profile_commands_controller.rs -> identity/presentation
-assets/presentation/controllers/mcp_service_profile_queries_controller.rs -> identity/presentation
-assets/presentation/controllers/smart_http_controller.rs -> identity/presentation
 audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/controller.rs -> identity/presentation
@@ -1014,6 +1009,243 @@ fn sources_owner_scope_uses_two_minimum_ports_and_one_adapter_module() {
                 "{relative} bypassed the owner-scope boundary with {forbidden}"
             );
         }
+    }
+}
+
+#[test]
+fn assets_access_and_owner_scope_have_one_bounded_authority() {
+    let root = module_root();
+    let port_path = "assets/application/organization_access.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Assets Organization access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIAssetOrganizationAccess:Send+Sync",
+        "require_organization(&self,organization_id:OrganizationId)->ApplicationResult<()>;",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Assets owner boundary lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "IOrganizationRepository",
+        "OrganizationName",
+        "entities::Organization",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Assets owner port imported Identity authority {forbidden}"
+        );
+    }
+
+    let access_path = "assets/application/resource_access.rs";
+    let access =
+        std::fs::read_to_string(root.join(access_path)).expect("read Assets access projection");
+    let production_access = production_source(&access);
+    for required in [
+        "pub struct AssetAccess",
+        "pub(crate) const fn organization_wide(",
+        "pub(crate) const fn restricted(",
+        "pub(crate) const fn organization_catalog_is_visible(",
+    ] {
+        assert!(
+            production_access.contains(required),
+            "Assets access projection lost closed operation {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Assets access projection copied Identity authority {forbidden}"
+        );
+    }
+
+    let adapter_path = "assets/infrastructure/organization_access.rs";
+    let mut identity_sites = BTreeSet::new();
+    let mut boundary_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("assets") {
+            return;
+        }
+        if source.contains("crate::modules::identity") || source.contains("IOrganizationRepository")
+        {
+            identity_sites.insert(display(relative));
+        }
+        if matches!(
+            layer(relative),
+            Some("application" | "domain" | "presentation")
+        ) {
+            for forbidden in [
+                "crate::modules::identity",
+                "IOrganizationRepository",
+                "ResourceAccessEvaluator",
+                "ResourceGrantScope",
+                "ApiTokenScope",
+            ] {
+                if source.contains(forbidden) {
+                    boundary_violations.insert(format!(
+                        "{} contains Identity authority {forbidden}",
+                        display(relative)
+                    ));
+                }
+            }
+        }
+    });
+    assert!(
+        boundary_violations.is_empty(),
+        "Assets bypassed its bounded access contracts:\n{}",
+        boundary_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        identity_sites,
+        lines(adapter_path),
+        "Assets must reach Identity through one Infrastructure adapter module"
+    );
+
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Assets Organization access adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIAssetOrganizationAccessforIdentityAssetOrganizationAccessAdapter",
+        "organizations:Arc<dynIOrganizationRepository>",
+        "Self::from_organization_access(",
+        "organization.id==organization_id&&organization.aggregate_version>0",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Assets Organization adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".find(").count(),
+        1,
+        "Assets Organization evidence must have one read mechanism"
+    );
+    for forbidden in [
+        ".create(",
+        ".list_visible(",
+        "CommandHandler",
+        "QueryHandler",
+        "IOutboxRepository",
+        "IEventPublisher",
+        "Postgres",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Assets Organization adapter introduced lifecycle authority {forbidden}"
+        );
+    }
+
+    let catalog = std::fs::read_to_string(root.join("assets/application/catalog_service.rs"))
+        .expect("read Assets catalog service");
+    let compact_catalog = production_source(&catalog)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "organizations:Arc<dynIAssetOrganizationAccess>",
+        ".require_organization(organization_id)",
+    ] {
+        assert!(
+            compact_catalog.contains(required),
+            "Assets catalog lost owner boundary {required}"
+        );
+    }
+
+    for relative in [
+        "assets/application/commands/archive_asset/mod.rs",
+        "assets/application/commands/bind_mcp_service_profile/mod.rs",
+        "assets/application/commands/create_release/mod.rs",
+        "assets/application/commands/receive_pack/mod.rs",
+        "assets/application/commands/yank_release/mod.rs",
+        "assets/application/queries/advertise_repository/mod.rs",
+        "assets/application/queries/get_asset/mod.rs",
+        "assets/application/queries/get_mcp_service_profile/mod.rs",
+        "assets/application/queries/get_release/mod.rs",
+        "assets/application/queries/list_assets/mod.rs",
+        "assets/application/queries/list_releases/mod.rs",
+        "assets/application/queries/select_release/mod.rs",
+        "assets/application/queries/upload_pack/mod.rs",
+    ] {
+        let request = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&request);
+        assert!(
+            production.contains("pub access: AssetAccess"),
+            "{relative} stopped carrying the Assets-owned access projection"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "pub resource_access:"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign request authority {forbidden}"
+            );
+        }
+    }
+
+    let request_context = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/request_context.rs"),
+    )
+    .expect("read root request context");
+    assert!(request_context.contains("pub(crate) fn asset_access("));
+    assert!(request_context.contains("AssetAccess::organization_wide()"));
+    assert!(request_context.contains("AssetAccess::restricted()"));
+
+    let presentation_root = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/mod.rs"),
+    )
+    .expect("read root Presentation facade");
+    for required in [
+        "organization_tenant_asset_write_controller",
+        "require_asset_write_scope",
+        "require_cloud_read_scope",
+    ] {
+        assert!(
+            presentation_root.contains(required),
+            "root Presentation lost Assets policy adapter {required}"
+        );
+    }
+
+    let request =
+        std::fs::read_to_string(root.join("assets/presentation/controllers/asset_request.rs"))
+            .expect("read Assets request adapter");
+    for duplicate in [
+        "fn request_id(",
+        "fn request_identity(",
+        "fn mcp_service_profile_acl(",
+    ] {
+        assert!(
+            !production_source(&request).contains(duplicate),
+            "Assets Presentation regained duplicate request mechanism {duplicate}"
+        );
+    }
+
+    let smart_http = std::fs::read_to_string(
+        root.join("assets/presentation/controllers/smart_http_controller.rs"),
+    )
+    .expect("read Assets Git HTTP adapter");
+    for duplicate in ["fn request_id(", "fn actor_id(", "fn require_scope("] {
+        assert!(
+            !production_source(&smart_http).contains(duplicate),
+            "Assets Git Presentation regained duplicate request mechanism {duplicate}"
+        );
     }
 }
 

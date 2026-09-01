@@ -1,4 +1,4 @@
-use super::{AssetGitApplicationService, AssetGitApplicationServiceOptions};
+use super::{AssetAccess, AssetGitApplicationService, AssetGitApplicationServiceOptions};
 use crate::modules::assets::domain::{
     AcquireAssetGitWriteLease, AgentReleaseTemplate, Asset, AssetGitBackup, AssetGitBuildInput,
     AssetGitRepository, AssetGitRepositoryControlError, AssetGitRepositoryError,
@@ -9,7 +9,6 @@ use crate::modules::assets::domain::{
     CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
     TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, GitCommitSha, OrganizationId, RepositoryError,
@@ -457,7 +456,7 @@ async fn archived_repository_is_readable_but_every_mutation_is_denied() {
         .expect("archive Asset");
     let store = Arc::new(TestStore::new(asset.clone()));
     let service = service(Arc::clone(&store));
-    let resource_access = ResourceAccessEvaluator::organization_wide();
+    let access = AssetAccess::organization_wide();
     let actor = Uuid::now_v7();
     assert_eq!(
         service
@@ -465,19 +464,14 @@ async fn archived_repository_is_readable_but_every_mutation_is_denied() {
                 asset.organization_id,
                 asset.id,
                 AssetGitService::UploadPack,
-                &resource_access,
+                &access,
             )
             .await
             .expect("advertise archived repository"),
         b"advertisement"
     );
     service
-        .upload_pack(
-            asset.organization_id,
-            asset.id,
-            b"read".to_vec(),
-            &resource_access,
-        )
+        .upload_pack(asset.organization_id, asset.id, b"read".to_vec(), &access)
         .await
         .expect("read archived repository");
     service
@@ -555,7 +549,7 @@ async fn receive(
         .receive_pack(
             asset.organization_id,
             asset.id,
-            &ResourceAccessEvaluator::organization_wide(),
+            &AssetAccess::organization_wide(),
             Uuid::now_v7(),
             Uuid::now_v7(),
             b"pack".to_vec(),

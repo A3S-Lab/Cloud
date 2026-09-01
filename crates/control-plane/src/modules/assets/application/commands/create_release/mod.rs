@@ -1,6 +1,5 @@
-use crate::modules::assets::application::AssetCatalogApplicationService;
+use crate::modules::assets::application::{AssetAccess, AssetCatalogApplicationService};
 use crate::modules::assets::domain::AssetReleaseWrite;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{Command, CommandHandler, CqrsContext};
@@ -11,7 +10,7 @@ use uuid::Uuid;
 pub struct CreateAssetRelease {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AssetAccess,
     pub version: String,
     pub commit_sha: String,
     pub idempotency_key: String,
@@ -44,7 +43,7 @@ impl CommandHandler<CreateAssetRelease> for CreateAssetReleaseHandler {
                 .create_release(
                     command.organization_id,
                     command.asset_id,
-                    &command.resource_access,
+                    &command.access,
                     command.version,
                     command.commit_sha,
                     command.idempotency_key,

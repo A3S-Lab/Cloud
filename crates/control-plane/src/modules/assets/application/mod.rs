@@ -5,6 +5,7 @@ mod deployable_agent_release;
 mod hosted_build_input;
 mod hosted_build_outcome;
 mod mcp_service_profile_service;
+mod organization_access;
 mod resource_access;
 mod service;
 
@@ -22,4 +23,6 @@ pub use hosted_build_input::{
 };
 pub(in crate::modules::assets) use hosted_build_outcome::HostedBuildOutcomeApplicationService;
 pub use mcp_service_profile_service::McpServiceProfileApplicationService;
+pub use organization_access::IAssetOrganizationAccess;
+pub use resource_access::AssetAccess;
 pub use service::{AssetGitApplicationService, AssetGitApplicationServiceOptions};
