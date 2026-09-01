@@ -9,31 +9,25 @@ use super::queries::{
     list_form_drafts::{ListFormDrafts, ListFormDraftsHandler},
     list_form_releases::{ListFormReleases, ListFormReleasesHandler},
 };
+use super::{FormAccess, FormAccessScope, FormProjectScope, IFormProjectAccess};
 use crate::modules::forms::domain::IFormRepository;
 use crate::modules::forms::infrastructure::{InMemoryFormRepository, NativeFormSemanticCore};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::projects::domain::entities::Project;
-use crate::modules::projects::domain::events::ProjectCreated;
-use crate::modules::projects::domain::repositories::IProjectRepository;
-use crate::modules::projects::domain::value_objects::ProjectName;
-use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, OrganizationId, PrincipalId, ProjectId,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use chrono::Utc;
+use async_trait::async_trait;
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
 async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authority() {
-    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let projects = project_access(true);
     let forms = Arc::new(InMemoryFormRepository::new());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let actor = PrincipalId::new();
-    seed_project(&projects, organization_id, project_id).await;
 
     let create = CreateFormDraft {
         organization_id,
@@ -60,10 +54,28 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
     assert!(create_replay.replayed);
     assert_eq!(create_replay.draft.id, created.draft.id);
 
+    let denied = GetFormDraftHandler::new(forms.clone())
+        .execute(
+            GetFormDraft {
+                organization_id,
+                form_id: created.draft.id,
+                access: FormAccess::restricted([FormAccessScope::Project {
+                    project_id: ProjectId::new(),
+                }]),
+            },
+            context(),
+        )
+        .await
+        .expect("denied get command");
+    assert_eq!(
+        denied,
+        Err(ApplicationError::NotFound("Form not found".into()))
+    );
+
     let revise = ReviseFormDraft {
         organization_id,
         form_id: created.draft.id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: FormAccess::organization_wide(),
         expected_version: 1,
         name: "Approval request".into(),
         description: "Manager approval with reason".into(),
@@ -82,7 +94,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
     let publish = PublishFormRelease {
         organization_id,
         form_id: created.draft.id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: FormAccess::organization_wide(),
         expected_version: 2,
         actor_principal_id: actor,
         idempotency_key: "publish-approval".into(),
@@ -111,7 +123,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
             GetFormDraft {
                 organization_id,
                 form_id: created.draft.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FormAccess::organization_wide(),
             },
             context(),
         )
@@ -137,7 +149,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
                 organization_id,
                 form_id: created.draft.id,
                 release_id: published.publication.release.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FormAccess::organization_wide(),
             },
             context(),
         )
@@ -150,7 +162,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
             ListFormReleases {
                 organization_id,
                 form_id: created.draft.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FormAccess::organization_wide(),
             },
             context(),
         )
@@ -162,12 +174,11 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
 
 #[tokio::test]
 async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
-    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let projects = project_access(true);
     let forms = Arc::new(InMemoryFormRepository::new());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let actor = PrincipalId::new();
-    seed_project(&projects, organization_id, project_id).await;
     let created = CreateFormDraftHandler::new(projects, forms.clone())
         .execute(
             CreateFormDraft {
@@ -191,7 +202,7 @@ async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
                 PublishFormRelease {
                     organization_id,
                     form_id: created.draft.id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: FormAccess::organization_wide(),
                     expected_version: 1,
                     actor_principal_id: actor,
                     idempotency_key: "publish-invalid".into(),
@@ -219,25 +230,45 @@ async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
     );
 }
 
-async fn seed_project(
-    projects: &Arc<InMemoryProjectsRepository>,
-    organization_id: OrganizationId,
-    project_id: ProjectId,
-) {
-    let project = Project::create(
-        organization_id,
-        project_id,
-        ProjectName::parse("Forms").expect("project name"),
-        Utc::now(),
-    );
-    projects
-        .create(
-            project.clone(),
-            ProjectCreated::envelope(&project, Uuid::now_v7()).expect("project event"),
-            IdempotencyRequest::new("projects", "forms", b"forms").expect("idempotency"),
+#[tokio::test]
+async fn create_requires_project_evidence_through_the_forms_owned_port() {
+    let forms = Arc::new(InMemoryFormRepository::new());
+    let result = CreateFormDraftHandler::new(project_access(false), forms.clone())
+        .execute(
+            CreateFormDraft {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                name: "Missing project".into(),
+                description: String::new(),
+                document_json: document("Missing project", false),
+                actor_principal_id: PrincipalId::new(),
+                idempotency_key: "missing-project".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
         )
         .await
-        .expect("create project");
+        .expect("create command");
+
+    assert_eq!(
+        result,
+        Err(ApplicationError::NotFound("project not found".into()))
+    );
+}
+
+struct StubFormProjectAccess {
+    exists: bool,
+}
+
+#[async_trait]
+impl IFormProjectAccess for StubFormProjectAccess {
+    async fn project_exists(&self, _scope: FormProjectScope) -> Result<bool, RepositoryError> {
+        Ok(self.exists)
+    }
+}
+
+fn project_access(exists: bool) -> Arc<dyn IFormProjectAccess> {
+    Arc::new(StubFormProjectAccess { exists })
 }
 
 fn document(title: &str, require_reason: bool) -> String {

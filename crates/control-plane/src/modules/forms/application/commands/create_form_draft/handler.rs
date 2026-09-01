@@ -1,9 +1,10 @@
 use super::CreateFormDraft;
-use crate::modules::forms::application::FormDraftMutationResult;
+use crate::modules::forms::application::{
+    FormDraftMutationResult, FormProjectScope, IFormProjectAccess,
+};
 use crate::modules::forms::domain::{
     CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged, IFormRepository,
 };
-use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{FormId, IdempotencyRequest};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -11,12 +12,12 @@ use chrono::Utc;
 use std::sync::Arc;
 
 pub struct CreateFormDraftHandler {
-    projects: Arc<dyn IProjectRepository>,
+    projects: Arc<dyn IFormProjectAccess>,
     forms: Arc<dyn IFormRepository>,
 }
 
 impl CreateFormDraftHandler {
-    pub fn new(projects: Arc<dyn IProjectRepository>, forms: Arc<dyn IFormRepository>) -> Self {
+    pub fn new(projects: Arc<dyn IFormProjectAccess>, forms: Arc<dyn IFormRepository>) -> Self {
         Self { projects, forms }
     }
 }
@@ -65,11 +66,16 @@ impl CommandHandler<CreateFormDraft> for CreateFormDraftHandler {
                 Err(error) => return Ok(Err(error.into())),
             }
             match projects
-                .find(command.organization_id, command.project_id)
+                .project_exists(FormProjectScope {
+                    organization_id: command.organization_id,
+                    project_id: command.project_id,
+                })
                 .await
             {
-                Ok(Some(_)) => {}
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+                Ok(true) => {}
+                Ok(false) => {
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                }
                 Err(error) => return Ok(Err(error.into())),
             }
             let draft = match FormDraft::create(

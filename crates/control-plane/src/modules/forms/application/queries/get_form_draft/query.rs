@@ -1,5 +1,5 @@
+use crate::modules::forms::application::FormAccess;
 use crate::modules::forms::domain::FormDraft;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{FormId, OrganizationId};
 use a3s_boot::Query;
@@ -8,7 +8,7 @@ use a3s_boot::Query;
 pub struct GetFormDraft {
     pub organization_id: OrganizationId,
     pub form_id: FormId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: FormAccess,
 }
 
 impl Query for GetFormDraft {

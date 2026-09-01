@@ -16,7 +16,11 @@ pub use application::queries::{
     list_form_drafts::{ListFormDrafts, ListFormDraftsHandler},
     list_form_releases::{ListFormReleases, ListFormReleasesHandler},
 };
-pub use application::{FormDraftMutationResult, FormPublicationMutationResult};
+pub(crate) use application::FormAccessScope;
+pub use application::{
+    FormAccess, FormDraftMutationResult, FormProjectScope, FormPublicationMutationResult,
+    IFormProjectAccess,
+};
 
 pub use domain::{
     CreateFormDraftWrite, FormDocument, FormDraft, FormDraftChanged, FormPublicationRecord,
@@ -25,5 +29,8 @@ pub use domain::{
     ReviseFormDraftWrite, CLOUD_FORM_DOCUMENT_MAX_BYTES, CLOUD_FORM_RELEASE_MAX_DOCUMENT_BYTES,
     CLOUD_FORM_RELEASE_MAX_PLAN_BYTES,
 };
-pub use infrastructure::{InMemoryFormRepository, NativeFormSemanticCore, PostgresFormRepository};
+pub use infrastructure::{
+    InMemoryFormRepository, NativeFormSemanticCore, PostgresFormRepository,
+    ProjectsFormProjectAccessAdapter,
+};
 pub use presentation::FormsModule;

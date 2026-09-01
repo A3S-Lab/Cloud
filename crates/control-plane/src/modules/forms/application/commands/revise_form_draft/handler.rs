@@ -1,5 +1,5 @@
 use super::ReviseFormDraft;
-use crate::modules::forms::application::resource_access::FormResourceAccess;
+use crate::modules::forms::application::resource_access::FormResourceResolver;
 use crate::modules::forms::application::FormDraftMutationResult;
 use crate::modules::forms::domain::{
     FormDocument, FormDraftChanged, IFormRepository, ReviseFormDraftWrite,
@@ -38,12 +38,8 @@ impl CommandHandler<ReviseFormDraft> for ReviseFormDraftHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            let current = match FormResourceAccess::new(Arc::clone(&forms))
-                .draft(
-                    command.organization_id,
-                    command.form_id,
-                    &command.resource_access,
-                )
+            let current = match FormResourceResolver::new(Arc::clone(&forms))
+                .draft(command.organization_id, command.form_id, &command.access)
                 .await
             {
                 Ok(value) => value,

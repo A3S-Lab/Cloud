@@ -1,5 +1,5 @@
 use super::GetFormDraft;
-use crate::modules::forms::application::resource_access::FormResourceAccess;
+use crate::modules::forms::application::resource_access::FormResourceResolver;
 use crate::modules::forms::domain::{FormDraft, IFormRepository};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -23,8 +23,8 @@ impl QueryHandler<GetFormDraft> for GetFormDraftHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<FormDraft>>> {
         let forms = Arc::clone(&self.forms);
         Box::pin(async move {
-            Ok(FormResourceAccess::new(forms)
-                .draft(query.organization_id, query.form_id, &query.resource_access)
+            Ok(FormResourceResolver::new(forms)
+                .draft(query.organization_id, query.form_id, &query.access)
                 .await)
         })
     }

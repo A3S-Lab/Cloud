@@ -1,5 +1,5 @@
 use super::ListFormReleases;
-use crate::modules::forms::application::resource_access::FormResourceAccess;
+use crate::modules::forms::application::resource_access::FormResourceResolver;
 use crate::modules::forms::domain::{FormRelease, IFormRepository};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -23,8 +23,8 @@ impl QueryHandler<ListFormReleases> for ListFormReleasesHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<FormRelease>>>> {
         let forms = Arc::clone(&self.forms);
         Box::pin(async move {
-            if let Err(error) = FormResourceAccess::new(Arc::clone(&forms))
-                .draft(query.organization_id, query.form_id, &query.resource_access)
+            if let Err(error) = FormResourceResolver::new(Arc::clone(&forms))
+                .draft(query.organization_id, query.form_id, &query.access)
                 .await
             {
                 return Ok(Err(error));

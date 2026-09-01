@@ -1,9 +1,14 @@
 pub mod commands;
 mod form_compilation;
+mod project_access;
 pub mod queries;
 mod resource_access;
 
 use crate::modules::forms::domain::{FormDraft, FormPublicationRecord};
+
+pub use project_access::{FormProjectScope, IFormProjectAccess};
+pub use resource_access::FormAccess;
+pub(crate) use resource_access::FormAccessScope;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FormDraftMutationResult {
