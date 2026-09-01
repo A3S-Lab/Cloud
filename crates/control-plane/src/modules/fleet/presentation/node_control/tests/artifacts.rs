@@ -59,14 +59,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         ),
         Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store")),
         authority,
-        Arc::new(InMemoryWorkloadRepository::new()),
-        Arc::new(InMemorySecretRepository::new()),
-        Arc::new(
-            crate::modules::fleet::infrastructure::LocalKeyEncryptionService::load_or_create(
-                directory.path().join("secret-key"),
-            )
-            .expect("Secret encryption"),
-        ),
+        test_secret_material_handler(directory.path()),
         Duration::days(30),
         Duration::hours(1),
         Duration::minutes(5),

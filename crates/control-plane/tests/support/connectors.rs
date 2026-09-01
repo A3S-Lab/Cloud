@@ -28,8 +28,8 @@ use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceG
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{
     CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
-    PostgresSecretRepository, RevokeSecretVersion, RevokeSecretVersionHandler, Secret,
-    SecretChanged, SecretEncryptionError,
+    PostgresSecretRepository, Secret, SecretChanged, SecretEncryptionError,
+    TransitionSecretVersion,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -618,19 +618,30 @@ pub(super) async fn exercise_connector_application_and_materialization(
         ]
     );
 
-    RevokeSecretVersionHandler::new(secrets.clone())
-        .execute(
-            RevokeSecretVersion {
-                organization_id,
-                secret_id: hmac_secret_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
-                version: 1,
-                idempotency_key: "revoke-connector-hmac".into(),
-                request_id: Uuid::now_v7(),
-            },
-            connector_context(),
-        )
-        .await??;
+    let mut hmac_secret = secrets.find(organization_id, hmac_secret_id).await?;
+    let mut hmac_version = secrets
+        .find_version(organization_id, hmac_secret_id, 1)
+        .await?;
+    let expected_secret_version = hmac_secret.aggregate_version;
+    let expected_version = hmac_version.aggregate_version;
+    hmac_secret.revoke_version(&mut hmac_version, Utc::now())?;
+    let revocation_request_id = Uuid::now_v7();
+    let revocation_event =
+        SecretChanged::version_revoked(&hmac_secret, &hmac_version, revocation_request_id)?;
+    secrets
+        .transition_version(TransitionSecretVersion {
+            secret: hmac_secret,
+            version: hmac_version,
+            expected_secret_version,
+            expected_version,
+            idempotency: IdempotencyRequest::new(
+                "connector-application-secret-revocation",
+                "revoke-connector-hmac",
+                hmac_secret_id.as_uuid().as_bytes(),
+            )?,
+            event: revocation_event,
+        })
+        .await?;
     assert!(matches!(
         materializer.materialize(&created.record.revision).await,
         Err(ApplicationError::Forbidden(_))

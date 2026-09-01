@@ -1,10 +1,12 @@
 mod agent_release_admission;
 mod bound_runtime_claim;
 pub mod commands;
+mod owner_snapshot;
 pub mod queries;
 mod resource_access;
 mod runtime_execution_admission;
 mod runtime_projection;
+mod secret_materialization_authorization;
 mod workflow;
 
 #[cfg(test)]
@@ -61,6 +63,11 @@ pub(crate) use runtime_projection::{
     project_runtime_spec_with_digest,
 };
 pub use runtime_projection::{project_replica_runtime_spec, project_runtime_spec};
+pub use secret_materialization_authorization::{
+    IWorkloadSecretMaterializationAuthorizationQueryPort,
+    WorkloadSecretMaterializationAuthorizationQuery,
+    WorkloadSecretMaterializationAuthorizationQueryService,
+};
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,

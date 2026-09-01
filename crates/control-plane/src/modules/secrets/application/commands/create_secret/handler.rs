@@ -1,6 +1,7 @@
 use super::CreateSecret;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
-use crate::modules::secrets::application::{encryption_error, SecretMutationResult};
+use crate::modules::secrets::application::{
+    encryption_error, ISecretEnvironmentAccess, SecretEnvironmentScope, SecretMutationResult,
+};
 use crate::modules::secrets::domain::{
     secret_encryption_context, CreateSecretWrite, ISecretEncryptionService, ISecretRepository,
     Secret, SecretChanged,
@@ -13,14 +14,14 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct CreateSecretHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn ISecretEnvironmentAccess>,
     secrets: Arc<dyn ISecretRepository>,
     encryption: Arc<dyn ISecretEncryptionService>,
 }
 
 impl CreateSecretHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn ISecretEnvironmentAccess>,
         secrets: Arc<dyn ISecretRepository>,
         encryption: Arc<dyn ISecretEncryptionService>,
     ) -> Self {
@@ -43,16 +44,17 @@ impl CommandHandler<CreateSecret> for CreateSecretHandler {
         let secrets = Arc::clone(&self.secrets);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match SecretEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

@@ -1,6 +1,7 @@
 use super::RotateSecret;
-use crate::modules::secrets::application::resource_access::SecretResourceAccess;
-use crate::modules::secrets::application::{encryption_error, SecretMutationResult};
+use crate::modules::secrets::application::{
+    encryption_error, SecretMutationResult, SecretResourceResolver,
+};
 use crate::modules::secrets::domain::{
     secret_encryption_context, ISecretEncryptionService, ISecretRepository, RotateSecretWrite,
     SecretChanged, SecretState,
@@ -39,12 +40,8 @@ impl CommandHandler<RotateSecret> for RotateSecretHandler {
         let secrets = Arc::clone(&self.secrets);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
-            let mut secret = match SecretResourceAccess::new(Arc::clone(&secrets))
-                .secret(
-                    command.organization_id,
-                    command.secret_id,
-                    &command.resource_access,
-                )
+            let mut secret = match SecretResourceResolver::new(Arc::clone(&secrets))
+                .secret(command.organization_id, command.secret_id, &command.access)
                 .await
             {
                 Ok(value) => value,

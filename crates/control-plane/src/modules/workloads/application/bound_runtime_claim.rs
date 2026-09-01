@@ -1,3 +1,6 @@
+use super::owner_snapshot::{
+    concurrent_owner_projection_error, owner_snapshot_changed, require_unchanged_owner_snapshot,
+};
 use super::{
     project_bound_runtime_spec_with_execution, project_placement_group_runtime_spec_with_execution,
 };
@@ -17,6 +20,8 @@ use crate::modules::workloads::published::{
 };
 use async_trait::async_trait;
 use std::sync::Arc;
+
+const RUNTIME_EVIDENCE_PROJECTION: &str = "Runtime evidence projection";
 
 /// Exact consumer request accepted by the Workloads owner port. Runtime
 /// execution semantics are loaded from the Workloads-owned immutable
@@ -106,33 +111,60 @@ impl BoundRuntimeClaimQueryService {
             .claims
             .find(claim.organization_id, claim.id)
             .await
-            .map_err(|error| concurrent_projection_error("ResourceClaim", error))?;
+            .map_err(|error| {
+                concurrent_owner_projection_error(
+                    RUNTIME_EVIDENCE_PROJECTION,
+                    "ResourceClaim",
+                    error,
+                )
+            })?;
         let current_bindings = self
             .workloads
             .list_deployment_replica_member_bindings(claim.organization_id, claim.deployment_id)
             .await
-            .map_err(|error| concurrent_projection_error("replica member binding", error))?;
+            .map_err(|error| {
+                concurrent_owner_projection_error(
+                    RUNTIME_EVIDENCE_PROJECTION,
+                    "replica member binding",
+                    error,
+                )
+            })?;
         let current_binding =
             exact_deployment_replica_member_binding(current_bindings, claim.member_id)
-                .map_err(|_| owner_snapshot_changed())?;
+                .map_err(|_| owner_snapshot_changed(RUNTIME_EVIDENCE_PROJECTION))?;
         let current_revision = self
             .workloads
             .find_revision(claim.organization_id, revision.id)
             .await
-            .map_err(|error| concurrent_projection_error("Workload revision", error))?;
+            .map_err(|error| {
+                concurrent_owner_projection_error(
+                    RUNTIME_EVIDENCE_PROJECTION,
+                    "Workload revision",
+                    error,
+                )
+            })?;
         let current_runtime_execution_binding = self
             .workloads
             .find_deployment_runtime_execution_binding(claim.organization_id, claim.deployment_id)
             .await
-            .map_err(|error| concurrent_projection_error("Runtime execution binding", error))?
-            .ok_or_else(owner_snapshot_changed)?;
-        if current_claim != *claim
-            || current_binding != *binding
-            || current_revision != *revision
-            || current_runtime_execution_binding != *runtime_execution_binding
-        {
-            return Err(owner_snapshot_changed());
-        }
+            .map_err(|error| {
+                concurrent_owner_projection_error(
+                    RUNTIME_EVIDENCE_PROJECTION,
+                    "Runtime execution binding",
+                    error,
+                )
+            })?
+            .ok_or_else(|| owner_snapshot_changed(RUNTIME_EVIDENCE_PROJECTION))?;
+        require_unchanged_owner_snapshot(
+            RUNTIME_EVIDENCE_PROJECTION,
+            &(claim, binding, revision, runtime_execution_binding),
+            &(
+                &current_claim,
+                &current_binding,
+                &current_revision,
+                &current_runtime_execution_binding,
+            ),
+        )?;
 
         match placement_group {
             Some((group, group_binding)) => {
@@ -144,7 +176,13 @@ impl BoundRuntimeClaimQueryService {
                         claim.replica_generation,
                     )
                     .await
-                    .map_err(|error| concurrent_projection_error("placement group", error))?;
+                    .map_err(|error| {
+                        concurrent_owner_projection_error(
+                            RUNTIME_EVIDENCE_PROJECTION,
+                            "placement group",
+                            error,
+                        )
+                    })?;
                 let current_group_binding = self
                     .workloads
                     .find_deployment_placement_group_binding(
@@ -153,11 +191,17 @@ impl BoundRuntimeClaimQueryService {
                     )
                     .await
                     .map_err(|error| {
-                        concurrent_projection_error("Deployment group binding", error)
+                        concurrent_owner_projection_error(
+                            RUNTIME_EVIDENCE_PROJECTION,
+                            "Deployment group binding",
+                            error,
+                        )
                     })?;
-                if current_group != *group || current_group_binding != *group_binding {
-                    return Err(owner_snapshot_changed());
-                }
+                require_unchanged_owner_snapshot(
+                    RUNTIME_EVIDENCE_PROJECTION,
+                    &(group, group_binding),
+                    &(&current_group, &current_group_binding),
+                )?;
             }
             None => match self
                 .placement_groups
@@ -169,7 +213,7 @@ impl BoundRuntimeClaimQueryService {
                 .await
             {
                 Err(RepositoryError::NotFound) => {}
-                Ok(_) => return Err(owner_snapshot_changed()),
+                Ok(_) => return Err(owner_snapshot_changed(RUNTIME_EVIDENCE_PROJECTION)),
                 Err(error) => return Err(error),
             },
         }
@@ -431,21 +475,6 @@ fn validate_placement_group_lineage(
         ));
     }
     Ok(())
-}
-
-fn concurrent_projection_error(label: &str, error: RepositoryError) -> RepositoryError {
-    match error {
-        RepositoryError::NotFound | RepositoryError::Conflict(_) => RepositoryError::Conflict(
-            format!("Workloads {label} changed during Runtime evidence projection"),
-        ),
-        error => error,
-    }
-}
-
-fn owner_snapshot_changed() -> RepositoryError {
-    RepositoryError::Conflict(
-        "Workloads owner state changed during Runtime evidence projection".into(),
-    )
 }
 
 fn owner_projection_error(error: String) -> RepositoryError {

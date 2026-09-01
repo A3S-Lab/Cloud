@@ -767,6 +767,81 @@ impl DeploymentReplicaBinding {
         Ok(())
     }
 
+    /// Returns whether this immutable Deployment binding still names the
+    /// current live replica-member placement.
+    ///
+    /// A binding intentionally survives Runtime fencing as historical
+    /// evidence. Consumers that authorize node-scoped behavior must therefore
+    /// join it to the current replica and member instead of treating the
+    /// historical `node_id` as ongoing authority.
+    pub fn is_current_runtime_assignment(
+        &self,
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+    ) -> Result<bool, String> {
+        self.validate_lineage(deployment, revision, replica, member)?;
+        if replica.revision_id != self.revision_id
+            || replica.revision_generation != revision.generation
+            || replica.lifecycle != WorkloadReplicaLifecycle::Desired
+            || self.replica_generation != replica.generation
+            || self.placement_generation != member.placement_generation
+            || self.node_id != member.node_id
+        {
+            return Ok(false);
+        }
+        let Some(node_id) = self.node_id else {
+            return Ok(false);
+        };
+        if self.runtime_unit_id != replica.runtime_unit_id_for_member(revision, member)?
+            || member.ordinal == CANONICAL_REPLICA_ORDINAL && deployment.node_id != Some(node_id)
+        {
+            return Err("deployment replica live assignment is inconsistent".into());
+        }
+        Ok(true)
+    }
+
+    fn validate_lineage(
+        &self,
+        deployment: &Deployment,
+        revision: &WorkloadRevision,
+        replica: &WorkloadReplica,
+        member: &WorkloadReplicaMember,
+    ) -> Result<(), String> {
+        replica.validate()?;
+        member.validate()?;
+        if self.deployment_id != deployment.id
+            || self.organization_id != deployment.organization_id
+            || self.organization_id != replica.organization_id
+            || self.organization_id != member.organization_id
+            || self.project_id != replica.project_id
+            || self.project_id != member.project_id
+            || self.environment_id != replica.environment_id
+            || self.environment_id != member.environment_id
+            || self.workload_id != deployment.workload_id
+            || self.revision_id != deployment.revision_id
+            || self.revision_id != revision.id
+            || revision.workload_id != self.workload_id
+            || revision.generation == 0
+            || self.replica_id != replica.id
+            || replica.workload_id != self.workload_id
+            || self.member_id != member.id
+            || member.replica_id != self.replica_id
+            || member.workload_id != self.workload_id
+            || self.replica_generation == 0
+            || self.runtime_generation != self.replica_generation
+            || self.node_id.is_some() && self.placement_generation == 0
+            || self.runtime_unit_id.trim().is_empty()
+            || self.runtime_unit_id.len() > 512
+            || self.runtime_unit_id.contains(['\0', '\r', '\n'])
+            || self.updated_at < self.created_at
+        {
+            return Err("deployment replica binding lineage is invalid".into());
+        }
+        Ok(())
+    }
+
     fn validate_common(
         &self,
         deployment: &Deployment,
@@ -774,28 +849,13 @@ impl DeploymentReplicaBinding {
         replica: &WorkloadReplica,
         member: &WorkloadReplicaMember,
     ) -> Result<(), String> {
-        if self.deployment_id != deployment.id
-            || self.organization_id != deployment.organization_id
-            || self.workload_id != deployment.workload_id
-            || self.revision_id != deployment.revision_id
-            || self.revision_id != revision.id
-            || revision.workload_id != self.workload_id
-            || self.replica_id != replica.id
-            || replica.workload_id != self.workload_id
-            || replica.revision_id != self.revision_id
+        self.validate_lineage(deployment, revision, replica, member)?;
+        if replica.revision_id != self.revision_id
             || replica.revision_generation != revision.generation
             || replica.lifecycle != WorkloadReplicaLifecycle::Desired
             || self.replica_generation != replica.generation
-            || self.member_id != member.id
-            || member.replica_id != self.replica_id
-            || member.workload_id != self.workload_id
             || self.placement_generation != member.placement_generation
             || self.runtime_generation != replica.generation
-            || self.runtime_unit_id.trim().is_empty()
-            || self.runtime_unit_id.len() > 512
-            || self.runtime_unit_id.contains(['\0', '\r', '\n'])
-            || self.runtime_generation == 0
-            || self.updated_at < self.created_at
         {
             return Err("deployment replica binding is invalid".into());
         }

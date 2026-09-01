@@ -12,6 +12,7 @@ use crate::modules::forms::{FormAccess, FormAccessScope};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::search::{SearchVisibility, SearchVisibilityScope};
+use crate::modules::secrets::{SecretAccess, SecretAccessScope};
 use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
 
 pub(crate) fn asset_access(resource_access: &ResourceAccessEvaluator) -> AssetAccess {
@@ -85,6 +86,29 @@ pub(crate) fn search_visibility(resource_access: &ResourceAccessEvaluator) -> Se
     }))
 }
 
+pub(crate) fn secret_access(resource_access: &ResourceAccessEvaluator) -> SecretAccess {
+    if resource_access.is_organization_wide() {
+        return SecretAccess::organization_wide();
+    }
+    SecretAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(SecretAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(SecretAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
 pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> UserFileAccess {
     if resource_access.is_organization_wide() {
         return UserFileAccess::organization_wide();
@@ -140,7 +164,7 @@ pub(crate) fn workload_access(resource_access: &ResourceAccessEvaluator) -> Work
 mod tests {
     use super::{
         artifact_access, asset_access, developer_workflow_access, form_access, search_visibility,
-        user_file_access, workload_access,
+        secret_access, user_file_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -247,6 +271,31 @@ mod tests {
                 SearchVisibilityScope::Node { node_id },
             ]
         );
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_secrets_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = secret_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id: environment_project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
+        assert!(access.environment_is_visible(environment_project_id, environment_id));
+        assert!(!access.environment_is_visible(environment_project_id, EnvironmentId::new()));
+        assert_eq!(access.granted_scopes().count(), 2);
+
+        assert!(secret_access(&ResourceAccessEvaluator::organization_wide())
+            .environment_is_visible(ProjectId::new(), EnvironmentId::new()));
     }
 
     #[test]

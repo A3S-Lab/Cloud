@@ -9,7 +9,7 @@ mod sequence_stream;
 
 pub(crate) use crate::access_projection::{
     artifact_access, asset_access, developer_workflow_access, form_access, search_visibility,
-    user_file_access, workload_access,
+    secret_access, user_file_access, workload_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
@@ -77,6 +77,12 @@ pub(crate) fn organization_tenant_form_write_controller(
     organization_tenant_scoped_controller(controller, ApiTokenScope::FORM_WRITE)
 }
 
+pub(crate) fn organization_tenant_secret_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::SECRET_WRITE)
+}
+
 /// Applies the Forms read policy: tenant admission at the HTTP boundary,
 /// followed by Forms-owned resource visibility for indirect identifiers.
 pub(crate) fn organization_tenant_form_read_controller(
@@ -88,6 +94,14 @@ pub(crate) fn organization_tenant_form_read_controller(
 /// Applies the Workloads read policy: tenant admission at the HTTP boundary,
 /// followed by Workloads-owned resource visibility in the application use case.
 pub(crate) fn organization_tenant_workload_read_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_controller(controller)
+}
+
+/// Applies the Secrets read policy: tenant admission at the HTTP boundary,
+/// followed by Secrets-owned visibility for indirect identifiers.
+pub(crate) fn organization_tenant_secret_read_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {
     organization_tenant_controller(controller)

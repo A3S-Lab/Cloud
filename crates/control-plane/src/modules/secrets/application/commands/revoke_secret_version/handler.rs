@@ -1,6 +1,7 @@
 use super::RevokeSecretVersion;
-use crate::modules::secrets::application::resource_access::SecretResourceAccess;
-use crate::modules::secrets::application::{SecretMutationResult, SecretVersionResult};
+use crate::modules::secrets::application::{
+    SecretMutationResult, SecretResourceResolver, SecretVersionResult,
+};
 use crate::modules::secrets::domain::{
     ISecretRepository, SecretChanged, SecretVersionState, TransitionSecretVersion,
 };
@@ -34,12 +35,8 @@ impl CommandHandler<RevokeSecretVersion> for RevokeSecretVersionHandler {
                     "Secret version must be greater than zero".into(),
                 )));
             }
-            let mut secret = match SecretResourceAccess::new(Arc::clone(&secrets))
-                .secret(
-                    command.organization_id,
-                    command.secret_id,
-                    &command.resource_access,
-                )
+            let mut secret = match SecretResourceResolver::new(Arc::clone(&secrets))
+                .secret(command.organization_id, command.secret_id, &command.access)
                 .await
             {
                 Ok(value) => value,

@@ -258,8 +258,10 @@ use crate::modules::projects::{
 use crate::modules::search::{ISearchRepository, SearchModule, SearchResourcesHandler};
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::secrets::{
-    CreateSecretHandler, GetSecretHandler, ListSecretsHandler, RevokeSecretVersionHandler,
-    RotateSecretHandler, SecretsModule,
+    CreateSecretHandler, GetSecretHandler, ISecretEnvironmentAccess,
+    ISecretMaterializationAuthorizer, ListSecretsHandler, ProjectsSecretEnvironmentAccessAdapter,
+    ResolveSecretMaterialHandler, RevokeSecretVersionHandler, RotateSecretHandler, SecretsModule,
+    WorkloadsSecretMaterializationAuthorizerAdapter,
 };
 use crate::modules::security::{
     IGatewayRoutePolicyTimelineRepository, ListGatewayRoutePolicyTimelineHandler, SecurityModule,
@@ -318,12 +320,14 @@ use crate::modules::workloads::{
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeExecutionAdmissionPort, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
-    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
-    ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
+    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
+    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
+    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver, ReplicaDeploymentMaterializer,
+    ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
-    WorkloadRuntimeReconciler, WorkloadsModule,
+    WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
+    WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -1385,6 +1389,20 @@ async fn build_api_worker_application(
         None
     };
     let node_control_server = if let Some(management) = management.as_ref() {
+        let workload_secret_materialization_authorization: Arc<
+            dyn IWorkloadSecretMaterializationAuthorizationQueryPort,
+        > = Arc::new(WorkloadSecretMaterializationAuthorizationQueryService::new(
+            Arc::clone(&workloads),
+        ));
+        let secret_materialization_authorizer: Arc<dyn ISecretMaterializationAuthorizer> =
+            Arc::new(WorkloadsSecretMaterializationAuthorizerAdapter::new(
+                workload_secret_materialization_authorization,
+            ));
+        let resolve_secret_material = ResolveSecretMaterialHandler::new(
+            secret_materialization_authorizer,
+            Arc::clone(&secrets),
+            Arc::clone(&key_encryption),
+        );
         let api = NodeControlApi::new(
             Arc::clone(&nodes),
             Arc::clone(&node_control),
@@ -1396,9 +1414,7 @@ async fn build_api_worker_application(
             Arc::clone(&gateway_certificate_authority),
             Arc::clone(&log_chunks),
             Arc::clone(&management.certificate_authority),
-            Arc::clone(&workloads),
-            Arc::clone(&secrets),
-            Arc::clone(&key_encryption),
+            resolve_secret_material,
             chrono_duration(config.edge.certificate_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
             chrono_duration(config.fleet.certificate_ttl_ms)
@@ -2518,7 +2534,9 @@ fn build_management_application_with_health(
     let domain_environments = Arc::clone(&environments);
     let gateway_scope_environments = Arc::clone(&environments);
     let mcp_credential_environments = Arc::clone(&environments);
-    let secret_environments = Arc::clone(&environments);
+    let secret_environments: Arc<dyn ISecretEnvironmentAccess> = Arc::new(
+        ProjectsSecretEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
     let create_subscription_environments = Arc::clone(&environments);
