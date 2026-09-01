@@ -422,3 +422,12 @@ include!("agent_code_recovery/non_code_recovery.rs");
 include!("agent_code_recovery/approval_recovery.rs");
 include!("agent_code_recovery/runtime_fixture.rs");
 include!("agent_code_recovery/protocol.rs");
+
+#[cfg(target_os = "linux")]
+#[path = "agent_code_recovery/real_box_release.rs"]
+mod real_box_release;
+
+#[cfg(target_os = "linux")]
+pub async fn exercise_published_agent_release_real_box(postgres_url: String) -> TestResult {
+    real_box_release::exercise(postgres_url).await
+}

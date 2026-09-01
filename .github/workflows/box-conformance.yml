@@ -230,17 +230,69 @@ jobs:
           mountpoint -q "$A3S_HOME/runtime-secrets"
           test "$(sudo stat -c '%u:%g:%a' "$A3S_HOME/runtime-secrets")" = "0:0:700"
 
+      - name: Resolve the exact linux amd64 Agent Runtime descriptor
+        run: |
+          source_image=${A3S_BOX_RUNTIME_CONFORMANCE_IMAGE%@*}
+          source_digest=${A3S_BOX_RUNTIME_CONFORMANCE_IMAGE##*@}
+          test "$source_image" = "docker.io/library/busybox"
+          repository=${source_image#docker.io/}
+          registry_api=https://registry-1.docker.io/v2
+          token=$(curl --fail --silent --show-error --location --retry 5 \
+            "https://auth.docker.io/token?service=registry.docker.io&scope=repository:${repository}:pull" \
+            | jq -er '.token')
+          accept='application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json, application/vnd.docker.distribution.manifest.v2+json'
+          curl --fail --silent --show-error --location --retry 5 \
+            --header "Authorization: Bearer $token" \
+            --header "Accept: $accept" \
+            "$registry_api/$repository/manifests/$source_digest" \
+            --output "$RUNNER_TEMP/a0-4-agent-runtime-index.json"
+          test "sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-index.json" | cut -d' ' -f1)" = "$source_digest"
+          test "$(jq -r '.mediaType' "$RUNNER_TEMP/a0-4-agent-runtime-index.json")" = "$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE"
+          mapfile -t descriptors < <(
+            jq -c \
+              '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64" and ((.platform.variant // "") == ""))' \
+              "$RUNNER_TEMP/a0-4-agent-runtime-index.json"
+          )
+          test "${#descriptors[@]}" -eq 1
+          agent_digest=$(jq -r '.digest' <<<"${descriptors[0]}")
+          agent_media_type=$(jq -r '.mediaType' <<<"${descriptors[0]}")
+          agent_size=$(jq -r '.size' <<<"${descriptors[0]}")
+          [[ $agent_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$agent_media_type" = "application/vnd.oci.image.manifest.v1+json"
+          test "$agent_size" -gt 0
+          curl --fail --silent --show-error --location --retry 5 \
+            --dump-header "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" \
+            --header "Authorization: Bearer $token" \
+            --header "Accept: $agent_media_type" \
+            "$registry_api/$repository/manifests/$agent_digest" \
+            --output "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json"
+          test "sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" | cut -d' ' -f1)" = "$agent_digest"
+          test "$(wc -c <"$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")" -eq "$agent_size"
+          response_media_type=$(awk -F ': *' \
+            'tolower($1) == "content-type" { gsub("\r", "", $2); print $2 }' \
+            "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" | tail -n 1)
+          test "$response_media_type" = "$agent_media_type"
+          {
+            echo "A3S_CLOUD_A0_4_AGENT_RUNTIME_SOURCE_INDEX=$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE"
+            echo "A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE=$source_image@$agent_digest"
+            echo "A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE=$agent_media_type"
+            echo "A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES=$agent_size"
+          } >>"$GITHUB_ENV"
+
       - name: Cache the pinned public Runtime image over HTTPS
         env:
           A3S_DEPS_STUB: "1"
         run: |
-          sudo env \
-            PATH="$PATH" \
-            HOME="$HOME" \
-            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
-            A3S_HOME="$A3S_HOME" \
-            crates/box/src/target/debug/a3s-box pull \
-              "$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE"
+          for image in \
+            "$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            "$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE"; do
+            sudo env \
+              PATH="$PATH" \
+              HOME="$HOME" \
+              A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+              A3S_HOME="$A3S_HOME" \
+              crates/box/src/target/debug/a3s-box pull "$image"
+          done
 
       - name: Run every advertised Box Runtime profile
         env:
@@ -472,6 +524,138 @@ jobs:
             "$EVIDENCE_DIR/cloud-artifact-volume-output.log" \
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
+
+      - name: Certify a published Agent release through PostgreSQL and real Box
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_BOX: "1"
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
+          cp "$RUNNER_TEMP/a0-4-agent-runtime-index.json" \
+            "$EVIDENCE_DIR/agent-runtime-source-index.json"
+          cp "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" \
+            "$EVIDENCE_DIR/agent-runtime-platform-manifest.json"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES="$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --test postgres_integration \
+              postgres_published_agent_release_runs_recovers_and_cleans_through_real_box \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/agent-runtime-release.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+          grep --fixed-strings \
+            'A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box observations=3 process_restarts=1 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed ' \
+            "$EVIDENCE_DIR/agent-runtime-release.log" \
+            >"$EVIDENCE_DIR/agent-runtime-release-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-release-certification.txt")" -eq 1
+          cloud_revision=$(git -C apps/cloud rev-parse HEAD)
+          box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
+          oci_runtime_revision=$(<apps/cloud/tools/box-conformance/oci-runtime-revision)
+          artifact_digest=${A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE##*@}
+          jq -n \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            --arg ociRuntime "$oci_runtime_revision" \
+            --arg sourceIndex "$A3S_CLOUD_A0_4_AGENT_RUNTIME_SOURCE_INDEX" \
+            --arg artifactUri "oci://$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
+            --arg artifactDigest "$artifact_digest" \
+            --arg artifactMediaType "$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
+            --argjson artifactSizeBytes "$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
+            --rawfile certification "$EVIDENCE_DIR/agent-runtime-release-certification.txt" \
+            '{
+              schema: "a3s.cloud.a0-4-agent-runtime-evidence.v1",
+              cloudRevision: $cloud,
+              boxRevision: $box,
+              ociRuntimeRevision: $ociRuntime,
+              sourceIndex: $sourceIndex,
+              publishedArtifact: {
+                uri: $artifactUri,
+                digest: $artifactDigest,
+                mediaType: $artifactMediaType,
+                sizeBytes: $artifactSizeBytes
+              },
+              postgresqlMajor: 17,
+              postgresImage: "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4",
+              certification: ($certification | rtrimstr("\n")),
+              checks: {
+                publishedAgentRelease: true,
+                canonicalReleaseManifest: true,
+                exactOciArtifactProjection: true,
+                postgresDeploymentFlow: true,
+                persistedResourceClaimPrepare: true,
+                persistedRuntimeApply: true,
+                persistedAcknowledgements: true,
+                persistedRuntimeObservations: true,
+                realBoxHealthy: true,
+                processDeathRecovery: true,
+                stableProviderResourceIdentity: true,
+                newerProcessIncarnation: true,
+                postgresStopFlow: true,
+                persistedResourceClaimRelease: true,
+                runtimeRemoved: true,
+                boxStateClean: true,
+                artifactStateClean: true
+              }
+            }' >"$EVIDENCE_DIR/agent-runtime-release.json"
+          jq -e \
+            --arg cloud "$cloud_revision" \
+            --arg box "$box_revision" \
+            --arg ociRuntime "$oci_runtime_revision" \
+            --arg sourceIndex "$A3S_CLOUD_A0_4_AGENT_RUNTIME_SOURCE_INDEX" \
+            --arg artifactUri "oci://$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
+            --arg artifactDigest "$artifact_digest" \
+            --arg artifactMediaType "$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
+            --argjson artifactSizeBytes "$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
+            '.schema == "a3s.cloud.a0-4-agent-runtime-evidence.v1"
+             and .cloudRevision == $cloud
+             and .boxRevision == $box
+             and .ociRuntimeRevision == $ociRuntime
+             and .sourceIndex == $sourceIndex
+             and .publishedArtifact.uri == $artifactUri
+             and .publishedArtifact.digest == $artifactDigest
+             and .publishedArtifact.mediaType == $artifactMediaType
+             and .publishedArtifact.sizeBytes == $artifactSizeBytes
+             and .postgresqlMajor == 17
+             and .postgresImage == "postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4"
+             and (.certification | startswith("A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED "))
+             and ([.checks[]] | all)' \
+            "$EVIDENCE_DIR/agent-runtime-release.json" >/dev/null
+          (
+            cd "$EVIDENCE_DIR"
+            sha256sum \
+              agent-runtime-source-index.json \
+              agent-runtime-platform-manifest.json \
+              agent-runtime-release.log \
+              agent-runtime-release-certification.txt \
+              agent-runtime-release.json \
+              >agent-runtime-release-sha256.txt
+          )
 
       - name: Certify Agent provider, checkpoint, and fork recovery
         env:

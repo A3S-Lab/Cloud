@@ -28,6 +28,24 @@ pub(super) fn evidence_for(
     manifest_digest: Option<&str>,
     include_agent_release_manifest: bool,
 ) -> Result<BuildEvidence, Box<dyn std::error::Error>> {
+    evidence_for_with_agent_release_template(
+        build,
+        attested_at,
+        repository,
+        commit_sha,
+        manifest_digest,
+        include_agent_release_manifest.then_some(agent_release_template_acl()),
+    )
+}
+
+pub(super) fn evidence_for_with_agent_release_template(
+    build: &BuildRun,
+    attested_at: DateTime<Utc>,
+    repository: &str,
+    commit_sha: &str,
+    manifest_digest: Option<&str>,
+    agent_release_template_acl: Option<&str>,
+) -> Result<BuildEvidence, Box<dyn std::error::Error>> {
     let attested_at = postgres_timestamp(attested_at);
     let repository = repository.to_owned();
     let commit_sha = commit_sha.to_owned();
@@ -197,8 +215,8 @@ pub(super) fn evidence_for(
     };
     let pae = dsse_pae(DSSE_PAYLOAD_TYPE, &provenance_bytes)?;
     let signature = signing_key_pair.sign(&pae);
-    let agent_release_manifest = if include_agent_release_manifest {
-        let template = AgentReleaseManifest::parse(agent_release_template_acl())?;
+    let agent_release_manifest = if let Some(template_acl) = agent_release_template_acl {
+        let template = AgentReleaseManifest::parse(template_acl)?;
         let manifest = template.bind_publication(
             artifact.digest.clone(),
             [

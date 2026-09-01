@@ -232,9 +232,11 @@ async fn prepare_started_provider_scenario_with_tools(
         crate::build_runs_support::publish_hosted_release(&executor, &asset, &release).await?;
 
     let runtime_capabilities = runtime_capabilities()?;
+    let proposed_node_id = NodeId::new();
     let (node_id, agent_instance_id) = enroll_node(
         nodes.as_ref(),
         organization_id,
+        proposed_node_id,
         &runtime_capabilities,
         canonical_timestamp(Utc::now()),
     )
