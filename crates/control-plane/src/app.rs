@@ -168,8 +168,9 @@ use crate::modules::fleet::{
 };
 use crate::modules::forms::{
     CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
-    IFormRepository, IFormSemanticCore, ListFormDraftsHandler, ListFormReleasesHandler,
-    NativeFormSemanticCore, PublishFormReleaseHandler, ReviseFormDraftHandler,
+    IFormProjectAccess, IFormRepository, IFormSemanticCore, ListFormDraftsHandler,
+    ListFormReleasesHandler, NativeFormSemanticCore, ProjectsFormProjectAccessAdapter,
+    PublishFormReleaseHandler, ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
@@ -2498,7 +2499,8 @@ fn build_management_application_with_health(
     let submit_human_task_forms = human_task_forms;
     let get_human_tasks = Arc::clone(&human_tasks);
     let list_human_tasks = human_tasks;
-    let create_form_projects = Arc::clone(&projects);
+    let create_form_projects: Arc<dyn IFormProjectAccess> =
+        Arc::new(ProjectsFormProjectAccessAdapter::new(Arc::clone(&projects)));
     let create_form_drafts = Arc::clone(&forms);
     let revise_form_drafts = Arc::clone(&forms);
     let publish_form_releases = Arc::clone(&forms);

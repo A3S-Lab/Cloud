@@ -4,10 +4,9 @@ use crate::modules::forms::presentation::{
     FormReleaseResponse,
 };
 use crate::modules::forms::{
-    CreateFormDraft, GetFormDraft, GetFormRelease, ListFormDrafts, ListFormReleases,
+    CreateFormDraft, FormAccess, GetFormDraft, GetFormRelease, ListFormDrafts, ListFormReleases,
     PublishFormRelease, ReviseFormDraft, CLOUD_FORM_DOCUMENT_MAX_BYTES,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     FormId, FormReleaseId, OrganizationId, PrincipalId, ProjectId,
 };
@@ -111,14 +110,14 @@ pub async fn revise_draft(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: ReviseFormDraftArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ReviseFormDraft {
             organization_id,
             form_id: FormId::from_uuid(arguments.form_id),
-            resource_access,
+            access,
             expected_version: arguments.expected_version,
             name: arguments.name,
             description: arguments.description,
@@ -144,14 +143,14 @@ pub async fn publish_release(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: PublishFormReleaseArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(PublishFormRelease {
             organization_id,
             form_id: FormId::from_uuid(arguments.form_id),
-            resource_access,
+            access,
             expected_version: arguments.expected_version,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
@@ -198,14 +197,14 @@ pub async fn get_draft(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: FormDraftArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(GetFormDraft {
             organization_id,
             form_id: FormId::from_uuid(arguments.form_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -222,14 +221,14 @@ pub async fn list_releases(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: FormDraftArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListFormReleases {
             organization_id,
             form_id: FormId::from_uuid(arguments.form_id),
-            resource_access,
+            access,
         })
         .await?
     {
@@ -249,7 +248,7 @@ pub async fn get_release(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: FormReleaseArguments,
-    resource_access: ResourceAccessEvaluator,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -257,7 +256,7 @@ pub async fn get_release(
             organization_id,
             form_id: FormId::from_uuid(arguments.form_id),
             release_id: FormReleaseId::from_uuid(arguments.release_id),
-            resource_access,
+            access,
         })
         .await?
     {

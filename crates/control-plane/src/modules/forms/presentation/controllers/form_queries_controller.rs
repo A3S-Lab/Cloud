@@ -1,12 +1,11 @@
-use super::request::request_id;
+use super::request::{form_access, request_id};
 use crate::modules::forms::presentation::{FormDraftResponse, FormReleaseResponse};
 use crate::modules::forms::{GetFormDraft, GetFormRelease, ListFormDrafts, ListFormReleases};
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
-};
 use crate::modules::shared_kernel::domain::{FormId, FormReleaseId, OrganizationId, ProjectId};
-use crate::presentation::application_error_response;
+use crate::presentation::{
+    application_error_response, organization_tenant_form_read_controller,
+    with_deferred_project_scope,
+};
 use a3s_boot::{
     BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
 };
@@ -17,8 +16,7 @@ pub fn form_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinitio
     let list_drafts_bus = Arc::clone(&bus);
     let get_draft_bus = Arc::clone(&bus);
     let list_releases_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
+    let controller = ControllerDefinition::new("/organizations")?
         .get(
             "/{organization_id}/projects/{project_id}/forms",
             move |request: BootRequest| {
@@ -49,100 +47,88 @@ pub fn form_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinitio
                 }
             },
         )?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::get(
-                "/{organization_id}/forms/{form_id}",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&get_draft_bus);
-                    async move {
-                        let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
-                        match bus
-                            .execute(GetFormDraft {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
-                                resource_access,
-                            })
-                            .await?
-                        {
-                            Ok(value) => BootResponse::json(
-                                &FormDraftResponse::try_from(value).map_err(BootError::Internal)?,
+        .route(with_deferred_project_scope(RouteDefinition::get(
+            "/{organization_id}/forms/{form_id}",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_draft_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let access = form_access(&request)?;
+                    match bus
+                        .execute(GetFormDraft {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
                             ),
-                            Err(error) => application_error_response(error, request_id),
-                        }
+                            form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
+                            access,
+                        })
+                        .await?
+                    {
+                        Ok(value) => BootResponse::json(
+                            &FormDraftResponse::try_from(value).map_err(BootError::Internal)?,
+                        ),
+                        Err(error) => application_error_response(error, request_id),
                     }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::get(
-                "/{organization_id}/forms/{form_id}/releases",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&list_releases_bus);
-                    async move {
-                        let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
-                        match bus
-                            .execute(ListFormReleases {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
-                                resource_access,
-                            })
-                            .await?
-                        {
-                            Ok(values) => {
-                                let values = values
-                                    .into_iter()
-                                    .map(FormReleaseResponse::try_from)
-                                    .collect::<std::result::Result<Vec<_>, String>>()
-                                    .map_err(BootError::Internal)?;
-                                BootResponse::json(&values)
-                            }
-                            Err(error) => application_error_response(error, request_id),
-                        }
-                    }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::get(
-                "/{organization_id}/forms/{form_id}/releases/{release_id}",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&bus);
-                    async move {
-                        let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
-                        match bus
-                            .execute(GetFormRelease {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
-                                release_id: FormReleaseId::from_uuid(
-                                    request.param_as::<Uuid>("release_id")?,
-                                ),
-                                resource_access,
-                            })
-                            .await?
-                        {
-                            Ok(value) => BootResponse::json(
-                                &FormReleaseResponse::try_from(value)
-                                    .map_err(BootError::Internal)?,
+                }
+            },
+        )?)?)?
+        .route(with_deferred_project_scope(RouteDefinition::get(
+            "/{organization_id}/forms/{form_id}/releases",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_releases_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let access = form_access(&request)?;
+                    match bus
+                        .execute(ListFormReleases {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
                             ),
-                            Err(error) => application_error_response(error, request_id),
+                            form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
+                            access,
+                        })
+                        .await?
+                    {
+                        Ok(values) => {
+                            let values = values
+                                .into_iter()
+                                .map(FormReleaseResponse::try_from)
+                                .collect::<std::result::Result<Vec<_>, String>>()
+                                .map_err(BootError::Internal)?;
+                            BootResponse::json(&values)
                         }
+                        Err(error) => application_error_response(error, request_id),
                     }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)
+                }
+            },
+        )?)?)?
+        .route(with_deferred_project_scope(RouteDefinition::get(
+            "/{organization_id}/forms/{form_id}/releases/{release_id}",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let access = form_access(&request)?;
+                    match bus
+                        .execute(GetFormRelease {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            form_id: FormId::from_uuid(request.param_as::<Uuid>("form_id")?),
+                            release_id: FormReleaseId::from_uuid(
+                                request.param_as::<Uuid>("release_id")?,
+                            ),
+                            access,
+                        })
+                        .await?
+                    {
+                        Ok(value) => BootResponse::json(
+                            &FormReleaseResponse::try_from(value).map_err(BootError::Internal)?,
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?)?)?;
+    organization_tenant_form_read_controller(controller)
 }

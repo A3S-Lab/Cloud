@@ -8,8 +8,8 @@ mod request_id_middleware;
 mod sequence_stream;
 
 pub(crate) use crate::access_projection::{
-    artifact_access, asset_access, developer_workflow_access, search_visibility, user_file_access,
-    workload_access,
+    artifact_access, asset_access, developer_workflow_access, form_access, search_visibility,
+    user_file_access, workload_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
@@ -69,6 +69,20 @@ pub(crate) fn organization_tenant_workload_write_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {
     organization_tenant_scoped_controller(controller, ApiTokenScope::WORKLOAD_WRITE)
+}
+
+pub(crate) fn organization_tenant_form_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::FORM_WRITE)
+}
+
+/// Applies the Forms read policy: tenant admission at the HTTP boundary,
+/// followed by Forms-owned resource visibility for indirect identifiers.
+pub(crate) fn organization_tenant_form_read_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_controller(controller)
 }
 
 /// Applies the Workloads read policy: tenant admission at the HTTP boundary,

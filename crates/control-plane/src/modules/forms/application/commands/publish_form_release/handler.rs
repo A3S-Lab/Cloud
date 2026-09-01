@@ -1,6 +1,6 @@
 use super::PublishFormRelease;
 use crate::modules::forms::application::form_compilation::compile_release_content;
-use crate::modules::forms::application::resource_access::FormResourceAccess;
+use crate::modules::forms::application::resource_access::FormResourceResolver;
 use crate::modules::forms::application::FormPublicationMutationResult;
 use crate::modules::forms::domain::{
     FormPublicationRecord, FormRelease, FormReleasePublished, IFormRepository, IFormSemanticCore,
@@ -43,12 +43,8 @@ impl CommandHandler<PublishFormRelease> for PublishFormReleaseHandler {
                     "expected Form draft version must be positive".into(),
                 )));
             }
-            let draft = match FormResourceAccess::new(Arc::clone(&forms))
-                .draft(
-                    command.organization_id,
-                    command.form_id,
-                    &command.resource_access,
-                )
+            let draft = match FormResourceResolver::new(Arc::clone(&forms))
+                .draft(command.organization_id, command.form_id, &command.access)
                 .await
             {
                 Ok(value) => value,

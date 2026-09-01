@@ -35,8 +35,6 @@ fleet/presentation/controllers/node_management_controller.rs -> identity/present
 fleet/presentation/controllers/node_pool_management_controller.rs -> identity/presentation
 fleet/presentation/controllers/node_pool_queries_controller.rs -> identity/presentation
 fleet/presentation/controllers/node_queries_controller.rs -> identity/presentation
-forms/presentation/controllers/form_commands_controller.rs -> identity/presentation
-forms/presentation/controllers/form_queries_controller.rs -> identity/presentation
 notifications/presentation/controller.rs -> identity/presentation
 operations/presentation/controllers/operations_query_controller.rs -> identity/presentation
 plugins/presentation/controllers/plugin_registry_queries_controller.rs -> identity/presentation
@@ -5890,6 +5888,267 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
             "Operation resource access bypassed the Workloads facade with {forbidden}"
         );
     }
+}
+
+#[test]
+fn forms_access_and_project_ownership_have_one_bounded_authority() {
+    let root = module_root();
+    let access_path = "forms/application/resource_access.rs";
+    let access = std::fs::read_to_string(root.join(access_path))
+        .expect("read Forms resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumFormAccessScope",
+        "pubstructFormAccess",
+        "pub(crate)structFormResourceResolver",
+        "access.project_is_visible(draft.project_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Forms lost its context-owned access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+        "IResourceGrantRepository",
+        "IMembershipRepository",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Forms resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let mut identity_imports = BTreeSet::new();
+    let mut projects_imports = BTreeSet::new();
+    let mut access_fields = 0;
+    let mut resolver_constructors = 0;
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("forms") {
+            return;
+        }
+        if source.contains("crate::modules::identity") {
+            identity_imports.insert(display(relative));
+        }
+        if source.contains("crate::modules::projects") {
+            projects_imports.insert(display(relative));
+        }
+        access_fields += source.matches("pub access: FormAccess").count();
+        resolver_constructors += source.matches("FormResourceResolver::new(").count();
+    });
+    assert!(
+        identity_imports.is_empty(),
+        "Forms imported Identity instead of receiving its owned projection:\n{}",
+        identity_imports.into_iter().collect::<Vec<_>>().join("\n")
+    );
+    assert_eq!(
+        projects_imports,
+        lines("forms/infrastructure/project_access.rs"),
+        "Forms must isolate Projects behind one infrastructure adapter"
+    );
+    assert_eq!(
+        access_fields, 5,
+        "both indirect Form commands and all three indirect queries must carry Forms-owned access"
+    );
+    assert_eq!(
+        resolver_constructors, 5,
+        "every indirect Form use case must use the one Forms resource resolver"
+    );
+
+    let project_port = std::fs::read_to_string(root.join("forms/application/project_access.rs"))
+        .expect("read Forms project owner port");
+    let compact_port = project_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructFormProjectScope",
+        "pubtraitIFormProjectAccess:Send+Sync",
+        "asyncfnproject_exists(&self,scope:FormProjectScope)->Result<bool,RepositoryError>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Forms lost its Projects owner interface {required}"
+        );
+    }
+    assert!(!project_port.contains("crate::modules::projects"));
+
+    let create_handler = std::fs::read_to_string(
+        root.join("forms/application/commands/create_form_draft/handler.rs"),
+    )
+    .expect("read Form draft creation handler");
+    let compact_create = create_handler.split_whitespace().collect::<String>();
+    for required in [
+        "projects:Arc<dynIFormProjectAccess>",
+        ".project_exists(FormProjectScope{",
+    ] {
+        assert!(
+            compact_create.contains(required),
+            "Form creation bypassed its project owner port {required}"
+        );
+    }
+    assert!(!create_handler.contains("IProjectRepository"));
+    assert!(!create_handler.contains("crate::modules::projects"));
+
+    let project_adapter =
+        std::fs::read_to_string(root.join("forms/infrastructure/project_access.rs"))
+            .expect("read Forms Projects adapter");
+    let compact_adapter = project_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "Arc<dynIProjectRepository>",
+        "implIFormProjectAccessforProjectsFormProjectAccessAdapter",
+        ".find(scope.organization_id,scope.project_id)",
+        "project.organization_id==scope.organization_id",
+        "project.id==scope.project_id",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Forms Projects adapter lost exact owner evidence {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "IResourceGrantRepository",
+        "Postgres",
+        "a3s_orm",
+        "sqlx",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !project_adapter.contains(forbidden),
+            "Forms Projects adapter introduced foreign policy or a duplicate mechanism {forbidden}"
+        );
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnform_access(",
+        "FormAccess::organization_wide()",
+        "FormAccess::restricted(",
+        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Forms access mapping {required}"
+        );
+    }
+
+    let request_path = "forms/presentation/controllers/request.rs";
+    let request =
+        std::fs::read_to_string(root.join(request_path)).expect("read Forms request projection");
+    let production_request = production_source(&request);
+    let compact_request = production_request.split_whitespace().collect::<String>();
+    assert!(compact_request.contains("project_form_access(&resource_access_evaluator("));
+    assert_eq!(
+        production_request
+            .matches("resource_access_evaluator(")
+            .count(),
+        1
+    );
+    assert!(!production_request.contains("crate::modules::identity"));
+
+    for (relative, policy, deferred_routes) in [
+        (
+            "forms/presentation/controllers/form_commands_controller.rs",
+            "organization_tenant_form_write_controller(controller)",
+            2,
+        ),
+        (
+            "forms/presentation/controllers/form_queries_controller.rs",
+            "organization_tenant_form_read_controller(controller)",
+            3,
+        ),
+    ] {
+        let controller = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&controller);
+        assert!(
+            production.contains(policy),
+            "{relative} lost its root-owned HTTP entry policy"
+        );
+        assert_eq!(
+            production.matches("with_deferred_project_scope(").count(),
+            deferred_routes,
+            "{relative} lost an indirect project-owned route boundary"
+        );
+        for duplicate in [
+            "crate::modules::identity",
+            "OrganizationTenantGuard",
+            "ApiTokenScope::",
+            "AUTH_SCOPES_METADATA",
+            "ResourceAccessEvaluator",
+            "ResourceGrantScope",
+            "DeferredResourceScope",
+            "with_deferred_resource_scope",
+            "fn request_identity(",
+            "fn request_id(",
+        ] {
+            assert!(
+                !production.contains(duplicate),
+                "{relative} regained duplicate Identity or request entry mechanism {duplicate}"
+            );
+        }
+    }
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/forms.rs"),
+    )
+    .expect("read Forms Management MCP adapter");
+    assert_eq!(
+        management_mcp.matches("access: FormAccess").count(),
+        5,
+        "every indirect Form MCP entry must receive the consumer-owned projection"
+    );
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "resource_access:",
+    ] {
+        assert!(
+            !management_mcp.contains(forbidden),
+            "Forms Management MCP regained foreign access authority {forbidden}"
+        );
+    }
+    let dispatch = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/dispatch.rs"),
+    )
+    .expect("read Management MCP dispatch");
+    assert_eq!(
+        dispatch.matches("form_access(&resource_access)").count(),
+        5,
+        "Management MCP must project Identity once at every indirect Form entry"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read application composition");
+    assert_eq!(
+        app.matches("ProjectsFormProjectAccessAdapter::new(")
+            .count(),
+        1,
+        "production must compose one Projects-to-Forms owner adapter"
+    );
+    assert_eq!(
+        app.matches("CreateFormDraftHandler::new(create_form_projects, create_form_drafts)")
+            .count(),
+        1,
+        "Form creation must receive the one composed project owner port"
+    );
 }
 
 #[test]
