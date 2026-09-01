@@ -1,5 +1,4 @@
-use crate::modules::artifacts::application::{BuildLogStream, BuildRunLogPage};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::artifacts::application::{ArtifactAccess, BuildLogStream, BuildRunLogPage};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{BuildRunId, OrganizationId};
 use a3s_boot::Query;
@@ -8,7 +7,7 @@ use a3s_boot::Query;
 pub struct GetBuildRunLogs {
     pub organization_id: OrganizationId,
     pub build_run_id: BuildRunId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ArtifactAccess,
     pub after_sequence: Option<u64>,
     pub limit: u16,
     pub stream: Option<BuildLogStream>,

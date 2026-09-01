@@ -1,9 +1,6 @@
+use crate::modules::artifacts::application::{BuildOperationRequest, IBuildOperationScheduler};
 use crate::modules::artifacts::domain::IBuildRunRepository;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::repositories::IOperationRepository;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::RepositoryError;
-use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -22,27 +19,27 @@ pub struct BuildRunReconcileReport {
 
 pub struct BuildRunReconciler {
     builds: Arc<dyn IBuildRunRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    operation_scheduler: Arc<dyn IBuildOperationScheduler>,
     interval: Duration,
     batch_size: usize,
 }
 
 impl BuildRunReconciler {
-    pub fn new(
+    pub fn from_operation_scheduler(
         builds: Arc<dyn IBuildRunRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IBuildOperationScheduler>,
     ) -> Self {
         Self {
             builds,
-            operations,
+            operation_scheduler,
             interval: Duration::from_secs(1),
             batch_size: 100,
         }
     }
 
-    pub fn with_schedule(
+    pub fn with_operation_scheduler_and_schedule(
         builds: Arc<dyn IBuildRunRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IBuildOperationScheduler>,
         interval: Duration,
         batch_size: usize,
     ) -> Result<Self, String> {
@@ -53,7 +50,7 @@ impl BuildRunReconciler {
         }
         Ok(Self {
             builds,
-            operations,
+            operation_scheduler,
             interval,
             batch_size,
         })
@@ -68,24 +65,14 @@ impl BuildRunReconciler {
             ..BuildRunReconcileReport::default()
         };
         for build in pending {
-            let subject = OperationSubject::new("build_run", build.id.as_uuid())
-                .map_err(RepositoryError::Storage)?;
-            let workflow = WorkflowIdentity::new(BUILD_WORKFLOW_NAME, BUILD_WORKFLOW_VERSION)
-                .map_err(RepositoryError::Storage)?;
-            let input = json!({
-                "organizationId": build.organization_id,
-                "buildRunId": build.id,
-            });
-            let operation = OperationRequest::new(
+            let operation = BuildOperationRequest::new(
                 build.operation_id,
                 build.organization_id,
-                subject,
-                workflow,
-                input,
+                build.id,
                 build.requested_at,
             );
-            match self.operations.enqueue(operation).await {
-                Ok(write) if write.replayed => report.replayed += 1,
+            match self.operation_scheduler.schedule(operation).await {
+                Ok(outcome) if outcome.replayed() => report.replayed += 1,
                 Ok(_) => report.started += 1,
                 Err(error) => report.failures.push(format!(
                     "could not enqueue build run {} operation: {error}",
@@ -127,36 +114,59 @@ impl BuildRunReconciler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::artifacts::application::BuildOperationScheduleOutcome;
     use crate::modules::artifacts::domain::BuildRun;
     use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
-    use crate::modules::operations::domain::repositories::IOperationRepository;
-    use crate::modules::operations::infrastructure::persistence::InMemoryOperationRepository;
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
+        EnvironmentId, OperationId, OrganizationId, ProjectId, SourceRevisionId,
     };
+    use async_trait::async_trait;
     use chrono::Utc;
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct RecordingBuildOperationScheduler {
+        requests: Mutex<Vec<BuildOperationRequest>>,
+    }
+
+    #[async_trait]
+    impl IBuildOperationScheduler for RecordingBuildOperationScheduler {
+        async fn schedule(
+            &self,
+            request: BuildOperationRequest,
+        ) -> Result<BuildOperationScheduleOutcome, RepositoryError> {
+            self.requests
+                .lock()
+                .expect("record build operation")
+                .push(request);
+            Ok(BuildOperationScheduleOutcome::new(false))
+        }
+    }
 
     #[test]
     fn reconciliation_schedule_must_be_bounded() {
         let builds = Arc::new(InMemoryBuildRunRepository::new());
-        let operations = Arc::new(InMemoryOperationRepository::new());
-        assert!(BuildRunReconciler::with_schedule(
+        let scheduler = Arc::new(RecordingBuildOperationScheduler::default());
+        assert!(BuildRunReconciler::with_operation_scheduler_and_schedule(
             builds.clone(),
-            operations.clone(),
+            scheduler.clone(),
             Duration::ZERO,
             10,
         )
         .is_err());
-        assert!(
-            BuildRunReconciler::with_schedule(builds, operations, Duration::from_millis(1), 0,)
-                .is_err()
-        );
+        assert!(BuildRunReconciler::with_operation_scheduler_and_schedule(
+            builds,
+            scheduler,
+            Duration::from_millis(1),
+            0,
+        )
+        .is_err());
     }
 
     #[tokio::test]
     async fn revision_to_operation_gap_is_repaired_without_duplicate_work() {
         let builds = Arc::new(InMemoryBuildRunRepository::new());
-        let operations = Arc::new(InMemoryOperationRepository::new());
+        let scheduler = Arc::new(RecordingBuildOperationScheduler::default());
         let organization_id = OrganizationId::new();
         let source_revision_id = SourceRevisionId::new();
         builds
@@ -168,23 +178,24 @@ mod tests {
                 Utc::now(),
             )
             .await;
-        let reconciler = BuildRunReconciler::new(builds.clone(), operations.clone());
+        let reconciler =
+            BuildRunReconciler::from_operation_scheduler(builds.clone(), scheduler.clone());
 
         let first = reconciler.run_once(10).await.expect("first reconcile");
         assert_eq!(first.reserved, 1);
         assert_eq!(first.started, 1);
         assert!(first.failures.is_empty());
         let build_id = BuildRun::id_for(source_revision_id);
-        let operation = operations
-            .find_request(
-                crate::modules::shared_kernel::domain::OperationId::from_uuid(build_id.as_uuid()),
-            )
-            .await
-            .expect("find operation")
-            .expect("operation");
-        assert_eq!(operation.organization_id, organization_id);
-        assert_eq!(operation.workflow.name(), BUILD_WORKFLOW_NAME);
-        assert_eq!(operation.subject.kind(), "build_run");
+        {
+            let requests = scheduler.requests.lock().expect("read build operations");
+            assert_eq!(requests.len(), 1);
+            assert_eq!(requests[0].organization_id(), organization_id);
+            assert_eq!(requests[0].build_run_id(), build_id);
+            assert_eq!(
+                requests[0].operation_id(),
+                OperationId::from_uuid(build_id.as_uuid())
+            );
+        }
 
         builds.mark_operation_started(build_id).await;
         let replay = reconciler.run_once(10).await.expect("reconcile replay");
@@ -192,5 +203,13 @@ mod tests {
         assert_eq!(replay.started, 0);
         assert_eq!(replay.replayed, 0);
         assert!(replay.failures.is_empty());
+        assert_eq!(
+            scheduler
+                .requests
+                .lock()
+                .expect("read build operations")
+                .len(),
+            1
+        );
     }
 }

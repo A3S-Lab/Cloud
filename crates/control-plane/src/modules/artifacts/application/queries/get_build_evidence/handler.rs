@@ -27,7 +27,7 @@ impl QueryHandler<GetBuildEvidence> for GetBuildEvidenceHandler {
                 .build_run(
                     query.organization_id,
                     query.build_run_id,
-                    &query.resource_access,
+                    &query.access,
                     "build evidence not found",
                 )
                 .await

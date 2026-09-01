@@ -109,6 +109,7 @@ use super::{
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
 use crate::modules::workflow::HumanTaskAssignmentAction;
+use crate::presentation::artifact_access;
 use a3s_boot::{CommandBus, QueryBus, Result};
 use serde_json::Value;
 use std::sync::Arc;
@@ -1955,7 +1956,14 @@ pub async fn execute(
         }
         ManagementTool::BuildRunsList => {
             let arguments = arguments::parse::<BuildRunListArguments>(arguments).ok()?;
-            artifacts::list_build_runs(query_bus, organization_id, arguments, request_id).await
+            artifacts::list_build_runs(
+                query_bus,
+                organization_id,
+                arguments,
+                artifact_access(&resource_access),
+                request_id,
+            )
+            .await
         }
         ManagementTool::BuildRunsGet => {
             let arguments = arguments::parse::<BuildRunArguments>(arguments).ok()?;
@@ -1963,7 +1971,7 @@ pub async fn execute(
                 query_bus,
                 organization_id,
                 arguments,
-                resource_access,
+                artifact_access(&resource_access),
                 request_id,
             )
             .await
@@ -1974,7 +1982,7 @@ pub async fn execute(
                 query_bus,
                 organization_id,
                 arguments,
-                resource_access,
+                artifact_access(&resource_access),
                 request_id,
             )
             .await
@@ -1985,7 +1993,7 @@ pub async fn execute(
                 query_bus,
                 organization_id,
                 arguments,
-                resource_access,
+                artifact_access(&resource_access),
                 request_id,
             )
             .await
@@ -1996,7 +2004,7 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 arguments,
-                resource_access,
+                artifact_access(&resource_access),
                 request_id,
             )
             .await
@@ -2007,7 +2015,7 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 arguments,
-                resource_access,
+                artifact_access(&resource_access),
                 request_id,
             )
             .await

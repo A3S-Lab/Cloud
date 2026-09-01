@@ -7,6 +7,9 @@ mod request_context;
 mod request_id_middleware;
 mod sequence_stream;
 
+pub(crate) use crate::access_projection::{
+    artifact_access, asset_access, search_visibility, user_file_access,
+};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
 pub(crate) use crate::modules::identity::presentation::{
@@ -46,6 +49,12 @@ pub(crate) fn organization_tenant_asset_write_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {
     organization_tenant_scoped_controller(controller, ApiTokenScope::ASSET_WRITE)
+}
+
+pub(crate) fn organization_tenant_build_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::BUILD_WRITE)
 }
 
 pub(crate) fn organization_tenant_cloud_read_controller(
@@ -118,10 +127,7 @@ pub(crate) use oauth_transport::{
     bounded_oauth_query_pairs, oauth_callback_query, oauth_no_store, OAuthNoStoreErrorFilter,
 };
 pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
-pub(crate) use request_context::{
-    actor_principal_id, asset_access, request_id, request_identity, search_visibility,
-    user_file_access,
-};
+pub(crate) use request_context::{actor_principal_id, request_id, request_identity};
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{
     decode_sequence_cursor, default_live_sequence_limit, format_sequence_cursor,

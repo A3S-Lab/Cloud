@@ -27,7 +27,7 @@ impl QueryHandler<GetBuildRun> for GetBuildRunHandler {
                 .build_run(
                     query.organization_id,
                     query.build_run_id,
-                    &query.resource_access,
+                    &query.access,
                     "build run not found",
                 )
                 .await)

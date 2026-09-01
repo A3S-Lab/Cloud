@@ -13,8 +13,6 @@ agents/presentation/controllers/agent_commands_controller.rs -> identity/present
 agents/presentation/controllers/agent_queries_controller.rs -> identity/presentation
 applications/presentation/controller.rs -> identity/presentation
 applications/presentation/delivery_controller.rs -> identity/presentation
-artifacts/presentation/controllers/build_run_commands_controller.rs -> identity/presentation
-artifacts/presentation/controllers/build_run_queries_controller.rs -> identity/presentation
 audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/controller.rs -> identity/presentation
@@ -1013,6 +1011,337 @@ fn sources_owner_scope_uses_two_minimum_ports_and_one_adapter_module() {
 }
 
 #[test]
+fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
+    let root = module_root();
+    let access_path = "artifacts/application/resource_access.rs";
+    let access =
+        std::fs::read_to_string(root.join(access_path)).expect("read Artifacts access projection");
+    let production_access = production_source(&access);
+    for required in [
+        "pub struct ArtifactAccess",
+        "pub(crate) enum ArtifactAccessScope",
+        "pub(crate) fn organization_wide(",
+        "pub(crate) fn restricted(",
+        "pub(crate) fn environment_is_visible(",
+        "pub(crate) const fn organization_build_is_visible(",
+    ] {
+        assert!(
+            production_access.contains(required),
+            "Artifacts access projection lost closed operation {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Artifacts access projection copied Identity authority {forbidden}"
+        );
+    }
+
+    let port_path = "artifacts/application/build_operation_scheduler.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Artifacts operation scheduling port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIBuildOperationScheduler:Send+Sync",
+        "asyncfnschedule(&self,request:BuildOperationRequest,)->Result<BuildOperationScheduleOutcome,RepositoryError>;",
+        "operation_id:OperationId",
+        "organization_id:OrganizationId",
+        "build_run_id:BuildRunId",
+        "requested_at:DateTime<Utc>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Artifacts operation port lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Artifacts operation port leaked Operations authority {forbidden}"
+        );
+    }
+
+    let adapter_path = "artifacts/infrastructure/build_operation_scheduler.rs";
+    let mut identity_sites = BTreeSet::new();
+    let mut operation_sites = BTreeSet::new();
+    let mut boundary_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("artifacts") {
+            return;
+        }
+        if source.contains("crate::modules::identity")
+            || source.contains("ResourceAccessEvaluator")
+            || source.contains("ResourceGrantScope")
+        {
+            identity_sites.insert(display(relative));
+        }
+        if source.contains("crate::modules::operations") {
+            operation_sites.insert(display(relative));
+        }
+        if matches!(
+            layer(relative),
+            Some("application" | "domain" | "presentation")
+        ) {
+            for forbidden in [
+                "crate::modules::identity",
+                "ResourceAccessEvaluator",
+                "ResourceGrantScope",
+                "crate::modules::operations",
+                "IOperationRepository",
+                "OperationSubject",
+                "WorkflowIdentity",
+            ] {
+                if source.contains(forbidden) {
+                    boundary_violations.insert(format!(
+                        "{} contains foreign authority {forbidden}",
+                        display(relative)
+                    ));
+                }
+            }
+        }
+    });
+    assert!(
+        identity_sites.is_empty(),
+        "Artifacts retained Identity authority:\n{}",
+        identity_sites.into_iter().collect::<Vec<_>>().join("\n")
+    );
+    assert!(
+        boundary_violations.is_empty(),
+        "Artifacts bypassed its bounded contracts:\n{}",
+        boundary_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        operation_sites,
+        lines(adapter_path),
+        "Artifacts must reach Operations through one Infrastructure adapter module"
+    );
+
+    let reconciler =
+        std::fs::read_to_string(root.join("artifacts/application/build_run_reconciler.rs"))
+            .expect("read Artifacts BuildRun reconciler");
+    let production_reconciler = production_source(&reconciler);
+    let compact_reconciler = production_reconciler.split_whitespace().collect::<String>();
+    for required in [
+        "operation_scheduler:Arc<dynIBuildOperationScheduler>",
+        "BuildOperationRequest::new(",
+        ".operation_scheduler.schedule(operation).await",
+    ] {
+        assert!(
+            compact_reconciler.contains(required),
+            "Artifacts reconciler lost inward scheduling boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_reconciler.contains(forbidden),
+            "Artifacts reconciler rebuilt Operations authority {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(root.join(adapter_path)).expect("read Artifacts operation adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIBuildOperationSchedulerforOperationsBuildOperationScheduler",
+        "operations:Arc<dynIOperationRepository>",
+        "OperationSubject::new(\"build_run\",request.build_run_id().as_uuid())",
+        "WorkflowIdentity::new(BUILD_WORKFLOW_NAME,BUILD_WORKFLOW_VERSION)",
+        "Self::from_operation_scheduler(",
+        "Self::with_operation_scheduler_and_schedule(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Artifacts operation adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".enqueue(").count(),
+        1,
+        "Artifacts operation adapter must have one enqueue mechanism"
+    );
+    for forbidden in [
+        ".pending_starts(",
+        ".active_refreshes(",
+        ".upsert_projection(",
+        "Postgres",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Artifacts operation adapter introduced lifecycle authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "artifacts/application/commands/cancel_build_run/command.rs",
+        "artifacts/application/commands/retry_build_run/command.rs",
+        "artifacts/application/queries/get_build_evidence/query.rs",
+        "artifacts/application/queries/get_build_run/query.rs",
+        "artifacts/application/queries/get_build_run_logs/query.rs",
+        "artifacts/application/queries/list_build_runs/query.rs",
+    ] {
+        let request = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&request);
+        assert!(
+            production.contains("pub access: ArtifactAccess"),
+            "{relative} stopped carrying the Artifacts-owned access projection"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "pub resource_access:"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign request authority {forbidden}"
+            );
+        }
+    }
+
+    let list_handler = std::fs::read_to_string(
+        root.join("artifacts/application/queries/list_build_runs/handler.rs"),
+    )
+    .expect("read Artifacts list handler");
+    let compact_list_handler = production_source(&list_handler)
+        .split_whitespace()
+        .collect::<String>();
+    let access_check = compact_list_handler
+        .find(".access.environment_is_visible(")
+        .expect("list handler checks Artifacts visibility");
+    let repository_read = compact_list_handler
+        .find("builds.list(")
+        .expect("list handler reads BuildRuns");
+    assert!(
+        access_check < repository_read,
+        "Artifacts list must authorize its environment before repository access"
+    );
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_access_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnartifact_access(resource_access:&ResourceAccessEvaluator)->ArtifactAccess",
+        "ArtifactAccess::organization_wide()",
+        "ArtifactAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_access_projection.contains(required),
+            "root anti-corruption layer lost Artifacts access mapping {required}"
+        );
+    }
+
+    let operation_access = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("infrastructure/operation_resource_access.rs"),
+    )
+    .expect("read root Operation resource resolver");
+    assert!(operation_access.contains("use crate::access_projection::artifact_access;"));
+    assert!(operation_access.contains("let access = artifact_access(evaluator);"));
+
+    let presentation_root = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/mod.rs"),
+    )
+    .expect("read root Presentation facade");
+    for required in [
+        "organization_tenant_build_write_controller",
+        "organization_tenant_cloud_read_controller",
+        "artifact_access",
+        "request_identity",
+        "request_id",
+    ] {
+        assert!(
+            presentation_root.contains(required),
+            "root Presentation lost Artifacts policy adapter {required}"
+        );
+    }
+
+    for relative in [
+        "artifacts/presentation/controllers/build_run_commands_controller.rs",
+        "artifacts/presentation/controllers/build_run_queries_controller.rs",
+    ] {
+        let controller = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&controller);
+        for duplicate in [
+            "fn request_id(",
+            "fn request_identity(",
+            "ApiTokenScope::",
+            "OrganizationTenantGuard",
+            "AUTH_SCOPES_METADATA",
+            "crate::modules::identity",
+        ] {
+            assert!(
+                !production.contains(duplicate),
+                "{relative} regained duplicate request or policy mechanism {duplicate}"
+            );
+        }
+    }
+
+    let query_controller = std::fs::read_to_string(
+        root.join("artifacts/presentation/controllers/build_run_queries_controller.rs"),
+    )
+    .expect("read Artifacts query controller");
+    assert!(!query_controller.contains("DeferredResourceScope::Environment"));
+    assert!(query_controller.contains("organization_tenant_cloud_read_controller(controller)"));
+    let command_controller = std::fs::read_to_string(
+        root.join("artifacts/presentation/controllers/build_run_commands_controller.rs"),
+    )
+    .expect("read Artifacts command controller");
+    assert!(command_controller.contains("organization_tenant_build_write_controller(controller)"));
+
+    let management_mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/artifacts.rs"),
+    )
+    .expect("read Artifacts Management MCP adapter");
+    assert!(!management_mcp.contains("ResourceAccessEvaluator"));
+    assert!(!management_mcp.contains("crate::modules::identity"));
+    assert_eq!(management_mcp.matches("access: ArtifactAccess").count(), 6);
+    let dispatch = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/dispatch.rs"),
+    )
+    .expect("read Management MCP dispatch");
+    assert_eq!(
+        dispatch
+            .matches("artifact_access(&resource_access)")
+            .count(),
+        6,
+        "Management MCP must project Identity once at every Artifacts entry"
+    );
+}
+
+#[test]
 fn assets_access_and_owner_scope_have_one_bounded_authority() {
     let root = module_root();
     let port_path = "assets/application/organization_access.rs";
@@ -1196,15 +1525,15 @@ fn assets_access_and_owner_scope_have_one_bounded_authority() {
         }
     }
 
-    let request_context = std::fs::read_to_string(
+    let access_projection = std::fs::read_to_string(
         root.parent()
             .expect("src directory")
-            .join("presentation/request_context.rs"),
+            .join("access_projection.rs"),
     )
-    .expect("read root request context");
-    assert!(request_context.contains("pub(crate) fn asset_access("));
-    assert!(request_context.contains("AssetAccess::organization_wide()"));
-    assert!(request_context.contains("AssetAccess::restricted()"));
+    .expect("read root access projection");
+    assert!(access_projection.contains("pub(crate) fn asset_access("));
+    assert!(access_projection.contains("AssetAccess::organization_wide()"));
+    assert!(access_projection.contains("AssetAccess::restricted()"));
 
     let presentation_root = std::fs::read_to_string(
         root.parent()
@@ -1379,9 +1708,9 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
     );
 
     let src = root.parent().expect("src directory");
-    let request_context = std::fs::read_to_string(src.join("presentation/request_context.rs"))
-        .expect("read root request-context ACL");
-    let production_request_context = production_source(&request_context);
+    let access_projection = std::fs::read_to_string(src.join("access_projection.rs"))
+        .expect("read root access projection");
+    let production_access_projection = production_source(&access_projection);
     for required in [
         "pub(crate) fn user_file_access(",
         "UserFileAccess::organization_wide()",
@@ -1390,12 +1719,12 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         "ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None",
     ] {
         assert!(
-            production_request_context.contains(required),
-            "root Presentation ACL lost fail-closed Files translation {required}"
+            production_access_projection.contains(required),
+            "root anti-corruption layer lost fail-closed Files translation {required}"
         );
     }
     assert_eq!(
-        production_request_context
+        production_access_projection
             .matches("UserFileAccess::restricted_projects(")
             .count(),
         1,
@@ -5471,16 +5800,19 @@ fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
         );
     }
 
-    let request_context = std::fs::read_to_string(
+    let access_projection = std::fs::read_to_string(
         root.parent()
             .expect("src directory")
-            .join("presentation/request_context.rs"),
+            .join("access_projection.rs"),
     )
-    .expect("read root Presentation request context");
-    assert_eq!(request_context.matches("fn search_visibility(").count(), 1);
-    assert!(request_context.contains("ResourceGrantScope::Project"));
-    assert!(request_context.contains("ResourceGrantScope::Environment"));
-    assert!(request_context.contains("ResourceGrantScope::Node"));
+    .expect("read root access projection");
+    assert_eq!(
+        access_projection.matches("fn search_visibility(").count(),
+        1
+    );
+    assert!(access_projection.contains("ResourceGrantScope::Project"));
+    assert!(access_projection.contains("ResourceGrantScope::Environment"));
+    assert!(access_projection.contains("ResourceGrantScope::Node"));
 
     let conformance =
         std::fs::read_to_string(root.parent().expect("src directory").join("conformance.rs"))

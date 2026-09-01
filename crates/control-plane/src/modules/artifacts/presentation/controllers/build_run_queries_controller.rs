@@ -4,14 +4,12 @@ use crate::modules::artifacts::application::{
 use crate::modules::artifacts::presentation::dto::{
     BuildEvidenceResponse, BuildRunLogsResponse, BuildRunResponse,
 };
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
-};
 use crate::modules::shared_kernel::domain::{BuildRunId, EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::{
-    application_error_response, decode_sequence_cursor, default_live_sequence_limit,
-    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
+    application_error_response, artifact_access, decode_sequence_cursor,
+    default_live_sequence_limit, organization_tenant_cloud_read_controller, request_id,
+    resolve_sequence_cursor, resource_access_evaluator, sequence_stream_error,
+    stream_sequence_pages, with_deferred_resource_scope, DeferredResourceScope,
     MAX_LIVE_SEQUENCE_RECORDS,
 };
 use a3s_boot::{
@@ -27,9 +25,8 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let get_evidence_bus = Arc::clone(&bus);
     let get_logs_bus = Arc::clone(&bus);
     let stream_logs_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .get(
+    let controller = ControllerDefinition::new("/organizations")?
+        .route(RouteDefinition::get(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/build-runs",
             move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
@@ -43,17 +40,20 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             "limit must be between 1 and 200".into(),
                         ));
                     }
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let environment_id =
+                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = artifact_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListBuildRuns {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
+                            project_id,
+                            environment_id,
+                            access,
                             limit,
                         })
                         .await?
@@ -68,7 +68,7 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     }
                 }
             },
-        )?
+        )?)?
         .route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/build-runs/{build_run_id}/evidence",
@@ -76,8 +76,9 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     let bus = Arc::clone(&get_evidence_bus);
                     async move {
                         let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = artifact_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
                         match bus
                             .execute(GetBuildEvidence {
                                 organization_id: OrganizationId::from_uuid(
@@ -86,7 +87,7 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 build_run_id: BuildRunId::from_uuid(
                                     request.param_as::<Uuid>("build_run_id")?,
                                 ),
-                                resource_access,
+                                access,
                             })
                             .await?
                         {
@@ -107,8 +108,9 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     let bus = Arc::clone(&get_bus);
                     async move {
                         let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = artifact_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
                         match bus
                             .execute(GetBuildRun {
                                 organization_id: OrganizationId::from_uuid(
@@ -117,7 +119,7 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 build_run_id: BuildRunId::from_uuid(
                                     request.param_as::<Uuid>("build_run_id")?,
                                 ),
-                                resource_access,
+                                access,
                             })
                             .await?
                         {
@@ -136,8 +138,9 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     let bus = Arc::clone(&get_logs_bus);
                     async move {
                         let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = artifact_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
                         let parameters: BuildLogsQuery = request.query()?;
                         match bus
                             .execute(GetBuildRunLogs {
@@ -147,7 +150,7 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 build_run_id: BuildRunId::from_uuid(
                                     request.param_as::<Uuid>("build_run_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 after_sequence: decode_sequence_cursor(
                                     parameters.cursor.as_deref(),
                                     "build log",
@@ -182,8 +185,9 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             parameters.cursor.as_deref(),
                             "build log",
                         )?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = artifact_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
                         build_run_log_stream(
                             bus,
                             GetBuildRunLogs {
@@ -193,7 +197,7 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 build_run_id: BuildRunId::from_uuid(
                                     request.param_as::<Uuid>("build_run_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 after_sequence,
                                 limit: parameters.limit,
                                 stream: parameters.stream.map(Into::into),
@@ -204,7 +208,8 @@ pub fn build_run_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)
+        )?)?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,14 +266,4 @@ async fn build_run_log_stream(bus: Arc<QueryBus>, query: GetBuildRunLogs) -> Res
         "build log",
     )
     .await
-}
-
-fn request_id(request: &BootRequest) -> Result<Uuid> {
-    request
-        .header("x-request-id")
-        .ok_or_else(|| BootError::Internal("request ID middleware did not run".into()))
-        .and_then(|value| {
-            Uuid::parse_str(value)
-                .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
-        })
 }
