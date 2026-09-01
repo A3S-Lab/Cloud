@@ -1,6 +1,5 @@
-use crate::modules::assets::application::McpServiceProfileApplicationService;
+use crate::modules::assets::application::{AssetAccess, McpServiceProfileApplicationService};
 use crate::modules::assets::domain::McpServiceProfileBinding;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, AssetReleaseId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -11,7 +10,7 @@ pub struct GetMcpServiceProfile {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
     pub asset_release_id: AssetReleaseId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AssetAccess,
 }
 
 impl Query for GetMcpServiceProfile {
@@ -42,7 +41,7 @@ impl QueryHandler<GetMcpServiceProfile> for GetMcpServiceProfileHandler {
                     query.organization_id,
                     query.asset_id,
                     query.asset_release_id,
-                    &query.resource_access,
+                    &query.access,
                 )
                 .await)
         })

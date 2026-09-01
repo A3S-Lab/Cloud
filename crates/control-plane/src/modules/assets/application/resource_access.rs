@@ -1,10 +1,39 @@
 use crate::modules::assets::domain::{Asset, AssetRelease, IAssetRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
 };
 use std::sync::Arc;
+
+/// Assets-owned projection of an already-authorized request.
+///
+/// Assets are organization-scoped aggregates. Identity's project, environment,
+/// and node grants therefore cannot be interpreted as Asset authority. The root
+/// Presentation adapter only projects whether the request has organization-wide
+/// visibility; Assets applies that closed decision without importing Identity's
+/// authorization model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AssetAccess {
+    organization_wide: bool,
+}
+
+impl AssetAccess {
+    pub(crate) const fn organization_wide() -> Self {
+        Self {
+            organization_wide: true,
+        }
+    }
+
+    pub(crate) const fn restricted() -> Self {
+        Self {
+            organization_wide: false,
+        }
+    }
+
+    pub(crate) const fn organization_catalog_is_visible(self) -> bool {
+        self.organization_wide
+    }
+}
 
 /// Resolves indirect Asset identities without inventing project ownership.
 ///
@@ -26,7 +55,7 @@ impl AssetResourceAccess {
         &self,
         organization_id: OrganizationId,
         asset_id: AssetId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
         not_found: &'static str,
     ) -> ApplicationResult<Asset> {
         let asset = match self.assets.find_asset(organization_id, asset_id).await {
@@ -34,7 +63,7 @@ impl AssetResourceAccess {
             Ok(None) | Err(RepositoryError::NotFound) => return Err(not_found_error(not_found)),
             Err(error) => return Err(error.into()),
         };
-        if !evaluator.is_organization_wide() {
+        if !access.organization_catalog_is_visible() {
             return Err(not_found_error(not_found));
         }
         Ok(asset)
@@ -45,12 +74,12 @@ impl AssetResourceAccess {
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
         asset_not_found: &'static str,
         release_not_found: &'static str,
     ) -> ApplicationResult<(Asset, AssetRelease)> {
         let asset = self
-            .asset(organization_id, asset_id, evaluator, asset_not_found)
+            .asset(organization_id, asset_id, access, asset_not_found)
             .await?;
         let release = match self
             .assets
@@ -69,4 +98,15 @@ impl AssetResourceAccess {
 
 fn not_found_error(message: &'static str) -> ApplicationError {
     ApplicationError::NotFound(message.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::AssetAccess;
+
+    #[test]
+    fn asset_access_exposes_only_the_organization_catalog_decision() {
+        assert!(AssetAccess::organization_wide().organization_catalog_is_visible());
+        assert!(!AssetAccess::restricted().organization_catalog_is_visible());
+    }
 }

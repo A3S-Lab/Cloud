@@ -1,6 +1,5 @@
-use crate::modules::assets::application::AssetGitApplicationService;
+use crate::modules::assets::application::{AssetAccess, AssetGitApplicationService};
 use crate::modules::assets::domain::AssetGitService;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -11,7 +10,7 @@ pub struct AdvertiseAssetGitRepository {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
     pub service: AssetGitService,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AssetAccess,
 }
 
 impl Query for AdvertiseAssetGitRepository {
@@ -41,7 +40,7 @@ impl QueryHandler<AdvertiseAssetGitRepository> for AdvertiseAssetGitRepositoryHa
                     query.organization_id,
                     query.asset_id,
                     query.service,
-                    &query.resource_access,
+                    &query.access,
                 )
                 .await)
         })

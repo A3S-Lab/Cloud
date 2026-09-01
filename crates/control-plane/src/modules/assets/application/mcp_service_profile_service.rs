@@ -1,10 +1,9 @@
 use super::catalog_service::{idempotency, validate_request_id};
-use super::resource_access::AssetResourceAccess;
+use super::resource_access::{AssetAccess, AssetResourceAccess};
 use crate::modules::assets::domain::{
     BindMcpServiceProfileWrite, IAssetRepository, IMcpServiceProfileRepository, McpServiceProfile,
     McpServiceProfileBinding, McpServiceProfileBound, McpServiceProfileWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, OrganizationId,
@@ -36,7 +35,7 @@ impl McpServiceProfileApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
         acl: String,
         idempotency_key: String,
         request_id: Uuid,
@@ -48,7 +47,7 @@ impl McpServiceProfileApplicationService {
                 organization_id,
                 asset_id,
                 asset_release_id,
-                evaluator,
+                access,
                 "Asset not found",
                 "Asset release not found",
             )
@@ -89,14 +88,14 @@ impl McpServiceProfileApplicationService {
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &AssetAccess,
     ) -> ApplicationResult<McpServiceProfileBinding> {
         self.resource_access
             .release(
                 organization_id,
                 asset_id,
                 asset_release_id,
-                evaluator,
+                access,
                 "Asset not found",
                 "Asset release not found",
             )
@@ -266,7 +265,7 @@ mod tests {
         let organization_id = repository.asset.organization_id;
         let asset_id = repository.asset.id;
         let asset_release_id = repository.release.id;
-        let resource_access = ResourceAccessEvaluator::organization_wide();
+        let access = AssetAccess::organization_wide();
         let canonical_acl = McpServiceProfile::from_spec(fixture_spec())
             .expect("profile")
             .canonical_acl()
@@ -277,7 +276,7 @@ mod tests {
                 organization_id,
                 asset_id,
                 asset_release_id,
-                &resource_access,
+                &access,
                 canonical_acl.clone(),
                 "profile-bind-1".into(),
                 Uuid::now_v7(),
@@ -289,7 +288,7 @@ mod tests {
                 organization_id,
                 asset_id,
                 asset_release_id,
-                &resource_access,
+                &access,
                 format!("\n{canonical_acl}\n"),
                 "profile-bind-2".into(),
                 Uuid::now_v7(),
@@ -319,7 +318,7 @@ mod tests {
                     OrganizationId::new(),
                     AssetId::new(),
                     AssetReleaseId::new(),
-                    &ResourceAccessEvaluator::organization_wide(),
+                    &AssetAccess::organization_wide(),
                     String::new(),
                     "profile-bind-invalid".into(),
                     Uuid::now_v7(),

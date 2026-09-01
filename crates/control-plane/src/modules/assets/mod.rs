@@ -19,10 +19,10 @@ pub use application::queries::{
     SelectAssetReleaseHandler, UploadAssetGitPack, UploadAssetGitPackHandler,
 };
 pub use application::{
-    load_deployable_agent_release, AssetCatalogApplicationService, AssetGitApplicationService,
-    AssetGitApplicationServiceOptions, DeployableAgentRelease, HostedAssetBuildInputQueryError,
-    HostedAssetBuildInputQueryService, IHostedAssetBuildInputQueryPort,
-    McpServiceProfileApplicationService,
+    load_deployable_agent_release, AssetAccess, AssetCatalogApplicationService,
+    AssetGitApplicationService, AssetGitApplicationServiceOptions, DeployableAgentRelease,
+    HostedAssetBuildInputQueryError, HostedAssetBuildInputQueryService, IAssetOrganizationAccess,
+    IHostedAssetBuildInputQueryPort, McpServiceProfileApplicationService,
 };
 
 pub use domain::{

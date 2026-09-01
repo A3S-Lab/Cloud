@@ -1,3 +1,4 @@
+use crate::modules::assets::AssetAccess;
 use crate::modules::files::UserFileAccess;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -19,6 +20,14 @@ pub(crate) fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> 
 pub(crate) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {
     let principal = request.require_auth_principal()?;
     Ok(authenticated_actor(&principal)?.principal_id)
+}
+
+pub(crate) fn asset_access(resource_access: &ResourceAccessEvaluator) -> AssetAccess {
+    if resource_access.is_organization_wide() {
+        AssetAccess::organization_wide()
+    } else {
+        AssetAccess::restricted()
+    }
 }
 
 pub(crate) fn search_visibility(resource_access: &ResourceAccessEvaluator) -> SearchVisibility {
@@ -62,11 +71,30 @@ pub(crate) fn request_id(request: &BootRequest) -> Result<Uuid> {
 
 #[cfg(test)]
 mod tests {
-    use super::{search_visibility, user_file_access};
+    use super::{asset_access, search_visibility, user_file_access};
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::search::SearchVisibilityScope;
     use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_assets_owned_projection() {
+        assert!(asset_access(&ResourceAccessEvaluator::organization_wide())
+            .organization_catalog_is_visible());
+        assert!(!asset_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project {
+                project_id: ProjectId::new(),
+            },
+            ResourceGrantScope::Environment {
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]))
+        .organization_catalog_is_visible());
+    }
 
     #[test]
     fn identity_access_is_translated_once_into_the_search_owned_contract() {

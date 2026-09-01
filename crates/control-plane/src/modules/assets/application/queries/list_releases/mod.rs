@@ -1,6 +1,5 @@
-use crate::modules::assets::application::AssetCatalogApplicationService;
+use crate::modules::assets::application::{AssetAccess, AssetCatalogApplicationService};
 use crate::modules::assets::domain::AssetRelease;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AssetId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,7 +9,7 @@ use std::sync::Arc;
 pub struct ListAssetReleases {
     pub organization_id: OrganizationId,
     pub asset_id: AssetId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AssetAccess,
 }
 
 impl Query for ListAssetReleases {
@@ -36,11 +35,7 @@ impl QueryHandler<ListAssetReleases> for ListAssetReleasesHandler {
         let service = Arc::clone(&self.service);
         Box::pin(async move {
             Ok(service
-                .list_releases(
-                    query.organization_id,
-                    query.asset_id,
-                    &query.resource_access,
-                )
+                .list_releases(query.organization_id, query.asset_id, &query.access)
                 .await)
         })
     }
