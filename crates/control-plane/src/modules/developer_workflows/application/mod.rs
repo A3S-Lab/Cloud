@@ -1,6 +1,5 @@
 mod acceptance;
 mod accepted_profile_compilation;
-mod authorization;
 mod build_outcome;
 mod build_plan_detection_query;
 mod build_plan_queries;
@@ -11,6 +10,7 @@ mod preview_policy_acceptance;
 mod preview_source_subscription;
 mod profile_compilation;
 mod pull_request_preview_projection;
+mod resource_access;
 mod source_layout_acquisition;
 mod source_revision;
 mod target_admission;
@@ -21,10 +21,6 @@ pub use acceptance::{AcceptBuildPlan, AcceptBuildPlanHandler, AcceptBuildPlanRes
 pub use accepted_profile_compilation::{
     CompileAcceptedWorkloadProfile, CompileAcceptedWorkloadProfileHandler,
     CompiledAcceptedWorkloadProfile,
-};
-pub use authorization::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    IDeveloperWorkflowAuthorizationPort,
 };
 pub use build_outcome::{
     IWorkloadBuildOutcomePort, VerifiedOciArtifact, VerifiedWorkloadBuildOutcome,
@@ -65,6 +61,10 @@ pub use profile_compilation::{
 pub use pull_request_preview_projection::{
     IPullRequestPreviewProjectionPort, ProjectCommittedPullRequestChange,
     PullRequestPreviewProjectionService,
+};
+pub(crate) use resource_access::DeveloperWorkflowAccessScope;
+pub use resource_access::{
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
 };
 pub use source_layout_acquisition::{
     BuildPlanSourceLayoutError, BuildPlanSourceLayoutRequest, IBuildPlanSourceLayoutPort,

@@ -1,6 +1,6 @@
 use super::{
-    AcceptWorkloadProfile, AcceptWorkloadProfileHandler, DeveloperWorkflowAction,
-    DeveloperWorkflowEnvironmentAccess, IDeveloperWorkflowAuthorizationPort,
+    AcceptWorkloadProfile, AcceptWorkloadProfileHandler, DeveloperWorkflowAccess,
+    DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptBuildPlanWrite, AcceptWorkloadProfileRevisionWrite, AcceptedBuildPlan,
@@ -29,7 +29,7 @@ const BUILD_PLAN_FIXTURE: &str = include_str!("../../../../../../contracts/p0.1/
 
 #[tokio::test]
 async fn acceptance_is_revisioned_replay_safe_and_queryable() {
-    let (fixture, profiles, handler, _authorization) = setup().await;
+    let (fixture, profiles, handler, _environments) = setup().await;
     let initial = fixture.contract(250);
     let first_command = fixture.command(&initial, fixture.actor, "accept-1");
     let first = execute(&handler, first_command.clone()).await;
@@ -90,7 +90,7 @@ async fn acceptance_is_revisioned_replay_safe_and_queryable() {
 
 #[tokio::test]
 async fn another_actor_creates_an_auditable_revision_and_can_replay_it() {
-    let (fixture, profiles, handler, _authorization) = setup().await;
+    let (fixture, profiles, handler, _environments) = setup().await;
     let contract = fixture.contract(250);
     let first = execute(
         &handler,
@@ -120,15 +120,15 @@ async fn another_actor_creates_an_auditable_revision_and_can_replay_it() {
 }
 
 #[tokio::test]
-async fn authorization_precedes_acl_parsing_plan_lookup_and_replay() {
-    let (fixture, _profiles, handler, authorization) = setup().await;
+async fn environment_access_precedes_acl_parsing_plan_lookup_and_replay() {
+    let (fixture, _profiles, handler, environments) = setup().await;
     let contract = fixture.contract(250);
-    let original = fixture.command(&contract, fixture.actor, "authorization-order");
+    let original = fixture.command(&contract, fixture.actor, "environment-access-order");
     execute(&handler, original.clone()).await;
 
     let mut forbidden = original;
     forbidden.profile_acl = "not an ACL document".into();
-    authorization.deny();
+    environments.deny();
     let error = handler
         .execute(forbidden, context())
         .await
@@ -154,8 +154,8 @@ async fn replay_revalidates_repository_state_before_public_projection() {
     let profiles: Arc<dyn IWorkloadProfileRepository> =
         Arc::new(CorruptReplayRepository { revision });
     let plans: Arc<dyn IBuildPlanRepository> = Arc::new(InMemoryBuildPlanRepository::new());
-    let authorization = Arc::new(FakeAuthorizationPort::new());
-    let handler = AcceptWorkloadProfileHandler::new(profiles, plans, authorization);
+    let environments = Arc::new(FakeEnvironmentPort::new());
+    let handler = AcceptWorkloadProfileHandler::new(profiles, plans, environments);
 
     let error = handler
         .execute(
@@ -169,7 +169,7 @@ async fn replay_revalidates_repository_state_before_public_projection() {
 
 #[tokio::test]
 async fn embedded_plan_drift_and_idempotency_reuse_are_rejected() {
-    let (fixture, _profiles, handler, _authorization) = setup().await;
+    let (fixture, _profiles, handler, _environments) = setup().await;
     let initial = fixture.contract(250);
     execute(
         &handler,
@@ -203,7 +203,7 @@ async fn embedded_plan_drift_and_idempotency_reuse_are_rejected() {
 
 #[tokio::test]
 async fn stale_competing_revision_write_conflicts() {
-    let (fixture, profiles, handler, _authorization) = setup().await;
+    let (fixture, profiles, handler, _environments) = setup().await;
     let initial = fixture.contract(250);
     let first = execute(
         &handler,
@@ -249,8 +249,8 @@ async fn stale_competing_revision_write_conflicts() {
     assert_eq!(profiles.outbox_events().await.len(), 2);
 }
 
-struct FakeAuthorizationPort {
-    allowed: AtomicBool,
+struct FakeEnvironmentPort {
+    exists: AtomicBool,
 }
 
 struct CorruptReplayRepository {
@@ -306,31 +306,26 @@ impl IWorkloadProfileRepository for CorruptReplayRepository {
     }
 }
 
-impl FakeAuthorizationPort {
+impl FakeEnvironmentPort {
     fn new() -> Self {
         Self {
-            allowed: AtomicBool::new(true),
+            exists: AtomicBool::new(true),
         }
     }
 
     fn deny(&self) {
-        self.allowed.store(false, Ordering::SeqCst);
+        self.exists.store(false, Ordering::SeqCst);
     }
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for FakeEnvironmentPort {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
-        access.validate().map_err(RepositoryError::Forbidden)?;
-        if access.action != DeveloperWorkflowAction::AcceptWorkloadProfile {
-            return Err(RepositoryError::Forbidden(
-                "unexpected Developer Workflow action".into(),
-            ));
-        }
-        Ok(self.allowed.load(Ordering::SeqCst))
+        scope.validate().map_err(RepositoryError::Forbidden)?;
+        Ok(self.exists.load(Ordering::SeqCst))
     }
 }
 
@@ -377,6 +372,7 @@ impl Fixture {
             environment_id: self.plan.environment_id,
             build_plan_id: self.plan.id,
             profile_acl: contract.canonical_acl().into(),
+            access: DeveloperWorkflowAccess::organization_wide(),
             actor_principal_id,
             idempotency_key: idempotency_key.into(),
             request_id: Uuid::now_v7(),
@@ -388,15 +384,15 @@ async fn setup() -> (
     Fixture,
     Arc<InMemoryWorkloadProfileRepository>,
     AcceptWorkloadProfileHandler,
-    Arc<FakeAuthorizationPort>,
+    Arc<FakeEnvironmentPort>,
 ) {
     let fixture = Fixture::new();
     let plans = Arc::new(InMemoryBuildPlanRepository::new());
     seed_plan(&plans, &fixture.plan).await;
     let profiles = Arc::new(InMemoryWorkloadProfileRepository::new());
-    let authorization = Arc::new(FakeAuthorizationPort::new());
-    let handler = AcceptWorkloadProfileHandler::new(profiles.clone(), plans, authorization.clone());
-    (fixture, profiles, handler, authorization)
+    let environments = Arc::new(FakeEnvironmentPort::new());
+    let handler = AcceptWorkloadProfileHandler::new(profiles.clone(), plans, environments.clone());
+    (fixture, profiles, handler, environments)
 }
 
 async fn seed_plan(repository: &InMemoryBuildPlanRepository, plan: &AcceptedBuildPlan) {

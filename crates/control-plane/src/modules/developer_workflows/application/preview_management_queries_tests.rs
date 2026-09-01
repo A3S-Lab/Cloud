@@ -1,10 +1,10 @@
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope,
     GetAcceptedPullRequestPreviewPolicyRevision,
     GetAcceptedPullRequestPreviewPolicyRevisionHandler,
     GetCurrentAcceptedPullRequestPreviewPolicyRevision,
     GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler, GetPullRequestPreview,
-    GetPullRequestPreviewHandler, IDeveloperWorkflowAuthorizationPort,
+    GetPullRequestPreviewHandler, IDeveloperWorkflowEnvironmentPort,
     ListAcceptedPullRequestPreviewPolicyRevisions,
     ListAcceptedPullRequestPreviewPolicyRevisionsHandler, PreviewPolicyQueryService,
     PullRequestPreviewQueryService, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
@@ -46,10 +46,10 @@ async fn preview_queries_share_exact_authorized_application_authorities() {
     let previews = Arc::new(ScriptedPreviewRepository::new(Some(
         fixture.preview.clone(),
     )));
-    let authorization = Arc::new(ScriptedAuthorization::new(true));
+    let environments = Arc::new(ScriptedEnvironments::new(true));
     let policy_queries = Arc::new(PreviewPolicyQueryService::new(
         policies.clone(),
-        authorization.clone(),
+        environments.clone(),
     ));
     let current =
         GetCurrentAcceptedPullRequestPreviewPolicyRevisionHandler::new(Arc::clone(&policy_queries));
@@ -58,7 +58,7 @@ async fn preview_queries_share_exact_authorized_application_authorities() {
     let list = ListAcceptedPullRequestPreviewPolicyRevisionsHandler::new(policy_queries);
     let preview = GetPullRequestPreviewHandler::new(Arc::new(PullRequestPreviewQueryService::new(
         previews.clone(),
-        authorization.clone(),
+        environments.clone(),
     )));
 
     assert_eq!(
@@ -92,15 +92,7 @@ async fn preview_queries_share_exact_authorized_application_authorities() {
             .expect("current Preview"),
         fixture.preview
     );
-    assert_eq!(
-        authorization.actions(),
-        vec![
-            DeveloperWorkflowAction::ReadPullRequestPreviewPolicy,
-            DeveloperWorkflowAction::ReadPullRequestPreviewPolicy,
-            DeveloperWorkflowAction::ReadPullRequestPreviewPolicy,
-            DeveloperWorkflowAction::ReadPullRequestPreview,
-        ]
-    );
+    assert_eq!(environments.scopes(), vec![fixture.environment_scope(); 4]);
     assert_eq!(policies.current_calls.load(Ordering::SeqCst), 1);
     assert_eq!(policies.revision_calls.load(Ordering::SeqCst), 1);
     assert_eq!(policies.list_calls.load(Ordering::SeqCst), 1);
@@ -108,16 +100,16 @@ async fn preview_queries_share_exact_authorized_application_authorities() {
 }
 
 #[tokio::test]
-async fn preview_queries_authorize_before_private_identifiers_and_bounds() {
+async fn preview_queries_check_environment_before_private_identifiers_and_bounds() {
     let fixture = Fixture::new();
     let policies = Arc::new(ScriptedPolicyRepository::default());
     let previews = Arc::new(ScriptedPreviewRepository::default());
-    let denied_authorization = Arc::new(ScriptedAuthorization::new(false));
+    let denied_environment = Arc::new(ScriptedEnvironments::new(false));
     let denied_policy = ListAcceptedPullRequestPreviewPolicyRevisionsHandler::new(Arc::new(
-        PreviewPolicyQueryService::new(policies.clone(), denied_authorization.clone()),
+        PreviewPolicyQueryService::new(policies.clone(), denied_environment.clone()),
     ));
     let denied_preview = GetPullRequestPreviewHandler::new(Arc::new(
-        PullRequestPreviewQueryService::new(previews.clone(), denied_authorization),
+        PullRequestPreviewQueryService::new(previews.clone(), denied_environment),
     ));
 
     let denied_policy_error = denied_policy
@@ -153,10 +145,7 @@ async fn preview_queries_authorize_before_private_identifiers_and_bounds() {
     assert_eq!(previews.calls.load(Ordering::SeqCst), 0);
 
     let allowed_policy = ListAcceptedPullRequestPreviewPolicyRevisionsHandler::new(Arc::new(
-        PreviewPolicyQueryService::new(
-            policies.clone(),
-            Arc::new(ScriptedAuthorization::new(true)),
-        ),
+        PreviewPolicyQueryService::new(policies.clone(), Arc::new(ScriptedEnvironments::new(true))),
     ));
     for limit in [0, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT + 1] {
         let error = allowed_policy
@@ -169,7 +158,7 @@ async fn preview_queries_authorize_before_private_identifiers_and_bounds() {
     let allowed_preview =
         GetPullRequestPreviewHandler::new(Arc::new(PullRequestPreviewQueryService::new(
             previews.clone(),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         )));
     let error = allowed_preview
         .execute(
@@ -199,7 +188,7 @@ async fn preview_queries_fail_closed_on_restored_scope_order_and_bound_drift() {
                 None,
                 Vec::new(),
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     assert!(matches!(
@@ -218,7 +207,7 @@ async fn preview_queries_fail_closed_on_restored_scope_order_and_bound_drift() {
                 None,
                 vec![fixture.second.clone(), fixture.first.clone()],
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     assert!(matches!(
@@ -237,7 +226,7 @@ async fn preview_queries_fail_closed_on_restored_scope_order_and_bound_drift() {
                 None,
                 vec![fixture.first.clone(), fixture.second.clone()],
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     assert!(matches!(
@@ -253,7 +242,7 @@ async fn preview_queries_fail_closed_on_restored_scope_order_and_bound_drift() {
     wrong_preview.policy_authority.source_environment_id = EnvironmentId::new();
     let preview = GetPullRequestPreviewHandler::new(Arc::new(PullRequestPreviewQueryService::new(
         Arc::new(ScriptedPreviewRepository::new(Some(wrong_preview))),
-        Arc::new(ScriptedAuthorization::new(true)),
+        Arc::new(ScriptedEnvironments::new(true)),
     )));
     assert!(matches!(
         preview
@@ -270,7 +259,6 @@ struct Fixture {
     project_id: ProjectId,
     environment_id: EnvironmentId,
     subscription_id: SourceSubscriptionId,
-    principal_id: PrincipalId,
     first: AcceptedPullRequestPreviewPolicyRevision,
     second: AcceptedPullRequestPreviewPolicyRevision,
     preview: PullRequestPreview,
@@ -337,7 +325,6 @@ impl Fixture {
             project_id,
             environment_id,
             subscription_id,
-            principal_id,
             first,
             second,
             preview,
@@ -350,7 +337,7 @@ impl Fixture {
             project_id: self.project_id,
             source_environment_id: self.environment_id,
             source_subscription_id: self.subscription_id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -361,7 +348,7 @@ impl Fixture {
             source_environment_id: self.environment_id,
             source_subscription_id: self.subscription_id,
             preview_policy_revision_id: self.first.id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -372,7 +359,7 @@ impl Fixture {
             source_environment_id: self.environment_id,
             source_subscription_id: self.subscription_id,
             limit,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -383,7 +370,15 @@ impl Fixture {
             source_environment_id: self.environment_id,
             source_subscription_id: self.subscription_id,
             pull_request_id: self.preview.pull_request_id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
+        }
+    }
+
+    fn environment_scope(&self) -> DeveloperWorkflowEnvironmentScope {
+        DeveloperWorkflowEnvironmentScope {
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            environment_id: self.environment_id,
         }
     }
 }
@@ -521,36 +516,36 @@ impl IPullRequestPreviewProjectionRepository for ScriptedPreviewRepository {
     }
 }
 
-struct ScriptedAuthorization {
-    allowed: bool,
-    actions: Mutex<Vec<DeveloperWorkflowAction>>,
+struct ScriptedEnvironments {
+    exists: bool,
+    scopes: Mutex<Vec<DeveloperWorkflowEnvironmentScope>>,
 }
 
-impl ScriptedAuthorization {
-    fn new(allowed: bool) -> Self {
+impl ScriptedEnvironments {
+    fn new(exists: bool) -> Self {
         Self {
-            allowed,
-            actions: Mutex::new(Vec::new()),
+            exists,
+            scopes: Mutex::new(Vec::new()),
         }
     }
 
-    fn actions(&self) -> Vec<DeveloperWorkflowAction> {
-        self.actions.lock().expect("actions lock").clone()
+    fn scopes(&self) -> Vec<DeveloperWorkflowEnvironmentScope> {
+        self.scopes.lock().expect("environment scopes lock").clone()
     }
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for ScriptedAuthorization {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for ScriptedEnvironments {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
-        access.validate().map_err(RepositoryError::Forbidden)?;
-        self.actions
+        scope.validate().map_err(RepositoryError::Forbidden)?;
+        self.scopes
             .lock()
-            .expect("actions lock")
-            .push(access.action);
-        Ok(self.allowed)
+            .expect("environment scopes lock")
+            .push(scope);
+        Ok(self.exists)
     }
 }
 

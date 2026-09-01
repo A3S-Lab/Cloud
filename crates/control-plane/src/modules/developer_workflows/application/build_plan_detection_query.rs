@@ -1,13 +1,13 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
     BuildPlanDetectionService, BuildPlanSourceLayoutError, BuildPlanSourceLayoutRequest,
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceLayoutPort,
-    IDeveloperWorkflowAuthorizationPort,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IBuildPlanSourceLayoutPort,
+    IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::BuildPlanDetection;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, PrincipalId, ProjectId, SourceRevisionId,
+    EnvironmentId, OrganizationId, ProjectId, SourceRevisionId,
 };
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -20,7 +20,7 @@ pub struct DetectBuildPlanProposals {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub source_revision_id: SourceRevisionId,
-    pub principal_id: PrincipalId,
+    pub access: DeveloperWorkflowAccess,
 }
 
 impl Query for DetectBuildPlanProposals {
@@ -32,19 +32,19 @@ impl Query for DetectBuildPlanProposals {
 pub struct DetectBuildPlanProposalsHandler {
     detection: Arc<BuildPlanDetectionService>,
     source_layouts: Arc<dyn IBuildPlanSourceLayoutPort>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl DetectBuildPlanProposalsHandler {
     pub fn new(
         detection: Arc<BuildPlanDetectionService>,
         source_layouts: Arc<dyn IBuildPlanSourceLayoutPort>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             detection,
             source_layouts,
-            authorization,
+            environments,
         }
     }
 }
@@ -57,18 +57,17 @@ impl QueryHandler<DetectBuildPlanProposals> for DetectBuildPlanProposalsHandler 
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<BuildPlanDetection>>> {
         let detection = Arc::clone(&self.detection);
         let source_layouts = Arc::clone(&self.source_layouts);
-        let authorization = Arc::clone(&self.authorization);
+        let environments = Arc::clone(&self.environments);
         Box::pin(async move {
             let result = async move {
-                authorize_environment_action(
-                    authorization.as_ref(),
-                    DeveloperWorkflowEnvironmentAccess {
+                authorize_environment(
+                    environments.as_ref(),
+                    DeveloperWorkflowEnvironmentScope {
                         organization_id: query.organization_id,
                         project_id: query.project_id,
                         environment_id: query.environment_id,
-                        principal_id: query.principal_id,
-                        action: DeveloperWorkflowAction::DetectBuildPlan,
                     },
+                    &query.access,
                 )
                 .await?;
                 let request = BuildPlanSourceLayoutRequest {

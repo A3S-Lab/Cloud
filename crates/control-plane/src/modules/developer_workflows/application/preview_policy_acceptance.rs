@@ -1,8 +1,7 @@
-use super::authorization::authorize_environment_action;
+use super::resource_access::authorize_environment;
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    IDeveloperWorkflowAuthorizationPort, IPreviewSourceSubscriptionQueryPort,
-    PreviewSourceSubscriptionBinding,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
+    IPreviewSourceSubscriptionQueryPort, PreviewSourceSubscriptionBinding,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptPullRequestPreviewPolicyRevisionWrite, AcceptedPullRequestPreviewPolicyRevision,
@@ -27,6 +26,7 @@ pub struct AcceptPullRequestPreviewPolicy {
     pub source_environment_id: EnvironmentId,
     pub source_subscription_id: SourceSubscriptionId,
     pub policy_acl: String,
+    pub access: DeveloperWorkflowAccess,
     pub actor_principal_id: PrincipalId,
     pub idempotency_key: String,
     pub request_id: Uuid,
@@ -45,19 +45,19 @@ pub struct AcceptPullRequestPreviewPolicyResult {
 pub struct AcceptPullRequestPreviewPolicyHandler {
     policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
     subscriptions: Arc<dyn IPreviewSourceSubscriptionQueryPort>,
-    authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+    environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
 }
 
 impl AcceptPullRequestPreviewPolicyHandler {
     pub fn new(
         policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
         subscriptions: Arc<dyn IPreviewSourceSubscriptionQueryPort>,
-        authorization: Arc<dyn IDeveloperWorkflowAuthorizationPort>,
+        environments: Arc<dyn IDeveloperWorkflowEnvironmentPort>,
     ) -> Self {
         Self {
             policies,
             subscriptions,
-            authorization,
+            environments,
         }
     }
 }
@@ -73,17 +73,16 @@ impl CommandHandler<AcceptPullRequestPreviewPolicy> for AcceptPullRequestPreview
     > {
         let policies = Arc::clone(&self.policies);
         let subscriptions = Arc::clone(&self.subscriptions);
-        let authorization = Arc::clone(&self.authorization);
+        let environments = Arc::clone(&self.environments);
         Box::pin(async move {
-            if let Err(error) = authorize_environment_action(
-                authorization.as_ref(),
-                DeveloperWorkflowEnvironmentAccess {
+            if let Err(error) = authorize_environment(
+                environments.as_ref(),
+                DeveloperWorkflowEnvironmentScope {
                     organization_id: command.organization_id,
                     project_id: command.project_id,
                     environment_id: command.source_environment_id,
-                    principal_id: command.actor_principal_id,
-                    action: DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy,
                 },
+                &command.access,
             )
             .await
             {
@@ -275,6 +274,7 @@ mod tests {
             source_environment_id: environment_id,
             source_subscription_id: policy.source_subscription_id,
             policy_acl: contract.canonical_acl().into(),
+            access: DeveloperWorkflowAccess::organization_wide(),
             actor_principal_id,
             idempotency_key: "corrupt-replay".into(),
             request_id: Uuid::now_v7(),

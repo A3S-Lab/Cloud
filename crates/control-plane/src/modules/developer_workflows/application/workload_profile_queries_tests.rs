@@ -1,10 +1,9 @@
 use super::{
-    DeveloperWorkflowAction, DeveloperWorkflowEnvironmentAccess,
-    GetAcceptedWorkloadProfileRevision, GetAcceptedWorkloadProfileRevisionHandler,
-    GetCurrentAcceptedWorkloadProfileRevision, GetCurrentAcceptedWorkloadProfileRevisionHandler,
-    IDeveloperWorkflowAuthorizationPort, ListAcceptedWorkloadProfileRevisions,
-    ListAcceptedWorkloadProfileRevisionsHandler, WorkloadProfileQueryService,
-    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    DeveloperWorkflowAccess, DeveloperWorkflowEnvironmentScope, GetAcceptedWorkloadProfileRevision,
+    GetAcceptedWorkloadProfileRevisionHandler, GetCurrentAcceptedWorkloadProfileRevision,
+    GetCurrentAcceptedWorkloadProfileRevisionHandler, IDeveloperWorkflowEnvironmentPort,
+    ListAcceptedWorkloadProfileRevisions, ListAcceptedWorkloadProfileRevisionsHandler,
+    WorkloadProfileQueryService, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
 };
 use crate::modules::developer_workflows::domain::{
     AcceptWorkloadProfileRevisionWrite, AcceptedBuildPlan, AcceptedBuildPlanContract,
@@ -39,10 +38,10 @@ async fn workload_profile_queries_share_one_authorized_revision_authority() {
         Some(fixture.first.clone()),
         vec![fixture.first.clone(), fixture.second.clone()],
     ));
-    let authorization = Arc::new(ScriptedAuthorization::new(true));
+    let environments = Arc::new(ScriptedEnvironments::new(true));
     let queries = Arc::new(WorkloadProfileQueryService::new(
         repository.clone(),
-        authorization.clone(),
+        environments.clone(),
     ));
     let current = GetCurrentAcceptedWorkloadProfileRevisionHandler::new(Arc::clone(&queries));
     let exact = GetAcceptedWorkloadProfileRevisionHandler::new(Arc::clone(&queries));
@@ -73,24 +72,22 @@ async fn workload_profile_queries_share_one_authorized_revision_authority() {
         .await
         .expect("list query Boot result")
         .expect("WorkloadProfile revision history");
+    let environment_scope = fixture.environment_scope();
     assert_eq!(revisions, vec![fixture.first, fixture.second]);
-    assert_eq!(authorization.calls(), 3);
-    assert_eq!(
-        authorization.actions(),
-        vec![DeveloperWorkflowAction::ReadWorkloadProfile; 3]
-    );
+    assert_eq!(environments.calls(), 3);
+    assert_eq!(environments.scopes(), vec![environment_scope; 3]);
     assert_eq!(repository.current_calls.load(Ordering::SeqCst), 1);
     assert_eq!(repository.revision_calls.load(Ordering::SeqCst), 1);
     assert_eq!(repository.list_calls.load(Ordering::SeqCst), 1);
 }
 
 #[tokio::test]
-async fn workload_profile_queries_authorize_before_private_input_validation() {
+async fn workload_profile_queries_check_environment_before_private_input_validation() {
     let fixture = Fixture::new();
     let repository = Arc::new(ScriptedWorkloadProfileRepository::default());
-    let denied_authorization = Arc::new(ScriptedAuthorization::new(false));
+    let denied_environment = Arc::new(ScriptedEnvironments::new(false));
     let denied = ListAcceptedWorkloadProfileRevisionsHandler::new(Arc::new(
-        WorkloadProfileQueryService::new(repository.clone(), denied_authorization.clone()),
+        WorkloadProfileQueryService::new(repository.clone(), denied_environment.clone()),
     ));
     let denied_error = denied
         .execute(
@@ -105,13 +102,13 @@ async fn workload_profile_queries_authorize_before_private_input_validation() {
         .expect("denied query Boot result")
         .expect_err("denied query must be concealed");
     assert!(matches!(denied_error, ApplicationError::NotFound(_)));
-    assert_eq!(denied_authorization.calls(), 1);
+    assert_eq!(denied_environment.calls(), 1);
     assert_eq!(repository.list_calls.load(Ordering::SeqCst), 0);
 
     let allowed = ListAcceptedWorkloadProfileRevisionsHandler::new(Arc::new(
         WorkloadProfileQueryService::new(
             repository.clone(),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     for limit in [0, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT + 1] {
@@ -143,7 +140,7 @@ async fn workload_profile_queries_authorize_before_private_input_validation() {
     let missing = ListAcceptedWorkloadProfileRevisionsHandler::new(Arc::new(
         WorkloadProfileQueryService::new(
             missing_repository.clone(),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     let missing_error = missing
@@ -167,7 +164,7 @@ async fn workload_profile_queries_reject_repository_scope_order_and_page_drift()
                 None,
                 Vec::new(),
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     let current_error = current
@@ -184,7 +181,7 @@ async fn workload_profile_queries_reject_repository_scope_order_and_page_drift()
                 None,
                 vec![fixture.second.clone(), fixture.first.clone()],
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     let order_error = non_canonical
@@ -201,7 +198,7 @@ async fn workload_profile_queries_reject_repository_scope_order_and_page_drift()
                 None,
                 vec![fixture.first.clone(), fixture.second.clone()],
             )),
-            Arc::new(ScriptedAuthorization::new(true)),
+            Arc::new(ScriptedEnvironments::new(true)),
         ),
     ));
     let bound_error = over_bound
@@ -216,7 +213,6 @@ struct Fixture {
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,
-    principal_id: PrincipalId,
     first: AcceptedWorkloadProfileRevision,
     second: AcceptedWorkloadProfileRevision,
 }
@@ -260,7 +256,6 @@ impl Fixture {
             organization_id,
             project_id,
             environment_id,
-            principal_id,
             first,
             second,
         }
@@ -272,7 +267,7 @@ impl Fixture {
             project_id: self.project_id,
             environment_id: self.environment_id,
             workload_profile_id: self.first.profile_id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -283,7 +278,7 @@ impl Fixture {
             environment_id: self.environment_id,
             workload_profile_id: self.first.profile_id,
             workload_profile_revision_id: self.first.id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -294,7 +289,15 @@ impl Fixture {
             environment_id: self.environment_id,
             workload_profile_id: self.first.profile_id,
             limit,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
+        }
+    }
+
+    fn environment_scope(&self) -> DeveloperWorkflowEnvironmentScope {
+        DeveloperWorkflowEnvironmentScope {
+            organization_id: self.organization_id,
+            project_id: self.project_id,
+            environment_id: self.environment_id,
         }
     }
 }
@@ -390,18 +393,18 @@ impl IWorkloadProfileRepository for ScriptedWorkloadProfileRepository {
     }
 }
 
-struct ScriptedAuthorization {
-    allowed: bool,
+struct ScriptedEnvironments {
+    exists: bool,
     calls: AtomicUsize,
-    actions: Mutex<Vec<DeveloperWorkflowAction>>,
+    scopes: Mutex<Vec<DeveloperWorkflowEnvironmentScope>>,
 }
 
-impl ScriptedAuthorization {
-    fn new(allowed: bool) -> Self {
+impl ScriptedEnvironments {
+    fn new(exists: bool) -> Self {
         Self {
-            allowed,
+            exists,
             calls: AtomicUsize::new(0),
-            actions: Mutex::new(Vec::new()),
+            scopes: Mutex::new(Vec::new()),
         }
     }
 
@@ -409,25 +412,22 @@ impl ScriptedAuthorization {
         self.calls.load(Ordering::SeqCst)
     }
 
-    fn actions(&self) -> Vec<DeveloperWorkflowAction> {
-        self.actions
-            .lock()
-            .expect("authorization action lock")
-            .clone()
+    fn scopes(&self) -> Vec<DeveloperWorkflowEnvironmentScope> {
+        self.scopes.lock().expect("environment scope lock").clone()
     }
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for ScriptedAuthorization {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for ScriptedEnvironments {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        self.actions
+        self.scopes
             .lock()
-            .expect("authorization action lock")
-            .push(access.action);
-        Ok(self.allowed)
+            .expect("environment scope lock")
+            .push(scope);
+        Ok(self.exists)
     }
 }

@@ -6,6 +6,7 @@
 
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::assets::AssetAccess;
+use crate::modules::developer_workflows::{DeveloperWorkflowAccess, DeveloperWorkflowAccessScope};
 use crate::modules::files::UserFileAccess;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -42,6 +43,29 @@ pub(crate) fn artifact_access(resource_access: &ResourceAccessEvaluator) -> Arti
     )
 }
 
+pub(crate) fn developer_workflow_access(
+    resource_access: &ResourceAccessEvaluator,
+) -> DeveloperWorkflowAccess {
+    if resource_access.is_organization_wide() {
+        return DeveloperWorkflowAccess::organization_wide();
+    }
+    DeveloperWorkflowAccess::restricted(resource_access.granted_scopes().filter_map(|scope| {
+        match scope {
+            ResourceGrantScope::Project { project_id } => {
+                Some(DeveloperWorkflowAccessScope::Project { project_id })
+            }
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            } => Some(DeveloperWorkflowAccessScope::Environment {
+                project_id,
+                environment_id,
+            }),
+            ResourceGrantScope::Node { .. } => None,
+        }
+    }))
+}
+
 pub(crate) fn search_visibility(resource_access: &ResourceAccessEvaluator) -> SearchVisibility {
     if resource_access.is_organization_wide() {
         return SearchVisibility::organization_wide();
@@ -73,7 +97,10 @@ pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> Use
 
 #[cfg(test)]
 mod tests {
-    use super::{artifact_access, asset_access, search_visibility, user_file_access};
+    use super::{
+        artifact_access, asset_access, developer_workflow_access, search_visibility,
+        user_file_access,
+    };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::search::SearchVisibilityScope;
@@ -123,6 +150,32 @@ mod tests {
         let organization_wide = artifact_access(&ResourceAccessEvaluator::organization_wide());
         assert!(organization_wide.environment_is_visible(ProjectId::new(), EnvironmentId::new()));
         assert!(organization_wide.organization_build_is_visible());
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_developer_workflows_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = developer_workflow_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id: environment_project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
+        assert!(access.environment_is_visible(environment_project_id, environment_id));
+        assert!(!access.environment_is_visible(environment_project_id, EnvironmentId::new()));
+        assert!(!access.environment_is_visible(ProjectId::new(), EnvironmentId::new()));
+
+        let organization_wide =
+            developer_workflow_access(&ResourceAccessEvaluator::organization_wide());
+        assert!(organization_wide.environment_is_visible(ProjectId::new(), EnvironmentId::new()));
     }
 
     #[test]

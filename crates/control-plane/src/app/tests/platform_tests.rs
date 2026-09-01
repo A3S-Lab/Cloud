@@ -549,11 +549,11 @@ fn build_plan_detection_has_one_closed_production_composition_path() {
 }
 
 #[test]
-fn build_plan_acceptance_has_one_owner_authorized_production_composition_path() {
+fn build_plan_acceptance_has_one_owner_environment_production_composition_path() {
     let composition = include_str!("../../app.rs");
 
     for constructor in [
-        "IdentityProjectsDeveloperWorkflowAuthorizationAdapter::new(",
+        "ProjectsDeveloperWorkflowEnvironmentAdapter::new(",
         "RepositoryBuildPlanSourceRevisionPort::new(",
         "AcceptBuildPlanHandler::new(",
     ] {
@@ -607,7 +607,7 @@ fn build_plan_public_reads_have_one_application_authority_and_route_module() {
 }
 
 #[test]
-fn profile_acceptance_handlers_share_one_owner_authorized_production_composition_path() {
+fn profile_acceptance_handlers_share_one_owner_environment_production_composition_path() {
     let composition = include_str!("../../app.rs");
     let adapters = include_str!("../postgres_adapters.rs");
 
@@ -624,10 +624,10 @@ fn profile_acceptance_handlers_share_one_owner_authorized_production_composition
     }
     assert_eq!(
         composition
-            .matches("Arc::clone(&developer_workflow_authorization)")
+            .matches("Arc::clone(&developer_workflow_environments)")
             .count(),
         8,
-        "BuildPlan detection, reads, acceptance, WorkloadProfile reads and acceptance, and Preview Policy acceptance/reads plus Preview reads must share one authorization port instance"
+        "BuildPlan detection, reads, acceptance, WorkloadProfile reads and acceptance, and Preview Policy acceptance/reads plus Preview reads must share one environment port instance"
     );
     for command in [
         "crate::modules::developer_workflows::AcceptWorkloadProfile, _",
@@ -716,7 +716,7 @@ fn preview_management_public_reads_have_one_application_authority() {
             "IPullRequestPreviewPolicyRepository",
             "IPullRequestPreviewProjectionRepository",
             "::parse_acl(",
-            "IdentityProjectsDeveloperWorkflowAuthorizationAdapter",
+            "ProjectsDeveloperWorkflowEnvironmentAdapter",
             "PostgresPullRequestPreview",
         ] {
             assert!(

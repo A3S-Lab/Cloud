@@ -2,7 +2,7 @@ use super::preview_management_dto::{
     AcceptPullRequestPreviewPolicyRequest, AcceptedPullRequestPreviewPolicyRevisionResponse,
     PullRequestPreviewPolicyMutationResponse, PullRequestPreviewResponse,
 };
-use super::request::{environment_id, organization_id, project_id};
+use super::request::{environment_id, organization_id, project_id, workflow_access};
 use super::routes::{
     DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX, PULL_REQUEST_PREVIEW_ITEM_ROUTE,
     PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE, PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
@@ -14,71 +14,64 @@ use crate::modules::developer_workflows::{
     GetCurrentAcceptedPullRequestPreviewPolicyRevision, GetPullRequestPreview,
     ListAcceptedPullRequestPreviewPolicyRevisions, DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT,
 };
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     PullRequestPreviewPolicyRevisionId, SourceSubscriptionId,
 };
 use crate::presentation::{
-    actor_principal_id, application_error_response, request_id, request_identity,
+    actor_principal_id, application_error_response, organization_tenant_build_write_controller,
+    organization_tenant_cloud_read_controller, request_id, request_identity,
 };
-use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
-};
+use a3s_boot::{BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn preview_management_commands_controller(
     bus: Arc<CommandBus>,
 ) -> Result<ControllerDefinition> {
-    ControllerDefinition::new(DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX)?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::BUILD_WRITE])?
-        .post(
-            PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE,
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let body: AcceptPullRequestPreviewPolicyRequest =
-                        request.json_with_content_type()?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(AcceptPullRequestPreviewPolicy {
-                            organization_id: organization_id(&request)?,
-                            project_id: project_id(&request)?,
-                            source_environment_id: environment_id(&request)?,
-                            source_subscription_id: SourceSubscriptionId::from_uuid(
-                                body.source_subscription_id,
-                            ),
-                            policy_acl: body.policy_acl,
-                            actor_principal_id: actor_principal_id(&request)?,
-                            idempotency_key,
-                            request_id,
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
-                            BootResponse::json_with_status(
-                                status,
-                                &PullRequestPreviewPolicyMutationResponse::from(result),
-                            )
-                        }
-                        Err(error) => application_error_response(error, request_id),
+    let controller = ControllerDefinition::new(DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX)?.post(
+        PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE,
+        move |request: BootRequest| {
+            let bus = Arc::clone(&bus);
+            async move {
+                let body: AcceptPullRequestPreviewPolicyRequest =
+                    request.json_with_content_type()?;
+                let (idempotency_key, request_id) = request_identity(&request)?;
+                match bus
+                    .execute(AcceptPullRequestPreviewPolicy {
+                        organization_id: organization_id(&request)?,
+                        project_id: project_id(&request)?,
+                        source_environment_id: environment_id(&request)?,
+                        source_subscription_id: SourceSubscriptionId::from_uuid(
+                            body.source_subscription_id,
+                        ),
+                        policy_acl: body.policy_acl,
+                        access: workflow_access(&request)?,
+                        actor_principal_id: actor_principal_id(&request)?,
+                        idempotency_key,
+                        request_id,
+                    })
+                    .await?
+                {
+                    Ok(result) => {
+                        let status = if result.replayed { 200 } else { 201 };
+                        BootResponse::json_with_status(
+                            status,
+                            &PullRequestPreviewPolicyMutationResponse::from(result),
+                        )
                     }
+                    Err(error) => application_error_response(error, request_id),
                 }
-            },
-        )
+            }
+        },
+    )?;
+    organization_tenant_build_write_controller(controller)
 }
 
 pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let current_bus = Arc::clone(&bus);
     let list_bus = Arc::clone(&bus);
     let revision_bus = Arc::clone(&bus);
-    ControllerDefinition::new(DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX)?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
+    let controller = ControllerDefinition::new(DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX)?
         .get(
             PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
             move |request: BootRequest| {
@@ -91,7 +84,7 @@ pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<Contr
                             project_id: project_id(&request)?,
                             source_environment_id: environment_id(&request)?,
                             source_subscription_id: source_subscription_id(&request)?,
-                            principal_id: actor_principal_id(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -116,7 +109,7 @@ pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<Contr
                             source_environment_id: environment_id(&request)?,
                             source_subscription_id: source_subscription_id(&request)?,
                             limit: revision_list_limit(&request)?,
-                            principal_id: actor_principal_id(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -147,7 +140,7 @@ pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<Contr
                                 PullRequestPreviewPolicyRevisionId::from_uuid(
                                     request.param_as::<Uuid>("preview_policy_revision_id")?,
                                 ),
-                            principal_id: actor_principal_id(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -172,7 +165,7 @@ pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<Contr
                             source_environment_id: environment_id(&request)?,
                             source_subscription_id: source_subscription_id(&request)?,
                             pull_request_id: request.param_as::<u64>("pull_request_id")?,
-                            principal_id: actor_principal_id(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -183,7 +176,8 @@ pub fn preview_management_queries_controller(bus: Arc<QueryBus>) -> Result<Contr
                     }
                 }
             },
-        )
+        )?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 fn source_subscription_id(request: &BootRequest) -> Result<SourceSubscriptionId> {

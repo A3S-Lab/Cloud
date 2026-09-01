@@ -1,6 +1,6 @@
 use super::{
-    AcceptPullRequestPreviewPolicy, AcceptPullRequestPreviewPolicyHandler, DeveloperWorkflowAction,
-    DeveloperWorkflowEnvironmentAccess, IDeveloperWorkflowAuthorizationPort,
+    AcceptPullRequestPreviewPolicy, AcceptPullRequestPreviewPolicyHandler, DeveloperWorkflowAccess,
+    DeveloperWorkflowEnvironmentScope, IDeveloperWorkflowEnvironmentPort,
     IPreviewSourceSubscriptionQueryPort, PreviewSourceSubscriptionBinding,
 };
 use crate::modules::developer_workflows::domain::{
@@ -32,7 +32,7 @@ async fn policy_acceptance_is_authorized_exact_revisioned_and_replay_safe() {
     let handler = AcceptPullRequestPreviewPolicyHandler::new(
         repository.clone(),
         source.clone(),
-        authorization(true),
+        environments(true),
     );
 
     let first = handler
@@ -96,14 +96,14 @@ async fn policy_acceptance_is_authorized_exact_revisioned_and_replay_safe() {
 }
 
 #[tokio::test]
-async fn authorization_precedes_acl_parsing_source_resolution_and_replay() {
+async fn environment_access_precedes_acl_parsing_source_resolution_and_replay() {
     let fixture = Fixture::new();
     let repository = Arc::new(InMemoryPullRequestPreviewPolicyRepository::new());
     let source = Arc::new(FakeSourcePort::new(Some(fixture.source_binding())));
     let handler = AcceptPullRequestPreviewPolicyHandler::new(
         repository.clone(),
         source.clone(),
-        authorization(false),
+        environments(false),
     );
     let error = handler
         .execute(fixture.command("forbidden", "not an ACL"), context())
@@ -123,7 +123,7 @@ async fn inactive_or_drifted_source_binding_fails_before_persistence() {
     binding.active = false;
     let source = Arc::new(FakeSourcePort::new(Some(binding)));
     let handler =
-        AcceptPullRequestPreviewPolicyHandler::new(repository.clone(), source, authorization(true));
+        AcceptPullRequestPreviewPolicyHandler::new(repository.clone(), source, environments(true));
     let error = handler
         .execute(fixture.command("inactive", POLICY_FIXTURE), context())
         .await
@@ -166,28 +166,23 @@ impl IPreviewSourceSubscriptionQueryPort for FakeSourcePort {
     }
 }
 
-struct FakeAuthorizationPort {
-    allowed: bool,
+struct FakeEnvironmentPort {
+    exists: bool,
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for FakeAuthorizationPort {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for FakeEnvironmentPort {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
-        access.validate().map_err(RepositoryError::Forbidden)?;
-        if access.action != DeveloperWorkflowAction::AcceptPullRequestPreviewPolicy {
-            return Err(RepositoryError::Forbidden(
-                "unexpected Developer Workflow action".into(),
-            ));
-        }
-        Ok(self.allowed)
+        scope.validate().map_err(RepositoryError::Forbidden)?;
+        Ok(self.exists)
     }
 }
 
-fn authorization(allowed: bool) -> Arc<FakeAuthorizationPort> {
-    Arc::new(FakeAuthorizationPort { allowed })
+fn environments(exists: bool) -> Arc<FakeEnvironmentPort> {
+    Arc::new(FakeEnvironmentPort { exists })
 }
 
 struct Fixture {
@@ -233,6 +228,7 @@ impl Fixture {
             source_environment_id: self.environment_id,
             source_subscription_id: self.subscription_id,
             policy_acl: policy_acl.into(),
+            access: DeveloperWorkflowAccess::organization_wide(),
             actor_principal_id: PrincipalId::from_uuid(
                 Uuid::parse_str("018f0f70-0000-7000-8000-000000000105").expect("actor UUID"),
             ),

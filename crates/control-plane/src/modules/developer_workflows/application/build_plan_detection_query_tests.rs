@@ -1,8 +1,8 @@
 use super::{
     BuildPlanDetectionService, BuildPlanSourceLayoutError, BuildPlanSourceLayoutRequest,
-    DetectBuildPlanProposals, DetectBuildPlanProposalsHandler, DeveloperWorkflowAction,
-    DeveloperWorkflowEnvironmentAccess, IBuildPlanSourceLayoutPort,
-    IDeveloperWorkflowAuthorizationPort,
+    DetectBuildPlanProposals, DetectBuildPlanProposalsHandler, DeveloperWorkflowAccess,
+    DeveloperWorkflowEnvironmentScope, IBuildPlanSourceLayoutPort,
+    IDeveloperWorkflowEnvironmentPort,
 };
 use crate::modules::developer_workflows::domain::{
     BuildPlanDetectionDiagnosticCode, BuildPlanDetectorKind, SourceLayoutEntry,
@@ -13,8 +13,8 @@ use crate::modules::developer_workflows::infrastructure::{
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, GitCommitSha, OrganizationId, PrincipalId, ProjectId, RepositoryError,
-    Sha256Digest, SourceRevisionId,
+    EnvironmentId, GitCommitSha, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    SourceRevisionId,
 };
 use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use async_trait::async_trait;
@@ -65,10 +65,10 @@ async fn exact_asset_acl_is_authoritative_through_the_production_detector_set() 
     );
     assert!(detection.diagnostics.is_empty());
     assert_eq!(fixture.layouts.requests(), vec![fixture.layout_request()]);
-    assert_eq!(fixture.authorization.calls(), 1);
+    assert_eq!(fixture.environments.calls(), 1);
     assert_eq!(
-        fixture.authorization.accesses(),
-        vec![fixture.access(DeveloperWorkflowAction::DetectBuildPlan)]
+        fixture.environments.scopes(),
+        vec![fixture.environment_scope()]
     );
 }
 
@@ -152,7 +152,7 @@ async fn authorization_precedes_source_revision_and_provider_access() {
             .expect("CQRS result"),
         Err(ApplicationError::NotFound(_))
     ));
-    assert_eq!(fixture.authorization.calls(), 1);
+    assert_eq!(fixture.environments.calls(), 1);
     assert!(fixture.layouts.requests().is_empty());
 }
 
@@ -186,9 +186,8 @@ struct Fixture {
     project_id: ProjectId,
     environment_id: EnvironmentId,
     source_revision_id: SourceRevisionId,
-    principal_id: PrincipalId,
     layouts: Arc<StaticLayouts>,
-    authorization: Arc<StaticAuthorization>,
+    environments: Arc<StaticEnvironments>,
 }
 
 impl Fixture {
@@ -198,14 +197,13 @@ impl Fixture {
             project_id: ProjectId::new(),
             environment_id: EnvironmentId::new(),
             source_revision_id: SourceRevisionId::new(),
-            principal_id: PrincipalId::new(),
             layouts: Arc::new(StaticLayouts {
                 layout,
                 requests: Mutex::new(Vec::new()),
             }),
-            authorization: Arc::new(StaticAuthorization {
-                allowed,
-                accesses: Mutex::new(Vec::new()),
+            environments: Arc::new(StaticEnvironments {
+                exists: allowed,
+                scopes: Mutex::new(Vec::new()),
                 calls: AtomicUsize::new(0),
             }),
         }
@@ -215,7 +213,7 @@ impl Fixture {
         DetectBuildPlanProposalsHandler::new(
             production_detection(),
             self.layouts.clone(),
-            self.authorization.clone(),
+            self.environments.clone(),
         )
     }
 
@@ -225,7 +223,7 @@ impl Fixture {
             project_id: self.project_id,
             environment_id: self.environment_id,
             source_revision_id: self.source_revision_id,
-            principal_id: self.principal_id,
+            access: DeveloperWorkflowAccess::organization_wide(),
         }
     }
 
@@ -238,13 +236,11 @@ impl Fixture {
         }
     }
 
-    fn access(&self, action: DeveloperWorkflowAction) -> DeveloperWorkflowEnvironmentAccess {
-        DeveloperWorkflowEnvironmentAccess {
+    fn environment_scope(&self) -> DeveloperWorkflowEnvironmentScope {
+        DeveloperWorkflowEnvironmentScope {
             organization_id: self.organization_id,
             project_id: self.project_id,
             environment_id: self.environment_id,
-            principal_id: self.principal_id,
-            action,
         }
     }
 }
@@ -271,37 +267,31 @@ impl IBuildPlanSourceLayoutPort for StaticLayouts {
     }
 }
 
-struct StaticAuthorization {
-    allowed: bool,
-    accesses: Mutex<Vec<DeveloperWorkflowEnvironmentAccess>>,
+struct StaticEnvironments {
+    exists: bool,
+    scopes: Mutex<Vec<DeveloperWorkflowEnvironmentScope>>,
     calls: AtomicUsize,
 }
 
-impl StaticAuthorization {
+impl StaticEnvironments {
     fn calls(&self) -> usize {
         self.calls.load(Ordering::SeqCst)
     }
 
-    fn accesses(&self) -> Vec<DeveloperWorkflowEnvironmentAccess> {
-        self.accesses
-            .lock()
-            .expect("authorization accesses")
-            .clone()
+    fn scopes(&self) -> Vec<DeveloperWorkflowEnvironmentScope> {
+        self.scopes.lock().expect("environment scopes").clone()
     }
 }
 
 #[async_trait]
-impl IDeveloperWorkflowAuthorizationPort for StaticAuthorization {
-    async fn is_environment_action_allowed(
+impl IDeveloperWorkflowEnvironmentPort for StaticEnvironments {
+    async fn environment_exists(
         &self,
-        access: DeveloperWorkflowEnvironmentAccess,
+        scope: DeveloperWorkflowEnvironmentScope,
     ) -> Result<bool, RepositoryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
-        self.accesses
-            .lock()
-            .expect("authorization accesses")
-            .push(access);
-        Ok(self.allowed)
+        self.scopes.lock().expect("environment scopes").push(scope);
+        Ok(self.exists)
     }
 }
 
