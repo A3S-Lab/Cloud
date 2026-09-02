@@ -141,7 +141,7 @@ pub(super) async fn lease_only_command(
             },
             Uuid::now_v7(),
             now,
-            now + Duration::seconds(10),
+            now + Duration::seconds(REAL_BOX_COMMAND_LEASE_SECONDS),
         )
         .await?;
     if lease.commands.len() != 1 {
