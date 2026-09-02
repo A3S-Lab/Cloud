@@ -342,13 +342,29 @@ jobs:
             echo "::endgroup::"
             exit 1
           fi
+          image_inspect_stderr="$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.stderr"
+          set +e
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
             A3S_DEPS_STUB=1 \
             A3S_HOME="$A3S_HOME" \
             "$box_binary" image-inspect "$mutable_image" \
-            >"$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json"
+            >"$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" \
+            2>"$image_inspect_stderr"
+          image_inspect_status=$?
+          set -e
+          if (( image_inspect_status != 0 )); then
+            echo "Box image-inspect exit status: $image_inspect_status"
+            echo "::group::Box image-inspect stdout"
+            sed -n '1,240p' \
+              "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" || true
+            echo "::endgroup::"
+            echo "::group::Box image-inspect stderr"
+            sed -n '1,240p' "$image_inspect_stderr" || true
+            echo "::endgroup::"
+            exit "$image_inspect_status"
+          fi
           if ! jq -e --arg digest "$built_digest" \
             'type == "array"
              and length == 1
