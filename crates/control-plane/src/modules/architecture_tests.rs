@@ -2314,8 +2314,9 @@ fn integration_event_delivery_is_application_owned_and_leases_one_fact_at_a_time
         &workflow,
         "Certify Integration Events current-lease settlement fencing",
     );
-    assert!(lease_fencing_gate
-        .contains("postgres_outbox_settlement_requires_a_current_owned_lease"));
+    assert!(
+        lease_fencing_gate.contains("postgres_outbox_settlement_requires_a_current_owned_lease")
+    );
     assert!(lease_fencing_gate.contains("-- --exact --nocapture --test-threads=1"));
 }
 

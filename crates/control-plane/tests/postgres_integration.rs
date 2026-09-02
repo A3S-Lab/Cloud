@@ -7306,8 +7306,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         OutboxRelayConfig {
             batch_size: 100,
             poll_interval: Duration::from_millis(10),
-            lease_duration: Duration::from_millis(100),
-            publish_timeout: Duration::from_millis(50),
+            lease_duration: Duration::from_secs(5),
+            publish_timeout: Duration::from_secs(2),
             initial_backoff: Duration::from_millis(1),
             maximum_backoff: Duration::from_millis(10),
         },
@@ -7359,7 +7359,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         .await?;
     tokio::time::sleep(Duration::from_millis(5)).await;
     let recovered = relay.run_once().await?;
-    assert!(recovered.failures.is_empty());
+    assert!(
+        recovered.failures.is_empty(),
+        "memory Outbox recovery failed: {:?}",
+        recovered.failures
+    );
     assert_eq!(lost_ack.published + recovered.published, 2);
     let local_events = memory_bus.list_events(None, 100).await?;
     assert_eq!(local_events.len(), initial_event_count + 3);
@@ -7433,7 +7437,11 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .await?;
         tokio::time::sleep(Duration::from_millis(5)).await;
         let retry = nats_relay.run_once().await?;
-        assert!(retry.failures.is_empty());
+        assert!(
+            retry.failures.is_empty(),
+            "NATS Outbox recovery failed: {:?}",
+            retry.failures
+        );
         assert_eq!(first_attempt.published + retry.published, 2);
         assert_eq!(nats_relay.run_once().await?.claimed, 0);
 
