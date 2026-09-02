@@ -401,7 +401,17 @@ jobs:
             exit "$push_status"
           fi
           push_result=$(tr -d '\r' <"$push_stdout")
-          test -n "$push_result"
+          if [[ -z $push_result ]]; then
+            echo "Box push returned no result"
+            echo "::group::Box push stdout"
+            sed -n '1,240p' "$push_stdout" || true
+            echo "::endgroup::"
+            echo "::group::Box push stderr"
+            sed -n '1,320p' "$push_stderr" || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          echo "Box push result: $push_result"
           agent_media_type=application/vnd.oci.image.manifest.v1+json
           curl --fail --silent --show-error --location --retry 5 \
             --dump-header "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" \
@@ -411,26 +421,59 @@ jobs:
           response_media_type=$(awk -F ': *' \
             'tolower($1) == "content-type" { gsub("\r", "", $2); print $2 }' \
             "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" | tail -n 1)
-          test "$response_media_type" = "$agent_media_type"
-          test "$(jq -r '.mediaType' "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")" = \
-            "$agent_media_type"
+          manifest_media_type=$(jq -r '.mediaType' \
+            "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")
+          echo "Registry manifest media types: header=$response_media_type body=$manifest_media_type expected=$agent_media_type"
+          if [[ $response_media_type != "$agent_media_type" || \
+            $manifest_media_type != "$agent_media_type" ]]; then
+            echo "Registry manifest media type mismatch"
+            echo "::group::Registry manifest headers"
+            sed -n '1,120p' "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" || true
+            echo "::endgroup::"
+            echo "::group::Registry manifest"
+            sed -n '1,240p' "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" || true
+            echo "::endgroup::"
+            exit 1
+          fi
           agent_digest="sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" | cut -d' ' -f1)"
           header_digest=$(awk -F ': *' \
             'tolower($1) == "docker-content-digest" { gsub("\r", "", $2); print $2 }' \
             "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" | tail -n 1)
-          test "$header_digest" = "$agent_digest"
-          test "$built_digest" = "$agent_digest"
+          echo "Registry manifest digests: header=$header_digest body=$agent_digest built=$built_digest"
+          if [[ $header_digest != "$agent_digest" || $built_digest != "$agent_digest" ]]; then
+            echo "Registry manifest digest mismatch"
+            echo "::group::Registry manifest headers"
+            sed -n '1,120p' "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" || true
+            echo "::endgroup::"
+            echo "::group::Registry manifest"
+            sed -n '1,240p' "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" || true
+            echo "::endgroup::"
+            exit 1
+          fi
           agent_size=$(wc -c <"$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")
-          test "$agent_size" -gt 0
+          echo "Registry manifest size: $agent_size bytes"
+          if (( agent_size <= 0 )); then
+            echo "Registry manifest is empty"
+            exit 1
+          fi
           config_digest=$(jq -er '.config.digest' \
             "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")
-          [[ $config_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "Registry config digest: $config_digest"
+          if [[ ! $config_digest =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "Registry config digest is invalid"
+            exit 1
+          fi
           curl --fail --silent --show-error --location --retry 5 \
             "$registry_api/$repository/blobs/$config_digest" \
             --output "$RUNNER_TEMP/a0-4-agent-runtime-config.json"
-          test "sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-config.json" | cut -d' ' -f1)" = \
-            "$config_digest"
-          jq -e \
+          config_file_digest="sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-config.json" | cut -d' ' -f1)"
+          echo "Registry config blob digests: body=$config_file_digest descriptor=$config_digest"
+          if [[ $config_file_digest != "$config_digest" ]]; then
+            echo "Registry config blob digest mismatch"
+            sed -n '1,240p' "$RUNNER_TEMP/a0-4-agent-runtime-config.json" || true
+            exit 1
+          fi
+          if ! jq -e \
             --arg version "$A3S_CLOUD_A0_4_CLI_VERSION" \
             --arg revision "$A3S_CLOUD_A0_4_CLI_REVISION" \
             --arg archive "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
@@ -440,7 +483,14 @@ jobs:
              and .config.Labels["org.opencontainers.image.revision"] == $revision
              and .config.Labels["dev.a3s.cli-archive-sha256"] == $archive
              and .config.Entrypoint == ["/usr/bin/a3s", "code", "harness", "--manifest", "/app/.a3s/asset.acl"]' \
-            "$RUNNER_TEMP/a0-4-agent-runtime-config.json" >/dev/null
+             "$RUNNER_TEMP/a0-4-agent-runtime-config.json" >/dev/null; then
+            echo "Registry config metadata mismatch"
+            echo "expected version=$A3S_CLOUD_A0_4_CLI_VERSION revision=$A3S_CLOUD_A0_4_CLI_REVISION archive=$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST"
+            echo "::group::Registry config blob"
+            sed -n '1,240p' "$RUNNER_TEMP/a0-4-agent-runtime-config.json" || true
+            echo "::endgroup::"
+            exit 1
+          fi
           exact_image=127.0.0.1:5000/$repository@$agent_digest
           jq -n \
             --arg cliTag "$A3S_CLOUD_A0_4_CLI_TAG" \
