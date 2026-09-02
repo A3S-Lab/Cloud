@@ -349,11 +349,18 @@ jobs:
             A3S_HOME="$A3S_HOME" \
             "$box_binary" image-inspect "$mutable_image" \
             >"$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json"
-          jq -e --arg digest "$built_digest" \
+          if ! jq -e --arg digest "$built_digest" \
             'type == "array"
              and length == 1
              and .[0].Digest == $digest' \
-            "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" >/dev/null
+            "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" >/dev/null; then
+            echo "::group::Unexpected Box image-inspect output"
+            sed -n '1,240p' \
+              "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" || true
+            echo "expected digest: $built_digest"
+            echo "::endgroup::"
+            exit 1
+          fi
           push_result=$(sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
