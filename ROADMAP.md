@@ -3265,7 +3265,7 @@ through `WI7`.
 `H0.4-WI2-C1` is verified as the non-authorizing Runtime
 evidence contract. Cloud pins A3S Runtime `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`332ab93896a7293cda6f788103ca8f5559566f2d`. They preserve one opaque Identity
+`d6861de302e6e165a2fdc473b2d399bb0692048e`. They preserve one opaque Identity
 policy digest across Unit Spec, provider evidence, restart/replay and
 confidential-provider attestation; Runtime 0.5 also carries distinct Service
 readiness, liveness, and graceful-shutdown intent. Box now gives non-snapshot
@@ -3273,9 +3273,14 @@ macOS MicroVMs a mount-free, guest-owned raw ext4 rootfs by default while
 retaining APFS only for snapshot and explicit legacy compatibility. Unavailable
 dedicated-VM selection now fails through route-identical preflight before
 named-volume or image mutation, without fallback. The exact
-[Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33466602542) passes
-native and aarch64 OCI lifecycle plus Rust, Python, TypeScript, and Go SDK
-certification. Cloud REST/OpenAPI `1.82.1`, the current Node path and the frozen
+[Box main CI](https://github.com/A3S-Lab/Box/actions/runs/33497670646) passes a
+checksummed release-layout installation and product startup on x86_64 and
+aarch64 against OCI Runtime commit
+`438e4b7936cd08d408160fe9341a21786f60cd26`, then runs the complete Rust,
+Python, TypeScript, and Go Sandbox suites with `/dev/kvm` absent and with a
+mode-000 wrong-type path. Both lanes also retain exact owner-replacement,
+generation, and cleanup evidence. Cloud REST/OpenAPI `1.82.1`, the current Node
+path and the frozen
 MCP fixture consume Runtime `capabilities.v6` and `unit-spec.v4` from those
 exact revisions; OpenAPI derives the current capability schema from Runtime
 rather than a second schema identifier. Enrollment V1 alone retains bounded
