@@ -96,6 +96,7 @@ fn runtime_capabilities() -> TestResult<RuntimeCapabilities> {
 async fn enroll_node(
     nodes: &PostgresNodeRepository,
     organization_id: OrganizationId,
+    proposed_node_id: NodeId,
     capabilities: &RuntimeCapabilities,
     enrolled_at: DateTime<Utc>,
 ) -> TestResult<(NodeId, Uuid)> {
@@ -146,7 +147,7 @@ async fn enroll_node(
         .reserve_enrollment(
             &credential,
             NodeEnrollmentDraft {
-                proposed_node_id: NodeId::new(),
+                proposed_node_id,
                 name: NodeName::new("agent-recovery-worker")?,
                 agent_instance_id,
                 agent_version: "0.1.0-test".into(),
@@ -156,6 +157,9 @@ async fn enroll_node(
             },
         )
         .await?;
+    if reservation.node.id != proposed_node_id {
+        return Err(invalid("Fleet enrollment changed the proposed node identity").into());
+    }
     nodes
         .record_heartbeat(NodeHeartbeatUpdate {
             node_id: reservation.node.id,

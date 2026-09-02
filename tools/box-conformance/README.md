@@ -25,6 +25,21 @@ release it exactly once, reach terminal cancellation, and leave empty Box
 state. The workflow retains the consumer logs and one machine-checkable
 certification marker with the provider evidence.
 
+### A0.4 real Agent release gate
+
+The A0.4 consumer test creates a published Agent release and deploys it
+through the ordinary Workload, Deployment, Operation, Flow, Fleet, and
+Runtime path. It builds the exact Code CLI image through the pinned Box
+provider, checks the final OCI manifest/config/archive digests, and binds two
+Secrets (provider environment plus a mode-0400 signing file). PostgreSQL
+records the durable command, acknowledgement, and observation facts. The
+probe kills the Box process, reconstructs the control-plane state, verifies
+health/readiness/liveness and restart-time Secret rematerialization, then
+stops, removes, and cleans every runtime-owned record. A successful run emits
+one `A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED` marker containing the pinned
+Box/Code revisions and the exact artifact identity. Hosted MCP remains owned
+by `MCP0`; this gate does not claim `G0` or hosted MCP availability.
+
 The allocation consumer probe requires Box to advertise CPU, memory, PID, and
 execution-timeout controls after the provider phase has passed every profile
 derived from those capabilities. It then carries one inventory-bound Claim

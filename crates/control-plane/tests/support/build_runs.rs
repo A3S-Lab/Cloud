@@ -1,8 +1,8 @@
 use super::postgres_fixture::{get_as, post_json, response_json, ADMIN_TOKEN};
-use crate::build_evidence_support::evidence_for;
+use crate::build_evidence_support::{evidence_for, evidence_for_with_agent_release_template};
 use a3s_cloud_contracts::{
-    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-    NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
+    artifact_uri, AgentReleaseManifest, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
+    NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
     DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::artifacts::application::{
@@ -47,6 +47,72 @@ use base64::Engine;
 use chrono::Duration;
 use std::sync::Arc;
 use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct HostedAgentRuntimeArtifact {
+    artifact: ArtifactRef,
+    size_bytes: u64,
+    manifest_template_acl: String,
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+impl HostedAgentRuntimeArtifact {
+    pub fn new(
+        artifact: ArtifactRef,
+        size_bytes: u64,
+        manifest_template_acl: impl Into<String>,
+    ) -> Result<Self, String> {
+        artifact.validate()?;
+        let manifest_template_acl = manifest_template_acl.into();
+        let manifest = AgentReleaseManifest::parse(&manifest_template_acl).map_err(|error| {
+            format!("hosted Agent Runtime manifest template is invalid: {error}")
+        })?;
+        if manifest.artifact().media_type() != artifact.media_type {
+            return Err("hosted Agent Runtime manifest media type changed its OCI artifact".into());
+        }
+        let fixture = Self {
+            artifact,
+            size_bytes,
+            manifest_template_acl,
+        };
+        fixture.publication_target()?;
+        Ok(fixture)
+    }
+
+    pub fn artifact(&self) -> &ArtifactRef {
+        &self.artifact
+    }
+
+    pub const fn size_bytes(&self) -> u64 {
+        self.size_bytes
+    }
+
+    fn descriptor(&self) -> Result<OciDescriptor, String> {
+        OciDescriptor::new(
+            self.artifact.media_type.clone(),
+            self.artifact.digest.clone(),
+            self.size_bytes,
+        )
+    }
+
+    fn publication_target(&self) -> Result<OciPublicationTarget, String> {
+        let reference = self
+            .artifact
+            .uri
+            .strip_prefix("oci://")
+            .ok_or_else(|| "hosted Agent Runtime artifact must use an OCI URI".to_owned())?;
+        let (location, digest) = reference
+            .rsplit_once('@')
+            .ok_or_else(|| "hosted Agent Runtime OCI URI must be digest-pinned".to_owned())?;
+        if digest != self.artifact.digest.as_str() {
+            return Err("hosted Agent Runtime OCI URI changed its artifact digest".into());
+        }
+        let (registry, repository) = location.split_once('/').ok_or_else(|| {
+            "hosted Agent Runtime OCI URI must contain a registry and repository".to_owned()
+        })?;
+        OciPublicationTarget::new(registry, repository, self.descriptor()?)
+    }
+}
 
 pub async fn exercise_build_run_persistence(
     app: &ControlPlane,
@@ -1145,7 +1211,8 @@ pub async fn exercise_hosted_build_run_persistence(
     let queued_version = retry.aggregate_version;
     retry.begin_preparation(retry.updated_at + Duration::milliseconds(1))?;
     let retry = left_repository.save(retry, queued_version).await?;
-    let published = drive_hosted_release_publication(executor, asset, &release, retry).await?;
+    let published =
+        drive_hosted_release_publication(executor, asset, &release, retry, None).await?;
     assert_eq!(published.state, AssetReleaseState::Published);
     assert!(published.artifact.is_some());
     assert!(published.provenance.is_some());
@@ -1158,6 +1225,34 @@ pub async fn publish_hosted_release(
     executor: &PostgresExecutor,
     asset: &Asset,
     release: &AssetRelease,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    publish_hosted_release_with_optional_runtime_artifact(executor, asset, release, None).await
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub async fn publish_hosted_release_with_runtime_artifact(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+    runtime_artifact: &HostedAgentRuntimeArtifact,
+) -> Result<AssetRelease, Box<dyn std::error::Error>> {
+    if asset.kind != AssetKind::Agent {
+        return Err("only an Agent release may bind a Runtime artifact fixture".into());
+    }
+    publish_hosted_release_with_optional_runtime_artifact(
+        executor,
+        asset,
+        release,
+        Some(runtime_artifact),
+    )
+    .await
+}
+
+async fn publish_hosted_release_with_optional_runtime_artifact(
+    executor: &PostgresExecutor,
+    asset: &Asset,
+    release: &AssetRelease,
+    runtime_artifact: Option<&HostedAgentRuntimeArtifact>,
 ) -> Result<AssetRelease, Box<dyn std::error::Error>> {
     let mut build = BuildRun::reserve_asset_release(
         asset.organization_id,
@@ -1215,7 +1310,8 @@ pub async fn publish_hosted_release(
     build.begin_preparation(build.updated_at + Duration::milliseconds(1))?;
     let builds = PostgresBuildRunRepository::new(executor.clone());
     build = builds.save(build, expected).await?;
-    let published = drive_hosted_release_publication(executor, asset, release, build).await?;
+    let published =
+        drive_hosted_release_publication(executor, asset, release, build, runtime_artifact).await?;
     PostgresOperationRepository::new(executor.clone())
         .upsert_projection(OperationProjection {
             operation_id,
@@ -1234,6 +1330,7 @@ async fn drive_hosted_release_publication(
     asset: &Asset,
     release: &AssetRelease,
     mut build: BuildRun,
+    runtime_artifact: Option<&HostedAgentRuntimeArtifact>,
 ) -> Result<AssetRelease, Box<dyn std::error::Error>> {
     if build.status != BuildRunStatus::Preparing
         || build.organization_id != asset.organization_id
@@ -1330,12 +1427,24 @@ async fn drive_hosted_release_publication(
     build = builds.save(build, expected).await?;
 
     let output_artifact = build_artifact('d', 8_192)?;
-    let box_output = box_output(&output_artifact, &input_artifact)?;
+    let mut box_output = box_output(&output_artifact, &input_artifact)?;
+    if let Some(runtime_artifact) = runtime_artifact {
+        let descriptor = runtime_artifact.descriptor()?;
+        box_output.descriptor = NodeBoxBuildDescriptor {
+            media_type: descriptor.media_type().into(),
+            digest: descriptor.digest().into(),
+            size: descriptor.size(),
+        };
+        box_output.content_bytes = box_output.content_bytes.max(descriptor.size());
+        box_output.validate()?;
+    }
     let descriptor = OciDescriptor::new(
         box_output.descriptor.media_type.clone(),
         box_output.descriptor.digest.clone(),
         box_output.descriptor.size,
     )?;
+    let content_bytes = box_output.content_bytes;
+    let blob_count = usize::try_from(box_output.blob_count)?;
     let expected = build.aggregate_version;
     at += Duration::milliseconds(1);
     build.begin_validation(box_output, at)?;
@@ -1345,19 +1454,22 @@ async fn drive_hosted_release_publication(
         artifact: output_artifact,
         descriptor: descriptor.clone(),
         platforms: vec![BuildPlatform::parse("linux/amd64")?],
-        content_bytes: 2_048,
-        blob_count: 3,
+        content_bytes,
+        blob_count,
     };
     let expected = build.aggregate_version;
     at += Duration::milliseconds(1);
     build.record_validated_output(output, at)?;
     build = builds.save(build, expected).await?;
 
-    let target = OciPublicationTarget::new(
-        "registry.example.test",
-        format!("a3s/assets/{}/releases/{}", asset.id, release.id),
-        descriptor,
-    )?;
+    let target = match runtime_artifact {
+        Some(runtime_artifact) => runtime_artifact.publication_target()?,
+        None => OciPublicationTarget::new(
+            "registry.example.test",
+            format!("a3s/assets/{}/releases/{}", asset.id, release.id),
+            descriptor,
+        )?,
+    };
     let expected = build.aggregate_version;
     at += Duration::milliseconds(1);
     build.begin_publication(target.clone(), at)?;
@@ -1377,14 +1489,24 @@ async fn drive_hosted_release_publication(
         "https://a3s.dev/cloud/assets/{}/releases/{}",
         asset.id, release.id
     );
-    let evidence = evidence_for(
-        &build,
-        at + Duration::milliseconds(1),
-        &repository,
-        release.commit_sha.as_str(),
-        Some(release.manifest_digest.as_str()),
-        asset.kind == AssetKind::Agent,
-    )?;
+    let evidence = match runtime_artifact {
+        Some(runtime_artifact) => evidence_for_with_agent_release_template(
+            &build,
+            at + Duration::milliseconds(1),
+            &repository,
+            release.commit_sha.as_str(),
+            Some(release.manifest_digest.as_str()),
+            Some(&runtime_artifact.manifest_template_acl),
+        )?,
+        None => evidence_for(
+            &build,
+            at + Duration::milliseconds(1),
+            &repository,
+            release.commit_sha.as_str(),
+            Some(release.manifest_digest.as_str()),
+            asset.kind == AssetKind::Agent,
+        )?,
+    };
     let provenance_digest = evidence.provenance_digest.clone();
     let expected = build.aggregate_version;
     at += Duration::milliseconds(1);

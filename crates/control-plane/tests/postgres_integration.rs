@@ -456,6 +456,20 @@ async fn postgres_agent_code_recovery_survives_retention_runtime_and_control_pla
     .expect("PostgreSQL Agent Code recovery gate");
 }
 
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the dedicated real Box provider and PostgreSQL certification environment"]
+async fn postgres_published_agent_release_runs_recovers_and_cleans_through_real_box() {
+    let admin_url = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL")
+        .expect("real Agent release gate requires A3S_CLOUD_TEST_POSTGRES_URL");
+    run_isolated_postgres(
+        &admin_url,
+        agent_code_recovery_support::exercise_published_agent_release_real_box,
+    )
+    .await
+    .expect("published Agent release real Box lifecycle gate");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn postgres_non_code_provider_recovery_fails_closed_across_control_plane_restart() {
     let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
