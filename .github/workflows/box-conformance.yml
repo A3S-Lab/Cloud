@@ -377,12 +377,30 @@ jobs:
             echo "::endgroup::"
             exit 1
           fi
-          push_result=$(sudo env \
+          push_stdout="$RUNNER_TEMP/a0-4-agent-runtime-box-push.stdout"
+          push_stderr="$RUNNER_TEMP/a0-4-agent-runtime-box-push.stderr"
+          set +e
+          sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
             A3S_DEPS_STUB=1 \
             A3S_HOME="$A3S_HOME" \
-            "$box_binary" push --plain-http --quiet "$mutable_image")
+            "$box_binary" push --plain-http --quiet "$mutable_image" \
+            >"$push_stdout" \
+            2>"$push_stderr"
+          push_status=$?
+          set -e
+          if (( push_status != 0 )); then
+            echo "Box push exit status: $push_status"
+            echo "::group::Box push stdout"
+            sed -n '1,240p' "$push_stdout" || true
+            echo "::endgroup::"
+            echo "::group::Box push stderr"
+            sed -n '1,320p' "$push_stderr" || true
+            echo "::endgroup::"
+            exit "$push_status"
+          fi
+          push_result=$(tr -d '\r' <"$push_stdout")
           test -n "$push_result"
           agent_media_type=application/vnd.oci.image.manifest.v1+json
           curl --fail --silent --show-error --location --retry 5 \
