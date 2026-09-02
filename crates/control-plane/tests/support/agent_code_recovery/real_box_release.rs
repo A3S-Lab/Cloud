@@ -15,7 +15,7 @@ use a3s_cloud_control_plane::modules::operations::{
 };
 use a3s_cloud_control_plane::modules::secrets::{
     CreateSecret, CreateSecretHandler, EncryptedSecretValue, ISecretEncryptionService,
-    SecretEncryptionError, SecretPlaintext,
+    ProjectsSecretEnvironmentAccessAdapter, SecretEncryptionError, SecretPlaintext,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, SecretId};
 use a3s_cloud_control_plane::modules::workloads::application::{
@@ -591,21 +591,26 @@ async fn create_agent_secret(
     name: &str,
     material: &[u8],
 ) -> TestResult<SecretId> {
-    let result = CreateSecretHandler::new(projects, secrets, Arc::new(FixtureSecretEncryption))
-        .execute(
-            CreateSecret {
-                organization_id,
-                project_id,
-                environment_id,
-                name: name.into(),
-                value: SecretPlaintext::new(material.to_vec())?,
-                idempotency_key: format!("create-{}", name.to_ascii_lowercase().replace(' ', "-")),
-                request_id: Uuid::now_v7(),
-            },
-            context(),
-        )
-        .await?
-        .map_err(|error| invalid(format!("could not create Agent fixture Secret: {error}")))?;
+    let environment_access = Arc::new(ProjectsSecretEnvironmentAccessAdapter::new(projects));
+    let result = CreateSecretHandler::new(
+        environment_access,
+        secrets,
+        Arc::new(FixtureSecretEncryption),
+    )
+    .execute(
+        CreateSecret {
+            organization_id,
+            project_id,
+            environment_id,
+            name: name.into(),
+            value: SecretPlaintext::new(material.to_vec())?,
+            idempotency_key: format!("create-{}", name.to_ascii_lowercase().replace(' ', "-")),
+            request_id: Uuid::now_v7(),
+        },
+        context(),
+    )
+    .await?
+    .map_err(|error| invalid(format!("could not create Agent fixture Secret: {error}")))?;
     Ok(result.secret.id)
 }
 

@@ -1,5 +1,3 @@
-# syntax=docker/dockerfile:1.7
-
 FROM ubuntu@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316
 
 ARG A3S_CLI_VERSION
@@ -19,11 +17,11 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
         --shell /usr/sbin/nologin a3s \
     && install --directory --owner=a3s --group=a3s /app /app/.a3s /workspace /run/secrets
 
-COPY --chmod=0755 a3s /usr/bin/a3s
+COPY a3s /usr/bin/a3s
 COPY --chown=65532:65532 config.acl /app/config.acl
-RUN test "$(/usr/bin/a3s --version)" = "a3s ${A3S_CLI_VERSION}"
+RUN chmod 0755 /usr/bin/a3s \
+    && test "$(/usr/bin/a3s --version)" = "a3s ${A3S_CLI_VERSION}"
 
-USER 65532:65532
 RUN printf 'A3S Cloud A0.4 Agent Runtime fixture\n' > /workspace/.a3s-release-seed \
     && git -C /workspace init --initial-branch=main \
     && git -C /workspace config user.name 'A3S Cloud Release Fixture' \
@@ -31,7 +29,10 @@ RUN printf 'A3S Cloud A0.4 Agent Runtime fixture\n' > /workspace/.a3s-release-se
     && git -C /workspace add .a3s-release-seed \
     && GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' \
        GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \
-       git -C /workspace commit --message 'Initialize Agent workspace'
+       git -C /workspace commit --message 'Initialize Agent workspace' \
+    && chown -R a3s:a3s /workspace
+
+USER 65532:65532
 
 WORKDIR /workspace
 ENV A3S_CONFIG_FILE=/app/config.acl \

@@ -241,7 +241,7 @@ jobs:
           mountpoint -q "$A3S_HOME/runtime-secrets"
           test "$(sudo stat -c '%u:%g:%a' "$A3S_HOME/runtime-secrets")" = "0:0:700"
 
-      - name: Build and publish the exact A3S Agent Runtime image
+      - name: Build and publish the exact A3S Agent Runtime image through Box
         run: |
           registry_api=http://127.0.0.1:5000/v2
           repository=a3s/a0-4-agent-runtime
@@ -267,18 +267,43 @@ jobs:
             apps/cloud/Cargo.toml
           cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
             "$build_dir/config.acl"
+          cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
+            "$build_dir/Containerfile"
           curl --fail --silent --show-error --retry 30 --retry-connrefused \
             "$registry_api/" >/dev/null
-          docker buildx build \
-            --build-arg "A3S_CLI_VERSION=$A3S_CLOUD_A0_4_CLI_VERSION" \
-            --build-arg "A3S_CLI_REVISION=$A3S_CLOUD_A0_4_CLI_REVISION" \
-            --build-arg "A3S_CLI_ARCHIVE_SHA256=$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
-            --file apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
-            --output "type=image,name=$mutable_image,push=true,oci-mediatypes=true,registry.insecure=true" \
-            --platform linux/amd64 \
-            --provenance=false \
-            --sbom=false \
-            "$build_dir"
+          box_binary=crates/box/src/target/debug/a3s-box
+          test -x "$box_binary"
+          built_digest=$(sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            A3S_DEPS_STUB=1 \
+            A3S_HOME="$A3S_HOME" \
+            "$box_binary" build \
+              --build-arg "A3S_CLI_VERSION=$A3S_CLOUD_A0_4_CLI_VERSION" \
+              --build-arg "A3S_CLI_REVISION=$A3S_CLOUD_A0_4_CLI_REVISION" \
+              --build-arg "A3S_CLI_ARCHIVE_SHA256=$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
+              --file Containerfile \
+              --platform linux/amd64 \
+              --quiet \
+              --tag "$mutable_image" \
+              "$build_dir")
+          [[ $built_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            A3S_DEPS_STUB=1 \
+            A3S_HOME="$A3S_HOME" \
+            "$box_binary" image-inspect "$mutable_image" \
+            >"$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json"
+          jq -e 'type == "object"' \
+            "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" >/dev/null
+          push_result=$(sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            A3S_DEPS_STUB=1 \
+            A3S_HOME="$A3S_HOME" \
+            "$box_binary" push --plain-http --quiet "$mutable_image")
+          test -n "$push_result"
           agent_media_type=application/vnd.oci.image.manifest.v1+json
           curl --fail --silent --show-error --location --retry 5 \
             --dump-header "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" \
@@ -296,6 +321,7 @@ jobs:
             'tolower($1) == "docker-content-digest" { gsub("\r", "", $2); print $2 }' \
             "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" | tail -n 1)
           test "$header_digest" = "$agent_digest"
+          test "$built_digest" = "$agent_digest"
           agent_size=$(wc -c <"$RUNNER_TEMP/a0-4-agent-runtime-manifest.json")
           test "$agent_size" -gt 0
           config_digest=$(jq -er '.config.digest' \
@@ -326,6 +352,9 @@ jobs:
             --arg cliManifestDigest "sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml" | cut -d' ' -f1)" \
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
+            --arg boxRevision "$(<apps/cloud/tools/box-conformance/box-revision)" \
+            --arg containerfileDigest "sha256:$(sha256sum "$build_dir/Containerfile" | cut -d' ' -f1)" \
+            --arg configDigest "sha256:$(sha256sum "$build_dir/config.acl" | cut -d' ' -f1)" \
             --arg exactImage "$exact_image" \
             '{
               cliTag: $cliTag,
@@ -335,6 +364,9 @@ jobs:
               cliManifestDigest: $cliManifestDigest,
               baseImage: $baseImage,
               registryImage: $registryImage,
+              builder: { name: "a3s-box", revision: $boxRevision },
+              containerfileDigest: $containerfileDigest,
+              configDigest: $configDigest,
               exactImage: $exactImage
             }' >"$RUNNER_TEMP/a0-4-agent-runtime-build-inputs.json"
           {
@@ -609,10 +641,16 @@ jobs:
             "$EVIDENCE_DIR/agent-runtime-platform-manifest.json"
           cp "$RUNNER_TEMP/a0-4-agent-runtime-config.json" \
             "$EVIDENCE_DIR/agent-runtime-image-config.json"
+          cp "$RUNNER_TEMP/a0-4-agent-runtime-box-image-inspect.json" \
+            "$EVIDENCE_DIR/agent-runtime-box-image-inspect.json"
           cp "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml" \
             "$EVIDENCE_DIR/agent-runtime-cli-Cargo.toml"
           cp "$RUNNER_TEMP/a0-4-agent-runtime-build-inputs.json" \
             "$EVIDENCE_DIR/agent-runtime-build-inputs.json"
+          cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
+            "$EVIDENCE_DIR/agent-runtime.Containerfile"
+          cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
+            "$EVIDENCE_DIR/agent-runtime-config.acl"
           cargo_bin=$(command -v cargo)
           cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
           rustup_home=$(rustup show home)
@@ -653,6 +691,8 @@ jobs:
           box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
           oci_runtime_revision=$(<apps/cloud/tools/box-conformance/oci-runtime-revision)
           artifact_digest=${A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE##*@}
+          containerfile_digest="sha256:$(sha256sum "$EVIDENCE_DIR/agent-runtime.Containerfile" | cut -d' ' -f1)"
+          config_digest="sha256:$(sha256sum "$EVIDENCE_DIR/agent-runtime-config.acl" | cut -d' ' -f1)"
           jq -n \
             --arg cloud "$cloud_revision" \
             --arg box "$box_revision" \
@@ -663,6 +703,8 @@ jobs:
             --arg cliArchiveDigest "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
+            --arg containerfileDigest "$containerfile_digest" \
+            --arg configDigest "$config_digest" \
             --arg artifactUri "oci://$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
             --arg artifactDigest "$artifact_digest" \
             --arg artifactMediaType "$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
@@ -683,7 +725,10 @@ jobs:
               },
               build: {
                 baseImage: $baseImage,
-                registryImage: $registryImage
+                registryImage: $registryImage,
+                builder: { name: "a3s-box", revision: $box },
+                containerfileDigest: $containerfileDigest,
+                configDigest: $configDigest
               },
               publishedArtifact: {
                 uri: $artifactUri,
@@ -699,6 +744,7 @@ jobs:
                 canonicalReleaseManifest: true,
                 officialCliRelease: true,
                 cliCodeCompatibility: true,
+                boxNativeImageBuild: true,
                 nativeA3sCodeHarness: true,
                 exactOciArtifactProjection: true,
                 exactSecretBindings: true,
@@ -730,6 +776,8 @@ jobs:
             --arg cliArchiveDigest "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
+            --arg containerfileDigest "$containerfile_digest" \
+            --arg configDigest "$config_digest" \
             --arg artifactUri "oci://$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
             --arg artifactDigest "$artifact_digest" \
             --arg artifactMediaType "$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
@@ -746,6 +794,10 @@ jobs:
              and .sourceRelease.codeCoreVersion == "8.0.4"
              and .build.baseImage == $baseImage
              and .build.registryImage == $registryImage
+             and .build.builder.name == "a3s-box"
+             and .build.builder.revision == $box
+             and .build.containerfileDigest == $containerfileDigest
+             and .build.configDigest == $configDigest
              and .publishedArtifact.uri == $artifactUri
              and .publishedArtifact.digest == $artifactDigest
              and .publishedArtifact.mediaType == $artifactMediaType
@@ -760,8 +812,11 @@ jobs:
             sha256sum \
               agent-runtime-platform-manifest.json \
               agent-runtime-image-config.json \
+              agent-runtime-box-image-inspect.json \
               agent-runtime-cli-Cargo.toml \
               agent-runtime-build-inputs.json \
+              agent-runtime.Containerfile \
+              agent-runtime-config.acl \
               agent-runtime-release.log \
               agent-runtime-release-certification.txt \
               agent-runtime-release.json \
