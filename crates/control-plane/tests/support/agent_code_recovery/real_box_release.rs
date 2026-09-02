@@ -695,6 +695,14 @@ async fn record_inventory(
                     unit: ResourceUnit::Byte,
                 },
             )?,
+            NodeResourceSlot::new(
+                ResourceKind::EphemeralStorage,
+                "ephemeral-storage/state-filesystem",
+                ResourceAllocation::Scalar {
+                    amount: 8 * 1024 * 1024 * 1024,
+                    unit: ResourceUnit::Byte,
+                },
+            )?,
         ],
     )?;
     nodes
