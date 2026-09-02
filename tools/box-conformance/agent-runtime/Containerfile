@@ -19,18 +19,9 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update \
 
 COPY a3s /usr/bin/a3s
 COPY --chown=65532:65532 config.acl /app/config.acl
+COPY workspace/ /workspace/
 RUN chmod 0755 /usr/bin/a3s \
-    && test "$(/usr/bin/a3s --version)" = "a3s ${A3S_CLI_VERSION}"
-
-RUN printf 'A3S Cloud A0.4 Agent Runtime fixture\n' > /workspace/.a3s-release-seed \
-    && cd /workspace \
-    && git init --initial-branch=main \
-    && git config user.name 'A3S Cloud Release Fixture' \
-    && git config user.email 'release-fixture@a3s.invalid' \
-    && git add .a3s-release-seed \
-    && GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' \
-       GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \
-       git commit --message 'Initialize Agent workspace' \
+    && test "$(/usr/bin/a3s --version)" = "a3s ${A3S_CLI_VERSION}" \
     && chown -R a3s:a3s /workspace
 
 USER 65532:65532

@@ -269,6 +269,19 @@ jobs:
             "$build_dir/config.acl"
           cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
             "$build_dir/Containerfile"
+          workspace_dir="$build_dir/workspace"
+          install -d -m 0755 "$workspace_dir"
+          printf 'A3S Cloud A0.4 Agent Runtime fixture\n' >"$workspace_dir/.a3s-release-seed"
+          git -C "$workspace_dir" init --initial-branch=main
+          git -C "$workspace_dir" config user.name 'A3S Cloud Release Fixture'
+          git -C "$workspace_dir" config user.email 'release-fixture@a3s.invalid'
+          git -C "$workspace_dir" add .a3s-release-seed
+          GIT_AUTHOR_DATE='2000-01-01T00:00:00Z' \
+            GIT_COMMITTER_DATE='2000-01-01T00:00:00Z' \
+            git -C "$workspace_dir" commit --message 'Initialize Agent workspace'
+          workspace_commit=$(git -C "$workspace_dir" rev-parse HEAD)
+          [[ $workspace_commit =~ ^[0-9a-f]{40}$ ]]
+          test -z "$(git -C "$workspace_dir" status --porcelain)"
           curl --fail --silent --show-error --retry 30 --retry-connrefused \
             "$registry_api/" >/dev/null
           box_binary=crates/box/src/target/debug/a3s-box
@@ -353,6 +366,7 @@ jobs:
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
             --arg boxRevision "$(<apps/cloud/tools/box-conformance/box-revision)" \
+            --arg workspaceCommit "$workspace_commit" \
             --arg containerfileDigest "sha256:$(sha256sum "$build_dir/Containerfile" | cut -d' ' -f1)" \
             --arg configDigest "sha256:$(sha256sum "$build_dir/config.acl" | cut -d' ' -f1)" \
             --arg exactImage "$exact_image" \
@@ -365,6 +379,7 @@ jobs:
               baseImage: $baseImage,
               registryImage: $registryImage,
               builder: { name: "a3s-box", revision: $boxRevision },
+              workspaceCommit: $workspaceCommit,
               containerfileDigest: $containerfileDigest,
               configDigest: $configDigest,
               exactImage: $exactImage
