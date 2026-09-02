@@ -286,7 +286,15 @@ jobs:
             "$registry_api/" >/dev/null
           box_binary=crates/box/src/target/debug/a3s-box
           test -x "$box_binary"
-          built_digest=$(sudo env \
+          box_build_stdout="$RUNNER_TEMP/a0-4-agent-runtime-box-build.stdout"
+          box_build_stderr="$RUNNER_TEMP/a0-4-agent-runtime-box-build.stderr"
+          echo "Box binary: $(readlink -f "$box_binary")"
+          stat --printf='Box binary size=%s mode=%a\n' "$box_binary"
+          sudo -n true
+          df -h "$RUNNER_TEMP" "$A3S_HOME" || true
+          free -h || true
+          set +e
+          sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
             A3S_DEPS_STUB=1 \
@@ -299,7 +307,27 @@ jobs:
               --platform linux/amd64 \
               --quiet \
               --tag "$mutable_image" \
-              "$build_dir")
+              "$build_dir" \
+              >"$box_build_stdout" \
+              2>"$box_build_stderr"
+          box_build_status=$?
+          set -e
+          echo "Box build exit status: $box_build_status"
+          if (( box_build_status != 0 )); then
+            echo "::group::Box build stdout"
+            sed -n '1,240p' "$box_build_stdout" || true
+            echo "::endgroup::"
+            echo "::group::Box build stderr"
+            sed -n '1,320p' "$box_build_stderr" || true
+            echo "::endgroup::"
+            echo "::group::Host resource diagnostics"
+            free -h || true
+            df -h "$RUNNER_TEMP" "$A3S_HOME" || true
+            ps -eo pid,ppid,stat,%cpu,%mem,rss,cmd --sort=-rss | sed -n '1,40p' || true
+            echo "::endgroup::"
+            exit "$box_build_status"
+          fi
+          built_digest=$(<"$box_build_stdout")
           [[ $built_digest =~ ^sha256:[0-9a-f]{64}$ ]]
           sudo env \
             PATH="$PATH" \
