@@ -98,7 +98,7 @@ one exact OCI Runtime generation.
 | `BOX-R4` | Add node-pressure, image/weight cache accounting, drain, warm-pool primitives, and upgrade safety without cluster policy | Cloud can make placement decisions from fresh capacity evidence; Box never chooses another node or desired replica count |
 
 The `BOX-R3` identity-evidence and Service-lifecycle sub-slices are verified at
-`332ab93896a7293cda6f788103ca8f5559566f2d`: only the confidential provider
+`115dc6fecf61d03c12aabbf2c860ae5118a71212`: only the confidential provider
 advertises `IdentityAttachment`, restart/replay preserves the attachment in
 provider evidence and attestation, and readiness, liveness-triggered restart,
 graceful shutdown, and cleanup retain exact generation evidence. Non-snapshot
@@ -106,8 +106,12 @@ macOS MicroVMs use guest-owned raw ext4 without host DiskImage mounts; snapshot
 and explicit legacy generations retain the APFS compatibility transport.
 Unavailable dedicated-VM selection fails before named-volume or image mutation
 and cannot fall back to weaker isolation. The exact
-[main CI](https://github.com/A3S-Lab/Box/actions/runs/33466602542)
-passes native and aarch64 OCI lifecycle plus all four SDKs. This does not
+[Box 3.2.2 release](https://github.com/A3S-Lab/Box/releases/tag/v3.2.2)
+passes a checksummed release-layout installation and product startup on
+x86_64 and aarch64 against OCI Runtime commit
+`438e4b7936cd08d408160fe9341a21786f60cd26`, plus all four SDKs with
+`/dev/kvm` absent and with a mode-000 wrong-type path. Both lanes retain
+owner-replacement, exact-generation, and cleanup evidence. This does not
 complete Box networking, pressure, hardware-provider, recovery, or upgrade
 gates.
 

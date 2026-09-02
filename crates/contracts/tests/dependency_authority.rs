@@ -152,11 +152,21 @@ fn box_provider_gate_uses_the_locked_box_revision() {
             .iter()
             .map(|package| package.name.as_str())
             .collect::<BTreeSet<_>>(),
-        BTreeSet::from(["a3s-box-core", "a3s-box-netproxy", "a3s-box-runtime"]),
+        BTreeSet::from([
+            "a3s-box-core",
+            "a3s-box-mkext4",
+            "a3s-box-netproxy",
+            "a3s-box-runtime",
+        ]),
         "the locked Box package closure changed"
     );
     let expected_source_suffix = format!("?rev={provider_revision}#{provider_revision}");
     for package in packages {
+        assert_eq!(
+            package.version, "3.2.2",
+            "{} is not locked to the published Box 3.2.2 release",
+            package.name
+        );
         assert!(
             package.source.ends_with(&expected_source_suffix),
             "{} is not locked to the Box provider revision {provider_revision}: {}",

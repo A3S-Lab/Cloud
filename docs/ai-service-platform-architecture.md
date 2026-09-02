@@ -118,9 +118,9 @@ for capability, semantics-profile, health, and endpoint admission. They retain
 their own product checks. No context may reproduce generic class/capability/
 observation readiness logic or invoke A3S Box outside Runtime.
 
-**Component status on 2026-09-01:** Cloud pins `a3s-runtime` `0.5.0` at
-`4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.0` at
-`332ab93896a7293cda6f788103ca8f5559566f2d`; Box resolves that exact Runtime
+**Component status on 2026-09-02:** Cloud pins `a3s-runtime` `0.5.0` at
+`4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.2` at
+`115dc6fecf61d03c12aabbf2c860ae5118a71212`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to
@@ -129,9 +129,13 @@ guest-owned raw ext4 rootfs by default; APFS remains only for snapshot and
 explicit legacy compatibility. Route-identical preflight rejects unavailable
 dedicated-VM selection before named-volume or image mutation and never falls
 back to weaker isolation. The exact
-[Box CI](https://github.com/A3S-Lab/Box/actions/runs/33466602542) passes native
-and aarch64 OCI lifecycle and SDK certification, Linux and macOS build checks,
-Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
+[Box 3.2.2 release](https://github.com/A3S-Lab/Box/releases/tag/v3.2.2) passes a
+checksummed release-layout installation and product startup on x86_64 and
+aarch64 against OCI Runtime commit
+`438e4b7936cd08d408160fe9341a21786f60cd26`, the complete Rust, Python,
+TypeScript, and Go Sandbox suites with `/dev/kvm` absent and with a mode-000
+wrong-type path, owner-replacement and cleanup evidence, Linux and macOS build
+checks, Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
 placement-group Services, Agent readiness, and the Durable Cell provider gate
 call `RuntimeConsumerRequirements` instead of maintaining local generic
 capability/readiness rules. Hosted Agents additionally require the
