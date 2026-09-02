@@ -327,8 +327,21 @@ jobs:
             echo "::endgroup::"
             exit "$box_build_status"
           fi
-          built_digest=$(<"$box_build_stdout")
-          [[ $built_digest =~ ^sha256:[0-9a-f]{64}$ ]]
+          # Box keeps stdout quiet for progress, but the pinned CLI may still
+          # emit an informational line before the final digest.  Extract only
+          # a complete digest and compare it with the registry descriptor below.
+          built_digest=$(tr -d '\r' <"$box_build_stdout" \
+            | grep --extended-regexp --only-matching \
+              'sha256:[0-9a-f]{64}' \
+            | tail -n 1 || true)
+          echo "Box build digest: ${built_digest:-<missing>}"
+          if [[ ! $built_digest =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::group::Unexpected Box build output"
+            sed -n '1,240p' "$box_build_stdout" || true
+            sed -n '1,320p' "$box_build_stderr" || true
+            echo "::endgroup::"
+            exit 1
+          fi
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
