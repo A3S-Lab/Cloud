@@ -283,6 +283,10 @@ jobs:
           grep --fixed-strings "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" "$build_dir/Containerfile"
           ! grep --extended-regexp '__A3S_CLI_(VERSION|REVISION|ARCHIVE_SHA256)__' \
             "$build_dir/Containerfile"
+          cp "$build_dir/Containerfile" \
+            "$RUNNER_TEMP/a0-4-agent-runtime-Containerfile"
+          cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
+            "$RUNNER_TEMP/a0-4-agent-runtime-Containerfile.template"
           workspace_dir="$build_dir/workspace"
           install -d -m 0755 "$workspace_dir"
           printf 'A3S Cloud A0.4 Agent Runtime fixture\n' >"$workspace_dir/.a3s-release-seed"
@@ -813,8 +817,10 @@ jobs:
             "$EVIDENCE_DIR/agent-runtime-cli-Cargo.toml"
           cp "$RUNNER_TEMP/a0-4-agent-runtime-build-inputs.json" \
             "$EVIDENCE_DIR/agent-runtime-build-inputs.json"
-          cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
+          cp "$RUNNER_TEMP/a0-4-agent-runtime-Containerfile" \
             "$EVIDENCE_DIR/agent-runtime.Containerfile"
+          cp "$RUNNER_TEMP/a0-4-agent-runtime-Containerfile.template" \
+            "$EVIDENCE_DIR/agent-runtime.template.Containerfile"
           cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
             "$EVIDENCE_DIR/agent-runtime-config.acl"
           cargo_bin=$(command -v cargo)
