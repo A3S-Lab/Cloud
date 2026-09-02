@@ -450,8 +450,10 @@ jobs:
             exit 1
           fi
           agent_digest="sha256:$(sha256sum "$RUNNER_TEMP/a0-4-agent-runtime-manifest.json" | cut -d' ' -f1)"
-          header_digest=$(awk -F ': *' \
-            'tolower($1) == "docker-content-digest" { gsub("\r", "", $2); print $2 }' \
+          # Split only the header-name delimiter; the digest itself contains a
+          # second colon after the hash algorithm.
+          header_digest=$(awk \
+            'tolower($0) ~ /^docker-content-digest:/ { sub(/^[^:]*:[[:space:]]*/, ""); gsub("\r", ""); print }' \
             "$RUNNER_TEMP/a0-4-agent-runtime-manifest.headers" | tail -n 1)
           echo "Registry manifest digests: header=$header_digest body=$agent_digest built=$built_digest"
           if [[ $header_digest != "$agent_digest" || $built_digest != "$agent_digest" ]]; then
