@@ -75,6 +75,16 @@ These tests use Runtime fakes for deterministic failure boundaries. A release
 claim is made only after the same behavior passes the real Box provider gate
 and the clean-host Cloud loop.
 
+The current retained [A0.4 PostgreSQL 17/real Box gate](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332)
+passes the published-Agent deployment, process-death recovery, Secret
+rematerialization, cancellation, and cleanup path against Box
+`65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` and OCI Runtime
+`878f8414cef3b85bef1b51fe6735017b25828252`. The guest-init capability boundary
+temporarily retains only `CAP_SETUID`/`CAP_SETGID` while an explicitly requested
+non-root identity is applied, then restores the exact final keep-set and clears
+the inheritable set; `cap_drop=ALL` therefore remains enforced without making
+UID/GID transition failures look like provider-health failures.
+
 ## Box-hosted integration fixtures
 
 `tools/box-conformance/install_box_release.sh` installs independently
