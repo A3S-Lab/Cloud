@@ -21,18 +21,23 @@ revision file must match. A gate must fail before execution when they differ.
 ## Current capability boundary
 
 The Box revision pinned by Cloud advertises Runtime network modes `None` and
-`Service`; it deliberately rejects `Outbound`. It also does not advertise the
-optional ephemeral-storage resource control. Cloud consumers must compare each
-exact projected specification with these capabilities before provider work and
-must not translate an unsupported requirement into a weaker mode.
+`Service`; it deliberately rejects `Outbound`. On Linux Sandbox hosts it
+advertises the optional `EphemeralStorage` resource control only after a
+privileged capability probe mounts the same bounded tmpfs/OverlayFS layout used
+in production. The provider passes the exact byte limit to that writable layer;
+hosts that cannot enforce it fail closed and do not advertise the control. Cloud
+consumers must compare each exact projected specification with these
+capabilities before provider work and must not translate an unsupported
+requirement into a weaker mode.
 
 This currently blocks the Durable Cell `celld deploy` Task, which requires
-ordinary Runtime `Outbound` access to S0. The serving template omits
-ephemeral-storage control and its product adapter rejects that unsupported
-request explicitly. Completing `CELL0.5` therefore requires Runtime/Box to add
-and retain generic outbound-network evidence. Cloud will then advance its
-pinned revision and reuse the same Execution/Workloads path; it will not add a
-Durable-Cell-specific runner, proxy, or network contract.
+ordinary Runtime `Outbound` access to S0. The serving template may request
+ephemeral-storage only when the selected Box host advertises the control; the
+product adapter rejects an unsupported request explicitly. Completing
+`CELL0.5` therefore requires Runtime/Box to add and retain generic
+outbound-network evidence. Cloud will then advance its pinned revision and
+reuse the same Execution/Workloads path; it will not add a Durable-Cell-specific
+runner, proxy, or network contract.
 
 ## Provider gate
 
@@ -69,6 +74,16 @@ Cloud tests own only Cloud behavior above Runtime:
 These tests use Runtime fakes for deterministic failure boundaries. A release
 claim is made only after the same behavior passes the real Box provider gate
 and the clean-host Cloud loop.
+
+The current retained [A0.4 PostgreSQL 17/real Box gate](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332)
+passes the published-Agent deployment, process-death recovery, Secret
+rematerialization, cancellation, and cleanup path against Box
+`65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` and OCI Runtime
+`878f8414cef3b85bef1b51fe6735017b25828252`. The guest-init capability boundary
+temporarily retains only `CAP_SETUID`/`CAP_SETGID` while an explicitly requested
+non-root identity is applied, then restores the exact final keep-set and clears
+the inheritable set; `cap_drop=ALL` therefore remains enforced without making
+UID/GID transition failures look like provider-health failures.
 
 ## Box-hosted integration fixtures
 

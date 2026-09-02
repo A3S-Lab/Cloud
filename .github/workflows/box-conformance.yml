@@ -854,8 +854,11 @@ jobs:
           if (( gate_status != 0 )); then
             exit "$gate_status"
           fi
-          grep --fixed-strings \
-            'A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed ' \
+          # The Rust test harness prefixes stdout with `test <name> ...`; retain
+          # only the canonical marker so the JSON evidence starts at its schema
+          # boundary instead of depending on harness formatting.
+          marker='A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed '
+          awk -v marker="$marker" 'index($0, marker) { print substr($0, index($0, marker)) }' \
             "$EVIDENCE_DIR/agent-runtime-release.log" \
             >"$EVIDENCE_DIR/agent-runtime-release-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-release-certification.txt")" -eq 1
@@ -1530,6 +1533,30 @@ jobs:
         run: |
           cleanup_status=0
           install -d -m 0755 "$EVIDENCE_DIR"
+          # Preserve bounded, redacted startup logs before removing the Box
+          # home.  The real Agent release gate intentionally fails closed on
+          # an unhealthy observation; these files are the only useful evidence
+          # when the workload exits before the normal certification artifact is
+          # written.
+          if test -d "$A3S_HOME/boxes"; then
+            while IFS= read -r -d '' source; do
+              relative=${source#"$A3S_HOME/"}
+              destination="$EVIDENCE_DIR/diagnostics/$relative"
+              install -d -m 0755 "$(dirname "$destination")"
+              if sudo test -f "$source"; then
+                sudo tail -c 65536 "$source" 2>/dev/null \
+                  | sed -E \
+                    -e 's/a0-4-[[:alnum:]_-]+/[REDACTED-FIXTURE-SECRET]/g' \
+                    -e 's/(sk-[[:alnum:]_-]+)/[REDACTED-API-KEY]/g' \
+                  >"$destination" || true
+              fi
+            done < <(
+              sudo find "$A3S_HOME/boxes" -type f \
+                \( -name 'console.log' -o -name 'console.err.log' \
+                   -o -name 'sandbox-init.log' -o -name 'sandbox-log-worker.log' \
+                   -o -name 'container.json' \) -print0 2>/dev/null
+            )
+          fi
           ps aux >"$EVIDENCE_DIR/processes-after.txt"
           sudo find "$A3S_HOME" -maxdepth 4 -print \
             >"$EVIDENCE_DIR/home-after.txt" 2>&1 || true

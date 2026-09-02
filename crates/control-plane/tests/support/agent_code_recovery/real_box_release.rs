@@ -60,6 +60,10 @@ const AGENT_RUNTIME_SIZE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES";
 const PROVIDER_SECRET_MATERIAL: &[u8] = b"a0-4-provider-fixture-key";
 const SIGNING_SECRET_MATERIAL: &[u8] = b"a0-4-signing-fixture-key";
 const MAX_MANIFEST_ARCHIVE_BYTES: u64 = 1024 * 1024;
+// Real Box startup and recovery are synchronous provider operations. Keep the
+// fixture lease aligned with the two-minute deployment command window instead
+// of allowing the short polling lease to expire while the provider is running.
+const REAL_BOX_COMMAND_LEASE_SECONDS: i64 = 120;
 
 pub(super) async fn exercise(postgres_url: String) -> TestResult {
     require_gate()?;
@@ -663,7 +667,16 @@ fn verify_running_observation(
             .as_ref()
             .is_none_or(|health| health.state != RuntimeHealthState::Healthy)
     {
-        return Err(invalid("published Agent release did not become healthy in real Box").into());
+        return Err(invalid(format!(
+            "published Agent release did not become healthy in real Box; state={:?} health={:?} liveness={:?} failure={:?} provider_resource_id={:?} started_at_ms={:?}",
+            observation.state,
+            observation.health,
+            observation.liveness,
+            observation.failure,
+            observation.provider_resource_id,
+            observation.started_at_ms,
+        ))
+        .into());
     }
     Ok(())
 }
@@ -778,7 +791,7 @@ async fn next_flow_command(
                 },
                 Uuid::now_v7(),
                 canonical_timestamp(Utc::now()),
-                canonical_timestamp(Utc::now() + Duration::seconds(10)),
+                canonical_timestamp(Utc::now() + Duration::seconds(REAL_BOX_COMMAND_LEASE_SECONDS)),
             )
             .await?;
         if let Some(command) = lease.commands.into_iter().next() {

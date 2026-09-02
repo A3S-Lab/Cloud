@@ -37,16 +37,25 @@ probe kills the Box process, reconstructs the control-plane state, verifies
 health/readiness/liveness and restart-time Secret rematerialization, then
 stops, removes, and cleans every runtime-owned record. A successful run emits
 one `A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED` marker containing the pinned
-Box/Code revisions and the exact artifact identity. Hosted MCP remains owned
-by `MCP0`; this gate does not claim `G0` or hosted MCP availability.
+Box/Code revisions and the exact artifact identity. The retained [PostgreSQL
+17/real Box run](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332)
+passes this gate, including the published-release recovery, Secret
+rematerialization, cancellation, and cleanup checks, against Box
+`65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` and OCI Runtime
+`878f8414cef3b85bef1b51fe6735017b25828252`; the [complete Cloud CI](https://github.com/A3S-Lab/Cloud/actions/runs/33686237772)
+also passes. Hosted MCP remains owned by `MCP0`; this gate does not claim `G0`
+or hosted MCP availability.
 
 The allocation consumer probe requires Box to advertise CPU, memory, PID, and
 execution-timeout controls after the provider phase has passed every profile
-derived from those capabilities. It then carries one inventory-bound Claim
-through prepare, exact Runtime binding, reconstructed inspection, pre-fence
-release rejection, durable stop, release, removal, and cleanup. The uploaded
-artifact contains both the advertised-profile result and the allocation
-certification marker.
+derived from those capabilities. When the host qualification advertises
+`EphemeralStorage`, the probe also carries an exact byte quota into the
+Sandbox writable layer and proves that writes beyond the quota fail closed;
+hosts that cannot enforce the bounded layer must not advertise that control.
+The probe then carries one inventory-bound Claim through prepare, exact Runtime
+binding, reconstructed inspection, pre-fence release rejection, durable stop,
+release, removal, and cleanup. The uploaded artifact contains both the
+advertised-profile result and the allocation certification marker.
 
 The storage consumer probe binds Box's one Artifact port to the existing node
 Artifact manager. It exercises a read-only Artifact mount, a persistent Volume
