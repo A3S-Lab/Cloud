@@ -4,10 +4,12 @@ ARG A3S_CLI_VERSION
 ARG A3S_CLI_REVISION
 ARG A3S_CLI_ARCHIVE_SHA256
 
+# The workflow replaces these tokens with the locked release values before
+# invoking Box. Box expands ARGs in RUN but intentionally preserves LABEL text.
 LABEL org.opencontainers.image.source="https://github.com/A3S-Lab/CLI" \
-      org.opencontainers.image.version="${A3S_CLI_VERSION}" \
-      org.opencontainers.image.revision="${A3S_CLI_REVISION}" \
-      dev.a3s.cli-archive-sha256="${A3S_CLI_ARCHIVE_SHA256}"
+      org.opencontainers.image.version="__A3S_CLI_VERSION__" \
+      org.opencontainers.image.revision="__A3S_CLI_REVISION__" \
+      dev.a3s.cli-archive-sha256="__A3S_CLI_ARCHIVE_SHA256__"
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update \
     && apt-get install --yes --no-install-recommends ca-certificates git \

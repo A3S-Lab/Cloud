@@ -269,6 +269,20 @@ jobs:
             "$build_dir/config.acl"
           cp apps/cloud/tools/box-conformance/agent-runtime/Containerfile \
             "$build_dir/Containerfile"
+          # Box deliberately keeps LABEL values literal (ARG expansion is only
+          # supported in shell-backed instructions). Materialize the pinned
+          # release values in the generated build input so OCI metadata remains
+          # exact and independently auditable.
+          sed -i \
+            -e "s|__A3S_CLI_VERSION__|$A3S_CLOUD_A0_4_CLI_VERSION|g" \
+            -e "s|__A3S_CLI_REVISION__|$A3S_CLOUD_A0_4_CLI_REVISION|g" \
+            -e "s|__A3S_CLI_ARCHIVE_SHA256__|$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST|g" \
+            "$build_dir/Containerfile"
+          grep --fixed-strings "$A3S_CLOUD_A0_4_CLI_VERSION" "$build_dir/Containerfile"
+          grep --fixed-strings "$A3S_CLOUD_A0_4_CLI_REVISION" "$build_dir/Containerfile"
+          grep --fixed-strings "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" "$build_dir/Containerfile"
+          ! grep --extended-regexp '__A3S_CLI_(VERSION|REVISION|ARCHIVE_SHA256)__' \
+            "$build_dir/Containerfile"
           workspace_dir="$build_dir/workspace"
           install -d -m 0755 "$workspace_dir"
           printf 'A3S Cloud A0.4 Agent Runtime fixture\n' >"$workspace_dir/.a3s-release-seed"
