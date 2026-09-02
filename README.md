@@ -330,14 +330,14 @@ imports and duplicate mechanisms from spreading while known debt is removed.
 
 ## Delivery status
 
-The portfolio is gate-driven, not percentage-driven. As of **2026-08-31**:
+The portfolio is gate-driven, not percentage-driven. As of **2026-09-02**:
 
 | Lane | Evidence state |
 | --- | --- |
 | Tenant-scoped Identity, PostgreSQL/A3S ORM, Operations/Flow, Outbox, public API, and migrations | **Verified foundation** |
 | Installation scope and system-administrator RBAC | **Verified core, broader gate in progress.** Atomic fresh bootstrap, policy/binding and support-grant repositories, exact privileged decisions, protected mutations, REST/OpenAPI, TypeScript client, CLI, Management MCP, and revocation-fenced organization catalog are verified. Controlled recovery for pre-root installations plus the wider MT3 role matrix, owner-port cleanup, and hostile-tenant evidence remain |
-| Workloads, Fleet, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress.** Several component/provider gates exist; complete release recertification remains |
-| Agent and hosted MCP product lanes | **In progress.** Component evidence does not imply complete AaaS availability |
+| Workloads, Fleet, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress.** Several component/provider gates exist; the A0.4 published-Agent real-Box lifecycle gate is being rerun against the merged bounded-storage provider, while complete release recertification remains |
+| Agent and hosted MCP product lanes | **In progress.** A0.4 published-Agent deployment implementation is complete and its real Box/PostgreSQL recovery and cleanup gate is pending the merged provider pin; A0.3, A0.5, and hosted MCP remain gate-bound, so component evidence does not imply complete AaaS availability |
 | Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
 | Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
 | Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a and C3b verified on main.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; the complete [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. C3b adds migration `181`, one typed immutable Identity evidence history, exact historic replay, current Policy/TrustDomain revalidation, deterministic same-fact adoption, and retained concurrency/revocation tests without a public API or second owner lifecycle; the [C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079) pass. Fleet hardware attestation, the full issuance decision, issuance, enforcement, revocation, and federation remain open |

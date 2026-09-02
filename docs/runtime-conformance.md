@@ -21,18 +21,23 @@ revision file must match. A gate must fail before execution when they differ.
 ## Current capability boundary
 
 The Box revision pinned by Cloud advertises Runtime network modes `None` and
-`Service`; it deliberately rejects `Outbound`. It also does not advertise the
-optional ephemeral-storage resource control. Cloud consumers must compare each
-exact projected specification with these capabilities before provider work and
-must not translate an unsupported requirement into a weaker mode.
+`Service`; it deliberately rejects `Outbound`. On Linux Sandbox hosts it
+advertises the optional `EphemeralStorage` resource control only after a
+privileged capability probe mounts the same bounded tmpfs/OverlayFS layout used
+in production. The provider passes the exact byte limit to that writable layer;
+hosts that cannot enforce it fail closed and do not advertise the control. Cloud
+consumers must compare each exact projected specification with these
+capabilities before provider work and must not translate an unsupported
+requirement into a weaker mode.
 
 This currently blocks the Durable Cell `celld deploy` Task, which requires
-ordinary Runtime `Outbound` access to S0. The serving template omits
-ephemeral-storage control and its product adapter rejects that unsupported
-request explicitly. Completing `CELL0.5` therefore requires Runtime/Box to add
-and retain generic outbound-network evidence. Cloud will then advance its
-pinned revision and reuse the same Execution/Workloads path; it will not add a
-Durable-Cell-specific runner, proxy, or network contract.
+ordinary Runtime `Outbound` access to S0. The serving template may request
+ephemeral-storage only when the selected Box host advertises the control; the
+product adapter rejects an unsupported request explicitly. Completing
+`CELL0.5` therefore requires Runtime/Box to add and retain generic
+outbound-network evidence. Cloud will then advance its pinned revision and
+reuse the same Execution/Workloads path; it will not add a Durable-Cell-specific
+runner, proxy, or network contract.
 
 ## Provider gate
 

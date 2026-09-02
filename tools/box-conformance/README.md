@@ -42,11 +42,14 @@ by `MCP0`; this gate does not claim `G0` or hosted MCP availability.
 
 The allocation consumer probe requires Box to advertise CPU, memory, PID, and
 execution-timeout controls after the provider phase has passed every profile
-derived from those capabilities. It then carries one inventory-bound Claim
-through prepare, exact Runtime binding, reconstructed inspection, pre-fence
-release rejection, durable stop, release, removal, and cleanup. The uploaded
-artifact contains both the advertised-profile result and the allocation
-certification marker.
+derived from those capabilities. When the host qualification advertises
+`EphemeralStorage`, the probe also carries an exact byte quota into the
+Sandbox writable layer and proves that writes beyond the quota fail closed;
+hosts that cannot enforce the bounded layer must not advertise that control.
+The probe then carries one inventory-bound Claim through prepare, exact Runtime
+binding, reconstructed inspection, pre-fence release rejection, durable stop,
+release, removal, and cleanup. The uploaded artifact contains both the
+advertised-profile result and the allocation certification marker.
 
 The storage consumer probe binds Box's one Artifact port to the existing node
 Artifact manager. It exercises a read-only Artifact mount, a persistent Volume
