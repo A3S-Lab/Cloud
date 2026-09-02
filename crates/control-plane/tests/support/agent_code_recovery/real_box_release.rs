@@ -667,7 +667,16 @@ fn verify_running_observation(
             .as_ref()
             .is_none_or(|health| health.state != RuntimeHealthState::Healthy)
     {
-        return Err(invalid("published Agent release did not become healthy in real Box").into());
+        return Err(invalid(format!(
+            "published Agent release did not become healthy in real Box; state={:?} health={:?} liveness={:?} failure={:?} provider_resource_id={:?} started_at_ms={:?}",
+            observation.state,
+            observation.health,
+            observation.liveness,
+            observation.failure,
+            observation.provider_resource_id,
+            observation.started_at_ms,
+        ))
+        .into());
     }
     Ok(())
 }

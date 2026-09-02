@@ -1530,6 +1530,30 @@ jobs:
         run: |
           cleanup_status=0
           install -d -m 0755 "$EVIDENCE_DIR"
+          # Preserve bounded, redacted startup logs before removing the Box
+          # home.  The real Agent release gate intentionally fails closed on
+          # an unhealthy observation; these files are the only useful evidence
+          # when the workload exits before the normal certification artifact is
+          # written.
+          if test -d "$A3S_HOME/boxes"; then
+            while IFS= read -r -d '' source; do
+              relative=${source#"$A3S_HOME/"}
+              destination="$EVIDENCE_DIR/diagnostics/$relative"
+              install -d -m 0755 "$(dirname "$destination")"
+              if sudo test -f "$source"; then
+                sudo tail -c 65536 "$source" 2>/dev/null \
+                  | sed -E \
+                    -e 's/a0-4-[[:alnum:]_-]+/[REDACTED-FIXTURE-SECRET]/g' \
+                    -e 's/(sk-[[:alnum:]_-]+)/[REDACTED-API-KEY]/g' \
+                  >"$destination" || true
+              fi
+            done < <(
+              sudo find "$A3S_HOME/boxes" -type f \
+                \( -name 'console.log' -o -name 'console.err.log' \
+                   -o -name 'sandbox-init.log' -o -name 'sandbox-log-worker.log' \
+                   -o -name 'container.json' \) -print0 2>/dev/null
+            )
+          fi
           ps aux >"$EVIDENCE_DIR/processes-after.txt"
           sudo find "$A3S_HOME" -maxdepth 4 -print \
             >"$EVIDENCE_DIR/home-after.txt" 2>&1 || true
