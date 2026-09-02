@@ -89,6 +89,22 @@ jobs:
           echo "::error title=Installation-scoped fact rail gate failed::$detail"
           exit 1
 
+      - name: Certify Integration Events current-lease settlement fencing
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-integration-events-lease-fencing.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --test postgres_integration \
+            postgres_outbox_settlement_requires_a_current_owned_lease \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=Integration Events lease fencing gate failed::$detail"
+          exit 1
+
       - name: Certify Identity-owned platform RBAC multi-replica authority
         run: |
           log="$RUNNER_TEMP/a3s-cloud-platform-rbac-authority.log"

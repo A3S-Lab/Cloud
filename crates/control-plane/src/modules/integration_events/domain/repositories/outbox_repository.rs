@@ -8,6 +8,10 @@ use uuid::Uuid;
 
 #[async_trait]
 pub trait IOutboxRepository: Send + Sync {
+    /// Claims at most `limit` ready facts for one owner and increments each delivery attempt.
+    ///
+    /// A returned fact is exclusively owned only until its lease expires. Callers must settle it
+    /// while that same lease is current; an expired owner is never allowed to publish or fail it.
     async fn claim(
         &self,
         owner: Uuid,
@@ -15,6 +19,7 @@ pub trait IOutboxRepository: Send + Sync {
         lease_duration: Duration,
     ) -> Result<Vec<OutboxMessage>, RepositoryError>;
 
+    /// Settles one fact only when `owner` still holds its active lease.
     async fn mark_published(
         &self,
         event_id: Uuid,
@@ -22,6 +27,7 @@ pub trait IOutboxRepository: Send + Sync {
         published_at: DateTime<Utc>,
     ) -> Result<(), RepositoryError>;
 
+    /// Schedules one retry only when `owner` still holds its active lease.
     async fn mark_failed(
         &self,
         event_id: Uuid,
