@@ -854,8 +854,11 @@ jobs:
           if (( gate_status != 0 )); then
             exit "$gate_status"
           fi
-          grep --fixed-strings \
-            'A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed ' \
+          # The Rust test harness prefixes stdout with `test <name> ...`; retain
+          # only the canonical marker so the JSON evidence starts at its schema
+          # boundary instead of depending on harness formatting.
+          marker='A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed '
+          awk -v marker="$marker" 'index($0, marker) { print substr($0, index($0, marker)) }' \
             "$EVIDENCE_DIR/agent-runtime-release.log" \
             >"$EVIDENCE_DIR/agent-runtime-release-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-release-certification.txt")" -eq 1
