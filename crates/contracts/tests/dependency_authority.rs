@@ -4,7 +4,7 @@ use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
 const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
-const CODE_CORE_SOURCE: &str = "git+https://github.com/A3S-Lab/Code.git?rev=ceb7748721138986b25d5beadd205964128a5124#ceb7748721138986b25d5beadd205964128a5124";
+const CODE_CORE_SOURCE: &str = "git+https://github.com/A3S-Lab/Code.git?rev=2a4b8dcdc8b4e11eca90fa64dd35764bb87a5112#2a4b8dcdc8b4e11eca90fa64dd35764bb87a5112";
 const CRATES_IO_SOURCE: &str = "registry+https://github.com/rust-lang/crates.io-index";
 const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
