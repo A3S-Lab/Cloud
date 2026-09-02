@@ -2240,6 +2240,86 @@ fn developer_workflows_preview_projection_reuses_the_single_outbox_relay() {
 }
 
 #[test]
+fn integration_event_delivery_is_application_owned_and_leases_one_fact_at_a_time() {
+    let root = module_root().join("integration_events");
+    let application = std::fs::read_to_string(root.join("application/mod.rs"))
+        .expect("read Integration Events Application boundary");
+    let publisher_port = std::fs::read_to_string(root.join("application/ports/event_publisher.rs"))
+        .expect("read Integration Events publisher port");
+    let projector_port = std::fs::read_to_string(root.join("application/ports/event_projector.rs"))
+        .expect("read Integration Events projector port");
+    let relay = std::fs::read_to_string(root.join("application/outbox_relay.rs"))
+        .expect("read Integration Events Outbox Relay");
+    let projection =
+        std::fs::read_to_string(root.join("application/published_outbox_projection.rs"))
+            .expect("read Integration Events Published Language projection");
+    let message = std::fs::read_to_string(root.join("domain/entities/outbox_message.rs"))
+        .expect("read committed Outbox message");
+    let published = std::fs::read_to_string(root.join("published/outbox_envelope.rs"))
+        .expect("read Integration Events Published Language");
+    let persistence = std::fs::read_to_string(root.join("infrastructure/persistence/postgres.rs"))
+        .expect("read Integration Events persistence adapter");
+    let workflow = std::fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.github/workflows/ci.yml"),
+    )
+    .expect("read CI workflow");
+
+    assert!(application.contains("mod ports;"));
+    assert!(application.contains("IEventPublisher"));
+    assert!(application.contains("IIntegrationEventProjector"));
+    assert!(publisher_port.contains("pub trait IEventPublisher"));
+    assert!(projector_port.contains("pub trait IIntegrationEventProjector"));
+
+    let mut misplaced_domain_ports = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("integration_events")
+            && layer(relative) == Some("domain")
+            && (source.contains("IEventPublisher")
+                || source.contains("IIntegrationEventProjector")
+                || source.contains("PublishedOutboxEnvelope"))
+        {
+            misplaced_domain_ports.insert(display(relative));
+        }
+    });
+    assert!(
+        misplaced_domain_ports.is_empty(),
+        "Integration Events Domain owns a delivery port or wire projection:\n{}",
+        misplaced_domain_ports
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let compact_relay = relay.split_whitespace().collect::<String>();
+    assert!(compact_relay.contains(".claim(self.owner,1,self.config.lease_duration)"));
+    assert!(!compact_relay.contains(".claim(self.owner,self.config.batch_size"));
+    assert!(relay.contains("while report.claimed < self.config.batch_size"));
+    assert!(relay.contains("message.domain_event()"));
+    assert!(message.contains("self.domain_event().map(|_| ())"));
+    assert!(projection.contains("let event = message.domain_event()?"));
+    assert!(projection.contains("PublishedOutboxEnvelope::from_committed_event"));
+    assert!(published.contains("event.validate()?"));
+    assert!(!published.contains("integration_events::domain"));
+    assert_eq!(
+        persistence
+            .matches("and leased_until > clock_timestamp()")
+            .count(),
+        2,
+        "both Outbox settlement paths must fence expired lease owners"
+    );
+    assert!(!persistence.contains("limit.max(1)"));
+    assert!(!persistence.contains("unwrap_or(u64::MAX)"));
+
+    let lease_fencing_gate = workflow_step(
+        &workflow,
+        "Certify Integration Events current-lease settlement fencing",
+    );
+    assert!(lease_fencing_gate
+        .contains("postgres_outbox_settlement_requires_a_current_owned_lease"));
+    assert!(lease_fencing_gate.contains("-- --exact --nocapture --test-threads=1"));
+}
+
+#[test]
 fn developer_workflows_projects_boundaries_are_confined_to_two_infrastructure_adapters() {
     let mut projects_imports = BTreeSet::new();
     visit_production_sources(|relative, source| {
@@ -3696,8 +3776,7 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
     )
     .expect("read committed Outbox message");
     let published_envelope = std::fs::read_to_string(
-        manifest
-            .join("src/modules/integration_events/domain/entities/published_outbox_envelope.rs"),
+        manifest.join("src/modules/integration_events/published/outbox_envelope.rs"),
     )
     .expect("read published Outbox envelope");
     let publisher = std::fs::read_to_string(
@@ -3761,13 +3840,13 @@ fn installation_and_tenant_facts_share_one_scope_audit_and_outbox_abstraction() 
         .sum::<usize>(),
         1
     );
-    assert!(published_envelope.contains("pub fn from_message(message: &OutboxMessage)"));
+    assert!(published_envelope.contains("fn from_committed_event("));
     assert!(published_envelope.contains("canonical_organization_id"));
     assert!(published_envelope.contains("self.organization_id != canonical_organization_id"));
     assert!(published_envelope.contains("deny_unknown_fields"));
-    assert!(publisher.contains("PublishedOutboxEnvelope::from_message(message)"));
+    assert!(publisher.contains("project_published_outbox_envelope(message)"));
     assert!(!publisher.contains("\"scope\": message.scope"));
-    assert!(postgres_gate.contains("PublishedOutboxEnvelope::from_message(&message)"));
+    assert!(postgres_gate.contains("project_published_outbox_envelope(&message)"));
     for provider_gate in [&notification_nats_gate, &notification_smtp_gate] {
         assert!(provider_gate.contains("published_outbox_payload("));
         assert!(!provider_gate.contains("\"organizationId\": fact.organization_id()"));

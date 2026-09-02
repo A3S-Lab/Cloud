@@ -35,8 +35,8 @@ use a3s_cloud_control_plane::modules::audit::{
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
-    A3sEventPublisher, IOutboxRepository, OutboxMessage, OutboxRelay, OutboxRelayConfig,
-    PostgresOutboxRepository, PublishedOutboxEnvelope,
+    project_published_outbox_envelope, A3sEventPublisher, IOutboxRepository, OutboxMessage,
+    OutboxRelay, OutboxRelayConfig, PostgresOutboxRepository,
 };
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationProjection, OperationReconciler,
@@ -97,7 +97,7 @@ fn published_outbox_payload(
         payload: fact.payload.clone(),
         delivery_attempts: 1,
     };
-    let envelope = PublishedOutboxEnvelope::from_message(&message)?;
+    let envelope = project_published_outbox_envelope(&message)?;
     serde_json::to_value(envelope).map_err(|error| error.to_string())
 }
 
@@ -931,6 +931,16 @@ async fn postgres_installation_identity_and_shared_fact_scope_are_fail_closed() 
     run_isolated_postgres(&admin_url, exercise_installation_scoped_fact_foundation)
         .await
         .expect("PostgreSQL Installation-scoped fact foundation gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_outbox_settlement_requires_a_current_owned_lease() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_outbox_lease_fencing)
+        .await
+        .expect("PostgreSQL Outbox lease fencing gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -2898,6 +2908,90 @@ async fn exercise_installation_scoped_fact_foundation(
         .await
         .is_err());
 
+    Ok(())
+}
+
+async fn exercise_outbox_lease_fencing(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 4).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let event_id = Uuid::now_v7();
+    let aggregate_id = Uuid::now_v7();
+    let correlation_id = Uuid::now_v7();
+    let occurred_at = Utc::now();
+    let installation_id: Uuid = database
+        .fetch_one_as(sql_query::<Uuid>("select current_cloud_installation_id()"))
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into outbox_events (event_id, event_key, schema_version, installation_id, scope_kind, organization_id, project_id, environment_id, aggregate_id, aggregate_version, occurred_at, correlation_id, payload) values (",
+            )
+            .bind(event_id)
+            .append(", 'integration.outbox.fenced', 1, ")
+            .bind(installation_id)
+            .append(", 'installation', null, null, null, ")
+            .bind(aggregate_id)
+            .append(", 1, ")
+            .bind(occurred_at)
+            .append(", ")
+            .bind(correlation_id)
+            .append(", '{\"fenced\":true}'::jsonb)"),
+        )
+        .await?;
+
+    let repository = PostgresOutboxRepository::new(executor);
+    let expired_owner = Uuid::now_v7();
+    let first_claim = repository
+        .claim(expired_owner, 1, Duration::from_millis(50))
+        .await?;
+    assert_eq!(first_claim.len(), 1);
+    assert_eq!(first_claim[0].event_id, event_id);
+
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(matches!(
+        repository
+            .mark_published(event_id, expired_owner, Utc::now())
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    assert!(matches!(
+        repository
+            .mark_failed(
+                event_id,
+                expired_owner,
+                "stale owner",
+                Duration::from_millis(1)
+            )
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+
+    let successor = Uuid::now_v7();
+    let reclaimed = repository
+        .claim(successor, 1, Duration::from_secs(5))
+        .await?;
+    assert_eq!(reclaimed.len(), 1);
+    assert_eq!(reclaimed[0].event_id, event_id);
+    assert_eq!(reclaimed[0].delivery_attempts, 2);
+    assert!(matches!(
+        repository
+            .mark_published(event_id, expired_owner, Utc::now())
+            .await,
+        Err(RepositoryError::Conflict(_))
+    ));
+    repository
+        .mark_published(event_id, successor, Utc::now())
+        .await?;
+
+    let published: bool = database
+        .fetch_one_as(
+            sql_query::<bool>(
+                "select published_at is not null from outbox_events where event_id = ",
+            )
+            .bind(event_id),
+        )
+        .await?;
+    assert!(published);
     Ok(())
 }
 
@@ -7251,9 +7345,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .await?;
     let lost_ack = relay.run_once().await?;
-    assert_eq!(lost_ack.claimed, 2);
-    assert_eq!(lost_ack.published, 1);
     assert_eq!(lost_ack.failures.len(), 1);
+    assert_eq!(lost_ack.claimed, lost_ack.published + 1);
+    assert!(lost_ack.claimed <= 2);
     executor
         .pool()
         .get()
@@ -7264,7 +7358,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         )
         .await?;
     tokio::time::sleep(Duration::from_millis(5)).await;
-    assert_eq!(relay.run_once().await?.published, 1);
+    let recovered = relay.run_once().await?;
+    assert!(recovered.failures.is_empty());
+    assert_eq!(lost_ack.published + recovered.published, 2);
     let local_events = memory_bus.list_events(None, 100).await?;
     assert_eq!(local_events.len(), initial_event_count + 3);
     let unique_event_ids = local_events
@@ -7323,9 +7419,9 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             )
             .await?;
         let first_attempt = nats_relay.run_once().await?;
-        assert_eq!(first_attempt.claimed, 2);
-        assert_eq!(first_attempt.published, 1);
         assert_eq!(first_attempt.failures.len(), 1);
+        assert_eq!(first_attempt.claimed, first_attempt.published + 1);
+        assert!(first_attempt.claimed <= 2);
         executor
             .pool()
             .get()
@@ -7337,9 +7433,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
             .await?;
         tokio::time::sleep(Duration::from_millis(5)).await;
         let retry = nats_relay.run_once().await?;
-        assert_eq!(retry.claimed, 1);
-        assert_eq!(retry.published, 1);
         assert!(retry.failures.is_empty());
+        assert_eq!(first_attempt.published + retry.published, 2);
         assert_eq!(nats_relay.run_once().await?.claimed, 0);
 
         let mut received_event_types = std::collections::BTreeSet::new();

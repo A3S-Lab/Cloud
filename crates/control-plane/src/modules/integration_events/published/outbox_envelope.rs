@@ -1,5 +1,5 @@
-use super::OutboxMessage;
 use crate::modules::shared_kernel::domain::ScopeContext;
+use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -26,17 +26,26 @@ pub struct PublishedOutboxEnvelope {
 }
 
 impl PublishedOutboxEnvelope {
-    pub fn from_message(message: &OutboxMessage) -> Result<Self, String> {
-        message.validate()?;
+    pub(in crate::modules::integration_events) fn from_committed_event(
+        scope: ScopeContext,
+        event: DomainEventEnvelope,
+    ) -> Result<Self, String> {
+        scope.validate()?;
+        event.validate()?;
+        if event.scope != scope.reference() {
+            return Err("published Outbox event does not match its committed scope".into());
+        }
         let envelope = Self {
-            scope: message.scope,
-            organization_id: message.organization_id(),
-            aggregate_id: message.aggregate_id,
-            aggregate_version: message.aggregate_version,
-            occurred_at: message.occurred_at,
-            correlation_id: message.correlation_id,
-            causation_id: message.causation_id,
-            data: message.payload.clone(),
+            scope,
+            organization_id: scope
+                .organization_id()
+                .map(|organization_id| organization_id.as_uuid()),
+            aggregate_id: event.aggregate_id,
+            aggregate_version: event.aggregate_version,
+            occurred_at: event.occurred_at,
+            correlation_id: event.correlation_id,
+            causation_id: event.causation_id,
+            data: event.payload,
         };
         envelope.validate()?;
         Ok(envelope)
@@ -108,30 +117,32 @@ mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::{InstallationId, OrganizationId};
 
-    fn message(scope: ScopeContext) -> OutboxMessage {
-        OutboxMessage {
+    fn event(scope: ScopeContext) -> DomainEventEnvelope {
+        DomainEventEnvelope {
             event_id: Uuid::now_v7(),
             event_key: "notification.delivery.requested".into(),
             schema_version: 1,
-            scope,
+            scope: scope.reference(),
             aggregate_id: Uuid::now_v7(),
             aggregate_version: 1,
             occurred_at: Utc::now(),
             correlation_id: Uuid::now_v7(),
             causation_id: Some(Uuid::now_v7()),
             payload: serde_json::json!({"channel": "smtp"}),
-            delivery_attempts: 0,
         }
+    }
+
+    fn envelope(scope: ScopeContext) -> PublishedOutboxEnvelope {
+        PublishedOutboxEnvelope::from_committed_event(scope, event(scope))
+            .expect("published envelope")
     }
 
     #[test]
     fn organization_wire_projection_contains_one_canonical_scope_and_matching_legacy_id() {
         let installation_id = InstallationId::new();
         let organization_id = OrganizationId::new();
-        let envelope = PublishedOutboxEnvelope::from_message(&message(
-            ScopeContext::organization(installation_id, organization_id).expect("scope"),
-        ))
-        .expect("published envelope");
+        let envelope =
+            envelope(ScopeContext::organization(installation_id, organization_id).expect("scope"));
         let value = serde_json::to_value(envelope).expect("wire JSON");
 
         assert_eq!(value["scope"]["kind"], "organization");
@@ -151,10 +162,7 @@ mod tests {
 
     #[test]
     fn installation_wire_projection_has_no_synthetic_organization() {
-        let envelope = PublishedOutboxEnvelope::from_message(&message(
-            ScopeContext::installation(InstallationId::new()).expect("scope"),
-        ))
-        .expect("published envelope");
+        let envelope = envelope(ScopeContext::installation(InstallationId::new()).expect("scope"));
         assert!(envelope.require_tenant_organization_id().is_err());
         let value = serde_json::to_value(envelope).expect("wire JSON");
 
@@ -163,12 +171,28 @@ mod tests {
     }
 
     #[test]
+    fn owner_domain_validation_rejects_an_invalid_event_key_before_publication() {
+        let scope = ScopeContext::installation(InstallationId::new()).expect("installation scope");
+        let mut invalid = event(scope);
+        invalid.event_key = "notification.*.requested".into();
+
+        assert!(PublishedOutboxEnvelope::from_committed_event(scope, invalid).is_err());
+    }
+
+    #[test]
+    fn committed_scope_and_owner_event_scope_must_match() {
+        let committed = ScopeContext::installation(InstallationId::new()).expect("committed scope");
+        let another = ScopeContext::installation(InstallationId::new()).expect("another scope");
+
+        assert!(PublishedOutboxEnvelope::from_committed_event(committed, event(another)).is_err());
+    }
+
+    #[test]
     fn mismatched_legacy_projection_and_unknown_extensions_fail_closed() {
-        let envelope = PublishedOutboxEnvelope::from_message(&message(
+        let envelope = envelope(
             ScopeContext::organization(InstallationId::new(), OrganizationId::new())
                 .expect("scope"),
-        ))
-        .expect("published envelope");
+        );
         let mut mismatched = serde_json::to_value(&envelope).expect("wire JSON");
         mismatched["organizationId"] = serde_json::json!(Uuid::now_v7());
         let mismatched: PublishedOutboxEnvelope =

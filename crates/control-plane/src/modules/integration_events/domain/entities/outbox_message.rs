@@ -29,19 +29,7 @@ impl OutboxMessage {
     }
 
     pub fn validate(&self) -> Result<(), String> {
-        self.scope.validate()?;
-        if self.event_id.is_nil()
-            || self.event_key.is_empty()
-            || self.schema_version == 0
-            || self.aggregate_id.is_nil()
-            || self.aggregate_version == 0
-            || self.correlation_id.is_nil()
-            || self.causation_id.is_some_and(|value| value.is_nil())
-            || !self.payload.is_object()
-        {
-            return Err("Outbox message is invalid".into());
-        }
-        Ok(())
+        self.domain_event().map(|_| ())
     }
 
     /// Restores the owner-domain envelope from one committed Outbox fact.
@@ -50,7 +38,7 @@ impl OutboxMessage {
     /// the owner-domain reference intentionally projects only the lineage a
     /// domain fact is allowed to carry before persistence resolves ownership.
     pub fn domain_event(&self) -> Result<DomainEventEnvelope, String> {
-        self.validate()?;
+        self.scope.validate()?;
         let event = DomainEventEnvelope {
             event_id: self.event_id,
             event_key: self.event_key.clone(),
@@ -103,6 +91,19 @@ mod tests {
             installation_id: InstallationId::from_uuid(Uuid::nil()),
         });
         assert!(value.validate().is_err());
+    }
+
+    #[test]
+    fn committed_outbox_message_reuses_owner_event_key_and_portability_invariants() {
+        let mut invalid_key =
+            message(ScopeContext::installation(InstallationId::new()).expect("Installation scope"));
+        invalid_key.event_key = "identity.*.changed".into();
+        assert!(invalid_key.validate().is_err());
+
+        let mut non_portable_version =
+            message(ScopeContext::installation(InstallationId::new()).expect("Installation scope"));
+        non_portable_version.aggregate_version = 9_007_199_254_740_992;
+        assert!(non_portable_version.validate().is_err());
     }
 
     #[test]

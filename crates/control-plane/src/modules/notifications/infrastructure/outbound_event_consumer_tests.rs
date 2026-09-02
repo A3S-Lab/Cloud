@@ -1,6 +1,6 @@
 use super::*;
 use crate::modules::connectors::{ConnectorExecutionEvidence, ConnectorExecutionOutcome};
-use crate::modules::integration_events::OutboxMessage;
+use crate::modules::integration_events::{project_published_outbox_envelope, OutboxMessage};
 use crate::modules::notifications::{
     outbound_notification_attempt_id, IOutboundNotificationDeliveryRepository,
     IOutboundNotificationDispatcher, Notification, NotificationScope, NotificationSeverity,
@@ -203,7 +203,7 @@ fn event(delivery: &OutboundNotificationDelivery, delivery_count: u64) -> Receiv
         delivery_attempts: 1,
     };
     let payload = serde_json::to_value(
-        PublishedOutboxEnvelope::from_message(&message).expect("published envelope"),
+        project_published_outbox_envelope(&message).expect("published envelope"),
     )
     .expect("published envelope JSON");
     let mut event = Event::typed(

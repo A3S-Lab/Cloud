@@ -5,7 +5,7 @@ use crate::modules::identity::domain::entities::{
 use crate::modules::identity::domain::value_objects::{
     RecipientContactSigningKeyId, RecipientEmailAddress,
 };
-use crate::modules::integration_events::OutboxMessage;
+use crate::modules::integration_events::{project_published_outbox_envelope, OutboxMessage};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, InstallationId, OrganizationId, PrincipalId, RecipientContactId,
     RecipientContactVerificationId, ScopeContext,
@@ -78,7 +78,7 @@ fn received_event() -> ReceivedEvent {
         delivery_attempts: 1,
     };
     let payload = serde_json::to_value(
-        PublishedOutboxEnvelope::from_message(&message).expect("published envelope"),
+        project_published_outbox_envelope(&message).expect("published envelope"),
     )
     .expect("published envelope JSON");
     let mut event = Event::typed(

@@ -1,7 +1,7 @@
-use crate::modules::integration_events::domain::entities::{
-    OutboxMessage, PublishedOutboxEnvelope,
+use crate::modules::integration_events::application::{
+    project_published_outbox_envelope, EventPublishError, IEventPublisher,
 };
-use crate::modules::integration_events::domain::services::{EventPublishError, IEventPublisher};
+use crate::modules::integration_events::domain::entities::OutboxMessage;
 use a3s_event::{Event, EventBus, MemoryProvider, NatsConfig, NatsProvider, PublishOptions};
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -51,7 +51,7 @@ impl A3sEventPublisher {
 impl IEventPublisher for A3sEventPublisher {
     async fn publish(&self, message: &OutboxMessage) -> Result<(), EventPublishError> {
         let envelope =
-            PublishedOutboxEnvelope::from_message(message).map_err(EventPublishError::new)?;
+            project_published_outbox_envelope(message).map_err(EventPublishError::new)?;
         let payload = serde_json::to_value(envelope)
             .map_err(|error| EventPublishError::new(error.to_string()))?;
         let mut event = Event::typed(

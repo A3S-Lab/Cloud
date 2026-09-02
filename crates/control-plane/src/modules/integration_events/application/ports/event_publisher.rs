@@ -15,6 +15,7 @@ impl EventPublishError {
     }
 }
 
+/// Outbound application port for the provider-neutral integration event bus.
 #[async_trait]
 pub trait IEventPublisher: Send + Sync {
     async fn publish(&self, message: &OutboxMessage) -> Result<(), EventPublishError>;
