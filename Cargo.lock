@@ -42,8 +42,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-box-core"
-version = "3.2.2"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=0bb97341efb283ff36f37bca757a623bb9078720#0bb97341efb283ff36f37bca757a623bb9078720"
+version = "3.2.3"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=c451a149442172102ad8d659b3f025075f87e695#c451a149442172102ad8d659b3f025075f87e695"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -63,16 +63,16 @@ dependencies = [
 
 [[package]]
 name = "a3s-box-mkext4"
-version = "3.2.2"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=0bb97341efb283ff36f37bca757a623bb9078720#0bb97341efb283ff36f37bca757a623bb9078720"
+version = "3.2.3"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=c451a149442172102ad8d659b3f025075f87e695#c451a149442172102ad8d659b3f025075f87e695"
 dependencies = [
  "crc32c",
 ]
 
 [[package]]
 name = "a3s-box-netproxy"
-version = "3.2.2"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=0bb97341efb283ff36f37bca757a623bb9078720#0bb97341efb283ff36f37bca757a623bb9078720"
+version = "3.2.3"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=c451a149442172102ad8d659b3f025075f87e695#c451a149442172102ad8d659b3f025075f87e695"
 dependencies = [
  "a3s-box-core",
  "libc",
@@ -82,8 +82,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-box-runtime"
-version = "3.2.2"
-source = "git+https://github.com/A3S-Lab/Box.git?rev=0bb97341efb283ff36f37bca757a623bb9078720#0bb97341efb283ff36f37bca757a623bb9078720"
+version = "3.2.3"
+source = "git+https://github.com/A3S-Lab/Box.git?rev=c451a149442172102ad8d659b3f025075f87e695#c451a149442172102ad8d659b3f025075f87e695"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-box-core",
