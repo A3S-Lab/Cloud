@@ -2,8 +2,10 @@ mod application_in_memory;
 mod application_postgres;
 mod deployment_in_memory;
 mod deployment_postgres;
+mod edge_route_publication;
 
 pub use application_in_memory::InMemoryDurableCellApplicationRepository;
 pub use application_postgres::PostgresDurableCellApplicationRepository;
 pub use deployment_in_memory::InMemoryDurableCellDeploymentRepository;
 pub use deployment_postgres::PostgresDurableCellDeploymentRepository;
+pub use edge_route_publication::EdgeDurableCellRoutePublicationAdapter;

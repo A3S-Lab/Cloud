@@ -9,6 +9,7 @@ mod queries;
 mod resource_access;
 mod result;
 mod route_publication;
+mod route_publication_port;
 mod runtime_profile;
 mod writer_fence;
 
@@ -40,6 +41,10 @@ pub use result::DurableCellApplicationMutationResult;
 pub use route_publication::{
     DurableCellRoutePublicationResult, PublishDurableCellApplicationRoute,
     PublishDurableCellApplicationRouteHandler,
+};
+pub use route_publication_port::{
+    DurableCellPublishedCertificate, DurableCellPublishedRoute, DurableCellRoutePublication,
+    DurableCellRoutePublicationRequest, IDurableCellRoutePublicationPort,
 };
 pub use runtime_profile::{
     admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,

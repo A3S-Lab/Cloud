@@ -206,7 +206,7 @@ pub fn durable_cell_route_commands_controller(
                         .await?
                     {
                         Ok(result) => {
-                            let status = if result.route.publication.replayed {
+                            let status = if result.publication.replayed {
                                 200
                             } else {
                                 201

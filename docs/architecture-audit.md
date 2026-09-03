@@ -236,10 +236,13 @@ Current boundary debt:
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import
-  Executions, Data, Artifacts, Fleet, Operations, Workloads, and Edge internal
-  owner types or repositories;
-- application code still calls several Workloads/Edge handlers directly;
-- presentation DTOs reuse Workloads and Edge presentation DTOs;
+  Executions, Data, Artifacts, Fleet, Operations, and Workloads internal owner
+  types or repositories;
+- the Route publication path now crosses one
+  `IDurableCellRoutePublicationPort` and one Edge anti-corruption adapter;
+  remaining Workloads handlers and repositories still need equivalent ports;
+- presentation DTOs still reuse the Workloads deployment DTO, while Route
+  publication uses the Durable Cells-owned immutable projection;
 - the Cell provider profile is correctly frozen in Cloud and bound into
   Runtime only through its opaque digest.
 
@@ -267,7 +270,8 @@ The required Cloud refactor is a set of consumer-owned ports:
 - DurableCellStoragePort;
 - DurableCellExecutionPort;
 - DurableCellWorkloadPort;
-- DurableCellRoutePublicationPort.
+- `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
+  publication).
 
 Concrete owner repositories, handlers, and presentation DTOs must disappear
 from Durable Cells imports. Pure owner compilers may be consumed through their

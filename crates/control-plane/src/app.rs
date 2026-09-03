@@ -107,8 +107,9 @@ use crate::modules::durable_cells::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
     DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
     DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter, DurableCellsModule,
-    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
-    IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    EdgeDurableCellRoutePublicationAdapter, GetDurableCellApplicationHandler,
+    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository, IDurableCellRoutePublicationPort,
     ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
     PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
     StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
@@ -2800,6 +2801,9 @@ fn build_management_application_with_health(
         _ => Err("managed Gateway publication dependencies are incomplete".into()),
     }
     .map_err(BootError::Internal)?;
+    let durable_cell_route_publication: Arc<dyn IDurableCellRoutePublicationPort> = Arc::new(
+        EdgeDurableCellRoutePublicationAdapter::new(publish_route_handler.clone()),
+    );
     BootApplication::builder()
         .import(process_liveness_module())
         .import(PublicHealthModule::new(readiness))
@@ -3128,10 +3132,12 @@ fn build_management_application_with_health(
                 .command_handler::<
                     crate::modules::durable_cells::PublishDurableCellApplicationRoute,
                     _,
-                >(PublishDurableCellApplicationRouteHandler::new(
-                    publish_durable_cell_deployments,
-                    publish_route_handler.clone(),
-                ))
+                >(
+                    PublishDurableCellApplicationRouteHandler::new(
+                        publish_durable_cell_deployments,
+                        durable_cell_route_publication,
+                    ),
+                )
                 .command_handler::<crate::modules::projects::CreateEnvironment, _>(
                     CreateEnvironmentHandler::new(environment_projects, environments),
                 )

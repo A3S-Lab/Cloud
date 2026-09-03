@@ -4,9 +4,8 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::{
     DurableCellApplicationMutationResult, DurableCellDeploymentMutationResult,
-    DurableCellRoutePublicationResult,
+    DurableCellRoutePublication, DurableCellRoutePublicationResult,
 };
-use crate::modules::edge::presentation::RoutePublicationResponse;
 use crate::modules::workloads::presentation::WorkloadDeploymentResponse;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -264,14 +263,14 @@ impl From<DurableCellDeploymentMutationResult> for DurableCellDeploymentResponse
 #[serde(rename_all = "camelCase")]
 pub struct DurableCellRoutePublicationResponse {
     pub correlation: DurableCellDeploymentCorrelationResponse,
-    pub publication: RoutePublicationResponse,
+    pub publication: DurableCellRoutePublication,
 }
 
 impl From<DurableCellRoutePublicationResult> for DurableCellRoutePublicationResponse {
     fn from(result: DurableCellRoutePublicationResult) -> Self {
         Self {
             correlation: result.correlation.into(),
-            publication: result.route.into(),
+            publication: result.publication,
         }
     }
 }
