@@ -1,7 +1,9 @@
 pub mod application;
 pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+pub(crate) mod infrastructure;
+pub(crate) mod presentation;
+
+mod facade;
 
 pub use application::{
     admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
@@ -30,13 +32,17 @@ pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
 };
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
-pub use infrastructure::ArtifactsDurableCellBuildArtifactAdapter;
-pub use infrastructure::{
-    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository,
-};
-pub use presentation::{
+pub use facade::{
+    ArtifactsDurableCellBuildArtifactAdapter, CreateDurableCellApplicationRequest,
     DeployDurableCellApplicationFromAcl, DeployDurableCellApplicationFromAclHandler,
-    DurableCellsModule,
+    DeployDurableCellApplicationRequest, DurableCellApplicationMutationResponse,
+    DurableCellApplicationRecordResponse, DurableCellApplicationResponse,
+    DurableCellApplicationRevisionResponse, DurableCellDeploymentCorrelationResponse,
+    DurableCellDeploymentResponse, DurableCellRoutePublicationResponse,
+    DurableCellSkillWorkloadRevisionBindingResponse, DurableCellWorkloadDeploymentResponse,
+    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter,
+    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    PublishDurableCellApplicationRouteRequest, ReviseDurableCellApplicationRequest,
+    SetDurableCellApplicationStateRequest,
 };
