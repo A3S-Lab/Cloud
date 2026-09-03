@@ -421,7 +421,7 @@ pub async fn publish_route(
         .await?
     {
         Ok(result) => {
-            let status = if result.route.publication.replayed {
+            let status = if result.publication.replayed {
                 200
             } else {
                 201

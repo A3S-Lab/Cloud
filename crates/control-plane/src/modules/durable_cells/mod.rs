@@ -24,10 +24,15 @@ pub use application::{
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
 };
+pub use application::{
+    DurableCellRoutePublication, DurableCellRoutePublicationRequest,
+    IDurableCellRoutePublicationPort,
+};
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
 pub use infrastructure::{
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
+    PostgresDurableCellDeploymentRepository,
 };
 pub use presentation::{
     DeployDurableCellApplicationFromAcl, DeployDurableCellApplicationFromAclHandler,

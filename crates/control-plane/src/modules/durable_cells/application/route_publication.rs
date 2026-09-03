@@ -1,8 +1,11 @@
 use super::resource_access::{deployment_not_found, environment};
+use super::route_publication_port::{
+    DurableCellRoutePublication, DurableCellRoutePublicationRequest,
+    IDurableCellRoutePublicationPort,
+};
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellServiceProfile, IDurableCellDeploymentRepository,
 };
-use crate::modules::edge::{PublishRoute, PublishRouteHandler, PublishRouteResult};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -43,18 +46,18 @@ impl Command for PublishDurableCellApplicationRoute {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct DurableCellRoutePublicationResult {
     pub correlation: DurableCellDeployment,
-    pub route: PublishRouteResult,
+    pub publication: DurableCellRoutePublication,
 }
 
 pub struct PublishDurableCellApplicationRouteHandler {
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
-    routes: PublishRouteHandler,
+    routes: Arc<dyn IDurableCellRoutePublicationPort>,
 }
 
 impl PublishDurableCellApplicationRouteHandler {
     pub fn new(
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
-        routes: PublishRouteHandler,
+        routes: Arc<dyn IDurableCellRoutePublicationPort>,
     ) -> Self {
         Self {
             deployments,
@@ -69,13 +72,13 @@ impl CommandHandler<PublishDurableCellApplicationRoute>
     fn execute(
         &self,
         command: PublishDurableCellApplicationRoute,
-        context: CqrsContext,
+        _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<
         'static,
         a3s_boot::Result<ApplicationResult<DurableCellRoutePublicationResult>>,
     > {
         let deployments = Arc::clone(&self.deployments);
-        let routes = self.routes.clone();
+        let routes = Arc::clone(&self.routes);
         Box::pin(async move {
             if let Err(error) = environment(
                 command.project_id,
@@ -116,32 +119,31 @@ impl CommandHandler<PublishDurableCellApplicationRoute>
                 )));
             }
 
-            let route = match routes
-                .execute(
-                    PublishRoute {
-                        organization_id: command.organization_id,
-                        project_id: command.project_id,
-                        environment_id: command.environment_id,
-                        gateway_scope_id: command.gateway_scope_id,
-                        workload_revision_id: correlation.projection.workload_revision_id,
-                        domain_claim_id: command.domain_claim_id,
-                        hostname: command.hostname.clone(),
-                        path_prefix: command.path_prefix.clone(),
-                        port_name: profile.spec().public_runtime_port.clone(),
-                        idempotency_key: command.idempotency_key.clone(),
-                        request_id: command.request_id,
-                        requested_at: command.requested_at,
-                    },
-                    context,
-                )
-                .await?
-            {
+            let route_request = DurableCellRoutePublicationRequest {
+                organization_id: command.organization_id,
+                project_id: command.project_id,
+                environment_id: command.environment_id,
+                gateway_scope_id: command.gateway_scope_id,
+                workload_id: correlation.projection.workload_id,
+                workload_revision_id: correlation.projection.workload_revision_id,
+                domain_claim_id: command.domain_claim_id,
+                hostname: command.hostname.clone(),
+                path_prefix: command.path_prefix.clone(),
+                port_name: profile.spec().public_runtime_port.clone(),
+                idempotency_key: command.idempotency_key.clone(),
+                request_id: command.request_id,
+                requested_at: command.requested_at,
+            };
+            let publication = match routes.publish(&route_request).await {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
-            validate_public_route(&command, &correlation, &profile, &route)
+            validate_public_route(&route_request, &correlation, &profile, &publication)
                 .map_err(BootError::Internal)?;
-            Ok(Ok(DurableCellRoutePublicationResult { correlation, route }))
+            Ok(Ok(DurableCellRoutePublicationResult {
+                correlation,
+                publication,
+            }))
         })
     }
 }
@@ -159,20 +161,21 @@ fn matches_exact_deployment(
 }
 
 fn validate_public_route(
-    command: &PublishDurableCellApplicationRoute,
+    request: &DurableCellRoutePublicationRequest,
     correlation: &DurableCellDeployment,
     profile: &DurableCellServiceProfile,
-    result: &PublishRouteResult,
+    publication: &DurableCellRoutePublication,
 ) -> Result<(), String> {
-    let route = &result.publication.route;
-    if route.organization_id != command.organization_id
-        || route.project_id != command.project_id
-        || route.environment_id != command.environment_id
-        || route.gateway_scope_id != command.gateway_scope_id
+    publication.validate_against(request)?;
+    let route = &publication.route;
+    if route.organization_id != request.organization_id
+        || route.project_id != request.project_id
+        || route.environment_id != request.environment_id
+        || route.gateway_scope_id != request.gateway_scope_id
         || route.workload_id != correlation.projection.workload_id
-        || route.target.workload_revision_id != correlation.projection.workload_revision_id
-        || route.target.port_name.as_str() != profile.spec().public_runtime_port
-        || route.target.port_name.as_str() == profile.spec().internal_runtime_port
+        || route.workload_revision_id != correlation.projection.workload_revision_id
+        || route.port_name != profile.spec().public_runtime_port
+        || route.port_name == profile.spec().internal_runtime_port
     {
         return Err(
             "Edge returned a Route outside the exact Durable Cell public deployment binding".into(),
@@ -191,7 +194,9 @@ mod tests {
         DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellRollbackPolicy,
         DurableCellServiceProfileSpec, DurableCellStateSchema, DurableCellStorageBinding,
     };
-    use crate::modules::durable_cells::infrastructure::InMemoryDurableCellDeploymentRepository;
+    use crate::modules::durable_cells::infrastructure::{
+        EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellDeploymentRepository,
+    };
     use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
     use crate::modules::edge::domain::repositories::{
         CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, TransitionDomainClaim,
@@ -206,7 +211,7 @@ mod tests {
     use crate::modules::edge::infrastructure::{
         GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     };
-    use crate::modules::edge::InMemoryEdgeRepository;
+    use crate::modules::edge::{InMemoryEdgeRepository, PublishRouteHandler};
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{
         BuildRunId, IdempotencyRequest, NodeId, PrincipalId, ResourceName, Sha256Digest,
@@ -409,16 +414,17 @@ mod tests {
             let edge: Arc<dyn IEdgeRepository> = self.edge.clone();
             let targets: Arc<dyn IRouteTargetReader> = self.targets.clone();
             let queue: Arc<dyn IGatewayCommandQueue> = self.queue.clone();
+            let edge_handler = PublishRouteHandler::new(
+                edge,
+                targets,
+                queue,
+                gateway_compiler(),
+                Duration::minutes(3),
+            )
+            .expect("Edge route handler");
             PublishDurableCellApplicationRouteHandler::new(
                 deployments,
-                PublishRouteHandler::new(
-                    edge,
-                    targets,
-                    queue,
-                    gateway_compiler(),
-                    Duration::minutes(3),
-                )
-                .expect("Edge route handler"),
+                Arc::new(EdgeDurableCellRoutePublicationAdapter::new(edge_handler)),
             )
         }
     }
@@ -443,14 +449,14 @@ mod tests {
             .expect("command framework")
             .expect("recover exact Edge publication");
         assert_eq!(recovered.correlation, fixture.correlation);
-        assert!(recovered.route.publication.replayed);
-        assert!(!recovered.route.command_replayed);
+        assert!(recovered.publication.replayed);
+        assert!(!recovered.publication.command_replayed);
         assert_eq!(
-            recovered.route.publication.route.target.port_name.as_str(),
+            recovered.publication.route.port_name,
             fixture.profile.spec().public_runtime_port
         );
         assert_ne!(
-            recovered.route.publication.route.target.port_name.as_str(),
+            recovered.publication.route.port_name,
             fixture.profile.spec().internal_runtime_port
         );
         assert_eq!(fixture.targets.calls.load(Ordering::SeqCst), 1);
@@ -461,8 +467,8 @@ mod tests {
             .await
             .expect("command framework")
             .expect("exact replay");
-        assert!(replay.route.publication.replayed);
-        assert!(replay.route.command_replayed);
+        assert!(replay.publication.replayed);
+        assert!(replay.publication.command_replayed);
         assert_eq!(environment_routes(&fixture).await.len(), 1);
         assert_eq!(fixture.targets.calls.load(Ordering::SeqCst), 1);
         assert_eq!(fixture.queue.calls.load(Ordering::SeqCst), 3);

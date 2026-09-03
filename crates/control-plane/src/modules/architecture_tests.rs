@@ -17,7 +17,6 @@ audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/deployment_admission.rs -> workloads/presentation
-durable_cells/presentation/dto.rs -> edge/presentation
 durable_cells/presentation/dto.rs -> workloads/presentation
 edge/presentation/controllers/domain_claim_commands_controller.rs -> identity/presentation
 edge/presentation/controllers/domain_claim_queries_controller.rs -> identity/presentation
@@ -429,6 +428,55 @@ fn durable_cells_application_never_imports_infrastructure_implementations() {
         violations.is_empty(),
         "Durable Cells Application imported an infrastructure implementation instead of an owner Application boundary or published contract:\n{}",
         violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn durable_cells_route_publication_crosses_one_consumer_owned_port() {
+    let route_application = std::fs::read_to_string(
+        module_root().join("durable_cells/application/route_publication.rs"),
+    )
+    .expect("read Durable Cells route application");
+    let route_port = std::fs::read_to_string(
+        module_root().join("durable_cells/application/route_publication_port.rs"),
+    )
+    .expect("read Durable Cells route port");
+    let route_adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/edge_route_publication.rs"),
+    )
+    .expect("read Durable Cells Edge route adapter");
+    let presentation =
+        std::fs::read_to_string(module_root().join("durable_cells/presentation/dto.rs"))
+            .expect("read Durable Cells presentation DTO");
+
+    let route_application = production_source(&route_application);
+    let route_port = production_source(&route_port);
+    let route_adapter = production_source(&route_adapter);
+    let presentation = production_source(&presentation);
+
+    assert!(route_application.contains("Arc<dyn IDurableCellRoutePublicationPort>"));
+    assert!(route_application.contains("routes.publish(&route_request)"));
+    assert!(!route_application.contains("modules::edge"));
+    assert!(!route_application.contains("PublishRouteHandler"));
+    assert!(route_port.contains("pub trait IDurableCellRoutePublicationPort"));
+    assert!(route_port.contains("pub struct DurableCellRoutePublication"));
+    assert!(route_port.contains("pub fn validate_against("));
+    assert!(!route_port.contains("modules::edge"));
+    assert!(route_adapter.contains("impl IDurableCellRoutePublicationPort"));
+    assert!(route_adapter.contains("project_edge_result"));
+    assert!(presentation.contains("DurableCellRoutePublication"));
+    assert!(!presentation.contains("modules::edge::presentation"));
+
+    let mut edge_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells") && source.contains("crate::modules::edge") {
+            edge_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        edge_sites,
+        lines("durable_cells/infrastructure/edge_route_publication.rs"),
+        "Durable Cells must translate Edge publication through one infrastructure adapter"
     );
 }
 
