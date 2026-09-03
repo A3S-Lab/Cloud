@@ -255,6 +255,9 @@ Current boundary debt:
   `IDurableCellWorkloadPort` and one Workloads anti-corruption adapter;
   deployment creation still consumes the existing Workloads application
   contract and remains a follow-up boundary slice;
+- optional Fleet node-pool admission now crosses one
+  `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
+  capacity, and claim lifecycle remain Fleet-owned;
 - the deployment response now owns a Durable Cells workload projection instead
   of reusing the Workloads Presentation DTO; the ACL admission parser still
   consumes the existing Workloads manifest contract;
@@ -290,6 +293,8 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica
   convergence; deployment creation and other Workloads reads remain follow-up
   slices);
+- `IDurableCellNodePoolPort` (implemented for exact optional node-pool
+  admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
   publication).
 

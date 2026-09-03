@@ -24,11 +24,11 @@ pub use application::{
     MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
 pub use application::{
-    DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellRoutePublication,
-    DurableCellRoutePublicationRequest, DurableCellStorageCredentialRequest,
-    DurableCellWorkloadReconciliationRequest, IDurableCellBuildArtifactPort,
-    IDurableCellExecutionPort, IDurableCellRoutePublicationPort, IDurableCellStoragePort,
-    IDurableCellWorkloadPort,
+    DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellNodePoolSelectionRequest,
+    DurableCellRoutePublication, DurableCellRoutePublicationRequest,
+    DurableCellStorageCredentialRequest, DurableCellWorkloadReconciliationRequest,
+    IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellNodePoolPort,
+    IDurableCellRoutePublicationPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
 };
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
@@ -43,10 +43,10 @@ pub use facade::{
     DurableCellDeploymentCorrelationResponse, DurableCellDeploymentResponse,
     DurableCellRoutePublicationResponse, DurableCellSkillWorkloadRevisionBindingResponse,
     DurableCellWorkloadDeploymentResponse, DurableCellsModule,
-    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository, PublishDurableCellApplicationRouteRequest,
-    ReviseDurableCellApplicationRequest, SetDurableCellApplicationStateRequest,
-    WorkloadsDurableCellWorkloadAdapter,
+    EdgeDurableCellRoutePublicationAdapter, FleetDurableCellNodePoolAdapter,
+    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    PublishDurableCellApplicationRouteRequest, ReviseDurableCellApplicationRequest,
+    SetDurableCellApplicationStateRequest, WorkloadsDurableCellWorkloadAdapter,
 };
 pub(crate) use infrastructure::ExecutionsDurableCellExecutionAdapter;

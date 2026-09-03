@@ -16,8 +16,9 @@ use crate::modules::durable_cells::domain::{
     ReviseDurableCellApplicationWrite,
 };
 use crate::modules::durable_cells::infrastructure::{
-    DataDurableCellStorageAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository, WorkloadsDurableCellWorkloadAdapter,
+    DataDurableCellStorageAdapter, FleetDurableCellNodePoolAdapter,
+    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -164,6 +165,8 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         WorkloadsDurableCellWorkloadAdapter::new(applications.clone(), workloads.clone()),
     );
     let node_pools = Arc::new(InMemoryNodeRepository::new());
+    let node_pool_port: Arc<dyn IDurableCellNodePoolPort> =
+        Arc::new(FleetDurableCellNodePoolAdapter::new(node_pools.clone()));
     let secret_port: Arc<dyn ISecretRepository> = secrets.clone();
     let storage_port: Arc<dyn IDurableCellStoragePort> =
         Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secret_port)));
@@ -197,7 +200,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     admit_external_bindings(
         storage_port.as_ref(),
         &secret_port,
-        node_pools.as_ref(),
+        node_pool_port.as_ref(),
         &command,
     )
     .await
@@ -226,7 +229,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         workload_port.clone(),
         storage_port,
         secret_port,
-        node_pools,
+        node_pool_port,
     );
     let recovered = handler
         .execute(command.clone(), CqrsContext::new(ModuleRef::new()))

@@ -7,9 +7,10 @@
 
 pub use super::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
-    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository, WorkloadsDurableCellWorkloadAdapter,
+    EdgeDurableCellRoutePublicationAdapter, FleetDurableCellNodePoolAdapter,
+    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 pub use super::presentation::{
     CreateDurableCellApplicationRequest, DeployDurableCellApplicationFromAcl,

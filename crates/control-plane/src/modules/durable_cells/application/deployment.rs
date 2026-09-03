@@ -1,3 +1,4 @@
+use super::node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNodePoolPort};
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
@@ -17,7 +18,6 @@ use crate::modules::durable_cells::domain::{
     DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellServiceProfile,
     DurableCellStorageBinding, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
-use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
@@ -28,9 +28,7 @@ use crate::modules::shared_kernel::domain::{
     NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
     Sha256Digest,
 };
-use crate::modules::workloads::application::commands::{
-    validate_node_pool_selection, validate_secret_binding_references,
-};
+use crate::modules::workloads::application::commands::validate_secret_binding_references;
 use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
@@ -84,7 +82,7 @@ pub struct DeployDurableCellApplicationHandler {
     workload_port: Arc<dyn IDurableCellWorkloadPort>,
     storage: Arc<dyn IDurableCellStoragePort>,
     secrets: Arc<dyn ISecretRepository>,
-    node_pools: Arc<dyn INodePoolRepository>,
+    node_pool_port: Arc<dyn IDurableCellNodePoolPort>,
 }
 
 impl DeployDurableCellApplicationHandler {
@@ -95,7 +93,7 @@ impl DeployDurableCellApplicationHandler {
         workload_port: Arc<dyn IDurableCellWorkloadPort>,
         storage: Arc<dyn IDurableCellStoragePort>,
         secrets: Arc<dyn ISecretRepository>,
-        node_pools: Arc<dyn INodePoolRepository>,
+        node_pool_port: Arc<dyn IDurableCellNodePoolPort>,
     ) -> Self {
         Self {
             applications,
@@ -104,7 +102,7 @@ impl DeployDurableCellApplicationHandler {
             workload_port,
             storage,
             secrets,
-            node_pools,
+            node_pool_port,
         }
     }
 }
@@ -124,7 +122,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
         let workload_port = Arc::clone(&self.workload_port);
         let storage = Arc::clone(&self.storage);
         let secrets = Arc::clone(&self.secrets);
-        let node_pools = Arc::clone(&self.node_pools);
+        let node_pool_port = Arc::clone(&self.node_pool_port);
         Box::pin(async move {
             if let Err(error) = environment(
                 command.project_id,
@@ -157,7 +155,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     if let Err(error) = admit_external_bindings(
                         storage.as_ref(),
                         &secrets,
-                        node_pools.as_ref(),
+                        node_pool_port.as_ref(),
                         &command,
                     )
                     .await
@@ -227,9 +225,13 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
             if let Err(error) = load_current_record(applications.as_ref(), &command).await {
                 return Ok(Err(error));
             }
-            if let Err(error) =
-                admit_external_bindings(storage.as_ref(), &secrets, node_pools.as_ref(), &command)
-                    .await
+            if let Err(error) = admit_external_bindings(
+                storage.as_ref(),
+                &secrets,
+                node_pool_port.as_ref(),
+                &command,
+            )
+            .await
             {
                 return Ok(Err(error));
             }
@@ -465,7 +467,7 @@ async fn load_current_record(
 async fn admit_external_bindings(
     storage: &dyn IDurableCellStoragePort,
     secrets: &Arc<dyn ISecretRepository>,
-    node_pools: &dyn INodePoolRepository,
+    node_pool_port: &dyn IDurableCellNodePoolPort,
     command: &DeployDurableCellApplication,
 ) -> ApplicationResult<()> {
     let storage_request = storage_credential_request(&command.storage_credentials)?;
@@ -482,7 +484,14 @@ async fn admit_external_bindings(
         &command.storage_credentials,
         &command.workload_template,
     )?;
-    validate_node_pool_selection(node_pools, command.organization_id, command.node_pool_id).await?;
+    node_pool_port
+        .validate_selection(&DurableCellNodePoolSelectionRequest::new(
+            command.organization_id,
+            command.project_id,
+            command.environment_id,
+            command.node_pool_id,
+        ))
+        .await?;
     Ok(())
 }
 
