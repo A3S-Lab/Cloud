@@ -256,8 +256,10 @@ Current boundary debt:
   `IDurableCellRoutePublicationPort` and one Edge anti-corruption adapter;
 - managed replica convergence now crosses one
   `IDurableCellWorkloadPort` and one Workloads anti-corruption adapter;
-  deployment creation still consumes the existing Workloads application
-  contract and remains a follow-up boundary slice;
+  deployment creation now obtains the monotonic revision generation through
+  that same consumer-owned port, while the existing Workloads application
+  contract still owns deployment creation and remains a follow-up boundary
+  slice;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;
@@ -296,8 +298,8 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
   publication Task creation, recovery, observation, and cancellation);
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica
-  convergence; deployment creation and other Workloads reads remain follow-up
-  slices);
+  convergence and revision-generation lookup; deployment creation and other
+  Workloads reads remain follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway

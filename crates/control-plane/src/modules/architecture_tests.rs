@@ -764,13 +764,18 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
     assert!(!commands.contains("IWorkloadRepository"));
     assert!(deployment.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(deployment.contains(".converge_managed_replicas("));
+    assert!(deployment.contains(".resolve_revision_generation("));
+    assert!(!deployment.contains("next_workload_generation"));
     assert!(!deployment.contains("managed_replica_lifecycle"));
     assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadRevisionGenerationRequest"));
     assert!(port.contains("pub trait IDurableCellWorkloadPort"));
+    assert!(port.contains("resolve_revision_generation"));
     assert!(!port.contains("crate::modules::workloads"));
     for required in [
         "impl IDurableCellWorkloadPort",
         "IWorkloadRepository",
+        "list_revisions",
         "ReconfigureReplicaSetWrite",
         "DurableCellProjectionIdentity",
     ] {

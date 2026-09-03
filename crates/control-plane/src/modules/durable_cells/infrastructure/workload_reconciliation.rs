@@ -1,5 +1,6 @@
 use crate::modules::durable_cells::application::{
-    DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -40,6 +41,61 @@ impl WorkloadsDurableCellWorkloadAdapter {
 
 #[async_trait]
 impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
+    async fn resolve_revision_generation(
+        &self,
+        request: &DurableCellWorkloadRevisionGenerationRequest,
+    ) -> ApplicationResult<u64> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let revisions = match self
+            .workloads
+            .list_revisions(request.organization_id, request.workload_id)
+            .await
+        {
+            Ok(revisions) => revisions,
+            Err(RepositoryError::NotFound) => Vec::new(),
+            Err(error) => return Err(error.into()),
+        };
+        if revisions
+            .iter()
+            .any(|revision| revision.workload_id != request.workload_id)
+        {
+            return Err(ApplicationError::Internal(
+                "Durable Cell Workloads revision crossed its workload scope".into(),
+            ));
+        }
+        if let Some(existing) = revisions
+            .iter()
+            .find(|revision| revision.id == request.workload_revision_id)
+        {
+            let template_digest = existing
+                .resolved_template()
+                .and_then(|template| template.digest())
+                .map_err(|error| {
+                    ApplicationError::Internal(format!(
+                        "Durable Cell Workloads revision could not resolve its template: {error}"
+                    ))
+                })?;
+            if template_digest != request.service_template_digest.as_str() {
+                return Err(ApplicationError::Conflict(
+                    "Durable Cell Workload revision identity already has another template".into(),
+                ));
+            }
+            if existing.generation == 0 {
+                return Err(ApplicationError::Internal(
+                    "Durable Cell Workloads revision has an invalid generation".into(),
+                ));
+            }
+            return Ok(existing.generation);
+        }
+        revisions
+            .iter()
+            .map(|revision| revision.generation)
+            .max()
+            .unwrap_or_default()
+            .checked_add(1)
+            .ok_or_else(|| ApplicationError::Internal("Workload generation is exhausted".into()))
+    }
+
     async fn converge_managed_replicas(
         &self,
         request: &DurableCellWorkloadReconciliationRequest,
