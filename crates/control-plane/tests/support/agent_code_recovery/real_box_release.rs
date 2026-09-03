@@ -1,11 +1,13 @@
 use super::*;
 use a3s_box_runtime::BoxStateStore;
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE;
 use a3s_cloud_contracts::{
     agent_release_manifest_archive, CloudSecretReference, NodeArtifactDownloadRequest,
     NodeArtifactUploadReceipt, NodeArtifactUploadRequest, NodeResourceInventory, NodeResourceSlot,
     ResourceAllocation, ResourceKind, ResourceUnit, RuntimeObservationReport,
     AGENT_RELEASE_ENTRYPOINT_ARGS_V1, AGENT_RELEASE_ENTRYPOINT_COMMAND_V1,
-    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;

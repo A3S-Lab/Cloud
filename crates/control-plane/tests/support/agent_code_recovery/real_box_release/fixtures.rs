@@ -181,6 +181,7 @@ impl PublishedManifestTransport {
         }
     }
 
+    #[cfg(feature = "persistence-conformance")]
     pub(super) fn register_skill_artifact(
         &self,
         artifact: ArtifactRef,
@@ -202,6 +203,7 @@ impl PublishedManifestTransport {
         Ok(())
     }
 
+    #[cfg(feature = "persistence-conformance")]
     pub(super) fn skill_downloads(&self) -> usize {
         self.skill_downloads.load(Ordering::SeqCst)
     }
