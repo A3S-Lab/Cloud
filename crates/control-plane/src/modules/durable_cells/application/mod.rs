@@ -3,6 +3,7 @@ mod build_run_access;
 mod bundle_publication;
 mod commands;
 mod deployment;
+mod execution_port;
 mod managed_replica_lifecycle;
 mod prior_writer_seal;
 mod provider_workload;
@@ -27,6 +28,12 @@ pub use commands::{
 pub use deployment::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
     DurableCellDeploymentMutationResult,
+};
+pub use execution_port::{
+    DurableCellExecution, DurableCellExecutionArtifactMount, DurableCellExecutionAuthority,
+    DurableCellExecutionCancellationRequest, DurableCellExecutionRequest,
+    DurableCellExecutionStatus, DurableCellExecutionTaskPolicy, DurableCellExecutionTemplate,
+    IDurableCellExecutionPort,
 };
 pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 #[doc(hidden)]

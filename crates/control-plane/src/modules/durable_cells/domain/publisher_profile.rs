@@ -3,6 +3,7 @@ use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value}
 
 const PROFILE_BLOCK: &str = "durable_cell_publisher_profile";
 const PROFILE_LABEL: &str = "celld_v0_2_1";
+const MAX_PUBLISHER_TIMEOUT_MS: u64 = 15 * 60 * 1_000;
 const PROFILE_FIELDS: [&str; 14] = [
     "access_key_environment",
     "adapter_protocol",
@@ -145,7 +146,7 @@ impl DurableCellPublisherProfile {
             || self.pids == 0
             || self.ephemeral_storage_bytes == 0
             || self.timeout_ms == 0
-            || self.timeout_ms > crate::modules::executions::domain::MAX_EXECUTION_TIMEOUT_MS
+            || self.timeout_ms > MAX_PUBLISHER_TIMEOUT_MS
         {
             return Err("Durable Cell publisher profile is invalid".into());
         }

@@ -545,6 +545,86 @@ fn durable_cells_build_artifact_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_execution_crosses_one_consumer_owned_port() {
+    let bundle_application = std::fs::read_to_string(
+        module_root().join("durable_cells/application/bundle_publication.rs"),
+    )
+    .expect("read Durable Cells bundle publication application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/execution_port.rs"))
+            .expect("read Durable Cells Execution port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/executions_bound_task.rs"),
+    )
+    .expect("read Durable Cells Executions adapter");
+
+    let bundle_application = production_source(&bundle_application);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(bundle_application.contains("Arc<dyn IDurableCellExecutionPort>"));
+    for operation in [
+        ".find_bound_task(",
+        ".ensure_bound_task(",
+        ".cancel_bound_task(",
+    ] {
+        assert!(
+            bundle_application.contains(operation),
+            "Durable Cells bundle publication lost Execution port operation {operation}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::executions",
+        "IExecutionRepository",
+        "ExecutionCreator",
+        "ExecutionCancellationService",
+    ] {
+        assert!(
+            !bundle_application.contains(forbidden),
+            "Durable Cells bundle publication bypassed its Execution port with {forbidden}"
+        );
+    }
+
+    for required in [
+        "pub trait IDurableCellExecutionPort",
+        "pub struct DurableCellExecutionRequest",
+        "pub struct DurableCellExecutionCancellationRequest",
+        "pub struct DurableCellExecution",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Execution port lost consumer-owned contract {required}"
+        );
+    }
+    assert!(!port.contains("crate::modules::executions"));
+    for required in [
+        "impl IDurableCellExecutionPort",
+        "IExecutionRepository",
+        "ExecutionCreator",
+        "ExecutionCancellationService",
+        "validate_bound_execution",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Executions adapter lost owner translation {required}"
+        );
+    }
+
+    let mut execution_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("crate::modules::executions")
+        {
+            execution_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        execution_sites,
+        lines("durable_cells/infrastructure/executions_bound_task.rs"),
+        "Durable Cells must translate Executions through one infrastructure adapter"
+    );
+}
+
+#[test]
 fn flow_contract_enters_only_the_workflow_dag_compiler() {
     const ALLOWED_FILE: &str = "workflow/domain/workflow_graph.rs";
     const ALLOWED_IMPORT: &str = "use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};";

@@ -1,5 +1,11 @@
 use super::build_artifact_port::{DurableCellBuildArtifact, IDurableCellBuildArtifactPort};
 use super::build_run_access::require_definition_build_output;
+use super::execution_port::{
+    DurableCellExecution, DurableCellExecutionArtifactMount, DurableCellExecutionAuthority,
+    DurableCellExecutionCancellationRequest, DurableCellExecutionRequest,
+    DurableCellExecutionStatus, DurableCellExecutionTaskPolicy, DurableCellExecutionTemplate,
+    IDurableCellExecutionPort,
+};
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
@@ -13,19 +19,10 @@ use crate::modules::durable_cells::domain::{
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
     DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
-use crate::modules::executions::application::{
-    validate_bound_execution, BoundExecutionCreation, ExecutionCancellation,
-    ExecutionCancellationService, ExecutionCreator,
-};
-use crate::modules::executions::domain::{
-    Execution, ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
-    ExecutionTaskArtifactMount, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
-    ExecutionTaskSecretTarget, ExecutionTemplate, IExecutionRepository,
-};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    ExecutionId, NodeId, RepositoryError, Sha256Digest, StorageNamespaceId, WorkloadRevisionId,
+    canonical_timestamp, ExecutionId, RepositoryError, Sha256Digest, StorageNamespaceId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::domain::entities::WorkloadReplica;
@@ -33,8 +30,7 @@ use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
     IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
-use a3s_cloud_contracts::CloudSecretReference;
-use a3s_runtime::contract::{ArtifactRef, SecretReference, SecretTarget as RuntimeSecretTarget};
+use a3s_runtime::contract::{ArtifactRef, ResourceLimits, RuntimeProcessSpec, SecretReference};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -61,9 +57,7 @@ pub(crate) struct DurableCellBundlePublicationGate {
     builds: Arc<dyn IDurableCellBuildArtifactPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     prior_writer_seal: DurableCellPriorWriterSeal,
-    executions: Arc<dyn IExecutionRepository>,
-    creator: ExecutionCreator,
-    cancellations: ExecutionCancellationService,
+    executions: Arc<dyn IDurableCellExecutionPort>,
 }
 
 impl DurableCellBundlePublicationGate {
@@ -73,8 +67,7 @@ impl DurableCellBundlePublicationGate {
         builds: Arc<dyn IDurableCellBuildArtifactPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         prior_writer_seal: DurableCellPriorWriterSeal,
-        environments: Arc<dyn IEnvironmentRepository>,
-        executions: Arc<dyn IExecutionRepository>,
+        executions: Arc<dyn IDurableCellExecutionPort>,
     ) -> Self {
         Self {
             applications,
@@ -82,9 +75,7 @@ impl DurableCellBundlePublicationGate {
             builds,
             workloads,
             prior_writer_seal,
-            executions: Arc::clone(&executions),
-            creator: ExecutionCreator::new(environments, Arc::clone(&executions)),
-            cancellations: ExecutionCancellationService::new(executions),
+            executions,
         }
     }
 
@@ -206,14 +197,11 @@ impl DurableCellBundlePublicationGate {
 
         if let Some(execution) = self
             .executions
-            .find(request.organization_id, execution_id)
-            .await?
+            .find_bound_task(request.organization_id, execution_id)
+            .await
+            .map_err(application_repository_error)?
         {
-            let target_node_id = execution.target_node_id.ok_or_else(|| {
-                RepositoryError::Conflict(
-                    "Durable Cell publication Execution omitted its bound target node".into(),
-                )
-            })?;
+            let target_node_id = execution.target_node_id;
             let persisted_request = WorkloadPrestartGateRequest {
                 node_id: target_node_id,
                 ..request.clone()
@@ -228,9 +216,14 @@ impl DurableCellBundlePublicationGate {
                 }
                 Err(CompositionError::Repository(error)) => return Err(error),
             };
-            validate_bound_execution(&creation, &execution)
+            let execution = self
+                .executions
+                .ensure_bound_task(&creation)
+                .await
                 .map_err(application_repository_error)?;
-            if target_node_id != request.node_id && execution.status != ExecutionStatus::Succeeded {
+            if target_node_id != request.node_id
+                && execution.status != DurableCellExecutionStatus::Succeeded
+            {
                 return Ok(WorkloadPrestartGateStatus::Failed {
                     reason: format!(
                         "Durable Cell bundle publication Execution {} is bound to a previous node and has not succeeded",
@@ -248,8 +241,8 @@ impl DurableCellBundlePublicationGate {
             }
             Err(CompositionError::Repository(error)) => return Err(error),
         };
-        let execution = match self.creator.create_bound_task(creation).await {
-            Ok(result) => result.execution,
+        let execution = match self.executions.ensure_bound_task(&creation).await {
+            Ok(execution) => execution,
             Err(error) => return application_error(error),
         };
         publication_status(&execution)
@@ -263,8 +256,9 @@ impl DurableCellBundlePublicationGate {
     ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
         let Some(execution) = self
             .executions
-            .find(request.organization_id, execution_id)
-            .await?
+            .find_bound_task(request.organization_id, execution_id)
+            .await
+            .map_err(application_repository_error)?
         else {
             return Ok(WorkloadPrestartGateStatus::CancellationReady {
                 completed_at: request.now,
@@ -278,17 +272,22 @@ impl DurableCellBundlePublicationGate {
         }
         if !matches!(
             execution.status,
-            ExecutionStatus::Cancelling | ExecutionStatus::CleanupPending
+            DurableCellExecutionStatus::Cancelling | DurableCellExecutionStatus::CleanupPending
         ) {
-            self.cancellations
-                .cancel(ExecutionCancellation {
-                    execution,
+            self.executions
+                .cancel_bound_task(&DurableCellExecutionCancellationRequest {
+                    organization_id: request.organization_id,
+                    project_id: correlation.projection.project_id,
+                    environment_id: correlation.projection.environment_id,
+                    execution_id,
+                    authority_kind: PUBLICATION_AUTHORITY_KIND.into(),
+                    authority_subject_id: request.workload_revision_id.as_uuid(),
                     idempotency_key: format!("durable-cell-publication-cancel:{execution_id}"),
                     request_id: Uuid::new_v5(
                         &request.workload_revision_id.as_uuid(),
                         PUBLICATION_CANCELLATION_REQUEST_NAME,
                     ),
-                    requested_at: request.now,
+                    requested_at: canonical_timestamp(request.now),
                 })
                 .await
                 .map_err(application_repository_error)?;
@@ -303,7 +302,7 @@ impl DurableCellBundlePublicationGate {
         request: &WorkloadPrestartGateRequest,
         correlation: &DurableCellDeployment,
         execution_id: ExecutionId,
-    ) -> Result<BoundExecutionCreation, CompositionError> {
+    ) -> Result<DurableCellExecutionRequest, CompositionError> {
         let provider_profile = correlation
             .require_storage_provider_profile()
             .map_err(CompositionError::failed)?;
@@ -389,7 +388,6 @@ impl DurableCellBundlePublicationGate {
             &provider_profile,
             &publisher,
             PublicationTaskDefinitionInput {
-                node_id: request.node_id,
                 storage_namespace_id: correlation.storage.storage_namespace_id,
                 image_media_type: service_template.artifact.media_type.clone(),
                 bundle: ArtifactRef {
@@ -398,12 +396,11 @@ impl DurableCellBundlePublicationGate {
                     media_type: bundle.media_type,
                 },
                 secrets,
-                authority: ExecutionTaskAuthority::new(
-                    PUBLICATION_AUTHORITY_KIND,
-                    request.workload_revision_id.as_uuid(),
-                    authority_digest,
-                )
-                .map_err(CompositionError::failed)?,
+                authority: DurableCellExecutionAuthority {
+                    kind: PUBLICATION_AUTHORITY_KIND.into(),
+                    subject_id: request.workload_revision_id.as_uuid(),
+                    digest: authority_digest,
+                },
                 input: serde_json::json!({
                 "schema": PUBLICATION_INPUT_SCHEMA,
                 "applicationRevisionId": correlation.projection.application_revision_id,
@@ -416,7 +413,7 @@ impl DurableCellBundlePublicationGate {
             },
         )
         .map_err(CompositionError::failed)?;
-        Ok(BoundExecutionCreation {
+        Ok(DurableCellExecutionRequest {
             organization_id: correlation.projection.organization_id,
             project_id: correlation.projection.project_id,
             environment_id: correlation.projection.environment_id,
@@ -424,6 +421,7 @@ impl DurableCellBundlePublicationGate {
             template: definition.template,
             target_node_id: request.node_id,
             task_policy: definition.task_policy,
+            authority_subject_id: request.workload_revision_id.as_uuid(),
             idempotency_key: format!("durable-cell-publication:{execution_id}"),
             request_id: Uuid::new_v5(
                 &request.workload_revision_id.as_uuid(),
@@ -435,18 +433,17 @@ impl DurableCellBundlePublicationGate {
 }
 
 struct PublicationTaskDefinitionInput {
-    node_id: NodeId,
     storage_namespace_id: StorageNamespaceId,
     image_media_type: String,
     bundle: ArtifactRef,
     secrets: Vec<SecretReference>,
-    authority: ExecutionTaskAuthority,
+    authority: DurableCellExecutionAuthority,
     input: serde_json::Value,
 }
 
 struct PublicationTaskDefinition {
-    template: ExecutionTemplate,
-    task_policy: ExecutionTaskPolicy,
+    template: DurableCellExecutionTemplate,
+    task_policy: DurableCellExecutionTaskPolicy,
 }
 
 /// The sole provider-adapter translation from Cloud-owned publication intent
@@ -474,13 +471,13 @@ fn build_publication_task_definition(
         return Err("Durable Cell publisher input is not the typed bundle artifact".into());
     }
     let namespace_prefix = provider_profile.namespace_prefix(definition.storage_namespace_id)?;
-    let template = ExecutionTemplate {
-        artifact: ExecutionArtifact {
+    let template = DurableCellExecutionTemplate {
+        artifact: ArtifactRef {
             uri: publisher.image_uri().into(),
             digest: publisher.image_digest().to_string(),
             media_type: definition.image_media_type,
         },
-        process: ExecutionProcess {
+        process: RuntimeProcessSpec {
             command: publisher.command().to_vec(),
             args: vec![
                 "deploy".into(),
@@ -500,12 +497,12 @@ fn build_publication_task_definition(
             environment: BTreeMap::new(),
         },
         input: definition.input,
-        resources: ExecutionResources {
+        resources: ResourceLimits {
             cpu_millis: publisher.cpu_millis(),
             memory_bytes: publisher.memory_bytes(),
             pids: publisher.pids(),
             ephemeral_storage_bytes: Some(publisher.ephemeral_storage_bytes()),
-            timeout_ms: publisher.timeout_ms(),
+            execution_timeout_ms: Some(publisher.timeout_ms()),
         },
     };
     let ArtifactRef {
@@ -513,42 +510,21 @@ fn build_publication_task_definition(
         digest,
         media_type,
     } = definition.bundle;
-    let mount = ExecutionTaskArtifactMount::new(
-        "durable-cell-application",
-        uri,
-        Sha256Digest::parse(digest)?,
-        media_type,
-        publisher.bundle_mount(),
-    )?;
-    let secrets = definition
-        .secrets
-        .into_iter()
-        .map(|secret| {
-            let target = match secret.target {
-                RuntimeSecretTarget::Environment { variable } => {
-                    ExecutionTaskSecretTarget::Environment { variable }
-                }
-                RuntimeSecretTarget::File { path, mode } => {
-                    ExecutionTaskSecretTarget::File { path, mode }
-                }
-                RuntimeSecretTarget::RegistryCredential => {
-                    ExecutionTaskSecretTarget::RegistryCredential
-                }
-            };
-            ExecutionTaskSecret::new(
-                secret.name,
-                CloudSecretReference::parse(&secret.reference)?,
-                target,
-            )
-        })
-        .collect::<Result<Vec<_>, _>>()?;
-    let task_policy = ExecutionTaskPolicy::new(
-        definition.authority,
-        vec![mount],
-        secrets,
-        publisher.digest().clone(),
-    )?;
-    task_policy.validate(definition.node_id, &template)?;
+    let mount = DurableCellExecutionArtifactMount {
+        name: "durable-cell-application".into(),
+        artifact: ArtifactRef {
+            uri,
+            digest,
+            media_type,
+        },
+        target: publisher.bundle_mount().into(),
+    };
+    let task_policy = DurableCellExecutionTaskPolicy {
+        authority: definition.authority,
+        mounts: vec![mount],
+        secrets: definition.secrets,
+        semantics_profile_digest: publisher.digest().clone(),
+    };
     Ok(PublicationTaskDefinition {
         template,
         task_policy,
@@ -683,19 +659,15 @@ fn validate_bundle(
 fn validate_publication_execution(
     request: &WorkloadPrestartGateRequest,
     correlation: &DurableCellDeployment,
-    execution: &Execution,
+    execution: &DurableCellExecution,
 ) -> Result<(), RepositoryError> {
-    let task_policy = execution.task_policy.as_ref();
     if execution.organization_id != correlation.projection.organization_id
         || execution.project_id != correlation.projection.project_id
         || execution.environment_id != correlation.projection.environment_id
         || execution.id != publication_execution_id(request.workload_revision_id)
-        || execution.target_node_id.is_none()
-        || execution.workflow.is_some()
-        || task_policy.is_none_or(|policy| {
-            policy.authority().kind() != PUBLICATION_AUTHORITY_KIND
-                || policy.authority().subject_id() != request.workload_revision_id.as_uuid()
-        })
+        || execution.target_node_id.as_uuid().is_nil()
+        || execution.authority_kind != PUBLICATION_AUTHORITY_KIND
+        || execution.authority_subject_id != request.workload_revision_id.as_uuid()
     {
         return Err(RepositoryError::Conflict(
             "Durable Cell publication Execution changed its immutable identity".into(),
@@ -705,23 +677,23 @@ fn validate_publication_execution(
 }
 
 fn publication_status(
-    execution: &Execution,
+    execution: &DurableCellExecution,
 ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
     match execution.status {
-        ExecutionStatus::Succeeded => Ok(WorkloadPrestartGateStatus::Ready {
+        DurableCellExecutionStatus::Succeeded => Ok(WorkloadPrestartGateStatus::Ready {
             completed_at: execution.finished_at.ok_or_else(|| {
                 RepositoryError::Conflict(
                     "successful Durable Cell publication omitted its completion time".into(),
                 )
             })?,
         }),
-        ExecutionStatus::Failed => Ok(WorkloadPrestartGateStatus::Failed {
+        DurableCellExecutionStatus::Failed => Ok(WorkloadPrestartGateStatus::Failed {
             reason: format!(
                 "Durable Cell bundle publication Execution {} failed",
                 execution.id
             ),
         }),
-        ExecutionStatus::Cancelled => Ok(WorkloadPrestartGateStatus::Failed {
+        DurableCellExecutionStatus::Cancelled => Ok(WorkloadPrestartGateStatus::Failed {
             reason: format!(
                 "Durable Cell bundle publication Execution {} was cancelled",
                 execution.id

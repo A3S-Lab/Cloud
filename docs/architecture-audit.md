@@ -235,9 +235,13 @@ Current boundary debt:
   and Durable Cells Runtime receipt policy belongs to Durable Cells
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
-- remaining Durable Cells domain and application paths still import
-  Executions, Data, Fleet, Operations, and Workloads internal owner types or
-  repositories;
+- remaining Durable Cells domain and application paths still import Data,
+  Fleet, Operations, and Workloads internal owner types or repositories;
+- node-bound publication Tasks now cross one
+  `IDurableCellExecutionPort` and one Executions anti-corruption adapter;
+  Durable Cells owns only the finite-Task request and lifecycle evidence
+  projection, while Executions retains aggregate, repository, idempotency,
+  cancellation, Flow, Operation, and Runtime authority;
 - BuildRun consumption now crosses one
   `IDurableCellBuildArtifactPort` and one Artifacts anti-corruption adapter;
   the adapter admits only a successful, typed bundle projection;
@@ -273,7 +277,8 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
 - DurableCellStoragePort;
-- DurableCellExecutionPort;
+- `IDurableCellExecutionPort` (implemented for deterministic node-bound
+  publication Task creation, recovery, observation, and cancellation);
 - DurableCellWorkloadPort;
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
   publication).

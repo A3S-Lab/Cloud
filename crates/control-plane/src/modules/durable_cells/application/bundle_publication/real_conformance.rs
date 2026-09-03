@@ -8,13 +8,14 @@ use crate::modules::data::{
     ObjectNamespaceKey, ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec,
     ObjectNamespaceRead,
 };
+use crate::modules::durable_cells::infrastructure::materialize_bound_execution_for_conformance;
 use crate::modules::edge::infrastructure::gateway_http_upstream;
 use crate::modules::edge::{
     DomainNamePattern, GatewayCertificateIssueRequest, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, IGatewayCertificateAuthority,
     LocalGatewayCertificateAuthority, Route, RouteHostname, RoutePath, RoutePortName, RouteTarget,
 };
-use crate::modules::executions::project_execution_task;
+use crate::modules::executions::{project_execution_task, Execution};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeId, OrganizationId,
     ProjectId, RouteId, SecretId, SecretVersionReference, StorageNamespaceId, WorkloadId,
@@ -1794,13 +1795,12 @@ fn publication_execution(
         storage_profile,
         publisher,
         PublicationTaskDefinitionInput {
-            node_id,
             storage_namespace_id,
             image_media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
-            authority: ExecutionTaskAuthority::new(
-                PUBLICATION_AUTHORITY_KIND,
+            authority: DurableCellExecutionAuthority {
+                kind: PUBLICATION_AUTHORITY_KIND.into(),
                 subject_id,
-                Sha256Digest::from_bytes(
+                digest: Sha256Digest::from_bytes(
                     format!(
                         "cell0.5-c3:{}:{}:{}",
                         publisher.digest(),
@@ -1809,7 +1809,7 @@ fn publication_execution(
                     )
                     .as_bytes(),
                 ),
-            )?,
+            },
             input: serde_json::json!({
                 "schema": PUBLICATION_INPUT_SCHEMA,
                 "conformance": "cell0.5-c3",
@@ -1818,16 +1818,19 @@ fn publication_execution(
             secrets,
         },
     )?;
-    Execution::create_bound_task(
-        OrganizationId::new(),
-        ProjectId::new(),
-        EnvironmentId::new(),
+    materialize_bound_execution_for_conformance(&DurableCellExecutionRequest {
+        organization_id: OrganizationId::new(),
+        project_id: ProjectId::new(),
+        environment_id: EnvironmentId::new(),
         execution_id,
-        definition.template,
-        node_id,
-        definition.task_policy,
-        Utc::now() - ChronoDuration::seconds(1),
-    )
+        template: definition.template,
+        target_node_id: node_id,
+        task_policy: definition.task_policy,
+        authority_subject_id: subject_id,
+        idempotency_key: format!("cell0.5-conformance:{execution_id}"),
+        request_id: Uuid::now_v7(),
+        requested_at: canonical_timestamp(Utc::now() - ChronoDuration::seconds(1)),
+    })
 }
 
 fn publication_secrets(
