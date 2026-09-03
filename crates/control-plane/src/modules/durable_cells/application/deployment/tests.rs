@@ -17,7 +17,7 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::infrastructure::{
     DataDurableCellStorageAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository,
+    InMemoryDurableCellDeploymentRepository, WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -160,6 +160,9 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     };
     let deployments = Arc::new(InMemoryDurableCellDeploymentRepository::new());
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
+    let workload_port: Arc<dyn IDurableCellWorkloadPort> = Arc::new(
+        WorkloadsDurableCellWorkloadAdapter::new(applications.clone(), workloads.clone()),
+    );
     let node_pools = Arc::new(InMemoryNodeRepository::new());
     let secret_port: Arc<dyn ISecretRepository> = secrets.clone();
     let storage_port: Arc<dyn IDurableCellStoragePort> =
@@ -220,6 +223,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         applications.clone(),
         deployments.clone(),
         workloads.clone(),
+        workload_port.clone(),
         storage_port,
         secret_port,
         node_pools,
@@ -475,7 +479,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         request_id: stop_request_id,
     };
     let stop_handler =
-        StopDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
+        StopDurableCellApplicationHandler::new(applications.clone(), workload_port.clone());
     let recovered_stop = stop_handler
         .execute(stop_command.clone(), CqrsContext::new(ModuleRef::new()))
         .await
@@ -669,7 +673,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         request_id: Uuid::now_v7(),
     };
     let start_handler =
-        StartDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
+        StartDurableCellApplicationHandler::new(applications.clone(), workload_port);
     let restarted = start_handler
         .execute(start_command.clone(), CqrsContext::new(ModuleRef::new()))
         .await

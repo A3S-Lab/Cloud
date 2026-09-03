@@ -1,7 +1,7 @@
 use super::build_artifact_port::IDurableCellBuildArtifactPort;
 use super::build_run_access::validate_definition_build_run;
-use super::managed_replica_lifecycle::converge_current_managed_replicas;
 use super::resource_access::{application_not_found, environment, environment_not_found};
+use super::workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
 use super::DurableCellApplicationMutationResult;
 use crate::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
@@ -17,7 +17,6 @@ use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
     OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
 };
-use crate::modules::workloads::IWorkloadRepository;
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -405,17 +404,17 @@ impl Command for StartDurableCellApplication {
 
 pub struct StartDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    workload_port: Arc<dyn IDurableCellWorkloadPort>,
 }
 
 impl StartDurableCellApplicationHandler {
     pub fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
-        workloads: Arc<dyn IWorkloadRepository>,
+        workload_port: Arc<dyn IDurableCellWorkloadPort>,
     ) -> Self {
         Self {
             applications,
-            workloads,
+            workload_port,
         }
     }
 }
@@ -431,7 +430,7 @@ impl CommandHandler<StartDurableCellApplication> for StartDurableCellApplication
     > {
         execute_state(
             Arc::clone(&self.applications),
-            Arc::clone(&self.workloads),
+            Arc::clone(&self.workload_port),
             DurableCellStateCommand {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
@@ -467,17 +466,17 @@ impl Command for StopDurableCellApplication {
 
 pub struct StopDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    workload_port: Arc<dyn IDurableCellWorkloadPort>,
 }
 
 impl StopDurableCellApplicationHandler {
     pub fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
-        workloads: Arc<dyn IWorkloadRepository>,
+        workload_port: Arc<dyn IDurableCellWorkloadPort>,
     ) -> Self {
         Self {
             applications,
-            workloads,
+            workload_port,
         }
     }
 }
@@ -493,7 +492,7 @@ impl CommandHandler<StopDurableCellApplication> for StopDurableCellApplicationHa
     > {
         execute_state(
             Arc::clone(&self.applications),
-            Arc::clone(&self.workloads),
+            Arc::clone(&self.workload_port),
             DurableCellStateCommand {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
@@ -524,7 +523,7 @@ struct DurableCellStateCommand {
 
 fn execute_state(
     applications: Arc<dyn IDurableCellApplicationRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    workload_port: Arc<dyn IDurableCellWorkloadPort>,
     command: DurableCellStateCommand,
     desired_state: DurableCellApplicationDesiredState,
 ) -> a3s_boot::BoxFuture<
@@ -586,15 +585,14 @@ fn execute_state(
                     record,
                     replayed: true,
                 };
-                if let Err(error) = converge_current_managed_replicas(
-                    applications.as_ref(),
-                    workloads.as_ref(),
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                    command.application_id,
-                )
-                .await
+                if let Err(error) = workload_port
+                    .converge_managed_replicas(&DurableCellWorkloadReconciliationRequest::new(
+                        command.organization_id,
+                        command.project_id,
+                        command.environment_id,
+                        command.application_id,
+                    ))
+                    .await
                 {
                     return Ok(Err(error));
                 }
@@ -660,15 +658,14 @@ fn execute_state(
                     record: result.value,
                     replayed: result.replayed,
                 };
-                if let Err(error) = converge_current_managed_replicas(
-                    applications.as_ref(),
-                    workloads.as_ref(),
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                    command.application_id,
-                )
-                .await
+                if let Err(error) = workload_port
+                    .converge_managed_replicas(&DurableCellWorkloadReconciliationRequest::new(
+                        command.organization_id,
+                        command.project_id,
+                        command.environment_id,
+                        command.application_id,
+                    ))
+                    .await
                 {
                     return Ok(Err(error));
                 }

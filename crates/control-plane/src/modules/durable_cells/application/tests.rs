@@ -11,6 +11,7 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -121,6 +122,9 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
 
     let applications = Arc::new(InMemoryDurableCellApplicationRepository::new());
     let workloads = Arc::new(InMemoryWorkloadRepository::default());
+    let workload_port: Arc<dyn IDurableCellWorkloadPort> = Arc::new(
+        WorkloadsDurableCellWorkloadAdapter::new(applications.clone(), workloads.clone()),
+    );
     let create_handler = CreateDurableCellApplicationHandler::new(
         projects,
         applications.clone(),
@@ -300,7 +304,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     );
 
     let stop_handler =
-        StopDurableCellApplicationHandler::new(applications.clone(), workloads.clone());
+        StopDurableCellApplicationHandler::new(applications.clone(), workload_port.clone());
     let stop = StopDurableCellApplication {
         organization_id,
         project_id,
@@ -352,7 +356,8 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         .expect("command framework");
     assert!(matches!(no_op_stop, Err(ApplicationError::Conflict(_))));
 
-    let start_handler = StartDurableCellApplicationHandler::new(applications.clone(), workloads);
+    let start_handler =
+        StartDurableCellApplicationHandler::new(applications.clone(), workload_port);
     let started = start_handler
         .execute(
             StartDurableCellApplication {

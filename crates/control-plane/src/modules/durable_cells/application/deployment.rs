@@ -1,4 +1,3 @@
-use super::managed_replica_lifecycle::converge_current_managed_replicas;
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
@@ -7,6 +6,7 @@ use super::provider_workload::{
 };
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
+use super::workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile,
     ObjectNamespaceRetentionPolicy,
@@ -81,6 +81,7 @@ pub struct DeployDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    workload_port: Arc<dyn IDurableCellWorkloadPort>,
     storage: Arc<dyn IDurableCellStoragePort>,
     secrets: Arc<dyn ISecretRepository>,
     node_pools: Arc<dyn INodePoolRepository>,
@@ -91,6 +92,7 @@ impl DeployDurableCellApplicationHandler {
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
+        workload_port: Arc<dyn IDurableCellWorkloadPort>,
         storage: Arc<dyn IDurableCellStoragePort>,
         secrets: Arc<dyn ISecretRepository>,
         node_pools: Arc<dyn INodePoolRepository>,
@@ -99,6 +101,7 @@ impl DeployDurableCellApplicationHandler {
             applications,
             deployments,
             workloads,
+            workload_port,
             storage,
             secrets,
             node_pools,
@@ -118,6 +121,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
         let applications = Arc::clone(&self.applications);
         let deployments = Arc::clone(&self.deployments);
         let workloads = Arc::clone(&self.workloads);
+        let workload_port = Arc::clone(&self.workload_port);
         let storage = Arc::clone(&self.storage);
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
@@ -196,15 +200,14 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     ) {
                         return Err(BootError::Internal(error));
                     }
-                    if let Err(error) = converge_current_managed_replicas(
-                        applications.as_ref(),
-                        workloads.as_ref(),
-                        command.organization_id,
-                        command.project_id,
-                        command.environment_id,
-                        command.application_id,
-                    )
-                    .await
+                    if let Err(error) = workload_port
+                        .converge_managed_replicas(&DurableCellWorkloadReconciliationRequest::new(
+                            command.organization_id,
+                            command.project_id,
+                            command.environment_id,
+                            command.application_id,
+                        ))
+                        .await
                     {
                         return Ok(Err(error));
                     }
@@ -242,15 +245,14 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
-            if let Err(error) = converge_current_managed_replicas(
-                applications.as_ref(),
-                workloads.as_ref(),
-                command.organization_id,
-                command.project_id,
-                command.environment_id,
-                command.application_id,
-            )
-            .await
+            if let Err(error) = workload_port
+                .converge_managed_replicas(&DurableCellWorkloadReconciliationRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.application_id,
+                ))
+                .await
             {
                 return Ok(Err(error));
             }

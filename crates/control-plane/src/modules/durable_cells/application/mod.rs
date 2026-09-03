@@ -4,7 +4,6 @@ mod bundle_publication;
 mod commands;
 mod deployment;
 mod execution_port;
-mod managed_replica_lifecycle;
 mod prior_writer_seal;
 mod provider_workload;
 mod queries;
@@ -14,6 +13,7 @@ mod route_publication;
 mod route_publication_port;
 mod runtime_profile;
 mod storage_port;
+mod workload_port;
 mod writer_fence;
 
 pub use build_artifact_port::{
@@ -65,6 +65,7 @@ pub use runtime_profile::{
     DurableCellRuntimeEndpoints,
 };
 pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
+pub use workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 
 #[cfg(test)]
