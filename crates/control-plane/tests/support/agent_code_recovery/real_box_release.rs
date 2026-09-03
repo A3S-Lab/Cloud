@@ -1,7 +1,5 @@
 use super::*;
 use a3s_box_runtime::BoxStateStore;
-#[cfg(feature = "persistence-conformance")]
-use a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE;
 use a3s_cloud_contracts::{
     agent_release_manifest_archive, CloudSecretReference, NodeArtifactDownloadRequest,
     NodeArtifactUploadReceipt, NodeArtifactUploadRequest, NodeResourceInventory, NodeResourceSlot,
@@ -385,13 +383,6 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
 
     #[cfg(feature = "persistence-conformance")]
     if skill_lifecycle {
-        if !runtime_capabilities
-            .artifact_media_types
-            .iter()
-            .any(|media_type| media_type == SKILL_BUNDLE_MEDIA_TYPE)
-        {
-            return Err(invalid("real Box does not advertise Skill bundle Artifacts").into());
-        }
         return exercise_skill_binding_lifecycle(
             assets,
             workloads,

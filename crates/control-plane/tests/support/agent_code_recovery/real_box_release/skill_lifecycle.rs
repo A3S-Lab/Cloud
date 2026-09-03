@@ -1,4 +1,5 @@
 use super::*;
+use a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE;
 
 /// Drive the immutable Skill binding commands through the production Workload,
 /// Flow, Fleet, Runtime, and Box path.  Every revision is applied to the same
