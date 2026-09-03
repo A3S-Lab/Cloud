@@ -695,25 +695,7 @@ pub fn receive_pack_fixture_with_commit(
     repository: &Path,
     kind: AssetKind,
 ) -> TestResult<(Vec<u8>, String)> {
-    let work = tempfile::tempdir()?;
-    git_fixture(work.path(), &["init", "--quiet", "--initial-branch=main"])?;
-    git_fixture(
-        work.path(),
-        &["config", "user.email", "integration@a3s.dev"],
-    )?;
-    git_fixture(work.path(), &["config", "user.name", "A3S Integration"])?;
-    std::fs::create_dir_all(work.path().join(".a3s"))?;
-    std::fs::write(
-        work.path().join(".a3s/asset.acl"),
-        format!(
-            "asset {{\n  schema = \"a3s.cloud.asset.v1\"\n  kind = \"{}\"\n}}\n",
-            kind.as_str()
-        ),
-    )?;
-    std::fs::write(work.path().join("README.md"), "Hosted Git integration\n")?;
-    git_fixture(work.path(), &["add", "."])?;
-    git_fixture(work.path(), &["commit", "--quiet", "-m", "initial"])?;
-    let commit_sha = git_output(work.path(), &["rev-parse", "HEAD"])?;
+    let (work, commit_sha) = git_fixture_worktree(kind)?;
     let advertisement = Command::new("git")
         .args([
             "receive-pack",
@@ -758,6 +740,53 @@ pub fn receive_pack_fixture_with_commit(
         }
     };
     Ok((request, commit_sha))
+}
+
+/// Create the same deterministic fixture as [`receive_pack_fixture_with_commit`]
+/// and push it through Git's ordinary local transport. Smart HTTP tests need
+/// the framed request returned by the sibling helper, while provider tests
+/// that exercise release admission need the bare repository to contain the
+/// exact reachable commit first.
+pub fn push_fixture_with_commit(repository: &Path, kind: AssetKind) -> TestResult<String> {
+    let (work, commit_sha) = git_fixture_worktree(kind)?;
+    let repository = repository
+        .to_str()
+        .ok_or("repository fixture path is not UTF-8")?;
+    let output = Command::new("git")
+        .current_dir(work.path())
+        .args(["push", "--quiet", repository, "HEAD:refs/heads/main"])
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "Git integration fixture push failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    Ok(commit_sha)
+}
+
+fn git_fixture_worktree(kind: AssetKind) -> TestResult<(tempfile::TempDir, String)> {
+    let work = tempfile::tempdir()?;
+    git_fixture(work.path(), &["init", "--quiet", "--initial-branch=main"])?;
+    git_fixture(
+        work.path(),
+        &["config", "user.email", "integration@a3s.dev"],
+    )?;
+    git_fixture(work.path(), &["config", "user.name", "A3S Integration"])?;
+    std::fs::create_dir_all(work.path().join(".a3s"))?;
+    std::fs::write(
+        work.path().join(".a3s/asset.acl"),
+        format!(
+            "asset {{\n  schema = \"a3s.cloud.asset.v1\"\n  kind = \"{}\"\n}}\n",
+            kind.as_str()
+        ),
+    )?;
+    std::fs::write(work.path().join("README.md"), "Hosted Git integration\n")?;
+    git_fixture(work.path(), &["add", "."])?;
+    git_fixture(work.path(), &["commit", "--quiet", "-m", "initial"])?;
+    let commit_sha = git_output(work.path(), &["rev-parse", "HEAD"])?;
+    Ok((work, commit_sha))
 }
 
 fn unwrap_stateless_rpc(output: &[u8]) -> TestResult<Vec<u8>> {

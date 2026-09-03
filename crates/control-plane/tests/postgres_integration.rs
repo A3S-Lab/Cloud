@@ -3233,8 +3233,8 @@ async fn exercise_skill_release_api(url: String) -> Result<(), Box<dyn std::erro
     let physical_repository = asset_repository_directory
         .join(organization_text.as_str())
         .join(format!("{asset_text}.git"));
-    let (_receive_body, commit_text) =
-        assets_support::receive_pack_fixture_with_commit(&physical_repository, AssetKind::Skill)?;
+    let commit_text =
+        assets_support::push_fixture_with_commit(&physical_repository, AssetKind::Skill)?;
     let commit = GitCommitSha::parse(commit_text.clone())?;
     let admission = hosted_git.admit_manifest(&skill_asset, &commit).await?;
     admission.validate_for(AssetKind::Skill)?;
