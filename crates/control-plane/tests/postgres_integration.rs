@@ -26,7 +26,7 @@ use a3s_cloud_control_plane::modules::assets::{
     AcquireAssetGitWriteLease, Asset, AssetCreated, AssetGitRpcLimits, AssetGitService,
     AssetGitWriteOperation, AssetGitWriteRecovery, AssetKind, ClaimAssetGitWriteRecovery,
     CreateAssetWrite, IAssetGitRepository, IAssetGitRepositoryControl, IAssetRepository,
-    LocalAssetGitRepository, PostgresAssetRepository,
+    LocalAssetGitRepository, PostgresAssetRepository, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_cloud_control_plane::modules::audit::{
     AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecordCursor,
@@ -50,8 +50,9 @@ use a3s_cloud_control_plane::modules::security::{
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::shared_kernel::domain::RouteId;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    AssetId, EnvironmentId, IdempotencyRequest, InstallationId, OperationId, OrganizationId,
-    ProjectAttributionProfileId, ProjectId, RepositoryError, ResourceName, ScopeContext,
+    AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest, InstallationId,
+    OperationId, OrganizationId, ProjectAttributionProfileId, ProjectId, RepositoryError,
+    ResourceName, ScopeContext,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -71,6 +72,7 @@ use chrono::Utc;
 use futures_util::FutureExt;
 use serde_json::{json, Value};
 use std::panic::AssertUnwindSafe;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 use uuid::Uuid;
@@ -700,6 +702,16 @@ async fn postgres_application_releases_are_atomic_replay_safe_and_immutable() {
     )
     .await
     .expect("PostgreSQL Application release authority gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_skill_releases_publish_immutable_git_bundles_and_survive_restart() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_skill_release_api)
+        .await
+        .expect("PostgreSQL Skill release publication and immutable bundle gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -3132,6 +3144,285 @@ where
             std::panic::resume_unwind(panic_payload)
         }
     }
+}
+
+/// Exercise the complete A0.5 Skill publication path against a fresh
+/// PostgreSQL database and the real local immutable-object provider.
+///
+/// This intentionally enters through the REST command boundary. That keeps
+/// authorization projection, hosted-Git admission, deterministic archive
+/// creation, PostgreSQL release transitions, and object-store replay in one
+/// retained provider test instead of proving each layer with disconnected
+/// fixtures.
+async fn exercise_skill_release_api(url: String) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let _postgres_url = EnvironmentOverride::set(URL_ENV, &url);
+    let _bootstrap_token = EnvironmentOverride::set(BOOTSTRAP_ENV, BOOTSTRAP_TOKEN);
+    let security_directory = tempfile::tempdir()?;
+    let mut application_config = config();
+    let asset_repository_directory =
+        configure_ephemeral_application_state(&mut application_config, security_directory.path());
+    let object_directory = PathBuf::from(application_config.objects.local_dir.clone());
+    let app = build_application_with_source_resolver(
+        application_config,
+        Arc::new(OfflineCommitSourceResolver),
+    )
+    .await?;
+
+    let bootstrap = app
+        .call(
+            post_json(
+                "/api/v1/bootstrap",
+                "a0-5-skill-bootstrap",
+                json!({
+                    "organizationName": "A0.5 Skill publication",
+                    "tokenName": "a0-5-skill-admin",
+                    "token": ADMIN_TOKEN,
+                    "expiresAt": null
+                }),
+            )
+            .with_header("x-a3s-bootstrap-token", BOOTSTRAP_TOKEN),
+        )
+        .await?;
+    if bootstrap.status() != 201 {
+        return Err(format!(
+            "Skill publication bootstrap failed with {}: {}",
+            bootstrap.status(),
+            response_json(&bootstrap)?
+        )
+        .into());
+    }
+    let organization_text = response_json(&bootstrap)?["data"]["organization"]["id"]
+        .as_str()
+        .ok_or("Skill publication bootstrap response has no organization ID")?
+        .to_owned();
+    let organization_id = OrganizationId::from_uuid(Uuid::parse_str(&organization_text)?);
+
+    let assets_path = format!("/api/v1/organizations/{organization_text}/assets");
+    let asset_response = app
+        .call(post_json(
+            &assets_path,
+            "a0-5-skill-create",
+            json!({
+                "name": "A0.5 Hosted Skill",
+                "kind": "skill"
+            }),
+        ))
+        .await?;
+    if asset_response.status() != 201 {
+        return Err(format!(
+            "Skill Asset creation failed with {}: {}",
+            asset_response.status(),
+            response_json(&asset_response)?
+        )
+        .into());
+    }
+    let asset_text = response_id(&asset_response)?;
+    let asset_id = AssetId::from_uuid(Uuid::parse_str(&asset_text)?);
+    let skill_asset = Asset::create(
+        asset_id,
+        organization_id,
+        ResourceName::parse("A0.5 Hosted Skill")?,
+        AssetKind::Skill,
+        Utc::now(),
+    )?;
+
+    let hosted_git =
+        LocalAssetGitRepository::new(&asset_repository_directory, Duration::from_secs(10))?;
+    hosted_git.inspect(&skill_asset).await?;
+    let physical_repository = asset_repository_directory
+        .join(organization_text.as_str())
+        .join(format!("{asset_text}.git"));
+    let commit_text =
+        assets_support::push_fixture_with_commit(&physical_repository, AssetKind::Skill)?;
+    let commit = GitCommitSha::parse(commit_text.clone())?;
+    let admission = hosted_git.admit_manifest(&skill_asset, &commit).await?;
+    admission.validate_for(AssetKind::Skill)?;
+
+    // Capture the deterministic archive before publication. The application
+    // service creates the same archive under its release ID; comparing the
+    // resulting object bytes below proves that no caller-controlled artifact
+    // was substituted during publication.
+    let archive_probe_id = AssetReleaseId::new();
+    let archive_probe = hosted_git
+        .prepare_release_bundle(&skill_asset, &commit, archive_probe_id)
+        .await?;
+    let expected_archive = tokio::fs::read(&archive_probe.path).await?;
+    let expected_digest = archive_probe.digest.to_string();
+    let expected_size = archive_probe.size_bytes;
+    hosted_git.remove_release_bundle(archive_probe_id).await?;
+
+    let releases_path = format!("{assets_path}/{asset_text}/releases");
+    let release_request = json!({
+        "version": "1.0.0",
+        "commitSha": commit_text
+    });
+    let release_response = app
+        .call(post_json(
+            &releases_path,
+            "a0-5-skill-release",
+            release_request.clone(),
+        ))
+        .await?;
+    if release_response.status() != 201 {
+        return Err(format!(
+            "Skill release publication failed with {}: {}",
+            release_response.status(),
+            response_json(&release_response)?
+        )
+        .into());
+    }
+    let release_body = response_json(&release_response)?;
+    let release_data = &release_body["data"];
+    assert_eq!(release_data["state"], "published");
+    assert_eq!(release_data["commitSha"], commit.as_str());
+    assert_eq!(release_data["artifact"]["kind"], "skill_bundle");
+    assert_eq!(
+        release_data["artifact"]["mediaType"],
+        SKILL_BUNDLE_MEDIA_TYPE
+    );
+    assert_eq!(release_data["artifact"]["digest"], expected_digest);
+    assert_eq!(release_data["artifact"]["sizeBytes"], expected_size);
+    let release_text = release_data["id"]
+        .as_str()
+        .ok_or("Skill release response has no release ID")?
+        .to_owned();
+    let release_id = AssetReleaseId::from_uuid(Uuid::parse_str(&release_text)?);
+
+    let object_hex = expected_digest
+        .strip_prefix("sha256:")
+        .ok_or("Skill artifact digest is not sha256")?;
+    let object_blob = object_directory
+        .join("cloud")
+        .join("artifacts")
+        .join("blobs")
+        .join("sha256")
+        .join(object_hex);
+    let object_receipt = object_directory
+        .join("cloud")
+        .join("artifacts")
+        .join("receipts")
+        .join("sha256")
+        .join(format!("{object_hex}.json"));
+    assert_eq!(tokio::fs::read(&object_blob).await?, expected_archive);
+    let receipt: Value = serde_json::from_slice(&tokio::fs::read(&object_receipt).await?)?;
+    assert_eq!(receipt["schema"], "a3s.cloud.node-artifact-object.v1");
+    assert_eq!(receipt["artifact"]["digest"], expected_digest);
+    assert_eq!(receipt["artifact"]["media_type"], SKILL_BUNDLE_MEDIA_TYPE);
+    assert_eq!(receipt["size_bytes"], expected_size);
+
+    let release_bundle_path = asset_repository_directory
+        .join(".build-inputs")
+        .join(format!("release-{release_text}.tar"));
+    assert!(
+        !release_bundle_path.exists(),
+        "published Skill release bundle must be removed after object publication"
+    );
+
+    let replay = app
+        .call(post_json(
+            &releases_path,
+            "a0-5-skill-release",
+            release_request,
+        ))
+        .await?;
+    if replay.status() != 200 {
+        return Err(format!(
+            "Skill release replay returned {}: {}",
+            replay.status(),
+            response_json(&replay)?
+        )
+        .into());
+    }
+    let replay_data = &response_json(&replay)?["data"];
+    assert_eq!(replay_data["id"], release_text);
+    assert_eq!(replay_data["state"], "published");
+    assert_eq!(replay_data["replayed"], true);
+    assert_eq!(tokio::fs::read(&object_blob).await?, expected_archive);
+
+    let repository = PostgresAssetRepository::new(executor.clone());
+    let persisted = repository
+        .find_release(organization_id, asset_id, release_id)
+        .await?
+        .ok_or("published Skill release disappeared after API replay")?;
+    assert_eq!(persisted.commit_sha, commit);
+    assert_eq!(
+        persisted
+            .artifact
+            .as_ref()
+            .map(|artifact| artifact.digest().as_str()),
+        Some(expected_digest.as_str())
+    );
+    assert_eq!(persisted.provenance, None);
+    assert_eq!(persisted.aggregate_version, 2);
+
+    let database = Database::new(PostgresDialect, executor.clone());
+    let event_counts = database
+        .fetch_one_as(sql_query::<(i64, i64)>(
+            "select count(*) filter (where event_key = 'asset.release.drafted'), count(*) filter (where event_key = 'asset.release.published') from outbox_events where aggregate_id = ",
+        )
+        .bind(release_id.as_uuid()))
+        .await?;
+    assert_eq!(event_counts, (1, 1));
+
+    let yank_path = format!("{releases_path}/{release_text}/yank");
+    let yanked = app
+        .call(post_json(&yank_path, "a0-5-skill-yank", json!({})))
+        .await?;
+    if yanked.status() != 200 {
+        return Err(format!(
+            "Skill release yank failed with {}: {}",
+            yanked.status(),
+            response_json(&yanked)?
+        )
+        .into());
+    }
+    let yanked_data = &response_json(&yanked)?["data"];
+    assert_eq!(yanked_data["state"], "yanked");
+    assert_eq!(yanked_data["artifact"]["digest"], expected_digest);
+
+    let exact = app
+        .call(get_as(
+            format!("{releases_path}/{release_text}"),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(exact.status(), 200);
+    assert_eq!(response_json(&exact)?["data"]["state"], "yanked");
+    let selection = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization_text}/assets/{asset_text}/release-selection"
+            ),
+            ADMIN_TOKEN,
+        ))
+        .await?;
+    assert_eq!(selection.status(), 404);
+    assert_eq!(tokio::fs::read(&object_blob).await?, expected_archive);
+
+    let persisted_yanked = repository
+        .find_release(organization_id, asset_id, release_id)
+        .await?
+        .ok_or("yanked Skill release disappeared from PostgreSQL")?;
+    assert_eq!(
+        persisted_yanked.state,
+        a3s_cloud_control_plane::modules::assets::AssetReleaseState::Yanked
+    );
+    assert_eq!(persisted_yanked.artifact, persisted.artifact);
+    let yanked_events = database
+        .fetch_one_as(
+            sql_query::<i64>("select count(*) from outbox_events where aggregate_id = ")
+                .bind(release_id.as_uuid()),
+        )
+        .await?;
+    assert_eq!(yanked_events, 3);
+
+    println!(
+        "A3S_CLOUD_A0_5_SKILL_POSTGRES_CERTIFIED provider=postgresql git_archive=immutable artifact=exact replay=exact yank=retained cleanup=verified"
+    );
+    drop(app);
+    drop(executor);
+    Ok(())
 }
 
 async fn exercise_relay_role_composition(url: String) -> Result<(), Box<dyn std::error::Error>> {

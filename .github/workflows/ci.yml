@@ -713,6 +713,35 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      - name: Certify immutable Skill Git bundle publication
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-a0-5-skill-postgres.log"
+          marker='A3S_CLOUD_A0_5_SKILL_POSTGRES_CERTIFIED provider=postgresql git_archive=immutable artifact=exact replay=exact yank=retained cleanup=verified'
+          if cargo test --locked -p a3s-cloud-control-plane \
+              --test postgres_integration \
+              postgres_skill_releases_publish_immutable_git_bundles_and_survive_restart \
+              -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            if grep --fixed-strings "$marker" "$log" >/dev/null; then
+              exit 0
+            fi
+            echo 'Skill publication certification marker is missing' >>"$log"
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=A0.5 Skill PostgreSQL publication gate failed::$detail"
+          exit 1
+
+      - name: Upload immutable Skill publication evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: a0-5-skill-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/a3s-cloud-a0-5-skill-postgres.log
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Certify alert projection, event-time suppression, durable NATS delivery, and terminal replay
         env:
           A3S_CLOUD_TEST_NATS_URL: nats://127.0.0.1:4222
