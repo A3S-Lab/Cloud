@@ -681,6 +681,20 @@ fn lease_request(
 }
 
 pub fn receive_pack_fixture(repository: &Path, kind: AssetKind) -> TestResult<Vec<u8>> {
+    receive_pack_fixture_with_commit(repository, kind).map(|(request, _)| request)
+}
+
+/// Create a deterministic single-commit Asset repository request and return
+/// both the framed receive-pack body and the exact commit that was sent.
+///
+/// The commit identity is part of the A0 release contract: callers must pass
+/// the admitted Git revision to the release API rather than trusting a moving
+/// branch. Keeping this helper next to the existing Smart HTTP fixture makes
+/// the same source setup available to the PostgreSQL Skill publication gate.
+pub fn receive_pack_fixture_with_commit(
+    repository: &Path,
+    kind: AssetKind,
+) -> TestResult<(Vec<u8>, String)> {
     let work = tempfile::tempdir()?;
     git_fixture(work.path(), &["init", "--quiet", "--initial-branch=main"])?;
     git_fixture(
@@ -699,6 +713,7 @@ pub fn receive_pack_fixture(repository: &Path, kind: AssetKind) -> TestResult<Ve
     std::fs::write(work.path().join("README.md"), "Hosted Git integration\n")?;
     git_fixture(work.path(), &["add", "."])?;
     git_fixture(work.path(), &["commit", "--quiet", "-m", "initial"])?;
+    let commit_sha = git_output(work.path(), &["rev-parse", "HEAD"])?;
     let advertisement = Command::new("git")
         .args([
             "receive-pack",
@@ -732,13 +747,17 @@ pub fn receive_pack_fixture(repository: &Path, kind: AssetKind) -> TestResult<Ve
         .ok_or("integration send-pack stdin is unavailable")?
         .write_all(&advertisement.stdout)?;
     let output = child.wait_with_output()?;
-    unwrap_stateless_rpc(&output.stdout).map_err(|error| {
-        format!(
-            "integration send-pack did not produce a valid request ({error}): {}",
-            String::from_utf8_lossy(&output.stderr)
-        )
-        .into()
-    })
+    let request = match unwrap_stateless_rpc(&output.stdout) {
+        Ok(request) => request,
+        Err(error) => {
+            return Err(format!(
+                "integration send-pack did not produce a valid request ({error}): {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into())
+        }
+    };
+    Ok((request, commit_sha))
 }
 
 fn unwrap_stateless_rpc(output: &[u8]) -> TestResult<Vec<u8>> {
@@ -781,6 +800,25 @@ fn git_fixture(directory: &Path, arguments: &[&str]) -> TestResult {
         .into());
     }
     Ok(())
+}
+
+fn git_output(directory: &Path, arguments: &[&str]) -> TestResult<String> {
+    let output = Command::new("git")
+        .current_dir(directory)
+        .args(arguments)
+        .output()?;
+    if !output.status.success() {
+        return Err(format!(
+            "Git integration fixture failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )
+        .into());
+    }
+    let value = String::from_utf8(output.stdout)?.trim().to_owned();
+    if value.is_empty() {
+        return Err("Git integration fixture returned an empty value".into());
+    }
+    Ok(value)
 }
 
 async fn exercise_mcp_service_profiles(
