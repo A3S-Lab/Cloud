@@ -746,6 +746,49 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_node_pool_admission_crosses_one_consumer_owned_port() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/node_pool_port.rs"))
+            .expect("read Durable Cells node-pool port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/fleet_node_pool.rs"),
+    )
+    .expect("read Durable Cells Fleet node-pool adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(deployment.contains("Arc<dyn IDurableCellNodePoolPort>"));
+    assert!(deployment.contains(".validate_selection("));
+    assert!(!deployment.contains("INodePoolRepository"));
+    assert!(!deployment.contains("validate_node_pool_selection"));
+    assert!(port.contains("pub struct DurableCellNodePoolSelectionRequest"));
+    assert!(port.contains("pub trait IDurableCellNodePoolPort"));
+    assert!(!port.contains("crate::modules::fleet"));
+    for required in ["impl IDurableCellNodePoolPort", "INodePoolRepository"] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Fleet adapter lost owner translation {required}"
+        );
+    }
+
+    let mut fleet_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells") && source.contains("INodePoolRepository") {
+            fleet_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        fleet_sites,
+        lines("durable_cells/infrastructure/fleet_node_pool.rs"),
+        "Durable Cells must translate Fleet node-pool admission through one infrastructure adapter"
+    );
+}
+
+#[test]
 fn flow_contract_enters_only_the_workflow_dag_compiler() {
     const ALLOWED_FILE: &str = "workflow/domain/workflow_graph.rs";
     const ALLOWED_IMPORT: &str = "use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};";
