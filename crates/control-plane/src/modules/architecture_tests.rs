@@ -7407,8 +7407,6 @@ audit -> presentation
 connectors -> infrastructure
 connectors -> presentation
 developer_workflows -> infrastructure
-durable_cells -> infrastructure
-durable_cells -> presentation
 edge -> infrastructure
 edge -> presentation
 executions -> infrastructure
