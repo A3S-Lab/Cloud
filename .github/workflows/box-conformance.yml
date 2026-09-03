@@ -98,7 +98,7 @@ jobs:
       A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
       A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
       A3S_CLOUD_A0_4_AGENT_BASE_IMAGE: ubuntu@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316
-      A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST: sha256:6b286e9578b450480373460ef3ff5be5fa54c4a4df31246827cfda972bd047fb
+      A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST: sha256:cd6877f803dd1bed4d05e7541af75182cc685fe387e2e8ddbce67c8ce4f0cfb0
       A3S_CLOUD_A0_4_CLI_ARCHIVE_URL: https://github.com/A3S-Lab/CLI/releases/download/v0.14.0/a3s-v0.14.0-x86_64-unknown-linux-gnu.tar.gz
       A3S_CLOUD_A0_4_CLI_REVISION: 2ef75a624bdd23dc2b266c12721d3bd95ceccc5a
       A3S_CLOUD_A0_4_CLI_TAG: v0.14.0
