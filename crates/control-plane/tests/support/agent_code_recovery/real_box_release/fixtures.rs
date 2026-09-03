@@ -1,5 +1,5 @@
 use super::*;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 pub(super) struct FixtureSecretEncryption;
@@ -34,7 +34,7 @@ impl ISecretEncryptionService for FixtureSecretEncryption {
 }
 
 pub(super) struct PublishedAgentSecretTransport {
-    expected_revision: Mutex<Option<Uuid>>,
+    authorized_revisions: Mutex<BTreeSet<Uuid>>,
     materials: BTreeMap<(Uuid, u64), Vec<u8>>,
     calls: Mutex<BTreeMap<Uuid, usize>>,
 }
@@ -50,7 +50,7 @@ impl PublishedAgentSecretTransport {
             .map(|(secret_id, _)| (*secret_id, 0))
             .collect();
         Self {
-            expected_revision: Mutex::new(None),
+            authorized_revisions: Mutex::new(BTreeSet::new()),
             materials,
             calls: Mutex::new(calls),
         }
@@ -60,19 +60,12 @@ impl PublishedAgentSecretTransport {
         if revision_id.is_nil() {
             return Err("published Agent Secret transport received a nil revision".into());
         }
-        let mut expected = self
-            .expected_revision
+        let mut authorized = self
+            .authorized_revisions
             .lock()
             .map_err(|_| "published Agent Secret revision lock was poisoned")?;
-        match *expected {
-            Some(current) if current != revision_id => {
-                Err("published Agent Secret transport changed its revision".into())
-            }
-            _ => {
-                *expected = Some(revision_id);
-                Ok(())
-            }
-        }
+        authorized.insert(revision_id);
+        Ok(())
     }
 
     pub(super) fn calls(&self, secret_id: SecretId) -> Result<usize, String> {
@@ -94,22 +87,14 @@ impl NodeSecretTransport for PublishedAgentSecretTransport {
         reference
             .validate()
             .map_err(NodeControlClientError::Invalid)?;
-        let expected_revision = self
-            .expected_revision
-            .lock()
-            .map_err(|_| {
-                NodeControlClientError::Transport(
-                    "published Agent Secret revision lock was poisoned".into(),
-                )
-            })?
-            .ok_or_else(|| {
-                NodeControlClientError::Invalid(
-                    "published Agent Secret transport is not revision-bound".into(),
-                )
-            })?;
-        if reference.workload_revision_id != expected_revision {
+        let authorized = self.authorized_revisions.lock().map_err(|_| {
+            NodeControlClientError::Transport(
+                "published Agent Secret revision lock was poisoned".into(),
+            )
+        })?;
+        if !authorized.contains(&reference.workload_revision_id) {
             return Err(NodeControlClientError::Invalid(
-                "published Agent requested a Secret for another revision".into(),
+                "published Agent requested a Secret for an unauthorized revision".into(),
             ));
         }
         let material = self
@@ -181,6 +166,45 @@ pub(super) struct PublishedManifestTransport {
     pub(super) artifact: ArtifactRef,
     pub(super) archive: Vec<u8>,
     pub(super) downloads: AtomicUsize,
+    skill_artifacts: Mutex<Vec<(ArtifactRef, Vec<u8>)>>,
+    skill_downloads: AtomicUsize,
+}
+
+impl PublishedManifestTransport {
+    pub(super) fn new(artifact: ArtifactRef, archive: Vec<u8>) -> Self {
+        Self {
+            artifact,
+            archive,
+            downloads: AtomicUsize::new(0),
+            skill_artifacts: Mutex::new(Vec::new()),
+            skill_downloads: AtomicUsize::new(0),
+        }
+    }
+
+    pub(super) fn register_skill_artifact(
+        &self,
+        artifact: ArtifactRef,
+        archive: Vec<u8>,
+    ) -> Result<(), String> {
+        artifact.validate()?;
+        if artifact.media_type != a3s_cloud_contracts::SKILL_BUNDLE_MEDIA_TYPE || archive.is_empty()
+        {
+            return Err("real Skill Artifact fixture is invalid".into());
+        }
+        let mut artifacts = self
+            .skill_artifacts
+            .lock()
+            .map_err(|_| "real Skill Artifact fixture lock was poisoned")?;
+        if artifacts.iter().any(|(existing, _)| existing == &artifact) {
+            return Err("real Skill Artifact fixture was registered twice".into());
+        }
+        artifacts.push((artifact, archive));
+        Ok(())
+    }
+
+    pub(super) fn skill_downloads(&self) -> usize {
+        self.skill_downloads.load(Ordering::SeqCst)
+    }
 }
 
 #[async_trait]
@@ -194,22 +218,45 @@ impl NodeArtifactTransport for PublishedManifestTransport {
         request
             .validate()
             .map_err(NodeControlClientError::Invalid)?;
-        if request
+        let artifact = request
             .artifact()
-            .map_err(NodeControlClientError::Invalid)?
-            != self.artifact
-            || self.archive.len() as u64 > maximum_bytes
-        {
+            .map_err(NodeControlClientError::Invalid)?;
+        let (archive, is_skill) = if artifact == self.artifact {
+            (self.archive.clone(), false)
+        } else {
+            let archive = self
+                .skill_artifacts
+                .lock()
+                .map_err(|_| {
+                    NodeControlClientError::Transport(
+                        "real Skill Artifact fixture lock was poisoned".into(),
+                    )
+                })?
+                .iter()
+                .find(|(registered, _)| *registered == artifact)
+                .map(|(_, archive)| archive.clone())
+                .ok_or_else(|| {
+                    NodeControlClientError::Invalid(
+                        "real gate requested an unexpected Artifact".into(),
+                    )
+                })?;
+            (archive, true)
+        };
+        if archive.len() as u64 > maximum_bytes {
             return Err(NodeControlClientError::Invalid(
-                "real A0.4 gate requested an unexpected manifest Artifact".into(),
+                "real gate requested an Artifact larger than its limit".into(),
             ));
         }
-        tokio::fs::write(destination, &self.archive)
+        tokio::fs::write(destination, &archive)
             .await
             .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
-        self.downloads.fetch_add(1, Ordering::SeqCst);
+        if is_skill {
+            self.skill_downloads.fetch_add(1, Ordering::SeqCst);
+        } else {
+            self.downloads.fetch_add(1, Ordering::SeqCst);
+        }
         Ok(DownloadedNodeArtifact {
-            size_bytes: self.archive.len() as u64,
+            size_bytes: archive.len() as u64,
         })
     }
 

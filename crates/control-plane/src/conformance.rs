@@ -12,6 +12,7 @@ use crate::modules::search::{search_persistence_adapter, ISearchRepository};
 use crate::modules::security::{
     security_persistence_adapter, IGatewayRoutePolicyTimelineRepository,
 };
+use crate::modules::workloads::WorkloadAccess;
 use a3s_orm::PostgresExecutor;
 use std::{path::PathBuf, sync::Arc};
 
@@ -38,6 +39,14 @@ pub fn user_file_persistence_conformance(
 #[doc(hidden)]
 pub fn user_file_organization_access_for_conformance() -> UserFileAccess {
     UserFileAccess::organization_wide()
+}
+
+/// Creates organization-wide Workloads access only for the retained external
+/// Workloads conformance gate. Product composition must derive this projection
+/// through the root Presentation ACL instead.
+#[doc(hidden)]
+pub fn workload_organization_access_for_conformance() -> WorkloadAccess {
+    WorkloadAccess::organization_wide()
 }
 
 /// Builds the exact production Search persistence adapter through its owner
