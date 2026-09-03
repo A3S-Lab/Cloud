@@ -107,9 +107,10 @@ use crate::modules::durable_cells::{
     ArtifactsDurableCellBuildArtifactAdapter, CreateDurableCellApplicationHandler,
     DeployDurableCellApplicationFromAclHandler, DeployDurableCellApplicationHandler,
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
-    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter, GetDurableCellApplicationHandler,
+    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter,
+    ExecutionsDurableCellExecutionAdapter, GetDurableCellApplicationHandler,
     GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
-    IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository,
+    IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
     IDurableCellRoutePublicationPort, ListDurableCellApplicationRevisionsHandler,
     ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
@@ -659,6 +660,11 @@ async fn build_api_worker_application(
     );
     let build_projections = adapters.build_projections;
     let executions = adapters.executions;
+    let durable_cell_executions: Arc<dyn IDurableCellExecutionPort> =
+        Arc::new(ExecutionsDurableCellExecutionAdapter::new(
+            Arc::clone(&environments),
+            Arc::clone(&executions),
+        ));
     let execution_templates = adapters.execution_templates;
     let agents = adapters.agents;
     let agent_execution_providers: Arc<dyn AgentExecutionProviderRegistry> = Arc::new(
@@ -1063,8 +1069,7 @@ async fn build_api_worker_application(
                     Arc::clone(&writer_fences),
                     Arc::clone(&operation_repository),
                 ),
-                Arc::clone(&environments),
-                Arc::clone(&executions),
+                Arc::clone(&durable_cell_executions),
             ));
         let runtime_execution_authorizations =
             Arc::new(WorkloadRuntimeExecutionAuthorizationQueryService::new(

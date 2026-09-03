@@ -25,7 +25,7 @@ pub use application::{
 };
 pub use application::{
     DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellRoutePublication,
-    DurableCellRoutePublicationRequest, IDurableCellBuildArtifactPort,
+    DurableCellRoutePublicationRequest, IDurableCellBuildArtifactPort, IDurableCellExecutionPort,
     IDurableCellRoutePublicationPort,
 };
 pub(crate) use application::{
@@ -46,3 +46,4 @@ pub use facade::{
     PublishDurableCellApplicationRouteRequest, ReviseDurableCellApplicationRequest,
     SetDurableCellApplicationStateRequest,
 };
+pub(crate) use infrastructure::ExecutionsDurableCellExecutionAdapter;

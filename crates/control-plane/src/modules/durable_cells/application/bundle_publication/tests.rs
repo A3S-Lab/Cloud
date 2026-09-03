@@ -22,11 +22,11 @@ use crate::modules::durable_cells::domain::{
     DurableCellStorageBinding,
 };
 use crate::modules::durable_cells::infrastructure::{
-    ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
-    InMemoryDurableCellDeploymentRepository,
+    ArtifactsDurableCellBuildArtifactAdapter, ExecutionsDurableCellExecutionAdapter,
+    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
 };
-use crate::modules::durable_cells::DurableCellBuildArtifactRequest;
-use crate::modules::executions::domain::ExecutionOutcome;
+use crate::modules::durable_cells::{DurableCellBuildArtifactRequest, IDurableCellExecutionPort};
+use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRequest, OperationStatus,
@@ -53,6 +53,15 @@ use crate::modules::workloads::{
     WorkloadWriterFenceReceiptSpec,
 };
 use chrono::{Duration, Utc};
+
+fn execution_port(
+    projects: Arc<InMemoryProjectsRepository>,
+    executions: Arc<InMemoryExecutionRepository>,
+) -> Arc<dyn IDurableCellExecutionPort> {
+    Arc::new(ExecutionsDurableCellExecutionAdapter::new(
+        projects, executions,
+    ))
+}
 
 struct StaticWriterFenceRepository {
     receipt: WorkloadWriterFenceReceipt,
@@ -343,8 +352,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
-        projects.clone(),
-        executions.clone(),
+        execution_port(projects.clone(), executions.clone()),
     );
     let request = WorkloadPrestartGateRequest {
         organization_id,
@@ -454,14 +462,58 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
-        projects.clone(),
-        queued_executions.clone(),
+        execution_port(projects.clone(), queued_executions.clone()),
     );
     assert!(matches!(
         queued_gate.reconcile(&request).await?,
         WorkloadPrestartGateStatus::Pending { .. }
     ));
     assert_eq!(queued_executions.outbox_events().await.len(), 1);
+
+    let cancelling_executions = Arc::new(InMemoryExecutionRepository::new());
+    let cancelling_gate = DurableCellBundlePublicationGate::new(
+        applications.clone(),
+        deployments.clone(),
+        build_artifacts.clone(),
+        workloads.clone(),
+        DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
+        execution_port(projects.clone(), cancelling_executions.clone()),
+    );
+    assert!(matches!(
+        cancelling_gate.reconcile(&request).await?,
+        WorkloadPrestartGateStatus::Pending { .. }
+    ));
+    let cancellation_request = WorkloadPrestartGateRequest {
+        cancellation_requested: true,
+        now: request.now + Duration::milliseconds(5),
+        ..request.clone()
+    };
+    assert!(matches!(
+        cancelling_gate.reconcile(&cancellation_request).await?,
+        WorkloadPrestartGateStatus::Pending { .. }
+    ));
+    let cancelling_execution = cancelling_executions
+        .find(organization_id, execution_id)
+        .await?
+        .ok_or("cancelling publication Execution")?;
+    assert_eq!(cancelling_execution.status, ExecutionStatus::Cancelling);
+    assert_eq!(
+        cancelling_execution.cancellation_requested_at,
+        Some(canonical_timestamp(cancellation_request.now))
+    );
+    let cancellation_version = cancelling_execution.aggregate_version;
+    assert!(matches!(
+        cancelling_gate.reconcile(&cancellation_request).await?,
+        WorkloadPrestartGateStatus::Pending { .. }
+    ));
+    assert_eq!(
+        cancelling_executions
+            .find(organization_id, execution_id)
+            .await?
+            .ok_or("replayed cancelling publication Execution")?
+            .aggregate_version,
+        cancellation_version
+    );
 
     let binding = workloads
         .find_deployment_replica_binding(organization_id, projection.deployment_id)
@@ -643,8 +695,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
             }),
             operations.clone(),
         ),
-        projects.clone(),
-        executions.clone(),
+        execution_port(projects.clone(), executions.clone()),
     );
 
     assert!(matches!(
@@ -697,8 +748,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
             }),
             scope_drift_operations,
         ),
-        projects.clone(),
-        executions.clone(),
+        execution_port(projects.clone(), executions.clone()),
     );
     assert!(matches!(
         scope_drift_gate.reconcile(&restart_request).await,
@@ -727,8 +777,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
             }),
             failed_operations,
         ),
-        projects.clone(),
-        executions.clone(),
+        execution_port(projects.clone(), executions.clone()),
     );
     assert!(matches!(
         failed_gate.reconcile(&restart_request).await?,
@@ -771,8 +820,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
             }),
             operations.clone(),
         ),
-        projects.clone(),
-        queued_executions.clone(),
+        execution_port(projects.clone(), queued_executions.clone()),
     );
     assert!(matches!(
         queued_restart_gate.reconcile(&restart_request).await?,
@@ -814,8 +862,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts,
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads, operations),
-        projects,
-        legacy_executions.clone(),
+        execution_port(projects, legacy_executions.clone()),
     );
     assert!(matches!(
         legacy_gate.reconcile(&restart_request).await?,
