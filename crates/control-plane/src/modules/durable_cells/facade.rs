@@ -6,9 +6,10 @@
 //! root; consumers do not depend on an outer-layer module path.
 
 pub use super::infrastructure::{
-    ArtifactsDurableCellBuildArtifactAdapter, EdgeDurableCellRoutePublicationAdapter,
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
+    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
+    PostgresDurableCellDeploymentRepository,
 };
 pub use super::presentation::{
     CreateDurableCellApplicationRequest, DeployDurableCellApplicationFromAcl,

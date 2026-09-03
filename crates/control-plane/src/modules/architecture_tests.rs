@@ -625,6 +625,71 @@ fn durable_cells_execution_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_storage_admission_crosses_one_consumer_owned_port() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/storage_port.rs"))
+            .expect("read Durable Cells Storage port");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data Storage adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(deployment.contains("Arc<dyn IDurableCellStoragePort>"));
+    assert!(deployment.contains(".require_active_credentials("));
+    assert!(!deployment.contains("ObjectNamespaceCredentialAdmission"));
+    for forbidden in [
+        "crate::modules::data::application",
+        "IExactSecretVersionAccess",
+        "IExactSecretMaterializer",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "Durable Cells Storage port leaked owner implementation detail {forbidden}"
+        );
+    }
+    for required in [
+        "pub struct DurableCellStorageCredentialRequest",
+        "pub trait IDurableCellStoragePort",
+        "async fn require_active_credentials",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Storage port lost consumer-owned contract {required}"
+        );
+    }
+    for required in [
+        "impl IDurableCellStoragePort",
+        "ObjectNamespaceCredentialAdmission",
+        "ObjectNamespaceCredentialBinding",
+        "ISecretRepository",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Data Storage adapter lost owner translation {required}"
+        );
+    }
+
+    let mut admission_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("ObjectNamespaceCredentialAdmission")
+        {
+            admission_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        admission_sites,
+        lines("durable_cells/infrastructure/data_storage.rs"),
+        "Durable Cells must translate Data credential admission through one infrastructure adapter"
+    );
+}
+
+#[test]
 fn flow_contract_enters_only_the_workflow_dag_compiler() {
     const ALLOWED_FILE: &str = "workflow/domain/workflow_graph.rs";
     const ALLOWED_IMPORT: &str = "use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};";

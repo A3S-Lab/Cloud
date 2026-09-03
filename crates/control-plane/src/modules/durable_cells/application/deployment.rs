@@ -6,9 +6,10 @@ use super::provider_workload::{
     validate_durable_cell_provider_workload_binding, validate_pinned_celld_provider_workload,
 };
 use super::resource_access::{application_not_found, environment, revision_not_found};
+use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 use crate::modules::data::{
-    ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
-    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile,
+    ObjectNamespaceRetentionPolicy,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
@@ -80,6 +81,7 @@ pub struct DeployDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    storage: Arc<dyn IDurableCellStoragePort>,
     secrets: Arc<dyn ISecretRepository>,
     node_pools: Arc<dyn INodePoolRepository>,
 }
@@ -89,6 +91,7 @@ impl DeployDurableCellApplicationHandler {
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
+        storage: Arc<dyn IDurableCellStoragePort>,
         secrets: Arc<dyn ISecretRepository>,
         node_pools: Arc<dyn INodePoolRepository>,
     ) -> Self {
@@ -96,6 +99,7 @@ impl DeployDurableCellApplicationHandler {
             applications,
             deployments,
             workloads,
+            storage,
             secrets,
             node_pools,
         }
@@ -114,6 +118,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
         let applications = Arc::clone(&self.applications);
         let deployments = Arc::clone(&self.deployments);
         let workloads = Arc::clone(&self.workloads);
+        let storage = Arc::clone(&self.storage);
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
@@ -145,8 +150,13 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                         Ok(value) => value,
                         Err(error) => return Ok(Err(error)),
                     };
-                    if let Err(error) =
-                        admit_external_bindings(&secrets, node_pools.as_ref(), &command).await
+                    if let Err(error) = admit_external_bindings(
+                        storage.as_ref(),
+                        &secrets,
+                        node_pools.as_ref(),
+                        &command,
+                    )
+                    .await
                     {
                         return Ok(Err(error));
                     }
@@ -215,7 +225,8 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 return Ok(Err(error));
             }
             if let Err(error) =
-                admit_external_bindings(&secrets, node_pools.as_ref(), &command).await
+                admit_external_bindings(storage.as_ref(), &secrets, node_pools.as_ref(), &command)
+                    .await
             {
                 return Ok(Err(error));
             }
@@ -450,13 +461,13 @@ async fn load_current_record(
 }
 
 async fn admit_external_bindings(
+    storage: &dyn IDurableCellStoragePort,
     secrets: &Arc<dyn ISecretRepository>,
     node_pools: &dyn INodePoolRepository,
     command: &DeployDurableCellApplication,
 ) -> ApplicationResult<()> {
-    ObjectNamespaceCredentialAdmission::new(Arc::clone(secrets))
-        .require_active(&command.storage_credentials)
-        .await?;
+    let storage_request = storage_credential_request(&command.storage_credentials)?;
+    storage.require_active_credentials(&storage_request).await?;
     validate_secret_binding_references(
         secrets.as_ref(),
         command.organization_id,
@@ -471,6 +482,31 @@ async fn admit_external_bindings(
     )?;
     validate_node_pool_selection(node_pools, command.organization_id, command.node_pool_id).await?;
     Ok(())
+}
+
+fn storage_credential_request(
+    credentials: &ObjectNamespaceCredentialBinding,
+) -> ApplicationResult<DurableCellStorageCredentialRequest> {
+    credentials.validate().map_err(ApplicationError::Internal)?;
+    let spec = credentials.spec();
+    let request = DurableCellStorageCredentialRequest::new(
+        spec.organization_id,
+        spec.project_id,
+        spec.environment_id,
+        spec.namespace_id,
+        spec.generation,
+        spec.provider_profile_digest.clone(),
+        spec.access_key_id,
+        spec.secret_access_key,
+        spec.session_token,
+    )
+    .map_err(ApplicationError::Internal)?;
+    if request.binding_digest != *credentials.digest() {
+        return Err(ApplicationError::Internal(
+            "Durable Cell S0 credential digest changed at the storage boundary".into(),
+        ));
+    }
+    Ok(request)
 }
 
 async fn prepare_correlation(

@@ -25,8 +25,9 @@ pub use application::{
 };
 pub use application::{
     DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellRoutePublication,
-    DurableCellRoutePublicationRequest, IDurableCellBuildArtifactPort, IDurableCellExecutionPort,
-    IDurableCellRoutePublicationPort,
+    DurableCellRoutePublicationRequest, DurableCellStorageCredentialRequest,
+    IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellRoutePublicationPort,
+    IDurableCellStoragePort,
 };
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
@@ -34,16 +35,16 @@ pub(crate) use application::{
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
 pub use facade::{
     ArtifactsDurableCellBuildArtifactAdapter, CreateDurableCellApplicationRequest,
-    DeployDurableCellApplicationFromAcl, DeployDurableCellApplicationFromAclHandler,
-    DeployDurableCellApplicationRequest, DurableCellApplicationMutationResponse,
-    DurableCellApplicationRecordResponse, DurableCellApplicationResponse,
-    DurableCellApplicationRevisionResponse, DurableCellDeploymentCorrelationResponse,
-    DurableCellDeploymentResponse, DurableCellRoutePublicationResponse,
-    DurableCellSkillWorkloadRevisionBindingResponse, DurableCellWorkloadDeploymentResponse,
-    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter,
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
-    PublishDurableCellApplicationRouteRequest, ReviseDurableCellApplicationRequest,
-    SetDurableCellApplicationStateRequest,
+    DataDurableCellStorageAdapter, DeployDurableCellApplicationFromAcl,
+    DeployDurableCellApplicationFromAclHandler, DeployDurableCellApplicationRequest,
+    DurableCellApplicationMutationResponse, DurableCellApplicationRecordResponse,
+    DurableCellApplicationResponse, DurableCellApplicationRevisionResponse,
+    DurableCellDeploymentCorrelationResponse, DurableCellDeploymentResponse,
+    DurableCellRoutePublicationResponse, DurableCellSkillWorkloadRevisionBindingResponse,
+    DurableCellWorkloadDeploymentResponse, DurableCellsModule,
+    EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,
+    PostgresDurableCellDeploymentRepository, PublishDurableCellApplicationRouteRequest,
+    ReviseDurableCellApplicationRequest, SetDurableCellApplicationStateRequest,
 };
 pub(crate) use infrastructure::ExecutionsDurableCellExecutionAdapter;

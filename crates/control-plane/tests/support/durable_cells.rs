@@ -32,8 +32,8 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::{
-    ArtifactsDurableCellBuildArtifactAdapter, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository,
+    ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
+    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -1144,6 +1144,8 @@ fn projection_deployment_handler(
     executor: &PostgresExecutor,
     workloads: Arc<PostgresWorkloadRepository>,
 ) -> DeployDurableCellApplicationHandler {
+    let secrets = Arc::new(PostgresSecretRepository::new(executor.clone()));
+    let storage = Arc::new(DataDurableCellStorageAdapter::new(secrets.clone()));
     DeployDurableCellApplicationHandler::new(
         Arc::new(PostgresDurableCellApplicationRepository::new(
             executor.clone(),
@@ -1152,7 +1154,8 @@ fn projection_deployment_handler(
             executor.clone(),
         )),
         workloads,
-        Arc::new(PostgresSecretRepository::new(executor.clone())),
+        storage,
+        secrets,
         Arc::new(PostgresNodeRepository::new(executor.clone())),
     )
 }
