@@ -1,6 +1,3 @@
-use crate::modules::artifacts::domain::{
-    OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
-};
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
     ObjectNamespaceProviderProfile,
@@ -18,6 +15,7 @@ use crate::modules::workloads::{
     ManagedOwnerKind, ManagedOwnerReference, SecretBinding, SecretBindingTarget, ServiceProcess,
     ServiceTemplate, WorkloadRevision,
 };
+use a3s_cloud_contracts::{OCI_IMAGE_INDEX_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE};
 
 const ACCESS_KEY_BINDING: &str = "s0-access-key-id";
 const SECRET_ACCESS_KEY_BINDING: &str = "s0-secret-access-key";

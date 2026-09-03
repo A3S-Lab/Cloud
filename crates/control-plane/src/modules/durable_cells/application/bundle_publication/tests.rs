@@ -22,8 +22,10 @@ use crate::modules::durable_cells::domain::{
     DurableCellStorageBinding,
 };
 use crate::modules::durable_cells::infrastructure::{
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository,
 };
+use crate::modules::durable_cells::DurableCellBuildArtifactRequest;
 use crate::modules::executions::domain::ExecutionOutcome;
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::operations::domain::entities::{
@@ -102,18 +104,30 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     .await?;
 
     let bundle_digest = digest('b')?;
-    let bundle = typed_build_output(bundle_digest.as_str(), DURABLE_CELL_BUNDLE_MEDIA_TYPE, 4096);
+    let bundle_output =
+        typed_build_output(bundle_digest.as_str(), DURABLE_CELL_BUNDLE_MEDIA_TYPE, 4096);
     let build = succeeded_external_build_with_output(
         organization_id,
         project_id,
         environment_id,
         SourceRevisionId::new(),
-        bundle.clone(),
+        bundle_output,
         at,
     );
     let build_run_id = build.id;
     let builds = Arc::new(InMemoryBuildRunRepository::new());
     builds.seed_build(build).await;
+    let build_artifacts: Arc<dyn IDurableCellBuildArtifactPort> = Arc::new(
+        ArtifactsDurableCellBuildArtifactAdapter::new(builds.clone()),
+    );
+    let bundle = build_artifacts
+        .find_published_bundle(&DurableCellBuildArtifactRequest {
+            organization_id,
+            project_id,
+            environment_id,
+            build_run_id,
+        })
+        .await?;
 
     let service_profile = DurableCellServiceProfile::from_spec(DurableCellServiceProfileSpec {
         public_runtime_port: "cell-public".into(),
@@ -326,7 +340,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
         projects.clone(),
@@ -437,7 +451,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let queued_gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
         projects.clone(),
@@ -621,7 +635,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let sealed_gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
@@ -675,7 +689,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let scope_drift_gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
@@ -705,7 +719,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let failed_gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
@@ -749,7 +763,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let queued_restart_gate = DurableCellBundlePublicationGate::new(
         applications.clone(),
         deployments.clone(),
-        builds.clone(),
+        build_artifacts.clone(),
         workloads.clone(),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
@@ -797,7 +811,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let legacy_gate = DurableCellBundlePublicationGate::new(
         applications,
         legacy_deployments,
-        builds,
+        build_artifacts,
         workloads.clone(),
         DurableCellPriorWriterSeal::new(workloads, operations),
         projects,

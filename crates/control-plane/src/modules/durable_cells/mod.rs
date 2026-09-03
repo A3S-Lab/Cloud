@@ -21,14 +21,16 @@ pub use application::{
     StopDurableCellApplicationHandler, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
     MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
+pub use application::{
+    DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellRoutePublication,
+    DurableCellRoutePublicationRequest, IDurableCellBuildArtifactPort,
+    IDurableCellRoutePublicationPort,
+};
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
 };
-pub use application::{
-    DurableCellRoutePublication, DurableCellRoutePublicationRequest,
-    IDurableCellRoutePublicationPort,
-};
 pub use domain::{IDurableCellApplicationRepository, IDurableCellDeploymentRepository};
+pub use infrastructure::ArtifactsDurableCellBuildArtifactAdapter;
 pub use infrastructure::{
     EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellApplicationRepository,
     InMemoryDurableCellDeploymentRepository, PostgresDurableCellApplicationRepository,

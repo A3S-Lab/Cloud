@@ -9,7 +9,9 @@ use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellClassSpec, DurableCellRollbackPolicy,
     DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
-use crate::modules::durable_cells::infrastructure::InMemoryDurableCellApplicationRepository;
+use crate::modules::durable_cells::infrastructure::{
+    ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
+};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::projects::domain::entities::Environment;
@@ -113,11 +115,17 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         now + Duration::milliseconds(5),
     )
     .await;
+    let build_artifacts: Arc<dyn IDurableCellBuildArtifactPort> = Arc::new(
+        ArtifactsDurableCellBuildArtifactAdapter::new(builds.clone()),
+    );
 
     let applications = Arc::new(InMemoryDurableCellApplicationRepository::new());
     let workloads = Arc::new(InMemoryWorkloadRepository::default());
-    let create_handler =
-        CreateDurableCellApplicationHandler::new(projects, applications.clone(), builds.clone());
+    let create_handler = CreateDurableCellApplicationHandler::new(
+        projects,
+        applications.clone(),
+        build_artifacts.clone(),
+    );
     let create = CreateDurableCellApplication {
         organization_id,
         project_id,
@@ -262,7 +270,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     }
 
     let revise_handler =
-        ReviseDurableCellApplicationHandler::new(applications.clone(), builds.clone());
+        ReviseDurableCellApplicationHandler::new(applications.clone(), build_artifacts);
     let revise = ReviseDurableCellApplication {
         organization_id,
         project_id,

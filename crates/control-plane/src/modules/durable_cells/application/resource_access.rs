@@ -32,7 +32,3 @@ pub(super) fn revision_not_found() -> ApplicationError {
 pub(super) fn deployment_not_found() -> ApplicationError {
     ApplicationError::NotFound("Durable Cell deployment not found".into())
 }
-
-pub(super) fn build_run_not_found() -> ApplicationError {
-    ApplicationError::NotFound("Durable Cell BuildRun not found".into())
-}
