@@ -1766,7 +1766,7 @@ recover-before-cancel ordering, a stable Runtime generation and provider
 identity across process death, a strictly newer process-incarnation timestamp,
 and cleanup. That retained gate consumed exact crates.io releases
 `a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`. The current
-component pins the exact `a3s-code-core 8.0.4` Git revision for the Code-owned
+component pins the exact `a3s-code-core 8.1.0` Git revision for the Code-owned
 final release contract; it requires fresh retained real-provider evidence. The
 component-level `A1.3` foundation now freezes the provider-neutral contract and
 canonical immutable profile/capability evidence, migrates new Code command and

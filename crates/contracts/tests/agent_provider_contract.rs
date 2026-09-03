@@ -94,7 +94,7 @@ fn immutable_profiles_bind_canonical_acl_and_capabilities() {
         AgentProviderProfile::parse_acl(REFERENCE_PROFILE).expect("reference provider profile");
 
     assert_eq!(code.kind(), "a3s.code");
-    assert_eq!(code.revision(), "8.0.4");
+    assert_eq!(code.revision(), "8.1.0");
     assert_eq!(code.protocol(), AGENT_PROVIDER_PROTOCOL_V1);
     assert_eq!(code.native_protocol(), "a3s.code.agent.v1");
     assert_eq!(code.canonical_acl(), CODE_PROFILE);
