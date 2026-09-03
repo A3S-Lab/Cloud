@@ -121,6 +121,14 @@ pub struct FlowCoordinatorReport {
     pub reconciled_before_work: usize,
     pub reconciled_after_work: usize,
     pub reconciliation_failures: usize,
+    /// Bounded operation identifiers and errors observed during this cycle.
+    ///
+    /// The coordinator deliberately keeps reconciliation failures non-fatal so
+    /// one malformed operation cannot stop the process-level Flow clock.  The
+    /// details still belong in the cycle report, however: callers driving a
+    /// synchronous convergence gate need to distinguish a pending operation
+    /// from one that cannot be replayed.
+    pub reconciliation_error_details: Vec<String>,
     pub recovered_tasks: usize,
     pub enqueued_tasks: usize,
     pub handled_tasks: usize,
@@ -470,11 +478,18 @@ impl FlowOperationCoordinator {
         self.reject_new_terminal_failures(before_queue, after_queue)
             .await?;
         let after = self.reconciler.run_once().await?;
+        let reconciliation_error_details = before
+            .failures
+            .iter()
+            .chain(after.failures.iter())
+            .map(|failure| format!("{}: {}", failure.operation_id, failure.error))
+            .collect::<Vec<_>>();
         Ok(FlowQueueCycle {
             report: FlowCoordinatorReport {
                 reconciled_before_work: before.projected,
                 reconciled_after_work: after.projected,
                 reconciliation_failures: before.failures.len() + after.failures.len(),
+                reconciliation_error_details,
                 recovered_tasks: 0,
                 enqueued_tasks: tick.enqueued_tasks,
                 handled_tasks: after_queue.completed.saturating_sub(before_queue.completed),

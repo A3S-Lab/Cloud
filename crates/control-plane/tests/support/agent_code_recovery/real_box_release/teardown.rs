@@ -180,6 +180,7 @@ pub(super) fn verify_clean_state(home: &Path, node_state: &Path) -> TestResult {
         || directory_has_entries(&node_state.join("artifacts/mounts"))?
         || directory_has_entries(&node_state.join("artifacts/outputs"))?
         || directory_has_entries(&node_state.join("artifacts/blobs/sha256"))?
+        || directory_has_entries(&node_state.join("artifacts/blob-receipts/sha256"))?
         || directory_has_entries(&node_state.join("artifacts/staging"))?
     {
         return Err(

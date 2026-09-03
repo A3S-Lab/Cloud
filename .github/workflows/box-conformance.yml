@@ -833,6 +833,54 @@ jobs:
             >"$EVIDENCE_DIR/skill-artifact-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/skill-artifact-certification.txt")" -eq 1
 
+      - name: Certify Skill Workload binding, rebinding, unbinding, and rollback through PostgreSQL and real Box
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_BOX: "1"
+          A3S_CLOUD_TEST_POSTGRES_URL: postgresql://postgres:a3s-cloud-conformance@127.0.0.1:5432/postgres
+          A3S_DEPS_STUB: "1"
+          A3S_REGISTRY_PROTOCOL: http
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          set +e
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
+            A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES="$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
+              postgres_skill_workload_binding_rebind_unbind_and_rollback_run_through_real_box \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/skill-workload-lifecycle.log"
+          gate_status=${PIPESTATUS[0]}
+          set -e
+          if (( gate_status != 0 )); then
+            exit "$gate_status"
+          fi
+          grep --fixed-strings \
+            'A3S_CLOUD_A0_5_REAL_BOX_SKILL_LIFECYCLE_CERTIFIED provider=postgresql/a3s-box bind=release1 rebind=release2 unbind=none rollback=release1 revisions=5 manifest_downloads=1 skill_downloads=2 cleanup=removed' \
+            "$EVIDENCE_DIR/skill-workload-lifecycle.log" \
+            >"$EVIDENCE_DIR/skill-workload-lifecycle-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/skill-workload-lifecycle-certification.txt")" -eq 1
+
       - name: Certify a published Agent release through PostgreSQL and real Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent

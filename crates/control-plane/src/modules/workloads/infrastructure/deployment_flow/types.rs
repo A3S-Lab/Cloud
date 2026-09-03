@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, NodeCommandId, NodeId, OrganizationId, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, DeploymentId, NodeCommandId, NodeId, OrganizationId,
+    Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::services::DeploymentGatewayPublication;
 use a3s_runtime::contract::RuntimeUnitSpec;
@@ -15,6 +16,102 @@ pub(super) struct DeploymentFlowInput {
     #[serde(default)]
     pub rollback_source_revision_id: Option<WorkloadRevisionId>,
     pub workload_id: WorkloadId,
+    // Deployment operation inputs also carry durable provenance for the command that
+    // created the deployment. The Flow only needs the identifiers above, but it must
+    // be able to replay the exact persisted operation envelope without dropping or
+    // rejecting that metadata.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_asset_id: Option<AssetId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_asset_release_id: Option<AssetReleaseId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skill_binding_action: Option<SkillBindingAction>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_source_revision_id: Option<SourceRevisionId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<BuildRunId>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub published_artifact_digest: Option<Sha256Digest>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(super) enum SkillBindingAction {
+    Bind,
+    Unbind,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn accepts_persisted_skill_and_source_metadata_while_rejecting_unknown_fields() {
+        let deployment_id = DeploymentId::new();
+        let organization_id = OrganizationId::new();
+        let revision_id = WorkloadRevisionId::new();
+        let workload_id = WorkloadId::new();
+        let rollback_source_revision_id = WorkloadRevisionId::new();
+        let skill_asset_id = AssetId::new();
+        let skill_asset_release_id = AssetReleaseId::new();
+        let source_revision_id = SourceRevisionId::new();
+        let build_run_id = BuildRunId::new();
+        let published_artifact_digest = Sha256Digest::from_bytes(b"deployment-flow");
+
+        let persisted = json!({
+            "deploymentId": deployment_id,
+            "organizationId": organization_id,
+            "revisionId": revision_id,
+            "rollbackSourceRevisionId": rollback_source_revision_id,
+            "workloadId": workload_id,
+            "skillAssetId": skill_asset_id,
+            "skillAssetReleaseId": skill_asset_release_id,
+            "skillBindingAction": "bind",
+            "externalSourceRevisionId": source_revision_id,
+            "buildRunId": build_run_id,
+            "publishedArtifactDigest": published_artifact_digest,
+        });
+
+        let decoded: DeploymentFlowInput = serde_json::from_value(persisted.clone())
+            .expect("persisted deployment operation metadata should be replayable");
+        assert_eq!(decoded.deployment_id, deployment_id);
+        assert_eq!(
+            decoded.rollback_source_revision_id,
+            Some(rollback_source_revision_id)
+        );
+        assert_eq!(decoded.skill_asset_id, Some(skill_asset_id));
+        assert_eq!(decoded.skill_asset_release_id, Some(skill_asset_release_id));
+        assert_eq!(decoded.skill_binding_action, Some(SkillBindingAction::Bind));
+        assert_eq!(
+            decoded.external_source_revision_id,
+            Some(source_revision_id)
+        );
+        assert_eq!(decoded.build_run_id, Some(build_run_id));
+        assert_eq!(
+            decoded.published_artifact_digest,
+            Some(published_artifact_digest.clone())
+        );
+        assert_eq!(
+            serde_json::to_value(&decoded).expect("serialize metadata"),
+            persisted
+        );
+
+        let legacy = json!({
+            "deploymentId": deployment_id,
+            "organizationId": organization_id,
+            "revisionId": revision_id,
+            "workloadId": workload_id,
+        });
+        let legacy_decoded: DeploymentFlowInput = serde_json::from_value(legacy)
+            .expect("legacy deployment operation input should remain replayable");
+        assert!(legacy_decoded.skill_asset_id.is_none());
+        assert!(legacy_decoded.external_source_revision_id.is_none());
+
+        let mut unknown = persisted;
+        unknown["unexpectedMetadata"] = json!(true);
+        assert!(serde_json::from_value::<DeploymentFlowInput>(unknown).is_err());
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

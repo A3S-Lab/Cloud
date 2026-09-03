@@ -7,7 +7,16 @@ use a3s_cloud_contracts::{
     AGENT_RELEASE_ENTRYPOINT_ARGS_V1, AGENT_RELEASE_ENTRYPOINT_COMMAND_V1,
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::assets::{
+    AssetReleaseArtifact, AssetReleasePublished, TransitionAssetReleaseWrite,
+};
+use a3s_cloud_control_plane::modules::assets::{
+    AssetReleaseDrafted, AssetReleaseVersion, CreateAssetReleaseWrite, CreateAssetWrite,
+};
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
     OperationStatus, OperationSubject, PostgresOperationRepository, ReconcileOperationsHandler,
@@ -17,7 +26,15 @@ use a3s_cloud_control_plane::modules::secrets::{
     CreateSecret, CreateSecretHandler, EncryptedSecretValue, ISecretEncryptionService,
     ProjectsSecretEnvironmentAccessAdapter, SecretEncryptionError, SecretPlaintext,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{DeploymentId, WorkloadId};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, SecretId};
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::workloads::application::{
+    BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, RollbackWorkloadDeployment,
+    RollbackWorkloadDeploymentHandler, UnbindSkillWorkloadDeployment,
+    UnbindSkillWorkloadDeploymentHandler,
+};
 use a3s_cloud_control_plane::modules::workloads::application::{
     STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
@@ -34,6 +51,8 @@ use a3s_cloud_node_agent::{
     NodeArtifactTransport, NodeControlClientError, NodeResourceInventoryAuthority,
     NodeSecretTransport, ResourceInventoryError, SecretMaterial,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_runtime::contract::RuntimeExecRequest;
 use a3s_runtime::contract::{
     ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeHealthState, RuntimeInspection,
     RuntimeMountSource, SecretTarget,
@@ -54,6 +73,12 @@ use fixtures::*;
 use manifest::*;
 use teardown::*;
 
+#[cfg(feature = "persistence-conformance")]
+#[path = "real_box_release/skill_lifecycle.rs"]
+mod skill_lifecycle;
+#[cfg(feature = "persistence-conformance")]
+use skill_lifecycle::exercise_skill_binding_lifecycle;
+
 const AGENT_RUNTIME_IMAGE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE";
 const AGENT_RUNTIME_MEDIA_TYPE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE";
 const AGENT_RUNTIME_SIZE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES";
@@ -66,6 +91,16 @@ const MAX_MANIFEST_ARCHIVE_BYTES: u64 = 1024 * 1024;
 const REAL_BOX_COMMAND_LEASE_SECONDS: i64 = 120;
 
 pub(super) async fn exercise(postgres_url: String) -> TestResult {
+    exercise_mode(postgres_url, false).await
+}
+
+pub(super) async fn exercise_skill_binding(postgres_url: String) -> TestResult {
+    exercise_mode(postgres_url, true).await
+}
+
+async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResult {
+    #[cfg(not(feature = "persistence-conformance"))]
+    let _ = skill_lifecycle;
     require_gate()?;
     let runtime_image = PublishedRuntimeImage::from_environment()?;
     let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
@@ -150,11 +185,10 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
     let runtime_state = tempfile::tempdir()?;
     let node_state = tempfile::tempdir()?;
     let proposed_node_id = NodeId::new();
-    let transport = Arc::new(PublishedManifestTransport {
-        artifact: manifest_artifact.clone(),
-        archive: manifest_archive,
-        downloads: AtomicUsize::new(0),
-    });
+    let transport = Arc::new(PublishedManifestTransport::new(
+        manifest_artifact.clone(),
+        manifest_archive,
+    ));
     let artifact_manager = Arc::new(
         NodeArtifactManager::new(
             node_state.path(),
@@ -346,6 +380,36 @@ pub(super) async fn exercise(postgres_url: String) -> TestResult {
         deployment_operation_id,
     )
     .await?;
+
+    #[cfg(feature = "persistence-conformance")]
+    if skill_lifecycle {
+        return exercise_skill_binding_lifecycle(
+            assets,
+            workloads,
+            Arc::new(PostgresSecretRepository::new(executor.clone())),
+            nodes,
+            &coordinator,
+            operations,
+            &executor_on_node,
+            runtime.as_ref(),
+            transport.as_ref(),
+            secret_transport.as_ref(),
+            &runtime_capabilities,
+            organization_id,
+            workload_id,
+            node_id,
+            agent_instance_id,
+            provider_secret_id,
+            signing_secret_id,
+            workload.bundle.revision.clone(),
+            spec.clone(),
+            apply.sequence,
+            deployment_operation_id,
+            &home,
+            node_state.path(),
+        )
+        .await;
+    }
 
     let provider_resource_id = first_observation
         .provider_resource_id
@@ -778,7 +842,14 @@ async fn next_flow_command(
 ) -> TestResult<NodeCommandEnvelope> {
     let deadline = Instant::now() + StdDuration::from_secs(60);
     loop {
-        coordinator.run_once().await?;
+        let report = coordinator.run_once().await?;
+        if !report.reconciliation_error_details.is_empty() {
+            return Err(invalid(format!(
+                "deployment Flow reconciliation failed while waiting for {expected:?}: {}",
+                report.reconciliation_error_details.join("; ")
+            ))
+            .into());
+        }
         let lease = nodes
             .lease_commands(
                 &NodeCommandLeaseRequest {

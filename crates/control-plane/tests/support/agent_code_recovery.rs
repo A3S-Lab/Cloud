@@ -431,3 +431,8 @@ mod real_box_release;
 pub async fn exercise_published_agent_release_real_box(postgres_url: String) -> TestResult {
     real_box_release::exercise(postgres_url).await
 }
+
+#[cfg(target_os = "linux")]
+pub async fn exercise_skill_workload_real_box(postgres_url: String) -> TestResult {
+    real_box_release::exercise_skill_binding(postgres_url).await
+}
