@@ -244,8 +244,9 @@ Current boundary debt:
 - the Route publication path now crosses one
   `IDurableCellRoutePublicationPort` and one Edge anti-corruption adapter;
   remaining Workloads handlers and repositories still need equivalent ports;
-- presentation DTOs still reuse the Workloads deployment DTO, while Route
-  publication uses the Durable Cells-owned immutable projection;
+- the deployment response now owns a Durable Cells workload projection instead
+  of reusing the Workloads Presentation DTO; the ACL admission parser still
+  consumes the existing Workloads manifest contract;
 - the Cell provider profile is correctly frozen in Cloud and bound into
   Runtime only through its opaque digest.
 

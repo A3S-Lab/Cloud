@@ -17,7 +17,6 @@ audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/deployment_admission.rs -> workloads/presentation
-durable_cells/presentation/dto.rs -> workloads/presentation
 edge/presentation/controllers/domain_claim_commands_controller.rs -> identity/presentation
 edge/presentation/controllers/domain_claim_queries_controller.rs -> identity/presentation
 edge/presentation/controllers/gateway_scope_commands_controller.rs -> identity/presentation
@@ -478,6 +477,16 @@ fn durable_cells_route_publication_crosses_one_consumer_owned_port() {
         lines("durable_cells/infrastructure/edge_route_publication.rs"),
         "Durable Cells must translate Edge publication through one infrastructure adapter"
     );
+}
+
+#[test]
+fn durable_cells_deployment_response_owns_its_workload_projection() {
+    let dto = std::fs::read_to_string(module_root().join("durable_cells/presentation/dto.rs"))
+        .expect("read Durable Cells presentation DTO");
+    let dto = production_source(&dto);
+    assert!(dto.contains("pub struct DurableCellWorkloadDeploymentResponse"));
+    assert!(dto.contains("impl DurableCellWorkloadDeploymentResponse"));
+    assert!(!dto.contains("modules::workloads::presentation"));
 }
 
 #[test]

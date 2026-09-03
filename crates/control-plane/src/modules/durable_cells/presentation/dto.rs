@@ -6,7 +6,8 @@ use crate::modules::durable_cells::{
     DurableCellApplicationMutationResult, DurableCellDeploymentMutationResult,
     DurableCellRoutePublication, DurableCellRoutePublicationResult,
 };
-use crate::modules::workloads::presentation::WorkloadDeploymentResponse;
+use crate::modules::workloads::domain::entities::SkillWorkloadRevisionBinding;
+use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -48,24 +49,6 @@ pub struct PublishDurableCellApplicationRouteRequest {
     pub domain_claim_id: Uuid,
     pub hostname: String,
     pub path_prefix: String,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn deployment_request_preserves_the_pre_c3b_payload_shape() {
-        let request: DeployDurableCellApplicationRequest =
-            serde_json::from_value(serde_json::json!({
-                "serviceProfileAcl": "service",
-                "providerWorkloadAcl": "workload",
-                "storageBindingAcl": "storage"
-            }))
-            .expect("legacy Durable Cell deployment request");
-
-        assert!(request.storage_provider_profile_acl.is_none());
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -245,7 +228,7 @@ impl From<DurableCellDeployment> for DurableCellDeploymentCorrelationResponse {
 #[serde(rename_all = "camelCase")]
 pub struct DurableCellDeploymentResponse {
     pub correlation: DurableCellDeploymentCorrelationResponse,
-    pub workload: WorkloadDeploymentResponse,
+    pub workload: DurableCellWorkloadDeploymentResponse,
     pub replayed: bool,
 }
 
@@ -253,8 +236,116 @@ impl From<DurableCellDeploymentMutationResult> for DurableCellDeploymentResponse
     fn from(result: DurableCellDeploymentMutationResult) -> Self {
         Self {
             correlation: result.correlation.into(),
-            workload: WorkloadDeploymentResponse::from_bundle(result.workload, None),
+            workload: DurableCellWorkloadDeploymentResponse::from_bundle(result.workload, None),
             replayed: result.replayed,
+        }
+    }
+}
+
+/// Durable Cells' own HTTP projection of the managed Workload result.
+///
+/// The Workloads presentation DTO is intentionally not reused here: its
+/// schema belongs to the Workloads bounded context. This projection preserves
+/// the established wire shape while keeping the Durable Cells presentation
+/// boundary responsible for its own response contract.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableCellWorkloadDeploymentResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub workload_id: Uuid,
+    pub revision_id: Uuid,
+    pub deployment_id: Uuid,
+    pub operation_id: Uuid,
+    pub generation: u64,
+    pub status: String,
+    pub artifact_source_uri: String,
+    pub expected_artifact_digest: Option<String>,
+    pub request_digest: String,
+    pub artifact_digest: Option<String>,
+    pub template_digest: Option<String>,
+    pub requested_at: DateTime<Utc>,
+    pub replayed: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub external_source_revision_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub build_run_id: Option<Uuid>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rollback_source_revision_id: Option<Uuid>,
+    pub skill_bindings: Vec<DurableCellSkillWorkloadRevisionBindingResponse>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableCellSkillWorkloadRevisionBindingResponse {
+    pub organization_id: Uuid,
+    pub asset_id: Uuid,
+    pub asset_release_id: Uuid,
+    pub artifact_digest: String,
+    pub artifact_media_type: String,
+    pub artifact_size_bytes: u64,
+    pub mount_name: String,
+    pub mount_target: String,
+}
+
+impl From<&SkillWorkloadRevisionBinding> for DurableCellSkillWorkloadRevisionBindingResponse {
+    fn from(binding: &SkillWorkloadRevisionBinding) -> Self {
+        Self {
+            organization_id: binding.organization_id().as_uuid(),
+            asset_id: binding.asset_id().as_uuid(),
+            asset_release_id: binding.asset_release_id().as_uuid(),
+            artifact_digest: binding.artifact_digest().to_string(),
+            artifact_media_type: binding.artifact_media_type().into(),
+            artifact_size_bytes: binding.artifact_size_bytes(),
+            mount_name: binding.mount_name(),
+            mount_target: binding.mount_target(),
+        }
+    }
+}
+
+impl DurableCellWorkloadDeploymentResponse {
+    fn from_bundle(bundle: DeploymentBundle, rollback_source_revision_id: Option<Uuid>) -> Self {
+        let external_source_revision_id = bundle
+            .revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.source_revision_id.as_uuid());
+        let build_run_id = bundle
+            .revision
+            .external_build
+            .as_ref()
+            .map(|reference| reference.build_run_id.as_uuid());
+        let skill_bindings = bundle
+            .revision
+            .skill_bindings()
+            .iter()
+            .map(DurableCellSkillWorkloadRevisionBindingResponse::from)
+            .collect();
+        Self {
+            organization_id: bundle.workload.organization_id.as_uuid(),
+            project_id: bundle.workload.project_id.as_uuid(),
+            environment_id: bundle.workload.environment_id.as_uuid(),
+            workload_id: bundle.workload.id.as_uuid(),
+            revision_id: bundle.revision.id.as_uuid(),
+            deployment_id: bundle.deployment.id.as_uuid(),
+            operation_id: bundle.operation.id.as_uuid(),
+            generation: bundle.revision.generation,
+            status: bundle.deployment.status.as_str().into(),
+            artifact_source_uri: bundle.revision.request.artifact.uri,
+            expected_artifact_digest: bundle.revision.request.artifact.expected_digest,
+            request_digest: bundle.revision.request_digest,
+            artifact_digest: bundle
+                .revision
+                .template
+                .map(|template| template.artifact.digest),
+            template_digest: bundle.revision.template_digest,
+            requested_at: bundle.deployment.requested_at,
+            replayed: bundle.replayed,
+            external_source_revision_id,
+            build_run_id,
+            rollback_source_revision_id,
+            skill_bindings,
         }
     }
 }
@@ -272,5 +363,23 @@ impl From<DurableCellRoutePublicationResult> for DurableCellRoutePublicationResp
             correlation: result.correlation.into(),
             publication: result.publication,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deployment_request_preserves_the_pre_c3b_payload_shape() {
+        let request: DeployDurableCellApplicationRequest =
+            serde_json::from_value(serde_json::json!({
+                "serviceProfileAcl": "service",
+                "providerWorkloadAcl": "workload",
+                "storageBindingAcl": "storage"
+            }))
+            .expect("legacy Durable Cell deployment request");
+
+        assert!(request.storage_provider_profile_acl.is_none());
     }
 }

@@ -12,7 +12,8 @@ pub use dto::{
     DurableCellApplicationMutationResponse, DurableCellApplicationRecordResponse,
     DurableCellApplicationResponse, DurableCellApplicationRevisionResponse,
     DurableCellDeploymentCorrelationResponse, DurableCellDeploymentResponse,
-    DurableCellRoutePublicationResponse, PublishDurableCellApplicationRouteRequest,
+    DurableCellRoutePublicationResponse, DurableCellSkillWorkloadRevisionBindingResponse,
+    DurableCellWorkloadDeploymentResponse, PublishDurableCellApplicationRouteRequest,
     ReviseDurableCellApplicationRequest, SetDurableCellApplicationStateRequest,
 };
 pub use durable_cells_module::DurableCellsModule;
