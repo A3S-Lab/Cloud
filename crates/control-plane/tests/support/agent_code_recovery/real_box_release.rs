@@ -7,11 +7,15 @@ use a3s_cloud_contracts::{
     AGENT_RELEASE_ENTRYPOINT_ARGS_V1, AGENT_RELEASE_ENTRYPOINT_COMMAND_V1,
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
 };
+#[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
+#[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::assets::{
-    AssetReleaseArtifact, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseVersion,
-    CreateAssetReleaseWrite, CreateAssetWrite, TransitionAssetReleaseWrite,
+    AssetReleaseArtifact, AssetReleasePublished, TransitionAssetReleaseWrite,
+};
+use a3s_cloud_control_plane::modules::assets::{
+    AssetReleaseDrafted, AssetReleaseVersion, CreateAssetReleaseWrite, CreateAssetWrite,
 };
 use a3s_cloud_control_plane::modules::operations::{
     FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
@@ -22,13 +26,17 @@ use a3s_cloud_control_plane::modules::secrets::{
     CreateSecret, CreateSecretHandler, EncryptedSecretValue, ISecretEncryptionService,
     ProjectsSecretEnvironmentAccessAdapter, SecretEncryptionError, SecretPlaintext,
 };
-use a3s_cloud_control_plane::modules::shared_kernel::domain::{
-    DeploymentId, OperationId, SecretId, WorkloadId,
-};
+#[cfg(feature = "persistence-conformance")]
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{DeploymentId, WorkloadId};
+use a3s_cloud_control_plane::modules::shared_kernel::domain::{OperationId, SecretId};
+#[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::workloads::application::{
     BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, RollbackWorkloadDeployment,
     RollbackWorkloadDeploymentHandler, UnbindSkillWorkloadDeployment,
-    UnbindSkillWorkloadDeploymentHandler, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
+    UnbindSkillWorkloadDeploymentHandler,
+};
+use a3s_cloud_control_plane::modules::workloads::application::{
+    STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use a3s_cloud_control_plane::modules::workloads::{
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
@@ -43,9 +51,11 @@ use a3s_cloud_node_agent::{
     NodeArtifactTransport, NodeControlClientError, NodeResourceInventoryAuthority,
     NodeSecretTransport, ResourceInventoryError, SecretMaterial,
 };
+#[cfg(feature = "persistence-conformance")]
+use a3s_runtime::contract::RuntimeExecRequest;
 use a3s_runtime::contract::{
-    ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeExecRequest, RuntimeHealthState,
-    RuntimeInspection, RuntimeMountSource, SecretTarget,
+    ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeHealthState, RuntimeInspection,
+    RuntimeMountSource, SecretTarget,
 };
 use a3s_runtime::RuntimeClient;
 use async_trait::async_trait;
@@ -63,8 +73,10 @@ use fixtures::*;
 use manifest::*;
 use teardown::*;
 
+#[cfg(feature = "persistence-conformance")]
 #[path = "real_box_release/skill_lifecycle.rs"]
 mod skill_lifecycle;
+#[cfg(feature = "persistence-conformance")]
 use skill_lifecycle::exercise_skill_binding_lifecycle;
 
 const AGENT_RUNTIME_IMAGE_ENV: &str = "A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE";
@@ -87,6 +99,8 @@ pub(super) async fn exercise_skill_binding(postgres_url: String) -> TestResult {
 }
 
 async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResult {
+    #[cfg(not(feature = "persistence-conformance"))]
+    let _ = skill_lifecycle;
     require_gate()?;
     let runtime_image = PublishedRuntimeImage::from_environment()?;
     let executor = migrate_and_connect_for_test(&postgres_url, 8).await?;
@@ -367,6 +381,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     )
     .await?;
 
+    #[cfg(feature = "persistence-conformance")]
     if skill_lifecycle {
         if !runtime_capabilities
             .artifact_media_types
