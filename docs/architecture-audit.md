@@ -237,6 +237,10 @@ Current boundary debt:
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import Data,
   Fleet, Operations, and Workloads internal owner types or repositories;
+- S0 credential admission now crosses one consumer-owned
+  `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
+  provider-profile/retention projections and recovery operations remain in the
+  follow-up storage slices;
 - node-bound publication Tasks now cross one
   `IDurableCellExecutionPort` and one Executions anti-corruption adapter;
   Durable Cells owns only the finite-Task request and lifecycle evidence
@@ -276,7 +280,8 @@ The required Cloud refactor is a set of consumer-owned ports:
 
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
-- DurableCellStoragePort;
+- `IDurableCellStoragePort` (implemented for exact S0 credential admission;
+  immutable profile and recovery projections remain to be split);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
   publication Task creation, recovery, observation, and cancellation);
 - DurableCellWorkloadPort;

@@ -105,13 +105,14 @@ use crate::modules::developer_workflows::{
 };
 use crate::modules::durable_cells::{
     ArtifactsDurableCellBuildArtifactAdapter, CreateDurableCellApplicationHandler,
-    DeployDurableCellApplicationFromAclHandler, DeployDurableCellApplicationHandler,
-    DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
-    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter,
-    ExecutionsDurableCellExecutionAdapter, GetDurableCellApplicationHandler,
-    GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
-    IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
-    IDurableCellRoutePublicationPort, ListDurableCellApplicationRevisionsHandler,
+    DataDurableCellStorageAdapter, DeployDurableCellApplicationFromAclHandler,
+    DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
+    DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter, DurableCellsModule,
+    EdgeDurableCellRoutePublicationAdapter, ExecutionsDurableCellExecutionAdapter,
+    GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
+    IDurableCellApplicationRepository, IDurableCellBuildArtifactPort,
+    IDurableCellDeploymentRepository, IDurableCellExecutionPort, IDurableCellRoutePublicationPort,
+    IDurableCellStoragePort, ListDurableCellApplicationRevisionsHandler,
     ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
     StopDurableCellApplicationHandler,
@@ -2473,6 +2474,9 @@ fn build_management_application_with_health(
     let deploy_durable_cell_deployments = durable_cell_deployments;
     let deploy_durable_cell_workloads = Arc::clone(&workloads);
     let deploy_durable_cell_secrets = Arc::clone(&secrets);
+    let deploy_durable_cell_storage: Arc<dyn IDurableCellStoragePort> = Arc::new(
+        DataDurableCellStorageAdapter::new(Arc::clone(&deploy_durable_cell_secrets)),
+    );
     let deploy_durable_cell_node_pools = Arc::clone(&node_pools);
     let deploy_durable_cell_applications = Arc::clone(&get_durable_cell_applications);
     let create_durable_cell_builds = Arc::clone(&durable_cell_build_artifacts);
@@ -2481,6 +2485,7 @@ fn build_management_application_with_health(
         deploy_durable_cell_applications,
         deploy_durable_cell_deployments,
         deploy_durable_cell_workloads,
+        deploy_durable_cell_storage,
         deploy_durable_cell_secrets,
         deploy_durable_cell_node_pools,
     );

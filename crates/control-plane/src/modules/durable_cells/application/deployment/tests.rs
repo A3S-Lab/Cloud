@@ -16,7 +16,8 @@ use crate::modules::durable_cells::domain::{
     ReviseDurableCellApplicationWrite,
 };
 use crate::modules::durable_cells::infrastructure::{
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    DataDurableCellStorageAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -161,6 +162,8 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let node_pools = Arc::new(InMemoryNodeRepository::new());
     let secret_port: Arc<dyn ISecretRepository> = secrets.clone();
+    let storage_port: Arc<dyn IDurableCellStoragePort> =
+        Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secret_port)));
 
     let mut missing_storage_process = command.clone();
     missing_storage_process.workload_template.process.args = vec![
@@ -188,9 +191,14 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         record.application.id, record.revision.id,
     )));
     assert_ne!(correlation_idempotency.scope, workload_idempotency.scope);
-    admit_external_bindings(&secret_port, node_pools.as_ref(), &command)
-        .await
-        .expect("external admission");
+    admit_external_bindings(
+        storage_port.as_ref(),
+        &secret_port,
+        node_pools.as_ref(),
+        &command,
+    )
+    .await
+    .expect("external admission");
     let correlation = prepare_correlation(workloads.as_ref(), &record, &command, &prepared)
         .await
         .expect("correlation");
@@ -212,6 +220,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         applications.clone(),
         deployments.clone(),
         workloads.clone(),
+        storage_port,
         secret_port,
         node_pools,
     );
