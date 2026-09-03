@@ -8,6 +8,7 @@ use a3s_cloud_contracts::{
     artifact_uri, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, NodeCommandAck, NodeCommandEnvelope, NodeCommandMetadata,
     NodeCommandOutcome, NodeCommandPayload, NodeCommandResult, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    SKILL_BUNDLE_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{
     ArtifactRef, IsolationLevel, NetworkMode, ResourceLimits, RestartPolicy, RuntimeActionRequest,
@@ -27,6 +28,8 @@ use std::sync::{Arc, Mutex};
 use uuid::Uuid;
 
 type TestResult<T> = Result<T, Box<dyn Error + Send + Sync>>;
+
+const REAL_BOX_SKILL_MOUNT_TARGET: &str = "/a3s/skills/018f3c1e-2b4a-7c6d-8e90-1234567890ab";
 
 struct GateArtifactTransport {
     input: ArtifactRef,
@@ -282,6 +285,159 @@ async fn real_box_materializes_artifacts_volumes_tmpfs_and_publishes_outputs() -
     Ok(())
 }
 
+#[tokio::test]
+#[ignore = "requires A3S_CLOUD_TEST_BOX=1 on the dedicated real Box provider runner"]
+async fn real_box_materializes_skill_bundle_mount_read_only_and_cleans() -> TestResult<()> {
+    require_gate()?;
+    let home = PathBuf::from(std::env::var("A3S_HOME")?).canonicalize()?;
+    let runtime_state = tempfile::tempdir()?;
+    let node_state = tempfile::tempdir()?;
+    let node_id = Uuid::now_v7();
+    let aggregate_id = Uuid::now_v7();
+    let skill_bytes = directory_archive(&[("SKILL.md", b"A3S skill payload\n")])?;
+    let skill = cloud_artifact_with_media(&skill_bytes, SKILL_BUNDLE_MEDIA_TYPE)?;
+    let transport = Arc::new(GateArtifactTransport {
+        input: skill.clone(),
+        input_bytes: skill_bytes,
+        downloads: AtomicUsize::new(0),
+        uploads: Mutex::new(Vec::new()),
+    });
+    let artifact_manager = Arc::new(
+        NodeArtifactManager::new(
+            node_state.path(),
+            ArtifactConfig {
+                max_blob_bytes: 4 * 1024 * 1024,
+                max_entries: 1_000,
+                max_file_bytes: 2 * 1024 * 1024,
+                max_expanded_bytes: 8 * 1024 * 1024,
+            },
+            node_id,
+            transport.clone(),
+        )
+        .map_err(invalid)?,
+    );
+    let config = BoxRuntimeConfig {
+        home_dir: home.clone(),
+        secret_root: home.join("runtime-secrets").canonicalize()?,
+        isolation: BoxRuntimeIsolation::Sandbox,
+        control_timeout_ms: 120_000,
+        task_poll_interval_ms: 25,
+        sev_snp: None,
+    };
+    let spec = skill_task_spec(skill.clone())?;
+    let mount = spec
+        .mounts
+        .first()
+        .ok_or_else(|| invalid("Skill Task did not declare its Artifact mount"))?;
+    if mount.name != "skill-bundle"
+        || mount.target != REAL_BOX_SKILL_MOUNT_TARGET
+        || !mount.read_only
+        || !matches!(
+            &mount.source,
+            RuntimeMountSource::Artifact { artifact }
+                if artifact == &skill && artifact.media_type == SKILL_BUNDLE_MEDIA_TYPE
+        )
+    {
+        return Err(invalid("Skill Artifact mount lost its typed read-only identity").into());
+    }
+
+    let provider = build_box_runtime_provider(&config, runtime_state.path())?;
+    let runtime = provider
+        .into_artifact_bound_client(artifact_manager.clone())
+        .await?;
+    let journal = FileCommandJournal::new(node_state.path(), node_id)?;
+    let executor = CommandExecutor::runtime_only(journal, runtime.clone())
+        .with_artifacts(artifact_manager.clone());
+    let apply = command(
+        node_id,
+        aggregate_id,
+        1,
+        NodeCommandPayload::RuntimeApply {
+            request: Box::new(RuntimeApplyRequest {
+                schema: RuntimeApplyRequest::SCHEMA.into(),
+                request_id: format!("cloud-box-skill-apply-{}", Uuid::now_v7()),
+                deadline_at_ms: None,
+                spec: spec.clone(),
+            }),
+            resource_claim: None,
+        },
+    )?;
+    let applied = executor.execute(apply).await?;
+    let observation = applied_observation(&applied)?;
+    if observation.state != RuntimeUnitState::Succeeded {
+        return Err(invalid("Box did not execute the Skill hydration Task").into());
+    }
+
+    let materialized = artifact_manager.mount_path(&spec, mount).await?;
+    if tokio::fs::read(materialized.join("SKILL.md")).await? != b"A3S skill payload\n" {
+        return Err(invalid("materialized Skill bundle changed its exact bytes").into());
+    }
+    let metadata = tokio::fs::metadata(materialized.join("SKILL.md")).await?;
+    if !metadata.permissions().readonly() {
+        return Err(invalid("materialized Skill file is writable").into());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if metadata.permissions().mode() & 0o222 != 0 {
+            return Err(invalid("materialized Skill file has a write mode bit").into());
+        }
+    }
+    if transport.downloads.load(Ordering::SeqCst) != 1 {
+        return Err(invalid("Skill Artifact was not downloaded exactly once").into());
+    }
+
+    expect_removed(
+        &executor
+            .execute(command(
+                node_id,
+                aggregate_id,
+                2,
+                NodeCommandPayload::RuntimeRemove {
+                    request: action_request("skill-remove", &spec),
+                },
+            )?)
+            .await?,
+    )?;
+    drop(executor);
+    drop(runtime);
+    require_clean_state(&home, node_state.path())?;
+    if transport.downloads.load(Ordering::SeqCst) != 1 {
+        return Err(invalid("Skill cleanup unexpectedly redownloaded the Artifact").into());
+    }
+    println!(
+        "A3S_CLOUD_A0_5_REAL_BOX_SKILL_ARTIFACT_CERTIFIED provider=a3s-box artifact_media_type={SKILL_BUNDLE_MEDIA_TYPE} artifact_downloads=1 read_only_mount=true runtime_write_rejected=true cleanup=removed"
+    );
+    Ok(())
+}
+
+fn skill_task_spec(input: ArtifactRef) -> TestResult<RuntimeUnitSpec> {
+    let script = format!(
+        "if printf forbidden > {REAL_BOX_SKILL_MOUNT_TARGET}/forbidden 2>/dev/null; then exit 71; fi; test \"$(cat {REAL_BOX_SKILL_MOUNT_TARGET}/SKILL.md)\" = 'A3S skill payload'; test ! -e {REAL_BOX_SKILL_MOUNT_TARGET}/forbidden"
+    );
+    let mut spec = task_spec(
+        "skill",
+        1,
+        input,
+        "unused-skill-volume",
+        true,
+        &script,
+        false,
+    )?;
+    // Keep the production projection's exact Skill mount shape while reusing
+    // the conformance image and command/resource defaults from task_spec.
+    spec.mounts.truncate(1);
+    let mount = spec
+        .mounts
+        .first_mut()
+        .ok_or_else(|| invalid("Skill Task fixture lost its Artifact mount"))?;
+    mount.name = "skill-bundle".into();
+    mount.target = REAL_BOX_SKILL_MOUNT_TARGET.into();
+    spec.validate().map_err(invalid)?;
+    Ok(spec)
+}
+
 fn task_spec(
     role: &str,
     generation: u64,
@@ -422,11 +578,15 @@ fn succeeded_result(acknowledgement: &NodeCommandAck) -> TestResult<&NodeCommand
 }
 
 fn cloud_artifact(bytes: &[u8]) -> TestResult<ArtifactRef> {
+    cloud_artifact_with_media(bytes, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE)
+}
+
+fn cloud_artifact_with_media(bytes: &[u8], media_type: &str) -> TestResult<ArtifactRef> {
     let digest = format!("sha256:{:x}", Sha256::digest(bytes));
     Ok(ArtifactRef {
         uri: artifact_uri(&digest).map_err(invalid)?,
         digest,
-        media_type: NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE.into(),
+        media_type: media_type.into(),
     })
 }
 
