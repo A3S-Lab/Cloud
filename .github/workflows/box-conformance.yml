@@ -98,11 +98,11 @@ jobs:
       A3S_BOX_RUNTIME_CONFORMANCE_IMAGE: docker.io/library/busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
       A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE: application/vnd.oci.image.index.v1+json
       A3S_CLOUD_A0_4_AGENT_BASE_IMAGE: ubuntu@sha256:1e0a86e57d247923571b75e0aaf48a1449cf8c543d51fb3e07a4a7d7bfa79316
-      A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST: sha256:f41a71f073e7bc901db5c38d382b600d6f23a64a09705eeecc25590bbde5fd53
-      A3S_CLOUD_A0_4_CLI_ARCHIVE_URL: https://github.com/A3S-Lab/CLI/releases/download/v0.13.5/a3s-v0.13.5-x86_64-unknown-linux-gnu.tar.gz
-      A3S_CLOUD_A0_4_CLI_REVISION: d48efa67922e82c15c5f7fd059c860d327cc6dd8
-      A3S_CLOUD_A0_4_CLI_TAG: v0.13.5
-      A3S_CLOUD_A0_4_CLI_VERSION: 0.13.5
+      A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST: sha256:6b286e9578b450480373460ef3ff5be5fa54c4a4df31246827cfda972bd047fb
+      A3S_CLOUD_A0_4_CLI_ARCHIVE_URL: https://github.com/A3S-Lab/CLI/releases/download/v0.14.0/a3s-v0.14.0-x86_64-unknown-linux-gnu.tar.gz
+      A3S_CLOUD_A0_4_CLI_REVISION: 2ef75a624bdd23dc2b266c12721d3bd95ceccc5a
+      A3S_CLOUD_A0_4_CLI_TAG: v0.14.0
+      A3S_CLOUD_A0_4_CLI_VERSION: 0.14.0
       A3S_CLOUD_A0_4_REGISTRY_IMAGE: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
     defaults:
       run:
@@ -260,10 +260,10 @@ jobs:
             "https://raw.githubusercontent.com/A3S-Lab/CLI/$A3S_CLOUD_A0_4_CLI_REVISION/Cargo.toml" \
             --output "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml"
           grep --fixed-strings \
-            'a3s-code-core = "=8.0.4"' \
+            'a3s-code-core = "=8.1.0"' \
             "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml"
           grep --fixed-strings \
-            'a3s-code-core = { version = "=8.0.4"' \
+            'a3s-code-core = { version = "=8.1.0"' \
             apps/cloud/Cargo.toml
           cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
             "$build_dir/config.acl"
@@ -933,7 +933,7 @@ jobs:
                 revision: $cliRevision,
                 archiveUri: $cliArchiveUrl,
                 archiveDigest: $cliArchiveDigest,
-                codeCoreVersion: "8.0.4"
+                codeCoreVersion: "8.1.0"
               },
               build: {
                 baseImage: $baseImage,
@@ -1003,7 +1003,7 @@ jobs:
              and .sourceRelease.revision == $cliRevision
              and .sourceRelease.archiveUri == $cliArchiveUrl
              and .sourceRelease.archiveDigest == $cliArchiveDigest
-             and .sourceRelease.codeCoreVersion == "8.0.4"
+             and .sourceRelease.codeCoreVersion == "8.1.0"
              and .build.baseImage == $baseImage
              and .build.registryImage == $registryImage
              and .build.builder.name == "a3s-box"
