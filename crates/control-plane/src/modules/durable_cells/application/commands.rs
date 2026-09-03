@@ -1,8 +1,8 @@
+use super::build_artifact_port::IDurableCellBuildArtifactPort;
 use super::build_run_access::validate_definition_build_run;
 use super::managed_replica_lifecycle::converge_current_managed_replicas;
 use super::resource_access::{application_not_found, environment, environment_not_found};
 use super::DurableCellApplicationMutationResult;
-use crate::modules::artifacts::domain::IBuildRunRepository;
 use crate::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
     DurableCellApplicationDefinition, DurableCellApplicationDesiredState,
@@ -44,14 +44,14 @@ impl Command for CreateDurableCellApplication {
 pub struct CreateDurableCellApplicationHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     applications: Arc<dyn IDurableCellApplicationRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    builds: Arc<dyn IDurableCellBuildArtifactPort>,
 }
 
 impl CreateDurableCellApplicationHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         applications: Arc<dyn IDurableCellApplicationRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        builds: Arc<dyn IDurableCellBuildArtifactPort>,
     ) -> Self {
         Self {
             environments,
@@ -220,13 +220,13 @@ impl Command for ReviseDurableCellApplication {
 
 pub struct ReviseDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    builds: Arc<dyn IDurableCellBuildArtifactPort>,
 }
 
 impl ReviseDurableCellApplicationHandler {
     pub fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        builds: Arc<dyn IDurableCellBuildArtifactPort>,
     ) -> Self {
         Self {
             applications,

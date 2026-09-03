@@ -236,13 +236,17 @@ Current boundary debt:
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import
-  Executions, Data, Artifacts, Fleet, Operations, and Workloads internal owner
-  types or repositories;
+  Executions, Data, Fleet, Operations, and Workloads internal owner types or
+  repositories;
+- BuildRun consumption now crosses one
+  `IDurableCellBuildArtifactPort` and one Artifacts anti-corruption adapter;
+  the adapter admits only a successful, typed bundle projection;
 - the Route publication path now crosses one
   `IDurableCellRoutePublicationPort` and one Edge anti-corruption adapter;
   remaining Workloads handlers and repositories still need equivalent ports;
-- presentation DTOs still reuse the Workloads deployment DTO, while Route
-  publication uses the Durable Cells-owned immutable projection;
+- the deployment response now owns a Durable Cells workload projection instead
+  of reusing the Workloads Presentation DTO; the ACL admission parser still
+  consumes the existing Workloads manifest contract;
 - the Cell provider profile is correctly frozen in Cloud and bound into
   Runtime only through its opaque digest.
 
@@ -266,7 +270,8 @@ down.
 
 The required Cloud refactor is a set of consumer-owned ports:
 
-- DurableCellBuildArtifactPort;
+- `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
+  bundle consumption);
 - DurableCellStoragePort;
 - DurableCellExecutionPort;
 - DurableCellWorkloadPort;

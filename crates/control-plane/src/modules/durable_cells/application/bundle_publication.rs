@@ -1,3 +1,4 @@
+use super::build_artifact_port::{DurableCellBuildArtifact, IDurableCellBuildArtifactPort};
 use super::build_run_access::require_definition_build_output;
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 #[cfg(test)]
@@ -6,7 +7,6 @@ use super::provider_workload::{
     durable_cell_managed_owner_reference, validate_durable_cell_provider_workload_binding,
     validate_pinned_celld_service_projection, validate_publisher_secret_targets,
 };
-use crate::modules::artifacts::domain::{BuildArtifact, IBuildRunRepository};
 use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellPublisherProfile, DurableCellServiceProfile,
@@ -58,7 +58,7 @@ const OCI_IMAGE_INDEX_MEDIA_TYPE: &str = "application/vnd.oci.image.index.v1+jso
 pub(crate) struct DurableCellBundlePublicationGate {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    builds: Arc<dyn IDurableCellBuildArtifactPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     prior_writer_seal: DurableCellPriorWriterSeal,
     executions: Arc<dyn IExecutionRepository>,
@@ -70,7 +70,7 @@ impl DurableCellBundlePublicationGate {
     pub(crate) fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        builds: Arc<dyn IDurableCellBuildArtifactPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         prior_writer_seal: DurableCellPriorWriterSeal,
         environments: Arc<dyn IEnvironmentRepository>,
@@ -635,7 +635,7 @@ struct PublicationAuthorityIdentity<'a> {
 fn publication_authority_digest(
     correlation: &DurableCellDeployment,
     node_id: crate::modules::shared_kernel::domain::NodeId,
-    bundle: &BuildArtifact,
+    bundle: &DurableCellBuildArtifact,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<Sha256Digest, String> {
     let bytes = serde_json::to_vec(&PublicationAuthorityIdentity {
@@ -663,7 +663,10 @@ fn publication_execution_id(revision_id: WorkloadRevisionId) -> ExecutionId {
     ))
 }
 
-fn validate_bundle(bundle: &BuildArtifact, expected: &Sha256Digest) -> Result<(), String> {
+fn validate_bundle(
+    bundle: &DurableCellBuildArtifact,
+    expected: &Sha256Digest,
+) -> Result<(), String> {
     bundle.validate()?;
     let artifact = ArtifactRef {
         uri: bundle.uri.clone(),

@@ -104,15 +104,16 @@ use crate::modules::developer_workflows::{
     WorkloadProfileQueryService, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::durable_cells::{
-    CreateDurableCellApplicationHandler, DeployDurableCellApplicationFromAclHandler,
-    DeployDurableCellApplicationHandler, DurableCellBundlePublicationGate,
-    DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter, DurableCellsModule,
-    EdgeDurableCellRoutePublicationAdapter, GetDurableCellApplicationHandler,
+    ArtifactsDurableCellBuildArtifactAdapter, CreateDurableCellApplicationHandler,
+    DeployDurableCellApplicationFromAclHandler, DeployDurableCellApplicationHandler,
+    DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
+    DurableCellsModule, EdgeDurableCellRoutePublicationAdapter, GetDurableCellApplicationHandler,
     GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
-    IDurableCellDeploymentRepository, IDurableCellRoutePublicationPort,
-    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
-    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
-    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+    IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository,
+    IDurableCellRoutePublicationPort, ListDurableCellApplicationRevisionsHandler,
+    ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -653,6 +654,9 @@ async fn build_api_worker_application(
         .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
     let builds = adapters.builds;
+    let durable_cell_build_artifacts: Arc<dyn IDurableCellBuildArtifactPort> = Arc::new(
+        ArtifactsDurableCellBuildArtifactAdapter::new(Arc::clone(&builds)),
+    );
     let build_projections = adapters.build_projections;
     let executions = adapters.executions;
     let execution_templates = adapters.execution_templates;
@@ -1053,7 +1057,7 @@ async fn build_api_worker_application(
             Arc::new(DurableCellBundlePublicationGate::new(
                 Arc::clone(&durable_cell_applications),
                 Arc::clone(&durable_cell_deployments),
-                Arc::clone(&builds),
+                Arc::clone(&durable_cell_build_artifacts),
                 Arc::clone(&workloads),
                 DurableCellPriorWriterSeal::new(
                     Arc::clone(&writer_fences),
@@ -2262,6 +2266,9 @@ fn build_management_application_with_health(
         certificate_authority,
         bootstrap_credential,
     } = management;
+    let durable_cell_build_artifacts: Arc<dyn IDurableCellBuildArtifactPort> = Arc::new(
+        ArtifactsDurableCellBuildArtifactAdapter::new(Arc::clone(&builds)),
+    );
     let operation_resource_access = Arc::new(OperationResourceAccessResolver::new(
         Arc::clone(&workloads),
         Arc::clone(&builds),
@@ -2463,8 +2470,8 @@ fn build_management_application_with_health(
     let deploy_durable_cell_secrets = Arc::clone(&secrets);
     let deploy_durable_cell_node_pools = Arc::clone(&node_pools);
     let deploy_durable_cell_applications = Arc::clone(&get_durable_cell_applications);
-    let create_durable_cell_builds = Arc::clone(&builds);
-    let revise_durable_cell_builds = Arc::clone(&builds);
+    let create_durable_cell_builds = Arc::clone(&durable_cell_build_artifacts);
+    let revise_durable_cell_builds = Arc::clone(&durable_cell_build_artifacts);
     let deploy_durable_cell_handler = DeployDurableCellApplicationHandler::new(
         deploy_durable_cell_applications,
         deploy_durable_cell_deployments,

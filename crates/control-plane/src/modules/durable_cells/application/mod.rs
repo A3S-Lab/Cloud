@@ -1,3 +1,4 @@
+mod build_artifact_port;
 mod build_run_access;
 mod bundle_publication;
 mod commands;
@@ -13,6 +14,9 @@ mod route_publication_port;
 mod runtime_profile;
 mod writer_fence;
 
+pub use build_artifact_port::{
+    DurableCellBuildArtifact, DurableCellBuildArtifactRequest, IDurableCellBuildArtifactPort,
+};
 pub(crate) use bundle_publication::DurableCellBundlePublicationGate;
 pub use commands::{
     CreateDurableCellApplication, CreateDurableCellApplicationHandler,

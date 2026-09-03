@@ -17,7 +17,6 @@ audit/presentation/controller.rs -> identity/presentation
 connectors/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/controller.rs -> identity/presentation
 durable_cells/presentation/deployment_admission.rs -> workloads/presentation
-durable_cells/presentation/dto.rs -> workloads/presentation
 edge/presentation/controllers/domain_claim_commands_controller.rs -> identity/presentation
 edge/presentation/controllers/domain_claim_queries_controller.rs -> identity/presentation
 edge/presentation/controllers/gateway_scope_commands_controller.rs -> identity/presentation
@@ -477,6 +476,71 @@ fn durable_cells_route_publication_crosses_one_consumer_owned_port() {
         edge_sites,
         lines("durable_cells/infrastructure/edge_route_publication.rs"),
         "Durable Cells must translate Edge publication through one infrastructure adapter"
+    );
+}
+
+#[test]
+fn durable_cells_deployment_response_owns_its_workload_projection() {
+    let dto = std::fs::read_to_string(module_root().join("durable_cells/presentation/dto.rs"))
+        .expect("read Durable Cells presentation DTO");
+    let dto = production_source(&dto);
+    assert!(dto.contains("pub struct DurableCellWorkloadDeploymentResponse"));
+    assert!(dto.contains("impl DurableCellWorkloadDeploymentResponse"));
+    assert!(!dto.contains("modules::workloads::presentation"));
+}
+
+#[test]
+fn durable_cells_build_artifact_crosses_one_consumer_owned_port() {
+    let build_access = std::fs::read_to_string(
+        module_root().join("durable_cells/application/build_run_access.rs"),
+    )
+    .expect("read Durable Cells BuildRun access");
+    let bundle_application = std::fs::read_to_string(
+        module_root().join("durable_cells/application/bundle_publication.rs"),
+    )
+    .expect("read Durable Cells bundle publication application");
+    let commands =
+        std::fs::read_to_string(module_root().join("durable_cells/application/commands.rs"))
+            .expect("read Durable Cells commands");
+    let port = std::fs::read_to_string(
+        module_root().join("durable_cells/application/build_artifact_port.rs"),
+    )
+    .expect("read Durable Cells BuildRun port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/artifacts_build_artifact.rs"),
+    )
+    .expect("read Durable Cells Artifacts adapter");
+
+    for (name, source) in [
+        ("build access", build_access),
+        ("bundle application", bundle_application),
+        ("commands", commands),
+    ] {
+        assert!(
+            !production_source(&source).contains("crate::modules::artifacts"),
+            "Durable Cells {name} must consume Artifacts through its owner port"
+        );
+    }
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(port.contains("pub trait IDurableCellBuildArtifactPort"));
+    assert!(port.contains("pub struct DurableCellBuildArtifact"));
+    assert!(port.contains("pub struct DurableCellBuildArtifactRequest"));
+    assert!(adapter.contains("impl IDurableCellBuildArtifactPort"));
+    assert!(adapter.contains("IBuildRunRepository"));
+
+    let mut artifact_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("crate::modules::artifacts")
+        {
+            artifact_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        artifact_sites,
+        lines("durable_cells/infrastructure/artifacts_build_artifact.rs"),
+        "Durable Cells must translate Artifacts through one infrastructure adapter"
     );
 }
 

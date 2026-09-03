@@ -32,7 +32,8 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::{
-    PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    ArtifactsDurableCellBuildArtifactAdapter, PostgresDurableCellApplicationRepository,
+    PostgresDurableCellDeploymentRepository,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -504,11 +505,14 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     ));
     let cqrs_workloads = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let cqrs_builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
+    let cqrs_build_artifacts = Arc::new(ArtifactsDurableCellBuildArtifactAdapter::new(
+        cqrs_builds.clone(),
+    ));
     let cqrs_projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let create_handler = CreateDurableCellApplicationHandler::new(
         cqrs_projects,
         cqrs_repository.clone(),
-        cqrs_builds.clone(),
+        cqrs_build_artifacts.clone(),
     );
     let create_command = CreateDurableCellApplication {
         organization_id,
@@ -550,7 +554,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     );
 
     let revise_handler =
-        ReviseDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_builds);
+        ReviseDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_build_artifacts);
     let cqrs_revised = revise_handler
         .execute(
             ReviseDurableCellApplication {
