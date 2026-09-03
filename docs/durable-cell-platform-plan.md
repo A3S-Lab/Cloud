@@ -4,6 +4,14 @@
 
 **Status as of 2026-08-22: `CELL0.1-C1` through `CELL0.1-C3`, component-only `CELL0.2-C1/C2`, `CELL0.3-C1/C2/C3`, `CELL0.4-C1/C2/C3/C4/C5/C6`, and `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` are implemented; the `C4b` behavior and `C4c` real-Gateway checks are staged in the same joint gate. `C5a` covers the stopped current single-replica handoff: Workloads atomically commits the exact successful `RuntimeRemove` fence, immutable receipt, and `cloud.object-namespace.seal@2` Operation. `C5b` keeps every later writer generation in the existing Workload pre-start gate until Operations reports that exact receipt-bound seal succeeded with a valid recovery-point lineage. The [`CELL0.3` real-Box celld Runtime gate](https://github.com/A3S-Lab/Cloud/actions/runs/31946279906/job/95162662254) and [`CELL0.4` PostgreSQL 17 C6a/C6b recovery and lifecycle gate](https://github.com/A3S-Lab/Cloud/actions/runs/31938471588/job/95144015600) have retained passes. The credential-safe joint `CELL0.5` Box/Execution/Artifact/Secret/S0/Workloads/Gateway gate is prepared to check publication, named SQLite state, exact alarm delivery, hibernatable WebSockets, idle eviction/reactivation, RPO=0 provider-process-death recovery, and managed-TLS HTTP/WebSocket routing through the pinned Gateway, but its exact-spec preflight is blocked until the pinned Box provider advertises and certifies Runtime `Outbound`. The `CELL0.2-C3` storage provider pass, the first retained `CELL0.5-C4b/C4c` behavior/Gateway pass, and retained lifecycle/fault evidence stay open, so the product is unavailable.**
 
+Architecture boundary update (2026-09-04): BuildRun artifact, Route
+publication, Execution, exact S0 credential admission, and managed Workload
+replica convergence now use consumer-owned Durable Cells ports with one
+anti-corruption adapter per owner. These refactors preserve the existing
+CELL0 behavior and do not change the product availability decision above;
+Workload deployment creation, immutable S0 profile/retention projection, and
+recovery operations remain open boundary slices.
+
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 [ROADMAP](../ROADMAP.md) remains authoritative for portfolio ordering and public

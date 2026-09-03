@@ -6,6 +6,7 @@ mod deployment_in_memory;
 mod deployment_postgres;
 mod edge_route_publication;
 mod executions_bound_task;
+mod workload_reconciliation;
 
 pub use application_in_memory::InMemoryDurableCellApplicationRepository;
 pub use application_postgres::PostgresDurableCellApplicationRepository;
@@ -17,3 +18,4 @@ pub use edge_route_publication::EdgeDurableCellRoutePublicationAdapter;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) use executions_bound_task::materialize_bound_execution_for_conformance;
 pub(crate) use executions_bound_task::ExecutionsDurableCellExecutionAdapter;
+pub use workload_reconciliation::WorkloadsDurableCellWorkloadAdapter;

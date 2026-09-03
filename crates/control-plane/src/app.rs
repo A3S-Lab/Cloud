@@ -112,10 +112,10 @@ use crate::modules::durable_cells::{
     GetDurableCellApplicationHandler, GetDurableCellApplicationRevisionHandler,
     IDurableCellApplicationRepository, IDurableCellBuildArtifactPort,
     IDurableCellDeploymentRepository, IDurableCellExecutionPort, IDurableCellRoutePublicationPort,
-    IDurableCellStoragePort, ListDurableCellApplicationRevisionsHandler,
+    IDurableCellStoragePort, IDurableCellWorkloadPort, ListDurableCellApplicationRevisionsHandler,
     ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
-    StopDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler, WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -2464,8 +2464,13 @@ fn build_management_application_with_health(
     let revise_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let start_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let stop_durable_cell_applications = Arc::clone(&durable_cell_applications);
-    let start_durable_cell_workloads = Arc::clone(&workloads);
-    let stop_durable_cell_workloads = Arc::clone(&workloads);
+    let durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort> =
+        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+            Arc::clone(&durable_cell_applications),
+            Arc::clone(&workloads),
+        ));
+    let start_durable_cell_workload_port = Arc::clone(&durable_cell_workload_port);
+    let stop_durable_cell_workload_port = Arc::clone(&durable_cell_workload_port);
     let list_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let get_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let list_durable_cell_revisions = Arc::clone(&durable_cell_applications);
@@ -2485,6 +2490,7 @@ fn build_management_application_with_health(
         deploy_durable_cell_applications,
         deploy_durable_cell_deployments,
         deploy_durable_cell_workloads,
+        Arc::clone(&durable_cell_workload_port),
         deploy_durable_cell_storage,
         deploy_durable_cell_secrets,
         deploy_durable_cell_node_pools,
@@ -3128,13 +3134,13 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::durable_cells::StartDurableCellApplication, _>(
                     StartDurableCellApplicationHandler::new(
                         start_durable_cell_applications,
-                        start_durable_cell_workloads,
+                        start_durable_cell_workload_port,
                     ),
                 )
                 .command_handler::<crate::modules::durable_cells::StopDurableCellApplication, _>(
                     StopDurableCellApplicationHandler::new(
                         stop_durable_cell_applications,
-                        stop_durable_cell_workloads,
+                        stop_durable_cell_workload_port,
                     ),
                 )
                 .command_handler::<crate::modules::durable_cells::DeployDurableCellApplication, _>(

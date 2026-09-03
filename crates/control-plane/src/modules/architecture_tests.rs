@@ -690,6 +690,62 @@ fn durable_cells_storage_admission_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
+    let commands =
+        std::fs::read_to_string(module_root().join("durable_cells/application/commands.rs"))
+            .expect("read Durable Cells command application");
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
+            .expect("read Durable Cells Workload port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
+    )
+    .expect("read Durable Cells Workloads adapter");
+
+    let commands = production_source(&commands);
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(commands.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(commands.contains(".converge_managed_replicas("));
+    assert!(!commands.contains("IWorkloadRepository"));
+    assert!(deployment.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(deployment.contains(".converge_managed_replicas("));
+    assert!(!deployment.contains("managed_replica_lifecycle"));
+    assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
+    assert!(port.contains("pub trait IDurableCellWorkloadPort"));
+    assert!(!port.contains("crate::modules::workloads"));
+    for required in [
+        "impl IDurableCellWorkloadPort",
+        "IWorkloadRepository",
+        "ReconfigureReplicaSetWrite",
+        "DurableCellProjectionIdentity",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Workloads adapter lost owner translation {required}"
+        );
+    }
+
+    let mut workload_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("ReconfigureReplicaSetWrite")
+        {
+            workload_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        workload_sites,
+        lines("durable_cells/infrastructure/workload_reconciliation.rs"),
+        "Durable Cells must translate managed Workloads reconciliation through one infrastructure adapter"
+    );
+}
+
+#[test]
 fn flow_contract_enters_only_the_workflow_dag_compiler() {
     const ALLOWED_FILE: &str = "workflow/domain/workflow_graph.rs";
     const ALLOWED_IMPORT: &str = "use a3s_flow::{WorkflowDag, WorkflowDagEdge, WorkflowDagNode};";

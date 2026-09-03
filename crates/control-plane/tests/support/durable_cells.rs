@@ -34,6 +34,7 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
 use a3s_cloud_control_plane::modules::durable_cells::{
     ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -504,6 +505,10 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         executor.clone(),
     ));
     let cqrs_workloads = Arc::new(PostgresWorkloadRepository::new(executor.clone()));
+    let cqrs_workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+        cqrs_repository.clone(),
+        cqrs_workloads.clone(),
+    ));
     let cqrs_builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let cqrs_build_artifacts = Arc::new(ArtifactsDurableCellBuildArtifactAdapter::new(
         cqrs_builds.clone(),
@@ -575,7 +580,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         )
         .await??;
     let stop_handler =
-        StopDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_workloads.clone());
+        StopDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_workload_port.clone());
     let cqrs_stopped = stop_handler
         .execute(
             StopDurableCellApplication {
@@ -597,7 +602,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         DurableCellApplicationDesiredState::Stopped
     );
     let start_handler =
-        StartDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_workloads);
+        StartDurableCellApplicationHandler::new(cqrs_repository.clone(), cqrs_workload_port);
     let cqrs_started = start_handler
         .execute(
             StartDurableCellApplication {
@@ -979,6 +984,10 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
         lifecycle_executor.clone(),
     ));
     let lifecycle_workloads = Arc::new(PostgresWorkloadRepository::new(lifecycle_executor.clone()));
+    let lifecycle_workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+        lifecycle_applications.clone(),
+        lifecycle_workloads.clone(),
+    ));
     let stop_command = StopDurableCellApplication {
         organization_id: tenant.organization_id,
         project_id: tenant.project_id,
@@ -992,7 +1001,7 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     };
     let stop_handler = StopDurableCellApplicationHandler::new(
         lifecycle_applications.clone(),
-        lifecycle_workloads.clone(),
+        lifecycle_workload_port.clone(),
     );
     let recovered_stop = stop_handler
         .execute(stop_command.clone(), cqrs_context())
@@ -1053,10 +1062,8 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
         idempotency_key: "durable-cell-c6-restart".into(),
         request_id: Uuid::now_v7(),
     };
-    let start_handler = StartDurableCellApplicationHandler::new(
-        lifecycle_applications,
-        lifecycle_workloads.clone(),
-    );
+    let start_handler =
+        StartDurableCellApplicationHandler::new(lifecycle_applications, lifecycle_workload_port);
     let restarted = start_handler
         .execute(start_command.clone(), cqrs_context())
         .await??;
@@ -1144,16 +1151,22 @@ fn projection_deployment_handler(
     executor: &PostgresExecutor,
     workloads: Arc<PostgresWorkloadRepository>,
 ) -> DeployDurableCellApplicationHandler {
+    let applications = Arc::new(PostgresDurableCellApplicationRepository::new(
+        executor.clone(),
+    ));
+    let workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+        applications.clone(),
+        workloads.clone(),
+    ));
     let secrets = Arc::new(PostgresSecretRepository::new(executor.clone()));
     let storage = Arc::new(DataDurableCellStorageAdapter::new(secrets.clone()));
     DeployDurableCellApplicationHandler::new(
-        Arc::new(PostgresDurableCellApplicationRepository::new(
-            executor.clone(),
-        )),
+        applications,
         Arc::new(PostgresDurableCellDeploymentRepository::new(
             executor.clone(),
         )),
         workloads,
+        workload_port,
         storage,
         secrets,
         Arc::new(PostgresNodeRepository::new(executor.clone())),

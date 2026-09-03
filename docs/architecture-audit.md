@@ -3,7 +3,7 @@
 ## 1. Purpose and authority
 
 This document records the implementation-facing architecture audit begun on
-2026-08-24 and updated on 2026-08-28. It does not replace the stable target in
+2026-08-24 and updated on 2026-09-04. It does not replace the stable target in
 [architecture.md](architecture.md), the aggregate definitions in
 [domain-model.md](domain-model.md), or delivery status in
 [ROADMAP.md](../ROADMAP.md).
@@ -251,7 +251,10 @@ Current boundary debt:
   the adapter admits only a successful, typed bundle projection;
 - the Route publication path now crosses one
   `IDurableCellRoutePublicationPort` and one Edge anti-corruption adapter;
-  remaining Workloads handlers and repositories still need equivalent ports;
+- managed replica convergence now crosses one
+  `IDurableCellWorkloadPort` and one Workloads anti-corruption adapter;
+  deployment creation still consumes the existing Workloads application
+  contract and remains a follow-up boundary slice;
 - the deployment response now owns a Durable Cells workload projection instead
   of reusing the Workloads Presentation DTO; the ACL admission parser still
   consumes the existing Workloads manifest contract;
@@ -284,7 +287,9 @@ The required Cloud refactor is a set of consumer-owned ports:
   immutable profile and recovery projections remain to be split);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
   publication Task creation, recovery, observation, and cancellation);
-- DurableCellWorkloadPort;
+- `IDurableCellWorkloadPort` (implemented for deterministic managed replica
+  convergence; deployment creation and other Workloads reads remain follow-up
+  slices);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
   publication).
 
@@ -601,8 +606,8 @@ database copy as well.
    conformance harness.
 2. Compile Cloud's Durable Cell A3S ACL only into the existing generic Runtime
    Service specification plus its exact opaque digest.
-3. Replace every Durable Cells foreign implementation import with the six
-   consumer-owned ports above.
+3. Replace every remaining Durable Cells foreign implementation import with
+   the consumer-owned ports above.
 4. Retain real provider, S0, process-death, Gateway, and fencing evidence before
    advancing CELL0.
 
