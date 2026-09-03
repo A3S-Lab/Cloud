@@ -407,16 +407,14 @@ async fn real_box_materializes_skill_bundle_mount_read_only_and_cleans() -> Test
         return Err(invalid("Skill cleanup unexpectedly redownloaded the Artifact").into());
     }
     println!(
-        "A3S_CLOUD_A0_5_REAL_BOX_SKILL_ARTIFACT_CERTIFIED provider=a3s-box artifact_media_type={} artifact_downloads=1 read_only_mount=true runtime_write_rejected=true cleanup=removed",
-        SKILL_BUNDLE_MEDIA_TYPE
+        "A3S_CLOUD_A0_5_REAL_BOX_SKILL_ARTIFACT_CERTIFIED provider=a3s-box artifact_media_type={SKILL_BUNDLE_MEDIA_TYPE} artifact_downloads=1 read_only_mount=true runtime_write_rejected=true cleanup=removed"
     );
     Ok(())
 }
 
 fn skill_task_spec(input: ArtifactRef) -> TestResult<RuntimeUnitSpec> {
     let script = format!(
-        "if printf forbidden > {target}/forbidden 2>/dev/null; then exit 71; fi; test \"$(cat {target}/SKILL.md)\" = 'A3S skill payload'; test ! -e {target}/forbidden",
-        target = REAL_BOX_SKILL_MOUNT_TARGET
+        "if printf forbidden > {REAL_BOX_SKILL_MOUNT_TARGET}/forbidden 2>/dev/null; then exit 71; fi; test \"$(cat {REAL_BOX_SKILL_MOUNT_TARGET}/SKILL.md)\" = 'A3S skill payload'; test ! -e {REAL_BOX_SKILL_MOUNT_TARGET}/forbidden"
     );
     let mut spec = task_spec(
         "skill",
