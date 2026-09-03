@@ -842,7 +842,14 @@ async fn next_flow_command(
 ) -> TestResult<NodeCommandEnvelope> {
     let deadline = Instant::now() + StdDuration::from_secs(60);
     loop {
-        coordinator.run_once().await?;
+        let report = coordinator.run_once().await?;
+        if !report.reconciliation_error_details.is_empty() {
+            return Err(invalid(format!(
+                "deployment Flow reconciliation failed while waiting for {expected:?}: {}",
+                report.reconciliation_error_details.join("; ")
+            ))
+            .into());
+        }
         let lease = nodes
             .lease_commands(
                 &NodeCommandLeaseRequest {
