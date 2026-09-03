@@ -220,7 +220,10 @@ impl IExactSecretMaterializer for ExactSecretMaterializer {
     }
 }
 
-pub(crate) fn exact_secret_version_access(
+/// Composes the published exact-version access port for an outer bounded
+/// context. The returned interface exposes no Secret aggregate or plaintext;
+/// all scope and active-state decisions remain inside Secrets.
+pub fn exact_secret_version_access(
     secrets: Arc<dyn ISecretRepository>,
 ) -> Arc<dyn IExactSecretVersionAccess> {
     Arc::new(ExactSecretVersionAccess::new(secrets))

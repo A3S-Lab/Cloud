@@ -241,6 +241,9 @@ Current boundary debt:
   `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
   provider-profile/retention projections and recovery operations remain in the
   follow-up storage slices;
+- exact provider-template Secret version admission now crosses one
+  `IDurableCellSecretBindingPort` and one Secrets anti-corruption adapter;
+  plaintext and materialization remain outside Durable Cells;
 - node-bound publication Tasks now cross one
   `IDurableCellExecutionPort` and one Executions anti-corruption adapter;
   Durable Cells owns only the finite-Task request and lifecycle evidence
@@ -288,6 +291,8 @@ The required Cloud refactor is a set of consumer-owned ports:
   bundle consumption);
 - `IDurableCellStoragePort` (implemented for exact S0 credential admission;
   immutable profile and recovery projections remain to be split);
+- `IDurableCellSecretBindingPort` (implemented for exact active-version
+  admission through the canonical Secrets query);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
   publication Task creation, recovery, observation, and cancellation);
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica

@@ -34,13 +34,15 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
 use a3s_cloud_control_plane::modules::durable_cells::{
     ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
     FleetDurableCellNodePoolAdapter, PostgresDurableCellApplicationRepository,
-    PostgresDurableCellDeploymentRepository, WorkloadsDurableCellWorkloadAdapter,
+    PostgresDurableCellDeploymentRepository, SecretsDurableCellBindingAdapter,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
+use a3s_cloud_control_plane::modules::secrets::exact_secret_version_access;
 use a3s_cloud_control_plane::modules::secrets::{
     CreateSecretWrite, EncryptedSecretValue, ISecretRepository, PostgresSecretRepository, Secret,
     SecretChanged,
@@ -1163,6 +1165,9 @@ fn projection_deployment_handler(
     )));
     let secrets = Arc::new(PostgresSecretRepository::new(executor.clone()));
     let storage = Arc::new(DataDurableCellStorageAdapter::new(secrets.clone()));
+    let secret_bindings = Arc::new(SecretsDurableCellBindingAdapter::new(
+        exact_secret_version_access(secrets.clone()),
+    ));
     DeployDurableCellApplicationHandler::new(
         applications,
         Arc::new(PostgresDurableCellDeploymentRepository::new(
@@ -1171,7 +1176,7 @@ fn projection_deployment_handler(
         workloads,
         workload_port,
         storage,
-        secrets,
+        secret_bindings,
         node_pool_port,
     )
 }

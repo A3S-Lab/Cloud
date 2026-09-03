@@ -5,13 +5,14 @@ pub mod presentation;
 
 pub(crate) use application::SecretAccessScope;
 pub use application::{
-    CreateSecret, CreateSecretHandler, GetSecret, GetSecretHandler, IExactSecretMaterializer,
-    IExactSecretVersionAccess, ISecretEnvironmentAccess, ISecretMaterializationAuthorizer,
-    ListSecrets, ListSecretsHandler, ResolveSecretMaterial, ResolveSecretMaterialHandler,
-    RevokeSecretVersion, RevokeSecretVersionHandler, RotateSecret, RotateSecretHandler,
-    SecretAccess, SecretDetails, SecretEnvironmentScope, SecretMaterializationAuthorization,
-    SecretMaterializationAuthorizationError, SecretMaterializationAuthorizationRequest,
-    SecretMutationResult, SecretPlaintext, SecretVersionResult,
+    exact_secret_version_access, CreateSecret, CreateSecretHandler, GetSecret, GetSecretHandler,
+    IExactSecretMaterializer, IExactSecretVersionAccess, ISecretEnvironmentAccess,
+    ISecretMaterializationAuthorizer, ListSecrets, ListSecretsHandler, ResolveSecretMaterial,
+    ResolveSecretMaterialHandler, RevokeSecretVersion, RevokeSecretVersionHandler, RotateSecret,
+    RotateSecretHandler, SecretAccess, SecretDetails, SecretEnvironmentScope,
+    SecretMaterializationAuthorization, SecretMaterializationAuthorizationError,
+    SecretMaterializationAuthorizationRequest, SecretMutationResult, SecretPlaintext,
+    SecretVersionResult,
 };
 pub use domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,

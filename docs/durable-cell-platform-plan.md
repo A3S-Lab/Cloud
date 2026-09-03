@@ -6,8 +6,9 @@
 
 Architecture boundary update (2026-09-04): BuildRun artifact, Route
 publication, Execution, exact S0 credential admission, managed Workload
-replica convergence, and optional Fleet node-pool admission now use
-consumer-owned Durable Cells ports with one anti-corruption adapter per owner.
+replica convergence, exact provider-template Secret admission, and optional
+Fleet node-pool admission now use consumer-owned Durable Cells ports with one
+anti-corruption adapter per owner.
 These refactors preserve the existing CELL0 behavior and do not change the
 product availability decision above; Workload deployment creation, immutable
 S0 profile/retention projection, and recovery operations remain open boundary

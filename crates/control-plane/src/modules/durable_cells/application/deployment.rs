@@ -6,6 +6,9 @@ use super::provider_workload::{
     validate_durable_cell_provider_workload_binding, validate_pinned_celld_provider_workload,
 };
 use super::resource_access::{application_not_found, environment, revision_not_found};
+use super::secret_binding_port::{
+    DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
+};
 use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 use super::workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
@@ -21,14 +24,12 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
     NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
-    Sha256Digest,
+    SecretVersionReference, Sha256Digest,
 };
-use crate::modules::workloads::application::commands::validate_secret_binding_references;
 use crate::modules::workloads::application::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
@@ -81,7 +82,7 @@ pub struct DeployDurableCellApplicationHandler {
     workloads: Arc<dyn IWorkloadRepository>,
     workload_port: Arc<dyn IDurableCellWorkloadPort>,
     storage: Arc<dyn IDurableCellStoragePort>,
-    secrets: Arc<dyn ISecretRepository>,
+    secret_bindings: Arc<dyn IDurableCellSecretBindingPort>,
     node_pool_port: Arc<dyn IDurableCellNodePoolPort>,
 }
 
@@ -92,7 +93,7 @@ impl DeployDurableCellApplicationHandler {
         workloads: Arc<dyn IWorkloadRepository>,
         workload_port: Arc<dyn IDurableCellWorkloadPort>,
         storage: Arc<dyn IDurableCellStoragePort>,
-        secrets: Arc<dyn ISecretRepository>,
+        secret_bindings: Arc<dyn IDurableCellSecretBindingPort>,
         node_pool_port: Arc<dyn IDurableCellNodePoolPort>,
     ) -> Self {
         Self {
@@ -101,7 +102,7 @@ impl DeployDurableCellApplicationHandler {
             workloads,
             workload_port,
             storage,
-            secrets,
+            secret_bindings,
             node_pool_port,
         }
     }
@@ -121,7 +122,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
         let workloads = Arc::clone(&self.workloads);
         let workload_port = Arc::clone(&self.workload_port);
         let storage = Arc::clone(&self.storage);
-        let secrets = Arc::clone(&self.secrets);
+        let secret_bindings = Arc::clone(&self.secret_bindings);
         let node_pool_port = Arc::clone(&self.node_pool_port);
         Box::pin(async move {
             if let Err(error) = environment(
@@ -154,7 +155,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     };
                     if let Err(error) = admit_external_bindings(
                         storage.as_ref(),
-                        &secrets,
+                        secret_bindings.as_ref(),
                         node_pool_port.as_ref(),
                         &command,
                     )
@@ -227,7 +228,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
             }
             if let Err(error) = admit_external_bindings(
                 storage.as_ref(),
-                &secrets,
+                secret_bindings.as_ref(),
                 node_pool_port.as_ref(),
                 &command,
             )
@@ -466,20 +467,27 @@ async fn load_current_record(
 
 async fn admit_external_bindings(
     storage: &dyn IDurableCellStoragePort,
-    secrets: &Arc<dyn ISecretRepository>,
+    secret_bindings: &dyn IDurableCellSecretBindingPort,
     node_pool_port: &dyn IDurableCellNodePoolPort,
     command: &DeployDurableCellApplication,
 ) -> ApplicationResult<()> {
     let storage_request = storage_credential_request(&command.storage_credentials)?;
     storage.require_active_credentials(&storage_request).await?;
-    validate_secret_binding_references(
-        secrets.as_ref(),
-        command.organization_id,
-        command.project_id,
-        command.environment_id,
-        &command.workload_template.secrets,
-    )
-    .await?;
+    let bindings = command
+        .workload_template
+        .secrets
+        .iter()
+        .map(|binding| SecretVersionReference::new(binding.secret_id, binding.version))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(ApplicationError::Invalid)?;
+    secret_bindings
+        .validate_active_bindings(&DurableCellSecretBindingAdmissionRequest::new(
+            command.organization_id,
+            command.project_id,
+            command.environment_id,
+            bindings,
+        ))
+        .await?;
     require_storage_credentials_in_template(
         &command.storage_credentials,
         &command.workload_template,
