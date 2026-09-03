@@ -16,5 +16,4 @@ pub(crate) use node_pool_selection::validate_node_pool_selection;
 pub(super) use node_pool_selection::{
     load_direct_workload_control, require_acl_node_pool_selection,
 };
-pub(crate) use secret_bindings::validate_secret_binding_references;
 pub(super) use secret_bindings::validate_secret_bindings;

@@ -26,9 +26,10 @@ pub use application::{
 pub use application::{
     DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellNodePoolSelectionRequest,
     DurableCellRoutePublication, DurableCellRoutePublicationRequest,
-    DurableCellStorageCredentialRequest, DurableCellWorkloadReconciliationRequest,
-    IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellNodePoolPort,
-    IDurableCellRoutePublicationPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
+    DurableCellSecretBindingAdmissionRequest, DurableCellStorageCredentialRequest,
+    DurableCellWorkloadReconciliationRequest, IDurableCellBuildArtifactPort,
+    IDurableCellExecutionPort, IDurableCellNodePoolPort, IDurableCellRoutePublicationPort,
+    IDurableCellSecretBindingPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
 };
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
@@ -47,6 +48,7 @@ pub use facade::{
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
     PublishDurableCellApplicationRouteRequest, ReviseDurableCellApplicationRequest,
-    SetDurableCellApplicationStateRequest, WorkloadsDurableCellWorkloadAdapter,
+    SecretsDurableCellBindingAdapter, SetDurableCellApplicationStateRequest,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 pub(crate) use infrastructure::ExecutionsDurableCellExecutionAdapter;

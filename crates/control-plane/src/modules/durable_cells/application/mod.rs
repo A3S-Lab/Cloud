@@ -13,6 +13,7 @@ mod result;
 mod route_publication;
 mod route_publication_port;
 mod runtime_profile;
+mod secret_binding_port;
 mod storage_port;
 mod workload_port;
 mod writer_fence;
@@ -65,6 +66,9 @@ pub use runtime_profile::{
     admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
     project_durable_cell_operator_binding, project_durable_cell_runtime_spec,
     DurableCellRuntimeEndpoints,
+};
+pub use secret_binding_port::{
+    DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
 pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 pub use workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};

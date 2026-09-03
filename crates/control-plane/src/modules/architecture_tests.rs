@@ -218,7 +218,7 @@ fn data_credentials_cross_one_secrets_owner_interface_and_one_adapter() {
     for required in [
         "pub trait IExactSecretVersionAccess",
         "pub trait IExactSecretMaterializer",
-        "pub(crate) fn exact_secret_version_access(",
+        "pub fn exact_secret_version_access(",
         "pub(crate) fn exact_secret_materializer(",
     ] {
         assert!(
@@ -686,6 +686,56 @@ fn durable_cells_storage_admission_crosses_one_consumer_owned_port() {
         admission_sites,
         lines("durable_cells/infrastructure/data_storage.rs"),
         "Durable Cells must translate Data credential admission through one infrastructure adapter"
+    );
+}
+
+#[test]
+fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port = std::fs::read_to_string(
+        module_root().join("durable_cells/application/secret_binding_port.rs"),
+    )
+    .expect("read Durable Cells Secret binding port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/secrets_binding.rs"),
+    )
+    .expect("read Durable Cells Secrets adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(deployment.contains("Arc<dyn IDurableCellSecretBindingPort>"));
+    assert!(deployment.contains(".validate_active_bindings("));
+    assert!(!deployment.contains("validate_secret_binding_references"));
+    assert!(!deployment.contains("ISecretRepository"));
+    assert!(port.contains("pub struct DurableCellSecretBindingAdmissionRequest"));
+    assert!(port.contains("pub trait IDurableCellSecretBindingPort"));
+    assert!(!port.contains("crate::modules::secrets"));
+    for required in [
+        "impl IDurableCellSecretBindingPort",
+        "IExactSecretVersionAccess",
+        "require_reference",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Secrets adapter lost owner translation {required}"
+        );
+    }
+
+    let mut secret_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("IExactSecretVersionAccess")
+        {
+            secret_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        secret_sites,
+        lines("durable_cells/infrastructure/secrets_binding.rs"),
+        "Durable Cells must translate Secret binding admission through one infrastructure adapter"
     );
 }
 

@@ -18,12 +18,13 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::infrastructure::{
     DataDurableCellStorageAdapter, FleetDurableCellNodePoolAdapter,
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    WorkloadsDurableCellWorkloadAdapter,
+    SecretsDurableCellBindingAdapter, WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::InMemoryOperationRepository;
+use crate::modules::secrets::application::exact_secret_version_access;
 use crate::modules::secrets::domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretRepository, Secret, SecretChanged,
 };
@@ -168,6 +169,10 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let node_pool_port: Arc<dyn IDurableCellNodePoolPort> =
         Arc::new(FleetDurableCellNodePoolAdapter::new(node_pools.clone()));
     let secret_port: Arc<dyn ISecretRepository> = secrets.clone();
+    let secret_binding_port: Arc<dyn IDurableCellSecretBindingPort> =
+        Arc::new(SecretsDurableCellBindingAdapter::new(
+            exact_secret_version_access(Arc::clone(&secret_port)),
+        ));
     let storage_port: Arc<dyn IDurableCellStoragePort> =
         Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secret_port)));
 
@@ -199,7 +204,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     assert_ne!(correlation_idempotency.scope, workload_idempotency.scope);
     admit_external_bindings(
         storage_port.as_ref(),
-        &secret_port,
+        secret_binding_port.as_ref(),
         node_pool_port.as_ref(),
         &command,
     )
@@ -228,7 +233,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         workloads.clone(),
         workload_port.clone(),
         storage_port,
-        secret_port,
+        secret_binding_port,
         node_pool_port,
     );
     let recovered = handler

@@ -112,11 +112,12 @@ use crate::modules::durable_cells::{
     FleetDurableCellNodePoolAdapter, GetDurableCellApplicationHandler,
     GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
     IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
-    IDurableCellNodePoolPort, IDurableCellRoutePublicationPort, IDurableCellStoragePort,
-    IDurableCellWorkloadPort, ListDurableCellApplicationRevisionsHandler,
+    IDurableCellNodePoolPort, IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort,
+    IDurableCellStoragePort, IDurableCellWorkloadPort, ListDurableCellApplicationRevisionsHandler,
     ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplicationHandler,
-    StopDurableCellApplicationHandler, WorkloadsDurableCellWorkloadAdapter,
+    ReviseDurableCellApplicationHandler, SecretsDurableCellBindingAdapter,
+    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpCredentialLifecycleRepository,
@@ -261,6 +262,7 @@ use crate::modules::projects::{
     ListEnvironmentsHandler, ListProjectsHandler, ProjectsModule, UpdateProjectAttributionHandler,
 };
 use crate::modules::search::{ISearchRepository, SearchModule, SearchResourcesHandler};
+use crate::modules::secrets::application::exact_secret_version_access;
 use crate::modules::secrets::domain::{ISecretEncryptionService, ISecretRepository};
 use crate::modules::secrets::{
     CreateSecretHandler, GetSecretHandler, ISecretEnvironmentAccess,
@@ -2480,6 +2482,11 @@ fn build_management_application_with_health(
     let deploy_durable_cell_deployments = durable_cell_deployments;
     let deploy_durable_cell_workloads = Arc::clone(&workloads);
     let deploy_durable_cell_secrets = Arc::clone(&secrets);
+    let deploy_durable_cell_secret_access =
+        exact_secret_version_access(Arc::clone(&deploy_durable_cell_secrets));
+    let deploy_durable_cell_secret_bindings: Arc<dyn IDurableCellSecretBindingPort> = Arc::new(
+        SecretsDurableCellBindingAdapter::new(deploy_durable_cell_secret_access),
+    );
     let deploy_durable_cell_storage: Arc<dyn IDurableCellStoragePort> = Arc::new(
         DataDurableCellStorageAdapter::new(Arc::clone(&deploy_durable_cell_secrets)),
     );
@@ -2495,7 +2502,7 @@ fn build_management_application_with_health(
         deploy_durable_cell_workloads,
         Arc::clone(&durable_cell_workload_port),
         deploy_durable_cell_storage,
-        deploy_durable_cell_secrets,
+        deploy_durable_cell_secret_bindings,
         deploy_durable_cell_node_pool_port,
     );
     let deploy_durable_cell_from_acl_handler = DeployDurableCellApplicationFromAclHandler::new(
