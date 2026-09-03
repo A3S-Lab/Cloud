@@ -796,6 +796,43 @@ jobs:
             >"$EVIDENCE_DIR/artifact-volume-output-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/artifact-volume-output-certification.txt")" -eq 1
 
+      - name: Certify Skill bundle hydration through real Box
+        env:
+          A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
+          A3S_BOX_OCI_RUNTIME_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci
+          A3S_CLOUD_TEST_BOX: "1"
+          A3S_DEPS_STUB: "1"
+          EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
+        run: |
+          install -d -m 0755 "$EVIDENCE_DIR"
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
+          sudo env \
+            PATH="$PATH" \
+            HOME="$HOME" \
+            CARGO_HOME="$cargo_home" \
+            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
+            RUSTUP_HOME="$rustup_home" \
+            A3S_HOME="$A3S_HOME" \
+            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
+            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
+            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
+            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
+            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
+            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
+            RUST_MIN_STACK=33554432 \
+            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+              -p a3s-cloud-node-agent --lib \
+              box_runtime::tests::artifact_storage::real_box_materializes_skill_bundle_mount_read_only_and_cleans \
+              -- --ignored --exact --nocapture --test-threads=1 \
+              2>&1 | tee "$EVIDENCE_DIR/cloud-skill-artifact.log"
+          grep --fixed-strings \
+            'A3S_CLOUD_A0_5_REAL_BOX_SKILL_ARTIFACT_CERTIFIED provider=a3s-box artifact_media_type=application/vnd.a3s.skill.bundle.v1+tar artifact_downloads=1 read_only_mount=true runtime_write_rejected=true cleanup=removed' \
+            "$EVIDENCE_DIR/cloud-skill-artifact.log" \
+            >"$EVIDENCE_DIR/skill-artifact-certification.txt"
+          test "$(wc -l <"$EVIDENCE_DIR/skill-artifact-certification.txt")" -eq 1
+
       - name: Certify a published Agent release through PostgreSQL and real Box
         env:
           A3S_BOX_OCI_AGENT_PATH: ${{ env.A3S_HOME }}/bin/a3s-oci-agent
