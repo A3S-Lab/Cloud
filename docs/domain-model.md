@@ -3065,6 +3065,12 @@ credential, backup, provider, or deployment lifecycle. Credential rotation
 changes only the exact binding generation/digest; application, revision, and
 namespace identities remain stable.
 
+The immutable `DurableCellDeployment` correlation keeps an optional provider
+profile only as canonical ACL bytes paired with the binding's digest. Its
+domain validation checks the wire's canonical identity; endpoint, bucket,
+region, and addressing semantics are restored by the Storage anti-corruption
+adapter, which remains the sole Data owner at replay and provider use.
+
 Component-only `CELL0.2-C2` makes that binding validate S0-owned sealed
 recovery points, isolated restore plans/evidence, and safe deletion plans
 against its exact namespace, provider-profile, and retention-policy digests.
