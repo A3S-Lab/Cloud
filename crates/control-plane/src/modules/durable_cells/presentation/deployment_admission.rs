@@ -1,15 +1,12 @@
-use crate::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
-    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
-    ObjectNamespaceRetentionPolicySpec,
-};
+use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::application::require_environment_access;
 use crate::modules::durable_cells::domain::{
     DurableCellDeploymentBinding, DurableCellProjectionIdentity, DurableCellServiceProfile,
 };
 use crate::modules::durable_cells::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
-    DurableCellDeploymentMutationResult,
+    DurableCellDeploymentMutationResult, DurableCellStorageCredentialRequest,
+    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -162,37 +159,41 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                 command.application_id,
             );
             let storage_spec = storage.spec();
-            let storage_credentials = match ObjectNamespaceCredentialBinding::from_spec(
-                ObjectNamespaceCredentialBindingSpec {
-                    organization_id: command.organization_id,
-                    project_id: command.project_id,
-                    environment_id: command.environment_id,
-                    namespace_id,
-                    generation: storage_spec.credential_generation,
-                    provider_profile_digest: storage_spec.provider_profile_digest.clone(),
-                    access_key_id: storage_spec.access_key_id,
-                    secret_access_key: storage_spec.secret_access_key,
-                    session_token: storage_spec.session_token,
-                },
+            let storage_credentials = match DurableCellStorageCredentialRequest::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+                namespace_id,
+                storage_spec.credential_generation,
+                storage_spec.provider_profile_digest.clone(),
+                storage_spec.access_key_id,
+                storage_spec.secret_access_key,
+                storage_spec.session_token,
             ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             let retention_spec = &storage_spec.retention_policy;
-            let retention_policy = match ObjectNamespaceRetentionPolicy::from_spec(
-                ObjectNamespaceRetentionPolicySpec {
-                    minimum_sealed_recovery_points: retention_spec.minimum_sealed_recovery_points,
-                    maximum_sealed_recovery_points: retention_spec.maximum_sealed_recovery_points,
-                    maximum_recovery_point_age_seconds: retention_spec
-                        .maximum_recovery_point_age_seconds,
-                    deletion_grace_period_seconds: retention_spec.deletion_grace_period_seconds,
-                },
+            let retention_spec = DurableCellStorageRetentionPolicySpec {
+                minimum_sealed_recovery_points: retention_spec.minimum_sealed_recovery_points,
+                maximum_sealed_recovery_points: retention_spec.maximum_sealed_recovery_points,
+                maximum_recovery_point_age_seconds: retention_spec
+                    .maximum_recovery_point_age_seconds,
+                deletion_grace_period_seconds: retention_spec.deletion_grace_period_seconds,
+            };
+            let retention_digest = match retention_spec.digest() {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            let retention_policy = match DurableCellStorageRetentionPolicyRequest::new(
+                retention_spec,
+                retention_digest,
             ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             if storage_provider_profile.as_ref().is_some_and(|profile| {
-                profile.digest() != &storage_credentials.spec().provider_profile_digest
+                profile.digest() != &storage_credentials.provider_profile_digest
             }) {
                 return Ok(Err(ApplicationError::Invalid(
                     "Durable Cell deployment S0 profile and binding digests differ".into(),

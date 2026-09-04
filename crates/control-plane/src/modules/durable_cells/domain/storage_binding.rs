@@ -2,8 +2,8 @@ use super::{
     DurableCellApplication, DurableCellApplicationRevision, DurableCellProjectionIdentity,
 };
 use crate::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceDeletionPlan, ObjectNamespaceRecoveryPoint,
-    ObjectNamespaceRestoreEvidence, ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceDeletionPlan, ObjectNamespaceRecoveryPoint, ObjectNamespaceRestoreEvidence,
+    ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicy,
 };
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, OrganizationId,
@@ -33,13 +33,42 @@ pub struct DurableCellStorageBinding {
     pub retention_policy_digest: Sha256Digest,
 }
 
+/// Provider-neutral input used to bind one exact S0 projection to a Durable
+/// Cell revision. The application layer obtains these immutable identities
+/// through the Storage port; Data credential and retention aggregates never
+/// cross into the Durable Cells domain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageBindingInput {
+    pub namespace_id: StorageNamespaceId,
+    pub credential_binding_generation: u64,
+    pub credential_binding_digest: Sha256Digest,
+    pub provider_profile_digest: Sha256Digest,
+    pub retention_policy_digest: Sha256Digest,
+}
+
+impl DurableCellStorageBindingInput {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.namespace_id.as_uuid().is_nil()
+            || self.credential_binding_generation == 0
+            || Sha256Digest::parse(self.credential_binding_digest.as_str())?
+                != self.credential_binding_digest
+            || Sha256Digest::parse(self.provider_profile_digest.as_str())?
+                != self.provider_profile_digest
+            || Sha256Digest::parse(self.retention_policy_digest.as_str())?
+                != self.retention_policy_digest
+        {
+            return Err("Durable Cell storage binding input is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 impl DurableCellStorageBinding {
     pub fn for_current_revision(
         application: &DurableCellApplication,
         revision: &DurableCellApplicationRevision,
         projection: &DurableCellProjectionIdentity,
-        credentials: &ObjectNamespaceCredentialBinding,
-        retention_policy: &ObjectNamespaceRetentionPolicy,
+        input: &DurableCellStorageBindingInput,
     ) -> Result<Self, String> {
         application.validate()?;
         revision.validate()?;
@@ -47,13 +76,10 @@ impl DurableCellStorageBinding {
             .clone()
             .restore(application, revision)
             .map(drop)?;
-        credentials.validate_scope(
-            application.organization_id,
-            application.project_id,
-            application.environment_id,
-            projection.storage_namespace_id,
-        )?;
-        retention_policy.validate()?;
+        input.validate()?;
+        if input.namespace_id != projection.storage_namespace_id {
+            return Err("Durable Cell storage binding input has the wrong namespace".into());
+        }
         let binding = Self {
             organization_id: application.organization_id,
             project_id: application.project_id,
@@ -63,10 +89,10 @@ impl DurableCellStorageBinding {
             application_revision_number: revision.revision_number,
             application_definition_digest: revision.definition.digest().clone(),
             storage_namespace_id: projection.storage_namespace_id,
-            credential_binding_generation: credentials.spec().generation,
-            credential_binding_digest: credentials.digest().clone(),
-            provider_profile_digest: credentials.spec().provider_profile_digest.clone(),
-            retention_policy_digest: retention_policy.digest().clone(),
+            credential_binding_generation: input.credential_binding_generation,
+            credential_binding_digest: input.credential_binding_digest.clone(),
+            provider_profile_digest: input.provider_profile_digest.clone(),
+            retention_policy_digest: input.retention_policy_digest.clone(),
         };
         binding.validate()?;
         Ok(binding)
@@ -77,17 +103,10 @@ impl DurableCellStorageBinding {
         application: &DurableCellApplication,
         revision: &DurableCellApplicationRevision,
         projection: &DurableCellProjectionIdentity,
-        credentials: &ObjectNamespaceCredentialBinding,
-        retention_policy: &ObjectNamespaceRetentionPolicy,
+        input: &DurableCellStorageBindingInput,
     ) -> Result<Self, String> {
         self.validate()?;
-        let expected = Self::for_current_revision(
-            application,
-            revision,
-            projection,
-            credentials,
-            retention_policy,
-        )?;
+        let expected = Self::for_current_revision(application, revision, projection, input)?;
         if self != expected {
             return Err("stored Durable Cell storage binding drifted".into());
         }
@@ -176,10 +195,10 @@ impl DurableCellStorageBinding {
 mod tests {
     use super::*;
     use crate::modules::data::{
-        ObjectNamespaceCredentialBindingSpec, ObjectNamespaceDeletionPlan, ObjectNamespaceKey,
-        ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
-        ObjectNamespaceRestoreEvidence, ObjectNamespaceRestorePlan,
-        ObjectNamespaceRetentionPolicySpec,
+        ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+        ObjectNamespaceDeletionPlan, ObjectNamespaceKey, ObjectNamespaceRecoveryPoint,
+        ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRestoreEvidence,
+        ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicySpec,
     };
     use crate::modules::durable_cells::domain::{
         DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
@@ -273,16 +292,29 @@ mod tests {
         (application, revision, projection, credentials)
     }
 
+    fn binding_input(
+        credentials: &ObjectNamespaceCredentialBinding,
+        retention_policy: &ObjectNamespaceRetentionPolicy,
+    ) -> DurableCellStorageBindingInput {
+        DurableCellStorageBindingInput {
+            namespace_id: credentials.spec().namespace_id,
+            credential_binding_generation: credentials.spec().generation,
+            credential_binding_digest: credentials.digest().clone(),
+            provider_profile_digest: credentials.spec().provider_profile_digest.clone(),
+            retention_policy_digest: retention_policy.digest().clone(),
+        }
+    }
+
     #[test]
     fn binding_requires_exact_current_revision_namespace_and_credential_scope() {
         let (application, revision, projection, credentials) = fixture();
         let retention_policy = retention_policy();
+        let input = binding_input(&credentials, &retention_policy);
         let binding = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
-            &credentials,
-            &retention_policy,
+            &input,
         )
         .expect("storage binding");
         assert_eq!(
@@ -292,24 +324,18 @@ mod tests {
         assert_eq!(binding.credential_binding_generation, 1);
         binding
             .clone()
-            .restore(
-                &application,
-                &revision,
-                &projection,
-                &credentials,
-                &retention_policy,
-            )
+            .restore(&application, &revision, &projection, &input)
             .expect("restore");
 
         let mut foreign = credentials.spec().clone();
         foreign.namespace_id = StorageNamespaceId::new();
         let foreign = ObjectNamespaceCredentialBinding::from_spec(foreign).expect("foreign");
+        let foreign_input = binding_input(&foreign, &retention_policy);
         assert!(DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
-            &foreign,
-            &retention_policy
+            &foreign_input
         )
         .is_err());
     }
@@ -318,12 +344,12 @@ mod tests {
     fn credential_rotation_changes_only_the_exact_s0_binding() {
         let (application, revision, projection, credentials) = fixture();
         let retention_policy = retention_policy();
+        let input = binding_input(&credentials, &retention_policy);
         let initial = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
-            &credentials,
-            &retention_policy,
+            &input,
         )
         .expect("initial");
         let mut rotated = credentials.spec().clone();
@@ -333,12 +359,12 @@ mod tests {
         rotated
             .validate_successor_of(&credentials)
             .expect("credential lineage");
+        let rotated_input = binding_input(&rotated, &retention_policy);
         let successor = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
-            &rotated,
-            &retention_policy,
+            &rotated_input,
         )
         .expect("successor");
         assert_eq!(
@@ -357,12 +383,12 @@ mod tests {
     fn recovery_and_deletion_remain_exact_s0_contracts() {
         let (application, revision, projection, credentials) = fixture();
         let retention_policy = retention_policy();
+        let input = binding_input(&credentials, &retention_policy);
         let binding = DurableCellStorageBinding::for_current_revision(
             &application,
             &revision,
             &projection,
-            &credentials,
-            &retention_policy,
+            &input,
         )
         .expect("storage binding");
         let now = Utc::now();

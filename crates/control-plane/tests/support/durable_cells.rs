@@ -5,18 +5,16 @@ use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, IBuildRunRepository, OciDescriptor, OciPublicationTarget,
     PostgresBuildRunRepository, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
-use a3s_cloud_control_plane::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
-    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
-    ObjectNamespaceRetentionPolicySpec,
-};
+use a3s_cloud_control_plane::modules::data::ObjectNamespaceProviderProfile;
 use a3s_cloud_control_plane::modules::durable_cells::application::{
     compose_pinned_celld_service_process, CreateDurableCellApplication,
     CreateDurableCellApplicationHandler, DeployDurableCellApplication,
-    DeployDurableCellApplicationHandler, DurableCellStorageProviderProfileProjection,
-    GetDurableCellApplication, GetDurableCellApplicationHandler,
-    ListDurableCellApplicationRevisions, ListDurableCellApplicationRevisionsHandler,
-    ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,
+    DeployDurableCellApplicationHandler, DurableCellStorageCredentialRequest,
+    DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicyRequest,
+    DurableCellStorageRetentionPolicySpec, GetDurableCellApplication,
+    GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
+    ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
+    ReviseDurableCellApplicationHandler, StartDurableCellApplication,
     StartDurableCellApplicationHandler, StopDurableCellApplication,
     StopDurableCellApplicationHandler,
 };
@@ -1189,25 +1187,26 @@ fn projection_deployment_command(
     let profile = DurableCellServiceProfile::parse_acl(DURABLE_CELL_SERVICE_PROFILE_ACL)?;
     let storage_provider_profile =
         ObjectNamespaceProviderProfile::parse_acl(OBJECT_NAMESPACE_PROVIDER_PROFILE_ACL)?;
-    let storage_credentials =
-        ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
-            organization_id: input.organization_id,
-            project_id: input.project_id,
-            environment_id: input.environment_id,
-            namespace_id: input.storage_namespace_id,
-            generation: 1,
-            provider_profile_digest: storage_provider_profile.digest().clone(),
-            access_key_id: input.access_key_id,
-            secret_access_key: input.secret_access_key,
-            session_token: None,
-        })?;
+    let storage_credentials = DurableCellStorageCredentialRequest::new(
+        input.organization_id,
+        input.project_id,
+        input.environment_id,
+        input.storage_namespace_id,
+        1,
+        storage_provider_profile.digest().clone(),
+        input.access_key_id,
+        input.secret_access_key,
+        None,
+    )?;
+    let retention_spec = DurableCellStorageRetentionPolicySpec {
+        minimum_sealed_recovery_points: 2,
+        maximum_sealed_recovery_points: 24,
+        maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
+        deletion_grace_period_seconds: 24 * 60 * 60,
+    };
+    let retention_digest = retention_spec.digest()?;
     let retention_policy =
-        ObjectNamespaceRetentionPolicy::from_spec(ObjectNamespaceRetentionPolicySpec {
-            minimum_sealed_recovery_points: 2,
-            maximum_sealed_recovery_points: 24,
-            maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
-            deletion_grace_period_seconds: 24 * 60 * 60,
-        })?;
+        DurableCellStorageRetentionPolicyRequest::new(retention_spec, retention_digest)?;
     Ok(DeployDurableCellApplication {
         organization_id: input.organization_id,
         project_id: input.project_id,

@@ -1039,7 +1039,9 @@ fn durable_cells_provider_workload_validation_uses_storage_projections() {
     }
     assert!(writer_fence.contains("project_publisher_storage_credentials"));
     assert!(writer_fence.contains("project_provider_profile"));
-    assert!(deployment.contains("storage_provider_profile_projection"));
+    assert!(deployment.contains("DurableCellStorageProviderProfileRequest"));
+    assert!(deployment.contains("project_provider_profile"));
+    assert!(!deployment.contains("storage_provider_profile_projection"));
     assert!(storage_adapter.contains("ObjectNamespaceCredentialBinding"));
     assert!(storage_adapter.contains("ObjectNamespaceProviderProfile"));
 }
@@ -1053,24 +1055,32 @@ fn durable_cells_deployment_acl_keeps_data_materialization_at_the_inbound_edge()
         module_root().join("durable_cells/presentation/deployment_admission.rs"),
     )
     .expect("read Durable Cells deployment ACL admission");
+    let application =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
 
     let binding = production_source(&binding);
     let admission = production_source(&admission);
+    let application = production_source(&application);
     assert!(
         !binding.contains("crate::modules::data"),
         "Durable Cell deployment ACL domain imported Data concrete types"
     );
     assert!(binding.contains("DurableCellRetentionPolicySpec"));
     for required in [
-        "ObjectNamespaceCredentialBinding::from_spec",
-        "ObjectNamespaceRetentionPolicy::from_spec",
-        "ObjectNamespaceRetentionPolicySpec",
+        "ObjectNamespaceProviderProfile::parse_acl",
+        "DurableCellStorageCredentialRequest::new",
+        "DurableCellStorageRetentionPolicyRequest::new",
+        "DurableCellStorageRetentionPolicySpec",
     ] {
         assert!(
             admission.contains(required),
-            "Durable Cell inbound admission lost Data materialization {required}"
+            "Durable Cell inbound admission lost bounded Storage translation {required}"
         );
     }
+    assert!(!application.contains("crate::modules::data"));
+    assert!(!application.contains("ObjectNamespaceCredentialBinding"));
+    assert!(!application.contains("ObjectNamespaceRetentionPolicy"));
     assert!(!binding.contains("bind_scope("));
 }
 
