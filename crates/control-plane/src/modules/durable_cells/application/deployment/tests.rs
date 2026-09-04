@@ -5,8 +5,9 @@ use super::super::commands::{
 use super::super::writer_fence::DurableCellWriterFenceAdapter;
 use super::*;
 use crate::modules::data::{
-    ObjectNamespaceCredentialBindingSpec, ObjectNamespaceRetentionPolicySpec,
-    SealObjectNamespaceOperationInput,
+    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+    ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceRetentionPolicySpec, SealObjectNamespaceOperationInput,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
@@ -22,7 +23,8 @@ use crate::modules::durable_cells::infrastructure::{
     WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::durable_cells::{
-    DurableCellStorageProviderProfileProjection, IDurableCellOperationPort,
+    DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicySpec,
+    IDurableCellOperationPort,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
@@ -141,6 +143,30 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
             deletion_grace_period_seconds: 24 * 60 * 60,
         })
         .expect("retention policy");
+    let storage_credentials_request = DurableCellStorageCredentialRequest::new(
+        organization_id,
+        project_id,
+        environment_id,
+        projection.storage_namespace_id,
+        storage_credentials.spec().generation,
+        storage_credentials.spec().provider_profile_digest.clone(),
+        storage_credentials.spec().access_key_id,
+        storage_credentials.spec().secret_access_key,
+        storage_credentials.spec().session_token,
+    )
+    .expect("storage credential request");
+    let retention_spec = DurableCellStorageRetentionPolicySpec {
+        minimum_sealed_recovery_points: retention_policy.spec().minimum_sealed_recovery_points,
+        maximum_sealed_recovery_points: retention_policy.spec().maximum_sealed_recovery_points,
+        maximum_recovery_point_age_seconds: retention_policy
+            .spec()
+            .maximum_recovery_point_age_seconds,
+        deletion_grace_period_seconds: retention_policy.spec().deletion_grace_period_seconds,
+    };
+    let retention_digest = retention_spec.digest().expect("retention digest");
+    let retention_policy_request =
+        DurableCellStorageRetentionPolicyRequest::new(retention_spec, retention_digest)
+            .expect("retention policy request");
     let command = DeployDurableCellApplication {
         organization_id,
         project_id,
@@ -156,8 +182,8 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
             access_key_id,
             secret_access_key,
         ),
-        storage_credentials,
-        retention_policy,
+        storage_credentials: storage_credentials_request,
+        retention_policy: retention_policy_request,
         node_pool_id: None,
         actor_principal_id,
         resource_access: ResourceAccessEvaluator::organization_wide(),
@@ -190,7 +216,17 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         "--internal-listen".into(),
         "0.0.0.0:8081".into(),
     ];
-    assert!(PreparedDeployment::new(&missing_storage_process).is_err());
+    let missing_process_prepared =
+        PreparedDeployment::new(&missing_storage_process).expect("neutral preparation");
+    assert!(admit_external_bindings(
+        storage_port.as_ref(),
+        secret_binding_port.as_ref(),
+        node_pool_port.as_ref(),
+        &missing_process_prepared,
+        &missing_storage_process,
+    )
+    .await
+    .is_err());
     missing_storage_process.storage_provider_profile_acl = None;
     PreparedDeployment::new(&missing_storage_process)
         .expect("legacy deployment remains outside the pinned celld/S0 adapter");
@@ -213,6 +249,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         storage_port.as_ref(),
         secret_binding_port.as_ref(),
         node_pool_port.as_ref(),
+        &prepared,
         &command,
     )
     .await

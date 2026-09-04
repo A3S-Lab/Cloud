@@ -21,7 +21,7 @@ use crate::modules::durable_cells::domain::{
     DurableCellApplicationRevision, DurableCellClassSpec, DurableCellDeploymentRequest,
     DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellRollbackPolicy,
     DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
-    DurableCellStorageBinding,
+    DurableCellStorageBinding, DurableCellStorageBindingInput,
 };
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
@@ -262,8 +262,13 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         &application,
         &application_revision,
         &projection,
-        &credentials,
-        &retention,
+        &DurableCellStorageBindingInput {
+            namespace_id: credentials.spec().namespace_id,
+            credential_binding_generation: credentials.spec().generation,
+            credential_binding_digest: credentials.digest().clone(),
+            provider_profile_digest: credentials.spec().provider_profile_digest.clone(),
+            retention_policy_digest: retention.digest().clone(),
+        },
     )?;
     let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
     let service_template = service_template(

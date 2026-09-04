@@ -47,4 +47,4 @@ pub use service_profile::{
     DurableCellServiceProfile, DurableCellServiceProfileSpec, DURABLE_CELL_PROFILE_SCHEMA,
     DURABLE_CELL_PROVIDER_PROTOCOL, DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
 };
-pub use storage_binding::DurableCellStorageBinding;
+pub use storage_binding::{DurableCellStorageBinding, DurableCellStorageBindingInput};

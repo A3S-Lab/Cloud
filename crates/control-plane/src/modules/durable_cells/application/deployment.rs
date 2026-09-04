@@ -10,24 +10,20 @@ use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
 use super::storage_port::{
-    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
-    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
-    IDurableCellStoragePort,
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileRequest,
+    DurableCellStorageRetentionPolicyRequest, IDurableCellStoragePort,
 };
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
     DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
 };
-use crate::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile,
-    ObjectNamespaceRetentionPolicy,
-};
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
     DurableCellApplicationRecord, DurableCellDeployment, DurableCellDeploymentRequest,
     DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellServiceProfile,
-    DurableCellStorageBinding, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
+    DurableCellStorageBinding, DurableCellStorageBindingInput, IDurableCellApplicationRepository,
+    IDurableCellDeploymentRepository,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -55,8 +51,8 @@ pub struct DeployDurableCellApplication {
     /// Internal, already-resolved adapter projection. C5 must expose this
     /// through canonical A3S ACL rather than serializing this Rust value.
     pub workload_template: ServiceTemplate,
-    pub storage_credentials: ObjectNamespaceCredentialBinding,
-    pub retention_policy: ObjectNamespaceRetentionPolicy,
+    pub storage_credentials: DurableCellStorageCredentialRequest,
+    pub retention_policy: DurableCellStorageRetentionPolicyRequest,
     pub node_pool_id: Option<NodePoolId>,
     pub actor_principal_id: PrincipalId,
     pub resource_access: ResourceAccessEvaluator,
@@ -153,6 +149,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                         storage.as_ref(),
                         secret_bindings.as_ref(),
                         node_pool_port.as_ref(),
+                        &prepared,
                         &command,
                     )
                     .await
@@ -239,6 +236,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 storage.as_ref(),
                 secret_bindings.as_ref(),
                 node_pool_port.as_ref(),
+                &prepared,
                 &command,
             )
             .await
@@ -284,7 +282,7 @@ struct PreparedDeployment {
     application_id: DurableCellApplicationId,
     application_revision_id: DurableCellApplicationRevisionId,
     service_profile: DurableCellServiceProfile,
-    storage_provider_profile: Option<ObjectNamespaceProviderProfile>,
+    storage_provider_profile_acl: Option<String>,
     service_template_digest: Sha256Digest,
     provider_artifact_digest: Sha256Digest,
     credential_binding_digest: Sha256Digest,
@@ -297,33 +295,24 @@ struct PreparedDeployment {
 impl PreparedDeployment {
     fn new(command: &DeployDurableCellApplication) -> Result<Self, String> {
         let service_profile = DurableCellServiceProfile::parse_acl(&command.service_profile_acl)?;
-        let storage_provider_profile = command
-            .storage_provider_profile_acl
-            .as_deref()
-            .map(ObjectNamespaceProviderProfile::parse_acl)
-            .transpose()?;
         command.workload_template.validate()?;
         command.storage_credentials.validate()?;
         command.retention_policy.validate()?;
-        if storage_provider_profile.as_ref().is_some_and(|profile| {
-            profile.digest() != &command.storage_credentials.spec().provider_profile_digest
-        }) {
-            return Err(
-                "Durable Cell deployment S0 profile and credential binding digests differ".into(),
+        let expected_namespace =
+            DurableCellProjectionIdentity::storage_namespace_id_for_application(
+                command.application_id,
             );
+        if command.storage_credentials.organization_id != command.organization_id
+            || command.storage_credentials.project_id != command.project_id
+            || command.storage_credentials.environment_id != command.environment_id
+            || command.storage_credentials.namespace_id != expected_namespace
+        {
+            return Err("Durable Cell S0 credential request has the wrong exact scope".into());
         }
-        if let Some(provider_profile) = &storage_provider_profile {
-            let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
-            let provider_profile_projection =
-                storage_provider_profile_projection(provider_profile)?;
-            let credential_projection =
-                storage_credential_request_for_validation(&command.storage_credentials)?;
-            validate_pinned_celld_provider_workload(
-                &credential_projection,
-                &provider_profile_projection,
-                &service_profile,
-                &command.workload_template,
-                &publisher,
+        if let Some(acl) = command.storage_provider_profile_acl.as_deref() {
+            DurableCellStorageProviderProfileRequest::new(
+                acl,
+                command.storage_credentials.provider_profile_digest.clone(),
             )?;
         }
         let service_template_digest = Sha256Digest::parse(command.workload_template.digest()?)?;
@@ -337,8 +326,8 @@ impl PreparedDeployment {
             application_revision_id: command.application_revision_id,
             service_profile_digest: service_profile.digest().as_str(),
             service_template_digest: service_template_digest.as_str(),
-            credential_binding_digest: command.storage_credentials.digest().as_str(),
-            retention_policy_digest: command.retention_policy.digest().as_str(),
+            credential_binding_digest: command.storage_credentials.binding_digest.as_str(),
+            retention_policy_digest: command.retention_policy.expected_digest.as_str(),
             node_pool_id: command.node_pool_id,
         })
         .map_err(|error| error.to_string())?;
@@ -349,16 +338,15 @@ impl PreparedDeployment {
             application_id: command.application_id,
             application_revision_id: command.application_revision_id,
             service_profile,
-            storage_provider_profile,
+            storage_provider_profile_acl: command.storage_provider_profile_acl.clone(),
             service_template_digest,
             provider_artifact_digest,
-            credential_binding_digest: command.storage_credentials.digest().clone(),
+            credential_binding_digest: command.storage_credentials.binding_digest.clone(),
             storage_provider_profile_digest: command
                 .storage_credentials
-                .spec()
                 .provider_profile_digest
                 .clone(),
-            retention_policy_digest: command.retention_policy.digest().clone(),
+            retention_policy_digest: command.retention_policy.expected_digest.clone(),
             node_pool_id: command.node_pool_id,
             canonical_request,
         })
@@ -399,10 +387,7 @@ impl PreparedDeployment {
             || correlation.storage.credential_binding_digest != self.credential_binding_digest
             || correlation.storage.provider_profile_digest != self.storage_provider_profile_digest
             || correlation.storage_provider_profile_acl()?
-                != self
-                    .storage_provider_profile
-                    .as_ref()
-                    .map(|profile| profile.canonical_acl())
+                != self.storage_provider_profile_acl.as_deref()
             || correlation.storage.retention_policy_digest != self.retention_policy_digest
             || correlation.provider.service_profile_digest != *self.service_profile.digest()
             || correlation.provider.service_template_digest != self.service_template_digest
@@ -486,12 +471,33 @@ async fn admit_external_bindings(
     storage: &dyn IDurableCellStoragePort,
     secret_bindings: &dyn IDurableCellSecretBindingPort,
     node_pool_port: &dyn IDurableCellNodePoolPort,
+    prepared: &PreparedDeployment,
     command: &DeployDurableCellApplication,
 ) -> ApplicationResult<()> {
-    let storage_request = storage_credential_request(&command.storage_credentials)?;
-    storage.require_active_credentials(&storage_request).await?;
-    let retention_request = storage_retention_policy_request(&command.retention_policy)?;
-    storage.project_retention_policy(&retention_request).await?;
+    storage
+        .require_active_credentials(&command.storage_credentials)
+        .await?;
+    storage
+        .project_retention_policy(&command.retention_policy)
+        .await?;
+    if let Some(acl) = prepared.storage_provider_profile_acl.as_deref() {
+        let profile_request = DurableCellStorageProviderProfileRequest::new(
+            acl,
+            prepared.storage_provider_profile_digest.clone(),
+        )
+        .map_err(ApplicationError::Invalid)?;
+        let profile = storage.project_provider_profile(&profile_request).await?;
+        let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
+            .map_err(ApplicationError::Invalid)?;
+        validate_pinned_celld_provider_workload(
+            &command.storage_credentials,
+            &profile,
+            &prepared.service_profile,
+            &command.workload_template,
+            &publisher,
+        )
+        .map_err(ApplicationError::Invalid)?;
+    }
     let bindings = command
         .workload_template
         .secrets
@@ -520,68 +526,6 @@ async fn admit_external_bindings(
         ))
         .await?;
     Ok(())
-}
-
-fn storage_credential_request(
-    credentials: &ObjectNamespaceCredentialBinding,
-) -> ApplicationResult<DurableCellStorageCredentialRequest> {
-    storage_credential_request_for_validation(credentials).map_err(ApplicationError::Internal)
-}
-
-fn storage_credential_request_for_validation(
-    credentials: &ObjectNamespaceCredentialBinding,
-) -> Result<DurableCellStorageCredentialRequest, String> {
-    credentials.validate()?;
-    let spec = credentials.spec();
-    let request = DurableCellStorageCredentialRequest::new(
-        spec.organization_id,
-        spec.project_id,
-        spec.environment_id,
-        spec.namespace_id,
-        spec.generation,
-        spec.provider_profile_digest.clone(),
-        spec.access_key_id,
-        spec.secret_access_key,
-        spec.session_token,
-    )?;
-    if request.binding_digest != *credentials.digest() {
-        return Err("Durable Cell S0 credential digest changed at the storage boundary".into());
-    }
-    Ok(request)
-}
-
-fn storage_provider_profile_projection(
-    profile: &ObjectNamespaceProviderProfile,
-) -> Result<DurableCellStorageProviderProfileProjection, String> {
-    profile.validate()?;
-    let spec = profile.spec();
-    let projection = DurableCellStorageProviderProfileProjection {
-        digest: profile.digest().clone(),
-        endpoint: spec.endpoint.clone(),
-        region: spec.region.clone(),
-        bucket: spec.bucket.clone(),
-        prefix: spec.prefix.clone(),
-        virtual_hosted_style: spec.virtual_hosted_style,
-    };
-    projection.validate()?;
-    Ok(projection)
-}
-
-fn storage_retention_policy_request(
-    policy: &ObjectNamespaceRetentionPolicy,
-) -> ApplicationResult<DurableCellStorageRetentionPolicyRequest> {
-    policy.validate().map_err(ApplicationError::Internal)?;
-    let spec = policy.spec();
-    DurableCellStorageRetentionPolicyRequest::new(
-        DurableCellStorageRetentionPolicySpec {
-            minimum_sealed_recovery_points: spec.minimum_sealed_recovery_points,
-            maximum_sealed_recovery_points: spec.maximum_sealed_recovery_points,
-            maximum_recovery_point_age_seconds: spec.maximum_recovery_point_age_seconds,
-            deletion_grace_period_seconds: spec.deletion_grace_period_seconds,
-        },
-        policy.digest().clone(),
-    )
-    .map_err(ApplicationError::Internal)
 }
 
 async fn prepare_correlation(
@@ -628,18 +572,20 @@ async fn prepare_correlation(
         &record.application,
         &record.revision,
         &projection,
-        &command.storage_credentials,
-        &command.retention_policy,
+        &DurableCellStorageBindingInput {
+            namespace_id: command.storage_credentials.namespace_id,
+            credential_binding_generation: command.storage_credentials.generation,
+            credential_binding_digest: command.storage_credentials.binding_digest.clone(),
+            provider_profile_digest: command.storage_credentials.provider_profile_digest.clone(),
+            retention_policy_digest: command.retention_policy.expected_digest.clone(),
+        },
     )
     .map_err(ApplicationError::Invalid)?;
     let control = managed_control(&projection, workload_generation, command.node_pool_id)?;
     DurableCellDeployment::bind(
         projection,
         storage,
-        prepared
-            .storage_provider_profile
-            .as_ref()
-            .map(|profile| profile.canonical_acl()),
+        prepared.storage_provider_profile_acl.as_deref(),
         provider,
         Sha256Digest::parse(control.placement_policy.digest())
             .map_err(ApplicationError::Internal)?,
@@ -733,10 +679,10 @@ fn managed_control(
 }
 
 fn require_storage_credentials_in_template(
-    credentials: &ObjectNamespaceCredentialBinding,
+    credentials: &DurableCellStorageCredentialRequest,
     template: &ServiceTemplate,
 ) -> ApplicationResult<()> {
-    if credentials.spec().references().iter().any(|reference| {
+    if credentials.references().iter().any(|reference| {
         !template.secrets.iter().any(|binding| {
             binding.secret_id == reference.secret_id && binding.version == reference.version
         })
