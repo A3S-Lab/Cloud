@@ -8,7 +8,9 @@ use crate::modules::data::{
     ObjectNamespaceKey, ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec,
     ObjectNamespaceRead,
 };
-use crate::modules::durable_cells::application::DurableCellStorageProviderProfileProjection;
+use crate::modules::durable_cells::application::{
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
+};
 use crate::modules::durable_cells::infrastructure::materialize_bound_execution_for_conformance;
 use crate::modules::edge::infrastructure::gateway_http_upstream;
 use crate::modules::edge::{
@@ -959,6 +961,8 @@ async fn verify_service_behavior(
         storage_profile,
         &secrets,
     )?;
+    let credential_projection = storage_credential_projection(&credentials)?;
+    let profile_projection = storage_profile_projection(storage_profile)?;
     let template = service_template(
         storage_namespace_id,
         storage_profile,
@@ -967,8 +971,8 @@ async fn verify_service_behavior(
         &secrets,
     )?;
     validate_pinned_celld_provider_workload(
-        &credentials,
-        storage_profile,
+        &credential_projection,
+        &profile_projection,
         &service_profile,
         &template,
         publisher,
@@ -1463,6 +1467,7 @@ fn service_template(
     service_profile: &DurableCellServiceProfile,
     secrets: &[SecretReference],
 ) -> GateResult<ServiceTemplate> {
+    let profile_projection = storage_profile_projection(storage_profile)?;
     let template = ServiceTemplate {
         artifact: OciArtifact {
             uri: publisher.image_uri().into(),
@@ -1470,7 +1475,7 @@ fn service_template(
             media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
         },
         process: compose_pinned_celld_service_process(
-            storage_profile,
+            &profile_projection,
             storage_namespace_id,
             8080,
             8081,
@@ -1508,6 +1513,44 @@ fn service_template(
     };
     template.validate().map_err(invalid)?;
     Ok(template)
+}
+
+fn storage_profile_projection(
+    profile: &ObjectNamespaceProviderProfile,
+) -> GateResult<DurableCellStorageProviderProfileProjection> {
+    let spec = profile.spec();
+    let projection = DurableCellStorageProviderProfileProjection {
+        digest: profile.digest().clone(),
+        endpoint: spec.endpoint.clone(),
+        region: spec.region.clone(),
+        bucket: spec.bucket.clone(),
+        prefix: spec.prefix.clone(),
+        virtual_hosted_style: spec.virtual_hosted_style,
+    };
+    projection.validate().map_err(invalid)?;
+    Ok(projection)
+}
+
+fn storage_credential_projection(
+    credentials: &ObjectNamespaceCredentialBinding,
+) -> GateResult<DurableCellStorageCredentialRequest> {
+    let spec = credentials.spec();
+    let projection = DurableCellStorageCredentialRequest::new(
+        spec.organization_id,
+        spec.project_id,
+        spec.environment_id,
+        spec.namespace_id,
+        spec.generation,
+        spec.provider_profile_digest.clone(),
+        spec.access_key_id,
+        spec.secret_access_key,
+        spec.session_token,
+    )
+    .map_err(invalid)?;
+    if projection.binding_digest != *credentials.digest() {
+        return Err(invalid("Service S0 credential projection digest drifted").into());
+    }
+    Ok(projection)
 }
 
 fn service_secret_binding(reference: &SecretReference) -> Result<SecretBinding, io::Error> {

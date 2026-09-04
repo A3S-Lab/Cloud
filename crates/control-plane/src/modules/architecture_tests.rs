@@ -968,6 +968,52 @@ fn durable_cells_storage_operation_composition_crosses_one_consumer_owned_port()
 }
 
 #[test]
+fn durable_cells_provider_workload_validation_uses_storage_projections() {
+    let provider = std::fs::read_to_string(
+        module_root().join("durable_cells/application/provider_workload.rs"),
+    )
+    .expect("read Durable Cells provider-workload policy");
+    let writer_fence =
+        std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let storage_adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data Storage adapter");
+
+    let provider = production_source(&provider);
+    let writer_fence = production_source(&writer_fence);
+    let deployment = production_source(&deployment);
+    let storage_adapter = production_source(&storage_adapter);
+    for (name, source) in [
+        ("provider workload", &provider),
+        ("writer fence", &writer_fence),
+    ] {
+        assert!(
+            !source.contains("crate::modules::data"),
+            "Durable Cells {name} imported Data implementation types instead of Storage projections"
+        );
+    }
+    for required in [
+        "DurableCellStorageCredentialRequest",
+        "DurableCellStorageProviderProfileProjection",
+        "project_publisher_storage_credentials",
+    ] {
+        assert!(
+            provider.contains(required),
+            "Durable Cells provider-workload policy lost neutral Storage contract {required}"
+        );
+    }
+    assert!(writer_fence.contains("project_publisher_storage_credentials"));
+    assert!(writer_fence.contains("project_provider_profile"));
+    assert!(deployment.contains("storage_provider_profile_projection"));
+    assert!(storage_adapter.contains("ObjectNamespaceCredentialBinding"));
+    assert!(storage_adapter.contains("ObjectNamespaceProviderProfile"));
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

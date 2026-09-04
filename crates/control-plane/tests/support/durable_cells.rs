@@ -13,10 +13,10 @@ use a3s_cloud_control_plane::modules::data::{
 use a3s_cloud_control_plane::modules::durable_cells::application::{
     compose_pinned_celld_service_process, CreateDurableCellApplication,
     CreateDurableCellApplicationHandler, DeployDurableCellApplication,
-    DeployDurableCellApplicationHandler, GetDurableCellApplication,
-    GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
-    ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplication,
+    DeployDurableCellApplicationHandler, DurableCellStorageProviderProfileProjection,
+    GetDurableCellApplication, GetDurableCellApplicationHandler,
+    ListDurableCellApplicationRevisions, ListDurableCellApplicationRevisionsHandler,
+    ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,
     StartDurableCellApplicationHandler, StopDurableCellApplication,
     StopDurableCellApplicationHandler,
 };
@@ -1280,6 +1280,15 @@ fn durable_cell_service_template(
 ) -> ServiceTemplate {
     let publisher =
         DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("pinned celld publisher");
+    let provider_spec = provider_profile.spec();
+    let provider_projection = DurableCellStorageProviderProfileProjection {
+        digest: provider_profile.digest().clone(),
+        endpoint: provider_spec.endpoint.clone(),
+        region: provider_spec.region.clone(),
+        bucket: provider_spec.bucket.clone(),
+        prefix: provider_spec.prefix.clone(),
+        virtual_hosted_style: provider_spec.virtual_hosted_style,
+    };
     ServiceTemplate {
         artifact: OciArtifact {
             uri: publisher.image_uri().into(),
@@ -1287,7 +1296,7 @@ fn durable_cell_service_template(
             media_type: "application/vnd.oci.image.index.v1+json".into(),
         },
         process: compose_pinned_celld_service_process(
-            provider_profile,
+            &provider_projection,
             storage_namespace_id,
             8080,
             8081,

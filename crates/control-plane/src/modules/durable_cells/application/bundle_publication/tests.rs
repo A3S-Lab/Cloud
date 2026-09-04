@@ -30,8 +30,9 @@ use crate::modules::durable_cells::infrastructure::{
     WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::durable_cells::{
-    DurableCellBuildArtifactRequest, IDurableCellExecutionPort, IDurableCellOperationPort,
-    IDurableCellStoragePort, IDurableCellWorkloadPort,
+    DurableCellBuildArtifactRequest, DurableCellStorageProviderProfileProjection,
+    IDurableCellExecutionPort, IDurableCellOperationPort, IDurableCellStoragePort,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
@@ -987,6 +988,15 @@ fn service_template(
     access_key: SecretVersionReference,
     secret_access_key: SecretVersionReference,
 ) -> ServiceTemplate {
+    let profile_spec = provider_profile.spec();
+    let profile_projection = DurableCellStorageProviderProfileProjection {
+        digest: provider_profile.digest().clone(),
+        endpoint: profile_spec.endpoint.clone(),
+        region: profile_spec.region.clone(),
+        bucket: profile_spec.bucket.clone(),
+        prefix: profile_spec.prefix.clone(),
+        virtual_hosted_style: profile_spec.virtual_hosted_style,
+    };
     ServiceTemplate {
         artifact: OciArtifact {
             uri: publisher.image_uri().into(),
@@ -994,7 +1004,7 @@ fn service_template(
             media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
         },
         process: compose_pinned_celld_service_process(
-            provider_profile,
+            &profile_projection,
             storage_namespace_id,
             8080,
             8081,
