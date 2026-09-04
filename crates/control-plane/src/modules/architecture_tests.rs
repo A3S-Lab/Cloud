@@ -408,6 +408,29 @@ fn durable_cells_domain_never_imports_workloads_owner_models() {
 }
 
 #[test]
+fn durable_cells_domain_never_imports_data_owner_models() {
+    let mut violations = BTreeSet::new();
+
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("durable_cells") || layer(relative) != Some("domain") {
+            return;
+        }
+        for line in source
+            .lines()
+            .filter(|line| line.contains("crate::modules::data"))
+        {
+            violations.insert(format!("{} contains {line:?}", display(relative)));
+        }
+    });
+
+    assert!(
+        violations.is_empty(),
+        "Durable Cells Domain imported Data owner models instead of a consumer-owned projection:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
 fn durable_cells_application_never_imports_infrastructure_implementations() {
     let mut violations = BTreeSet::new();
 

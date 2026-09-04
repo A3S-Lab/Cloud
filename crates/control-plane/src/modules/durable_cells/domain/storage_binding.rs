@@ -1,9 +1,7 @@
 use super::{
     DurableCellApplication, DurableCellApplicationRevision, DurableCellProjectionIdentity,
-};
-use crate::modules::data::{
-    ObjectNamespaceDeletionPlan, ObjectNamespaceRecoveryPoint, ObjectNamespaceRestoreEvidence,
-    ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicy,
+    DurableCellStorageDeletionPlanIdentity, DurableCellStorageRecoveryPointIdentity,
+    DurableCellStorageRestoreEvidenceIdentity, DurableCellStorageRestorePlanIdentity,
 };
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, OrganizationId,
@@ -138,15 +136,17 @@ impl DurableCellStorageBinding {
 
     pub fn validate_recovery_point(
         &self,
-        point: &ObjectNamespaceRecoveryPoint,
-        retention_policy: &ObjectNamespaceRetentionPolicy,
+        point: &DurableCellStorageRecoveryPointIdentity,
+        retention_policy_digest: &Sha256Digest,
     ) -> Result<(), String> {
         self.validate()?;
         point.validate()?;
-        retention_policy.validate()?;
-        if point.spec().namespace_id != self.storage_namespace_id
-            || point.spec().provider_profile_digest != self.provider_profile_digest
-            || retention_policy.digest() != &self.retention_policy_digest
+        if Sha256Digest::parse(retention_policy_digest.as_str())? != *retention_policy_digest {
+            return Err("Durable Cell retention identity is not canonical".into());
+        }
+        if point.namespace_id != self.storage_namespace_id
+            || point.provider_profile_digest != self.provider_profile_digest
+            || retention_policy_digest != &self.retention_policy_digest
         {
             return Err(
                 "Durable Cell recovery point does not match the exact S0 storage binding".into(),
@@ -157,14 +157,14 @@ impl DurableCellStorageBinding {
 
     pub fn validate_restore_plan(
         &self,
-        point: &ObjectNamespaceRecoveryPoint,
-        plan: &ObjectNamespaceRestorePlan,
-        retention_policy: &ObjectNamespaceRetentionPolicy,
+        point: &DurableCellStorageRecoveryPointIdentity,
+        plan: &DurableCellStorageRestorePlanIdentity,
     ) -> Result<(), String> {
-        self.validate_recovery_point(point, retention_policy)?;
-        plan.validate_source(point, retention_policy)?;
-        if plan.spec().source_namespace_id != self.storage_namespace_id
-            || plan.spec().source_provider_profile_digest != self.provider_profile_digest
+        self.validate_recovery_point(point, &plan.retention_policy_digest)?;
+        plan.validate()?;
+        if plan.source_namespace_id != self.storage_namespace_id
+            || plan.source_provider_profile_digest != self.provider_profile_digest
+            || plan.source_recovery_point_digest != point.digest
         {
             return Err("Durable Cell restore plan changed the bound S0 source".into());
         }
@@ -173,17 +173,23 @@ impl DurableCellStorageBinding {
 
     pub fn validate_deletion_plan(
         &self,
-        point: &ObjectNamespaceRecoveryPoint,
-        restore_plan: &ObjectNamespaceRestorePlan,
-        restore_evidence: &ObjectNamespaceRestoreEvidence,
-        deletion_plan: &ObjectNamespaceDeletionPlan,
-        retention_policy: &ObjectNamespaceRetentionPolicy,
+        point: &DurableCellStorageRecoveryPointIdentity,
+        restore_plan: &DurableCellStorageRestorePlanIdentity,
+        restore_evidence: &DurableCellStorageRestoreEvidenceIdentity,
+        deletion_plan: &DurableCellStorageDeletionPlanIdentity,
     ) -> Result<(), String> {
-        self.validate_restore_plan(point, restore_plan, retention_policy)?;
-        deletion_plan.validate_against(point, restore_plan, restore_evidence, retention_policy)?;
-        if deletion_plan.spec().namespace_id != self.storage_namespace_id
-            || deletion_plan.spec().provider_profile_digest != self.provider_profile_digest
-            || deletion_plan.spec().retention_policy_digest != self.retention_policy_digest
+        self.validate_restore_plan(point, restore_plan)?;
+        restore_evidence.validate()?;
+        deletion_plan.validate()?;
+        if restore_evidence.plan_digest != restore_plan.digest
+            || restore_evidence.source_recovery_point_digest != point.digest
+            || restore_evidence.target_namespace_id != restore_plan.target_namespace_id
+            || deletion_plan.namespace_id != self.storage_namespace_id
+            || deletion_plan.provider_profile_digest != self.provider_profile_digest
+            || deletion_plan.retention_policy_digest != self.retention_policy_digest
+            || deletion_plan.latest_recovery_point_digest != point.digest
+            || deletion_plan.verified_restore_evidence_digest != restore_evidence.digest
+            || deletion_plan.retained_restore_namespace_id != restore_plan.target_namespace_id
         {
             return Err("Durable Cell deletion plan changed the bound S0 namespace".into());
         }
@@ -198,7 +204,8 @@ mod tests {
         ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
         ObjectNamespaceDeletionPlan, ObjectNamespaceKey, ObjectNamespaceRecoveryPoint,
         ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRestoreEvidence,
-        ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicySpec,
+        ObjectNamespaceRestorePlan, ObjectNamespaceRetentionPolicy,
+        ObjectNamespaceRetentionPolicySpec,
     };
     use crate::modules::durable_cells::domain::{
         DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
@@ -305,6 +312,55 @@ mod tests {
         }
     }
 
+    fn recovery_point_identity(
+        point: &ObjectNamespaceRecoveryPoint,
+    ) -> DurableCellStorageRecoveryPointIdentity {
+        DurableCellStorageRecoveryPointIdentity {
+            namespace_id: point.spec().namespace_id,
+            provider_profile_digest: point.spec().provider_profile_digest.clone(),
+            digest: point.digest().clone(),
+        }
+    }
+
+    fn restore_plan_identity(
+        plan: &ObjectNamespaceRestorePlan,
+    ) -> DurableCellStorageRestorePlanIdentity {
+        DurableCellStorageRestorePlanIdentity {
+            source_namespace_id: plan.spec().source_namespace_id,
+            source_recovery_point_digest: plan.spec().source_recovery_point_digest.clone(),
+            source_provider_profile_digest: plan.spec().source_provider_profile_digest.clone(),
+            target_namespace_id: plan.spec().target_namespace_id,
+            target_provider_profile_digest: plan.spec().target_provider_profile_digest.clone(),
+            retention_policy_digest: plan.spec().retention_policy_digest.clone(),
+            digest: plan.digest().clone(),
+        }
+    }
+
+    fn restore_evidence_identity(
+        evidence: &ObjectNamespaceRestoreEvidence,
+    ) -> DurableCellStorageRestoreEvidenceIdentity {
+        DurableCellStorageRestoreEvidenceIdentity {
+            plan_digest: evidence.plan_digest.clone(),
+            source_recovery_point_digest: evidence.source_recovery_point_digest.clone(),
+            target_namespace_id: evidence.target_namespace_id,
+            digest: evidence.digest().clone(),
+        }
+    }
+
+    fn deletion_plan_identity(
+        plan: &ObjectNamespaceDeletionPlan,
+    ) -> DurableCellStorageDeletionPlanIdentity {
+        DurableCellStorageDeletionPlanIdentity {
+            namespace_id: plan.spec().namespace_id,
+            provider_profile_digest: plan.spec().provider_profile_digest.clone(),
+            retention_policy_digest: plan.spec().retention_policy_digest.clone(),
+            latest_recovery_point_digest: plan.spec().latest_recovery_point_digest.clone(),
+            verified_restore_evidence_digest: plan.spec().verified_restore_evidence_digest.clone(),
+            retained_restore_namespace_id: plan.spec().retained_restore_namespace_id,
+            digest: plan.digest().clone(),
+        }
+    }
+
     #[test]
     fn binding_requires_exact_current_revision_namespace_and_credential_scope() {
         let (application, revision, projection, credentials) = fixture();
@@ -406,8 +462,10 @@ mod tests {
             sealed_at: now,
         })
         .expect("recovery point");
+        let point_identity = recovery_point_identity(&point);
+        let retention_policy_digest = retention_policy.digest().clone();
         binding
-            .validate_recovery_point(&point, &retention_policy)
+            .validate_recovery_point(&point_identity, &retention_policy_digest)
             .expect("bound recovery point");
         let restore_plan = ObjectNamespaceRestorePlan::for_recovery_point(
             &point,
@@ -417,8 +475,9 @@ mod tests {
             now + Duration::seconds(1),
         )
         .expect("restore plan");
+        let restore_plan_identity = restore_plan_identity(&restore_plan);
         binding
-            .validate_restore_plan(&point, &restore_plan, &retention_policy)
+            .validate_restore_plan(&point_identity, &restore_plan_identity)
             .expect("bound restore");
         let restore_evidence = ObjectNamespaceRestoreEvidence::verified(
             &restore_plan,
@@ -426,6 +485,7 @@ mod tests {
             now + Duration::seconds(2),
         )
         .expect("restore evidence");
+        let restore_evidence_identity = restore_evidence_identity(&restore_evidence);
         let deletion_plan = ObjectNamespaceDeletionPlan::after_verified_restore(
             &point,
             &restore_plan,
@@ -436,13 +496,13 @@ mod tests {
             now + Duration::seconds(3),
         )
         .expect("deletion plan");
+        let deletion_plan_identity = deletion_plan_identity(&deletion_plan);
         binding
             .validate_deletion_plan(
-                &point,
-                &restore_plan,
-                &restore_evidence,
-                &deletion_plan,
-                &retention_policy,
+                &point_identity,
+                &restore_plan_identity,
+                &restore_evidence_identity,
+                &deletion_plan_identity,
             )
             .expect("bound deletion");
 
@@ -451,8 +511,37 @@ mod tests {
             ..point.spec().clone()
         })
         .expect("foreign point");
+        let foreign_point_identity = recovery_point_identity(&foreign_point);
         assert!(binding
-            .validate_recovery_point(&foreign_point, &retention_policy)
+            .validate_recovery_point(&foreign_point_identity, &retention_policy_digest)
+            .is_err());
+
+        let mut drifted_restore_plan = restore_plan_identity.clone();
+        drifted_restore_plan.source_recovery_point_digest = digest('9');
+        assert!(binding
+            .validate_restore_plan(&point_identity, &drifted_restore_plan)
+            .is_err());
+
+        let mut drifted_restore_evidence = restore_evidence_identity.clone();
+        drifted_restore_evidence.plan_digest = digest('8');
+        assert!(binding
+            .validate_deletion_plan(
+                &point_identity,
+                &restore_plan_identity,
+                &drifted_restore_evidence,
+                &deletion_plan_identity,
+            )
+            .is_err());
+
+        let mut drifted_deletion_plan = deletion_plan_identity.clone();
+        drifted_deletion_plan.retained_restore_namespace_id = StorageNamespaceId::new();
+        assert!(binding
+            .validate_deletion_plan(
+                &point_identity,
+                &restore_plan_identity,
+                &restore_evidence_identity,
+                &drifted_deletion_plan,
+            )
             .is_err());
     }
 }
