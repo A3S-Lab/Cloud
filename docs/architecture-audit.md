@@ -237,14 +237,16 @@ Current boundary debt:
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import Data,
   Fleet, and Workloads internal owner types or repositories for the explicitly
-  retained operation-assembly and provider-runtime seams; the prior-writer
-  seal reads the exact Operations request/projection through one
-  `IDurableCellOperationPort` and owner adapter, and receives only an
-  owner-neutral S0 recovery projection through the Storage port;
+  retained provider-runtime seams; the prior-writer seal reads the exact
+  Operations request/projection through one `IDurableCellOperationPort` and
+  owner adapter, and receives only owner-neutral S0 projections through the
+  Storage port;
 - S0 credential admission, provider-profile projection, immutable retention
-  projection, and the exact seal input/output recovery projection now cross
-  one consumer-owned `IDurableCellStoragePort` and one Data anti-corruption
-  adapter; recovery-operation assembly remains in the follow-up storage slice;
+  projection, exact seal input/output recovery projection, and digest-locked
+  seal-Operation composition now cross one consumer-owned
+  `IDurableCellStoragePort` and one Data anti-corruption adapter; Data's
+  concrete Operation payload and recovery aggregate do not cross into the
+  Durable Cells application;
 - exact provider-template Secret version admission now crosses one
   `IDurableCellSecretBindingPort` and one Secrets anti-corruption adapter;
   plaintext and materialization remain outside Durable Cells;
@@ -273,10 +275,10 @@ Current boundary debt:
   snapshot through `IDurableCellOperationPort`, preserving exact workflow,
   subject, input, status, sequence, and timestamp checks without importing the
   Operations repository. The Data adapter now validates the concrete seal
-  input/output and returns only the owner-neutral recovery-point projection;
-  the writer-fence application only rehydrates that projection for the
-  existing Data-owned Operation builder, while Durable Cells retains only
-  correlation and gate decisions. Workloads and Operations remain the
+  input/output and returns only owner-neutral recovery-point and Operation-
+  request projections; the writer-fence application maps the latter into the
+  existing generic Operation request inside the Workloads transaction, while
+  Durable Cells retains only correlation and gate decisions. Workloads and Operations remain the
   lifecycle authorities inside their adapters;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
@@ -310,9 +312,9 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
 - `IDurableCellStoragePort` (implemented for exact S0 credential admission,
-  the immutable provider-profile and retention projections, and the typed seal
-  input/output recovery projection; recovery-operation assembly remains to be
-  split);
+  the immutable provider-profile and retention projections, typed seal
+  input/output recovery projections, and digest-locked seal-Operation
+  composition);
 - `IDurableCellSecretBindingPort` (implemented for exact active-version
   admission through the canonical Secrets query);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
@@ -322,9 +324,9 @@ The required Cloud refactor is a set of consumer-owned ports:
   creation/replay, bundle-publication pre-start observation, stopped-current
   writer-fence admission, and prior-writer receipt observation; the exact
   Operations request/projection read now crosses `IDurableCellOperationPort`,
-  and the Data seal input/output recovery projection crosses
-  `IDurableCellStoragePort`, while Runtime and recovery-operation assembly
-  remain follow-up slices);
+  and Data seal input/output recovery plus seal-Operation composition cross
+  `IDurableCellStoragePort`, while Runtime and real recovery evidence remain
+  follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway

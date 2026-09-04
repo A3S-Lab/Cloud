@@ -1,15 +1,17 @@
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
-    ObjectNamespaceCredentialBindingSpec, ObjectNamespaceKey, ObjectNamespaceProviderProfile,
+    ObjectNamespaceCredentialBindingSpec, ObjectNamespaceFlowBinding, ObjectNamespaceKey,
+    ObjectNamespaceProviderProfile, ObjectNamespaceRecoveryOperationRequest,
     ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRetentionPolicy,
     ObjectNamespaceRetentionPolicySpec, SealObjectNamespaceOperationInput,
     SealObjectNamespaceOperationOutput,
 };
 use crate::modules::durable_cells::application::{
-    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
-    DurableCellStorageProviderProfileRequest, DurableCellStorageRecoveryPointProjection,
-    DurableCellStorageRetentionPolicyProjection, DurableCellStorageRetentionPolicyRequest,
-    DurableCellStorageRetentionPolicySpec, DurableCellStorageSealInputProjection,
+    DurableCellStorageCredentialRequest, DurableCellStorageOperationRequestProjection,
+    DurableCellStorageProviderProfileProjection, DurableCellStorageProviderProfileRequest,
+    DurableCellStorageRecoveryPointProjection, DurableCellStorageRetentionPolicyProjection,
+    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
+    DurableCellStorageSealInputProjection, DurableCellStorageSealOperationRequest,
     DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 use crate::modules::secrets::domain::ISecretRepository;
@@ -99,6 +101,93 @@ impl IDurableCellStoragePort for DataDurableCellStorageAdapter {
         if projection.digest != request.expected_digest {
             return Err(ApplicationError::Conflict(
                 "Durable Cell S0 retention policy digest changed at the Data boundary".into(),
+            ));
+        }
+        Ok(projection)
+    }
+
+    async fn compose_seal_operation(
+        &self,
+        request: &DurableCellStorageSealOperationRequest,
+    ) -> ApplicationResult<DurableCellStorageOperationRequestProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let provider_profile = ObjectNamespaceProviderProfile::restore(
+            &request.provider_profile.acl,
+            request.provider_profile.expected_digest.as_str(),
+        )
+        .map_err(|error| {
+            ApplicationError::Internal(format!(
+                "Durable Cell S0 seal Operation provider profile failed Data validation: {error}"
+            ))
+        })?;
+        let credentials = ObjectNamespaceCredentialBinding::restore(
+            ObjectNamespaceCredentialBindingSpec {
+                organization_id: request.credentials.organization_id,
+                project_id: request.credentials.project_id,
+                environment_id: request.credentials.environment_id,
+                namespace_id: request.credentials.namespace_id,
+                generation: request.credentials.generation,
+                provider_profile_digest: request.credentials.provider_profile_digest.clone(),
+                access_key_id: request.credentials.access_key_id,
+                secret_access_key: request.credentials.secret_access_key,
+                session_token: request.credentials.session_token,
+            },
+            request.credentials.binding_digest.as_str(),
+        )
+        .map_err(|error| {
+            ApplicationError::Internal(format!(
+                "Durable Cell S0 seal Operation credential binding failed Data validation: {error}"
+            ))
+        })?;
+        let previous_recovery_point = request
+            .previous_recovery_point
+            .as_ref()
+            .map(restore_recovery_point)
+            .transpose()
+            .map_err(ApplicationError::Internal)?;
+        let operation =
+            ObjectNamespaceRecoveryOperationRequest::seal(SealObjectNamespaceOperationInput {
+                operation_id: request.seal.operation_id,
+                organization_id: request.seal.organization_id,
+                source: ObjectNamespaceFlowBinding {
+                    provider_profile,
+                    credentials,
+                },
+                previous_recovery_point,
+                writer_epoch: request.seal.writer_epoch,
+                writer_fence_receipt_digest: request.seal.writer_fence_receipt_digest.clone(),
+                sealed_at: request.seal.sealed_at,
+            })
+            .map_err(|error| {
+                ApplicationError::Internal(format!(
+                    "Durable Cell S0 seal Operation composition failed Data validation: {error}"
+                ))
+            })?;
+        if operation.subject.kind() != "storage_namespace"
+            || operation.subject.id() != request.seal.namespace_id.as_uuid()
+            || operation.workflow.name() != "cloud.object-namespace.seal"
+            || operation.workflow.version() != "2"
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell S0 seal Operation changed its canonical identity".into(),
+            ));
+        }
+        let projection = DurableCellStorageOperationRequestProjection {
+            operation_id: operation.id,
+            organization_id: operation.organization_id,
+            namespace_id: request.seal.namespace_id,
+            workflow_name: operation.workflow.name().to_owned(),
+            workflow_version: operation.workflow.version().to_owned(),
+            input: operation.input,
+            requested_at: operation.requested_at,
+        };
+        projection.validate().map_err(ApplicationError::Internal)?;
+        if projection.operation_id != request.seal.operation_id
+            || projection.organization_id != request.seal.organization_id
+            || projection.requested_at != request.seal.sealed_at
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell S0 seal Operation changed its exact handoff".into(),
             ));
         }
         Ok(projection)

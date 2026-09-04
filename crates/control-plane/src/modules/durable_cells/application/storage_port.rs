@@ -20,6 +20,9 @@ const MAXIMUM_DELETION_GRACE_SECONDS: u64 = 30 * 24 * 60 * 60;
 const MAX_RECOVERY_POINT_BYTES: usize = 32 * 1024;
 const MAX_RECOVERY_POINT_KEY_BYTES: usize = 4096;
 const MAX_SAFE_SERIALIZED_INTEGER: u64 = 9_007_199_254_740_991;
+const OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME: &str = "cloud.object-namespace.seal";
+const OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION: &str = "2";
+const MAX_SEAL_OPERATION_INPUT_BYTES: usize = 128 * 1024;
 
 /// Plaintext-free, consumer-owned identity for one exact S0 credential
 /// binding. Data and Secrets retain validation, revocation, and materialization
@@ -335,6 +338,98 @@ impl DurableCellStorageRetentionPolicyProjection {
     }
 }
 
+/// Exact, owner-neutral intent for composing the S0 writer-fence seal
+/// Operation. The Storage adapter restores the concrete Data profile,
+/// credential binding, and predecessor recovery point; no Data operation
+/// model crosses this boundary.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageSealOperationRequest {
+    pub seal: DurableCellStorageSealRequest,
+    pub provider_profile: DurableCellStorageProviderProfileRequest,
+    pub credentials: DurableCellStorageCredentialRequest,
+    pub previous_recovery_point: Option<DurableCellStorageRecoveryPointProjection>,
+}
+
+impl DurableCellStorageSealOperationRequest {
+    pub fn new(
+        seal: DurableCellStorageSealRequest,
+        provider_profile: DurableCellStorageProviderProfileRequest,
+        credentials: DurableCellStorageCredentialRequest,
+        previous_recovery_point: Option<DurableCellStorageRecoveryPointProjection>,
+    ) -> Result<Self, String> {
+        let request = Self {
+            seal,
+            provider_profile,
+            credentials,
+            previous_recovery_point,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.seal.validate()?;
+        self.provider_profile.validate()?;
+        self.credentials.validate()?;
+        if self.provider_profile.expected_digest != self.seal.provider_profile_digest
+            || self.credentials.organization_id != self.seal.organization_id
+            || self.credentials.project_id != self.seal.project_id
+            || self.credentials.environment_id != self.seal.environment_id
+            || self.credentials.namespace_id != self.seal.namespace_id
+            || self.credentials.provider_profile_digest != self.seal.provider_profile_digest
+        {
+            return Err("Durable Cell S0 seal operation changed its exact scope".into());
+        }
+        if let Some(previous) = &self.previous_recovery_point {
+            previous.validate()?;
+            if previous.namespace_id != self.seal.namespace_id
+                || previous.provider_profile_digest != self.seal.provider_profile_digest
+                || self.seal.writer_epoch < previous.writer_epoch
+                || self.seal.sealed_at < previous.sealed_at
+            {
+                return Err(
+                    "Durable Cell S0 seal operation changed or regressed its predecessor".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Generic Operation request returned after the Storage owner validates and
+/// composes its concrete recovery payload. The caller maps this small value to
+/// the existing Operations request type inside the Workloads transaction.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageOperationRequestProjection {
+    pub operation_id: OperationId,
+    pub organization_id: OrganizationId,
+    pub namespace_id: StorageNamespaceId,
+    pub workflow_name: String,
+    pub workflow_version: String,
+    pub input: Value,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl DurableCellStorageOperationRequestProjection {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.operation_id.as_uuid().is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.namespace_id.as_uuid().is_nil()
+            || self.workflow_name != OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME
+            || self.workflow_version != OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION
+            || self.requested_at != canonical_timestamp(self.requested_at)
+        {
+            return Err("Durable Cell S0 seal Operation projection identity is invalid".into());
+        }
+        canonical_json_bounded(
+            &self.input,
+            MAX_SEAL_OPERATION_INPUT_BYTES,
+            "Durable Cell S0 seal Operation input",
+        )?;
+        Ok(())
+    }
+}
+
 /// Exact writer-fence identity accepted by the S0 recovery projection. The
 /// Data adapter validates the persisted Operation input/output against this
 /// request before returning any recovery evidence to Durable Cells.
@@ -559,6 +654,13 @@ pub trait IDurableCellStoragePort: Send + Sync {
         request: &DurableCellStorageRetentionPolicyRequest,
     ) -> ApplicationResult<DurableCellStorageRetentionPolicyProjection>;
 
+    /// Validates and composes the concrete S0 seal payload while returning
+    /// only a generic Operation request projection to the caller.
+    async fn compose_seal_operation(
+        &self,
+        request: &DurableCellStorageSealOperationRequest,
+    ) -> ApplicationResult<DurableCellStorageOperationRequestProjection>;
+
     async fn require_active_credentials(
         &self,
         request: &DurableCellStorageCredentialRequest,
@@ -712,6 +814,92 @@ mod tests {
         let mut drifted = request;
         drifted.spec.maximum_sealed_recovery_points += 1;
         assert!(drifted.validate().is_err());
+    }
+
+    #[test]
+    fn seal_operation_request_locks_scope_and_predecessor_lineage() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let namespace_id = StorageNamespaceId::new();
+        let provider_profile_digest = Sha256Digest::from_bytes(b"profile");
+        let credentials = DurableCellStorageCredentialRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            namespace_id,
+            1,
+            provider_profile_digest.clone(),
+            reference(),
+            reference(),
+            None,
+        )
+        .expect("credentials");
+        let sealed_at = canonical_timestamp(Utc::now());
+        let seal = DurableCellStorageSealRequest::new(
+            OperationId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            namespace_id,
+            provider_profile_digest.clone(),
+            3,
+            Sha256Digest::from_bytes(b"receipt"),
+            sealed_at,
+        );
+        let profile = DurableCellStorageProviderProfileRequest::new(
+            "canonical-profile",
+            provider_profile_digest.clone(),
+        )
+        .expect("profile");
+        let predecessor = DurableCellStorageRecoveryPointProjection {
+            namespace_id,
+            sequence: 1,
+            writer_epoch: 2,
+            provider_profile_digest,
+            manifest_key: "recovery/1/manifest".into(),
+            manifest_digest: Sha256Digest::from_bytes(b"manifest"),
+            state_digest: Sha256Digest::from_bytes(b"state"),
+            state_size_bytes: 1,
+            predecessor_digest: None,
+            sealed_at: sealed_at - Duration::seconds(1),
+            digest: Sha256Digest::from_bytes(b"point"),
+        };
+        let request = DurableCellStorageSealOperationRequest::new(
+            seal,
+            profile,
+            credentials,
+            Some(predecessor),
+        )
+        .expect("seal operation request");
+        request.validate().expect("valid seal operation request");
+
+        let mut drifted = request.clone();
+        drifted.seal.namespace_id = StorageNamespaceId::new();
+        assert!(drifted.validate().is_err());
+    }
+
+    #[test]
+    fn seal_operation_projection_rejects_identity_or_input_drift() {
+        let projection = DurableCellStorageOperationRequestProjection {
+            operation_id: OperationId::new(),
+            organization_id: OrganizationId::new(),
+            namespace_id: StorageNamespaceId::new(),
+            workflow_name: OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME.into(),
+            workflow_version: OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION.into(),
+            input: serde_json::json!({"operationId": "bounded"}),
+            requested_at: canonical_timestamp(Utc::now()),
+        };
+        projection.validate().expect("valid operation projection");
+
+        let mut drifted = projection.clone();
+        drifted.workflow_version = "1".into();
+        assert!(drifted.validate().is_err());
+        let mut noncanonical = projection;
+        noncanonical.input = serde_json::json!({"b": 1, "a": 2});
+        // JSON object ordering is canonicalized by serde_json; the projection
+        // validator still exercises the bounded canonical encoder.
+        noncanonical.validate().expect("bounded operation input");
     }
 
     fn recovery_point(

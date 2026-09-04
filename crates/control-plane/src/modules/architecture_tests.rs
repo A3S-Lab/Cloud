@@ -896,6 +896,78 @@ fn durable_cells_storage_retention_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_storage_operation_composition_crosses_one_consumer_owned_port() {
+    let writer_fence =
+        std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/storage_port.rs"))
+            .expect("read Durable Cells Storage operation port");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data operation adapter");
+
+    let writer_fence = production_source(&writer_fence);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(writer_fence.contains(".compose_seal_operation("));
+    assert!(writer_fence.contains("DurableCellStorageSealOperationRequest"));
+    for forbidden in [
+        "ObjectNamespaceRecoveryOperationRequest",
+        "SealObjectNamespaceOperationInput",
+        "ObjectNamespaceFlowBinding",
+        "ObjectNamespaceRecoveryPointSpec",
+        "restore_recovery_point",
+    ] {
+        assert!(
+            !writer_fence.contains(forbidden),
+            "Durable Cells writer-fence application bypassed the Storage operation port with {forbidden}"
+        );
+    }
+    for required in [
+        "pub struct DurableCellStorageSealOperationRequest",
+        "pub struct DurableCellStorageOperationRequestProjection",
+        "pub trait IDurableCellStoragePort",
+        "async fn compose_seal_operation",
+        "OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME",
+        "OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Storage operation port lost contract {required}"
+        );
+    }
+    assert!(!port.contains("crate::modules::data"));
+    for required in [
+        "impl IDurableCellStoragePort",
+        "ObjectNamespaceRecoveryOperationRequest::seal",
+        "SealObjectNamespaceOperationInput",
+        "ObjectNamespaceFlowBinding",
+        "restore_recovery_point",
+        "DurableCellStorageOperationRequestProjection",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Data adapter lost operation translation {required}"
+        );
+    }
+
+    let mut composition_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("Durable Cell S0 seal Operation composition failed Data validation")
+        {
+            composition_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        composition_sites,
+        lines("durable_cells/infrastructure/data_storage.rs"),
+        "Durable Cells must compose S0 seal Operations through one owner adapter"
+    );
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
