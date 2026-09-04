@@ -1,11 +1,12 @@
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
-    ObjectNamespaceCredentialBindingSpec, ObjectNamespaceKey, ObjectNamespaceRecoveryPoint,
-    ObjectNamespaceRecoveryPointSpec, SealObjectNamespaceOperationInput,
-    SealObjectNamespaceOperationOutput,
+    ObjectNamespaceCredentialBindingSpec, ObjectNamespaceKey, ObjectNamespaceProviderProfile,
+    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
+    SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
 };
 use crate::modules::durable_cells::application::{
-    DurableCellStorageCredentialRequest, DurableCellStorageRecoveryPointProjection,
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
+    DurableCellStorageProviderProfileRequest, DurableCellStorageRecoveryPointProjection,
     DurableCellStorageSealInputProjection, DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 use crate::modules::secrets::domain::ISecretRepository;
@@ -32,6 +33,36 @@ impl DataDurableCellStorageAdapter {
 
 #[async_trait]
 impl IDurableCellStoragePort for DataDurableCellStorageAdapter {
+    async fn project_provider_profile(
+        &self,
+        request: &DurableCellStorageProviderProfileRequest,
+    ) -> ApplicationResult<DurableCellStorageProviderProfileProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let profile =
+            ObjectNamespaceProviderProfile::restore(&request.acl, request.expected_digest.as_str())
+                .map_err(|error| {
+                    ApplicationError::Internal(format!(
+                        "Durable Cell S0 provider profile failed Data validation: {error}"
+                    ))
+                })?;
+        let spec = profile.spec();
+        let projection = DurableCellStorageProviderProfileProjection {
+            digest: profile.digest().clone(),
+            endpoint: spec.endpoint.clone(),
+            region: spec.region.clone(),
+            bucket: spec.bucket.clone(),
+            prefix: spec.prefix.clone(),
+            virtual_hosted_style: spec.virtual_hosted_style,
+        };
+        projection.validate().map_err(ApplicationError::Internal)?;
+        if projection.digest != request.expected_digest {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell S0 provider profile digest changed at the Data boundary".into(),
+            ));
+        }
+        Ok(projection)
+    }
+
     async fn require_active_credentials(
         &self,
         request: &DurableCellStorageCredentialRequest,

@@ -411,7 +411,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     };
 
     let first = gate.reconcile(&request).await?;
-    assert!(matches!(first, WorkloadPrestartGateStatus::Pending { .. }));
+    assert!(
+        matches!(first, WorkloadPrestartGateStatus::Pending { .. }),
+        "unexpected first status: {first:?}"
+    );
     let execution_id = publication_execution_id(projection.workload_revision_id);
     let execution = executions
         .find(organization_id, execution_id)

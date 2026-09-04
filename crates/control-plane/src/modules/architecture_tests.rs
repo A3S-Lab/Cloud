@@ -764,6 +764,82 @@ fn durable_cells_storage_recovery_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
+    let publication = std::fs::read_to_string(
+        module_root().join("durable_cells/application/bundle_publication.rs"),
+    )
+    .expect("read Durable Cells publication application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/storage_port.rs"))
+            .expect("read Durable Cells Storage profile port");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data profile adapter");
+    let provider = std::fs::read_to_string(
+        module_root().join("durable_cells/application/provider_workload.rs"),
+    )
+    .expect("read Durable Cells provider adapter");
+
+    let publication = production_source(&publication);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    let provider = production_source(&provider);
+    assert!(publication.contains("Arc<dyn IDurableCellStoragePort>"));
+    assert!(publication.contains(".project_provider_profile("));
+    assert!(publication.contains("validate_pinned_celld_service_template_payload_projection"));
+    for forbidden in [
+        "crate::modules::data",
+        "ObjectNamespaceProviderProfile",
+        "require_storage_provider_profile",
+    ] {
+        assert!(
+            !publication.contains(forbidden),
+            "Durable Cells publication bypassed the Storage profile port with {forbidden}"
+        );
+    }
+    for required in [
+        "pub struct DurableCellStorageProviderProfileRequest",
+        "pub struct DurableCellStorageProviderProfileProjection",
+        "pub trait IDurableCellStoragePort",
+        "async fn project_provider_profile",
+        "namespace_prefix",
+        "recovery_prefix",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Storage profile port lost contract {required}"
+        );
+    }
+    assert!(!port.contains("crate::modules::data"));
+    for required in [
+        "impl IDurableCellStoragePort",
+        "ObjectNamespaceProviderProfile::restore",
+        "DurableCellStorageProviderProfileProjection",
+        "profile.spec()",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Data adapter lost profile translation {required}"
+        );
+    }
+    assert!(provider.contains("DurableCellStorageProviderProfileProjection"));
+    assert!(provider.contains("compose_pinned_celld_service_process_projection"));
+    let mut profile_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("Durable Cell S0 provider profile failed Data validation")
+        {
+            profile_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        profile_sites,
+        lines("durable_cells/infrastructure/data_storage.rs"),
+        "Durable Cells must restore S0 provider profiles through one owner adapter"
+    );
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

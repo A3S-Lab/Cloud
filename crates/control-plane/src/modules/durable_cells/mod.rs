@@ -29,6 +29,7 @@ pub use application::{
     DurableCellOperationRequestProjection, DurableCellOperationSnapshot,
     DurableCellOperationStatus, DurableCellRoutePublication, DurableCellRoutePublicationRequest,
     DurableCellSecretBindingAdmissionRequest, DurableCellStorageCredentialRequest,
+    DurableCellStorageProviderProfileProjection, DurableCellStorageProviderProfileRequest,
     DurableCellStorageRecoveryPointProjection, DurableCellStorageSealInputProjection,
     DurableCellStorageSealRequest, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
