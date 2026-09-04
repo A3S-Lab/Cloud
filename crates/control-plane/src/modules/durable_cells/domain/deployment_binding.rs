@@ -1,6 +1,4 @@
-use crate::modules::shared_kernel::domain::{
-    SecretId, SecretVersionReference, Sha256Digest,
-};
+use crate::modules::shared_kernel::domain::{SecretId, SecretVersionReference, Sha256Digest};
 use a3s_acl::builder::{integer, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
 use serde::{Deserialize, Serialize};

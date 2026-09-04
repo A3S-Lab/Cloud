@@ -840,6 +840,39 @@ fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_deployment_correlation_keeps_provider_profile_opaque() {
+    let deployment = std::fs::read_to_string(
+        module_root().join("durable_cells/domain/deployment.rs"),
+    )
+    .expect("read Durable Cells deployment domain");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/data_storage.rs"),
+    )
+    .expect("read Durable Cells Data Storage adapter");
+
+    let deployment = production_source(&deployment);
+    let adapter = production_source(&adapter);
+    assert!(
+        !deployment.contains("crate::modules::data"),
+        "Durable Cell deployment correlation imported Data concrete types"
+    );
+    for required in [
+        "validate_provider_profile_acl",
+        "canonical_digest",
+        "storage_provider_profile_acl",
+    ] {
+        assert!(
+            deployment.contains(required),
+            "Durable Cell deployment correlation lost opaque profile contract {required}"
+        );
+    }
+    assert!(
+        adapter.contains("ObjectNamespaceProviderProfile::restore"),
+        "Data provider-profile semantics moved out of the Storage anti-corruption adapter"
+    );
+}
+
+#[test]
 fn durable_cells_storage_retention_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

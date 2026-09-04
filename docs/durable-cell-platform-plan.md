@@ -22,9 +22,10 @@ aggregate remain behind that adapter; the writer-fence application maps only
 the returned generic Operation projection into the existing Workloads
 transaction.
 These refactors preserve the existing CELL0 behavior and do not change the
-product availability decision above; immutable S0 profile, retention, and
-seal-Operation composition now cross the Storage port. Real provider,
-recovery, and lifecycle evidence remain open.
+product availability decision above; the deployment correlation retains only
+the canonical provider-profile ACL/digest identity, while immutable S0
+profile semantics, retention, and seal-Operation composition cross the
+Storage port. Real provider, recovery, and lifecycle evidence remain open.
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
@@ -239,7 +240,7 @@ The Durable Cells context owns these semantic resources:
 | `DurableCellApplication` | Tenant/project/environment identity, name, desired state, active revision, aggregate version | Runtime unit, Route, bucket credentials, or Cell inventory |
 | `DurableCellApplicationRevision` | Immutable bundle/provenance reference, compatibility policy, declared Cell classes/bindings, exact Service-profile digest, state schema/migration contract, retention policy | Mutable deployment pointer, per-Cell state, provider tuning, or plaintext Secret |
 | `DurableCellProjectionIdentity` | Deterministic application/revision correlation to reserved S0 namespace identity plus existing Workload, Workload revision, Deployment, and Operation identities | Persistence, lifecycle, Gateway-scope selection, a second rollout controller, or provider lease |
-| `DurableCellDeployment` (implemented component-only `CELL0.4-C3`) | Immutable correlation intent from one exact revision to its existing managed Workload deployment, S0 credential/retention binding, placement digest, and Operation; C4 selects an environment-owned Gateway scope without mutating this record | A separate deployment ID, status/lifecycle, scheduler, rollout controller, namespace lifecycle, Fleet receipt, Gateway binding, or provider lease |
+| `DurableCellDeployment` (implemented component-only `CELL0.4-C3`) | Immutable correlation intent from one exact revision to its existing managed Workload deployment, S0 credential/retention binding, canonical provider-profile ACL/digest identity, placement digest, and Operation; C4 selects an environment-owned Gateway scope without mutating this record | A separate deployment ID, status/lifecycle, scheduler, rollout controller, namespace lifecycle, Fleet receipt, Gateway binding, provider-specific profile semantics, or provider lease |
 | `DurableCellDeploymentBinding` (implemented `CELL0.4-C5`) | Canonical plaintext-free `cloud.durable-cell.deployment.v1` ACL carrying exact Secret versions, credential generation, provider-profile digest, and a provider-neutral S0 retention contract; the inbound adapter materializes concrete Data credential/retention aggregates after scope is supplied | Caller-selected tenant or namespace scope, Secret material, provider configuration, namespace lifecycle, or another deployment record |
 | `DurableCellServiceProfile` | Canonical ACL for non-negotiable provider semantics and bounded public/internal surface | Application code, placement, credentials, ownership rows, or state bytes |
 

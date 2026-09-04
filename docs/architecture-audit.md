@@ -249,6 +249,11 @@ Current boundary debt:
 - the public `DurableCellDeploymentBinding` ACL now owns its provider-neutral
   retention contract; concrete Data credential and retention aggregates are
   materialized only by the inbound ACL adapter;
+- the immutable `DurableCellDeployment` correlation now carries only the
+  canonical provider-profile ACL and its already-bound digest. Provider
+  endpoint, bucket, region, and addressing semantics are restored only by the
+  Storage anti-corruption adapter, so the Durable Cells domain does not import
+  Data even when a correlation is replayed;
 - S0 credential admission, provider-profile projection, immutable retention
   projection, exact seal input/output recovery projection, and digest-locked
   seal-Operation composition now cross one consumer-owned
