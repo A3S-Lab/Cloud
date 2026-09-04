@@ -76,8 +76,10 @@ all boundaries are interface-only:
 3. Production code contains direct cross-context Infrastructure and
    Presentation dependencies. The Artifacts-to-Assets persistence edge and
    Workflow-to-Forms persistence edge have been removed; the most important
-   remaining examples are Durable Cells to Workloads/Edge implementation
-   types and shared tenant guards defined under Identity presentation.
+   remaining examples are Durable Cells deployment/runtime seams to Workloads/
+   Edge implementation types and shared tenant guards defined under Identity
+   presentation; provider-workload validation now consumes neutral Storage
+   projections.
 4. Multiple modules independently map the same physical tables. The source
    scan found duplicate mappings for operation_requests, workloads, nodes,
    mcp_service_profiles, and workflow_runs. The workflow_runs duplication is
@@ -237,7 +239,10 @@ Current boundary debt:
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import Data,
   Fleet, and Workloads internal owner types or repositories for the explicitly
-  retained provider-runtime seams; the prior-writer seal reads the exact
+  retained deployment/runtime seams. Provider-workload validation and the
+  writer-fence credential/profile checks now consume only owner-neutral
+  Storage projections; Data remains at deployment ingress and inside the
+  Storage anti-corruption adapter. The prior-writer seal reads the exact
   Operations request/projection through one `IDurableCellOperationPort` and
   owner adapter, and receives only owner-neutral S0 projections through the
   Storage port;

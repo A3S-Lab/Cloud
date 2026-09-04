@@ -1,13 +1,13 @@
 use super::operation_port::IDurableCellOperationPort;
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 use super::provider_workload::{
-    durable_cell_managed_owner_reference, restore_publisher_storage_credentials,
+    durable_cell_managed_owner_reference, project_publisher_storage_credentials,
     validate_pinned_celld_provider_workload,
 };
 use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
 use super::storage_port::{
-    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileRequest,
-    DurableCellStorageSealOperationRequest, DurableCellStorageSealRequest, IDurableCellStoragePort,
+    DurableCellStorageProviderProfileRequest, DurableCellStorageSealOperationRequest,
+    DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::durable_cells::domain::{
@@ -175,9 +175,24 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
         })?;
         let service_profile = DurableCellServiceProfile::pinned_celld_v0_2_1()
             .map_err(|error| conflict("restore pinned Durable Cell Service profile", error))?;
-        let provider_profile = correlation
-            .require_storage_provider_profile()
-            .map_err(|error| conflict("restore Durable Cell S0 provider profile", error))?;
+        let provider_profile_acl = correlation
+            .storage_provider_profile_acl
+            .as_deref()
+            .ok_or_else(|| {
+                RepositoryError::Conflict(
+                    "Durable Cell writer fence omitted its bound S0 provider profile".into(),
+                )
+            })?;
+        let provider_profile_request = DurableCellStorageProviderProfileRequest::new(
+            provider_profile_acl,
+            correlation.storage.provider_profile_digest.clone(),
+        )
+        .map_err(|error| conflict("prepare Durable Cell S0 provider profile request", error))?;
+        let storage_port = self.prior_writer_seal.storage_port();
+        let provider_profile = storage_port
+            .project_provider_profile(&provider_profile_request)
+            .await
+            .map_err(application_repository_error)?;
         let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1()
             .map_err(|error| conflict("restore pinned Durable Cell publisher profile", error))?;
         let template = target
@@ -185,7 +200,7 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
             .resolved_template()
             .map_err(|error| conflict("resolve Durable Cell provider Workload", error))?;
         let credentials =
-            restore_publisher_storage_credentials(&correlation.storage, template, &publisher)
+            project_publisher_storage_credentials(&correlation.storage, template, &publisher)
                 .map_err(|error| conflict("restore Durable Cell S0 credentials", error))?;
         validate_pinned_celld_provider_workload(
             &credentials,
@@ -263,29 +278,7 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
                 return Err(RepositoryError::Conflict(reason));
             }
         };
-        let provider_profile_request = DurableCellStorageProviderProfileRequest::new(
-            provider_profile.canonical_acl(),
-            correlation.storage.provider_profile_digest.clone(),
-        )
-        .map_err(|error| conflict("prepare Durable Cell S0 provider profile request", error))?;
-        let credential_spec = credentials.spec();
-        let credentials_request = DurableCellStorageCredentialRequest::new(
-            credential_spec.organization_id,
-            credential_spec.project_id,
-            credential_spec.environment_id,
-            credential_spec.namespace_id,
-            credential_spec.generation,
-            credential_spec.provider_profile_digest.clone(),
-            credential_spec.access_key_id,
-            credential_spec.secret_access_key,
-            credential_spec.session_token,
-        )
-        .map_err(|error| conflict("prepare Durable Cell S0 credential request", error))?;
-        if credentials_request.binding_digest != *credentials.digest() {
-            return Err(RepositoryError::Conflict(
-                "Durable Cell S0 credential request changed its bound digest".into(),
-            ));
-        }
+        let credentials_request = credentials;
         let seal_request = DurableCellStorageSealRequest::new(
             operation_id,
             target.replica.organization_id,

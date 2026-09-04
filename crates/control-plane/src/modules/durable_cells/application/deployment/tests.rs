@@ -21,7 +21,9 @@ use crate::modules::durable_cells::infrastructure::{
     OperationsDurableCellOperationAdapter, SecretsDurableCellBindingAdapter,
     WorkloadsDurableCellWorkloadAdapter,
 };
-use crate::modules::durable_cells::IDurableCellOperationPort;
+use crate::modules::durable_cells::{
+    DurableCellStorageProviderProfileProjection, IDurableCellOperationPort,
+};
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -887,6 +889,15 @@ fn service_template(
     let publisher =
         crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
             .expect("pinned celld publisher profile");
+    let profile_spec = provider_profile.spec();
+    let profile_projection = DurableCellStorageProviderProfileProjection {
+        digest: provider_profile.digest().clone(),
+        endpoint: profile_spec.endpoint.clone(),
+        region: profile_spec.region.clone(),
+        bucket: profile_spec.bucket.clone(),
+        prefix: profile_spec.prefix.clone(),
+        virtual_hosted_style: profile_spec.virtual_hosted_style,
+    };
     let artifact_digest = publisher.image_digest().clone();
     ServiceTemplate {
         artifact: OciArtifact {
@@ -895,7 +906,7 @@ fn service_template(
             media_type: "application/vnd.oci.image.index.v1+json".into(),
         },
         process: compose_pinned_celld_service_process(
-            provider_profile,
+            &profile_projection,
             storage_namespace_id,
             8080,
             8081,

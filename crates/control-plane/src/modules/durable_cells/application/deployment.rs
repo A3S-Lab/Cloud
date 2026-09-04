@@ -10,8 +10,9 @@ use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
 use super::storage_port::{
-    DurableCellStorageCredentialRequest, DurableCellStorageRetentionPolicyRequest,
-    DurableCellStorageRetentionPolicySpec, IDurableCellStoragePort,
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
+    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
+    IDurableCellStoragePort,
 };
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
@@ -313,9 +314,13 @@ impl PreparedDeployment {
         }
         if let Some(provider_profile) = &storage_provider_profile {
             let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()?;
+            let provider_profile_projection =
+                storage_provider_profile_projection(provider_profile)?;
+            let credential_projection =
+                storage_credential_request_for_validation(&command.storage_credentials)?;
             validate_pinned_celld_provider_workload(
-                &command.storage_credentials,
-                provider_profile,
+                &credential_projection,
+                &provider_profile_projection,
                 &service_profile,
                 &command.workload_template,
                 &publisher,
@@ -516,7 +521,13 @@ async fn admit_external_bindings(
 fn storage_credential_request(
     credentials: &ObjectNamespaceCredentialBinding,
 ) -> ApplicationResult<DurableCellStorageCredentialRequest> {
-    credentials.validate().map_err(ApplicationError::Internal)?;
+    storage_credential_request_for_validation(credentials).map_err(ApplicationError::Internal)
+}
+
+fn storage_credential_request_for_validation(
+    credentials: &ObjectNamespaceCredentialBinding,
+) -> Result<DurableCellStorageCredentialRequest, String> {
+    credentials.validate()?;
     let spec = credentials.spec();
     let request = DurableCellStorageCredentialRequest::new(
         spec.organization_id,
@@ -528,14 +539,28 @@ fn storage_credential_request(
         spec.access_key_id,
         spec.secret_access_key,
         spec.session_token,
-    )
-    .map_err(ApplicationError::Internal)?;
+    )?;
     if request.binding_digest != *credentials.digest() {
-        return Err(ApplicationError::Internal(
-            "Durable Cell S0 credential digest changed at the storage boundary".into(),
-        ));
+        return Err("Durable Cell S0 credential digest changed at the storage boundary".into());
     }
     Ok(request)
+}
+
+fn storage_provider_profile_projection(
+    profile: &ObjectNamespaceProviderProfile,
+) -> Result<DurableCellStorageProviderProfileProjection, String> {
+    profile.validate()?;
+    let spec = profile.spec();
+    let projection = DurableCellStorageProviderProfileProjection {
+        digest: profile.digest().clone(),
+        endpoint: spec.endpoint.clone(),
+        region: spec.region.clone(),
+        bucket: spec.bucket.clone(),
+        prefix: spec.prefix.clone(),
+        virtual_hosted_style: spec.virtual_hosted_style,
+    };
+    projection.validate()?;
+    Ok(projection)
 }
 
 fn storage_retention_policy_request(

@@ -1,9 +1,7 @@
-use super::storage_port::DurableCellStorageProviderProfileProjection;
-use super::workload_port::DurableCellWorkloadTemplate;
-use crate::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
-    ObjectNamespaceProviderProfile,
+use super::storage_port::{
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
 };
+use super::workload_port::DurableCellWorkloadTemplate;
 use crate::modules::durable_cells::domain::{
     DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellProviderHealthProjection,
     DurableCellProviderPortProjection, DurableCellProviderWorkloadProjection,
@@ -107,15 +105,14 @@ pub(crate) fn durable_cell_managed_owner_reference(
 /// multi-node placement is admitted; it must not add another Service
 /// lifecycle or provider configuration authority.
 pub fn compose_pinned_celld_service_process(
-    provider_profile: &ObjectNamespaceProviderProfile,
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     storage_namespace_id: StorageNamespaceId,
     public_container_port: u16,
     internal_container_port: u16,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<ServiceProcess, String> {
-    let provider_profile = project_storage_profile(provider_profile)?;
     compose_pinned_celld_service_process_projection(
-        &provider_profile,
+        provider_profile,
         storage_namespace_id,
         public_container_port,
         internal_container_port,
@@ -124,8 +121,8 @@ pub fn compose_pinned_celld_service_process(
 }
 
 /// Compose the reviewed celld process from the owner-neutral S0 profile
-/// projection. Data ACL parsing is deliberately kept in the adapter wrapper
-/// above; publication and recovery consumers use this boundary value only.
+/// projection. The owner adapter parses the canonical ACL before this policy
+/// runs; publication and recovery consumers use this boundary value only.
 pub(crate) fn compose_pinned_celld_service_process_projection(
     provider_profile: &DurableCellStorageProviderProfileProjection,
     storage_namespace_id: StorageNamespaceId,
@@ -181,15 +178,14 @@ pub(crate) fn compose_pinned_celld_service_process_projection(
 /// provider does not advertise ephemeral-storage control, so this adapter also
 /// rejects rather than silently accepting that unsupported resource promise.
 pub(super) fn validate_pinned_celld_service_projection(
-    provider_profile: &ObjectNamespaceProviderProfile,
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     storage_namespace_id: StorageNamespaceId,
     service_profile: &DurableCellServiceProfile,
     template: &ServiceTemplate,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<(), String> {
-    let provider_profile = project_storage_profile(provider_profile)?;
     validate_pinned_celld_service_projection_projection(
-        &provider_profile,
+        provider_profile,
         storage_namespace_id,
         service_profile,
         template,
@@ -262,16 +258,22 @@ pub(crate) fn validate_pinned_celld_service_projection_projection(
 /// Secret material. Workloads remains the Service owner and Secrets remains
 /// the only materialization authority.
 pub(super) fn validate_pinned_celld_provider_workload(
-    credentials: &ObjectNamespaceCredentialBinding,
-    provider_profile: &ObjectNamespaceProviderProfile,
+    credentials: &DurableCellStorageCredentialRequest,
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     service_profile: &DurableCellServiceProfile,
     template: &ServiceTemplate,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<(), String> {
-    credentials.validate_provider_profile(provider_profile)?;
+    credentials.validate()?;
+    provider_profile.validate()?;
+    if credentials.provider_profile_digest != provider_profile.digest {
+        return Err(
+            "Durable Cell S0 credential binding and provider profile digests differ".into(),
+        );
+    }
     validate_pinned_celld_service_projection(
         provider_profile,
-        credentials.spec().namespace_id,
+        credentials.namespace_id,
         service_profile,
         template,
         publisher,
@@ -286,18 +288,17 @@ pub(super) fn validate_pinned_celld_provider_workload(
 /// Keeping this translation here prevents the Service and pre-start Task from
 /// inventing separate credential mappings.
 pub(super) fn validate_publisher_storage_credentials(
-    credentials: &ObjectNamespaceCredentialBinding,
+    credentials: &DurableCellStorageCredentialRequest,
     template: &ServiceTemplate,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<(), String> {
-    credentials.validate()?;
     validate_bindings(
         &template.secrets,
         publisher,
         Some([
-            Some(credentials.spec().access_key_id),
-            Some(credentials.spec().secret_access_key),
-            credentials.spec().session_token,
+            Some(credentials.access_key_id),
+            Some(credentials.secret_access_key),
+            credentials.session_token,
         ]),
     )
 }
@@ -339,32 +340,15 @@ pub(crate) fn validate_pinned_celld_service_template_payload_projection(
     Ok(template.artifact.media_type)
 }
 
-fn project_storage_profile(
-    provider_profile: &ObjectNamespaceProviderProfile,
-) -> Result<DurableCellStorageProviderProfileProjection, String> {
-    provider_profile.validate()?;
-    let spec = provider_profile.spec();
-    let projection = DurableCellStorageProviderProfileProjection {
-        digest: provider_profile.digest().clone(),
-        endpoint: spec.endpoint.clone(),
-        region: spec.region.clone(),
-        bucket: spec.bucket.clone(),
-        prefix: spec.prefix.clone(),
-        virtual_hosted_style: spec.virtual_hosted_style,
-    };
-    projection.validate()?;
-    Ok(projection)
-}
-
-/// Reconstructs the exact plaintext-free S0 credential binding from the
+/// Projects the exact plaintext-free S0 credential binding from the
 /// immutable Workload revision and its Durable Cell correlation. Secret
 /// material remains in Secrets; the stored S0 digest rejects substituted
 /// references, scope, generation, or provider identity.
-pub(crate) fn restore_publisher_storage_credentials(
+pub(crate) fn project_publisher_storage_credentials(
     storage: &DurableCellStorageBinding,
     template: &ServiceTemplate,
     publisher: &DurableCellPublisherProfile,
-) -> Result<ObjectNamespaceCredentialBinding, String> {
+) -> Result<DurableCellStorageCredentialRequest, String> {
     storage.validate()?;
     validate_publisher_secret_targets(template, publisher)?;
     let reference = |name: &str| {
@@ -375,24 +359,24 @@ pub(crate) fn restore_publisher_storage_credentials(
             .map(|binding| SecretVersionReference::new(binding.secret_id, binding.version))
             .transpose()
     };
-    let credentials = ObjectNamespaceCredentialBinding::restore(
-        ObjectNamespaceCredentialBindingSpec {
-            organization_id: storage.organization_id,
-            project_id: storage.project_id,
-            environment_id: storage.environment_id,
-            namespace_id: storage.storage_namespace_id,
-            generation: storage.credential_binding_generation,
-            provider_profile_digest: storage.provider_profile_digest.clone(),
-            access_key_id: reference(ACCESS_KEY_BINDING)?.ok_or_else(|| {
-                "Durable Cell provider template omitted its S0 access-key reference".to_owned()
-            })?,
-            secret_access_key: reference(SECRET_ACCESS_KEY_BINDING)?.ok_or_else(|| {
-                "Durable Cell provider template omitted its S0 secret-key reference".to_owned()
-            })?,
-            session_token: reference(SESSION_TOKEN_BINDING)?,
-        },
-        storage.credential_binding_digest.as_str(),
+    let credentials = DurableCellStorageCredentialRequest::new(
+        storage.organization_id,
+        storage.project_id,
+        storage.environment_id,
+        storage.storage_namespace_id,
+        storage.credential_binding_generation,
+        storage.provider_profile_digest.clone(),
+        reference(ACCESS_KEY_BINDING)?.ok_or_else(|| {
+            "Durable Cell provider template omitted its S0 access-key reference".to_owned()
+        })?,
+        reference(SECRET_ACCESS_KEY_BINDING)?.ok_or_else(|| {
+            "Durable Cell provider template omitted its S0 secret-key reference".to_owned()
+        })?,
+        reference(SESSION_TOKEN_BINDING)?,
     )?;
+    if credentials.binding_digest != storage.credential_binding_digest {
+        return Err("Durable Cell S0 credential binding digest drifted".into());
+    }
     validate_publisher_storage_credentials(&credentials, template, publisher)?;
     Ok(credentials)
 }
@@ -470,7 +454,8 @@ fn validate_bindings(
 mod tests {
     use super::*;
     use crate::modules::data::{
-        ObjectNamespaceCredentialBindingSpec, ObjectNamespaceProviderProfile,
+        ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
+        ObjectNamespaceProviderProfile,
     };
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, OrganizationId, ProjectId, SecretId, StorageNamespaceId,
@@ -482,6 +467,20 @@ mod tests {
             "/../../contracts/s0.1/object-namespace-provider-profile.acl"
         )))
         .expect("S0 profile")
+    }
+
+    fn provider_profile_projection(
+        profile: &ObjectNamespaceProviderProfile,
+    ) -> DurableCellStorageProviderProfileProjection {
+        let spec = profile.spec();
+        DurableCellStorageProviderProfileProjection {
+            digest: profile.digest().clone(),
+            endpoint: spec.endpoint.clone(),
+            region: spec.region.clone(),
+            bucket: spec.bucket.clone(),
+            prefix: spec.prefix.clone(),
+            virtual_hosted_style: spec.virtual_hosted_style,
+        }
     }
 
     fn binding(profile: &ObjectNamespaceProviderProfile) -> ObjectNamespaceCredentialBinding {
@@ -499,6 +498,24 @@ mod tests {
         .expect("binding")
     }
 
+    fn credential_projection(
+        credentials: &ObjectNamespaceCredentialBinding,
+    ) -> DurableCellStorageCredentialRequest {
+        let spec = credentials.spec();
+        DurableCellStorageCredentialRequest::new(
+            spec.organization_id,
+            spec.project_id,
+            spec.environment_id,
+            spec.namespace_id,
+            spec.generation,
+            spec.provider_profile_digest.clone(),
+            spec.access_key_id,
+            spec.secret_access_key,
+            spec.session_token,
+        )
+        .expect("credential projection")
+    }
+
     fn template(
         credentials: &ObjectNamespaceCredentialBinding,
         provider_profile: &ObjectNamespaceProviderProfile,
@@ -512,7 +529,7 @@ mod tests {
                 media_type: OCI_IMAGE_INDEX_MEDIA_TYPE.into(),
             },
             process: compose_pinned_celld_service_process(
-                provider_profile,
+                &provider_profile_projection(provider_profile),
                 credentials.spec().namespace_id,
                 8080,
                 8081,
@@ -576,6 +593,8 @@ mod tests {
         let service_profile =
             DurableCellServiceProfile::pinned_celld_v0_2_1().expect("pinned Service profile");
         let credentials = binding(&provider_profile);
+        let provider_projection = provider_profile_projection(&provider_profile);
+        let credential_projection = credential_projection(&credentials);
         let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("publisher");
         let template = template(
             &credentials,
@@ -584,14 +603,14 @@ mod tests {
             &publisher,
         );
         validate_pinned_celld_provider_workload(
-            &credentials,
-            &provider_profile,
+            &credential_projection,
+            &provider_projection,
             &service_profile,
             &template,
             &publisher,
         )
         .expect("exact celld Service projection");
-        validate_publisher_storage_credentials(&credentials, &template, &publisher)
+        validate_publisher_storage_credentials(&credential_projection, &template, &publisher)
             .expect("exact credentials");
         validate_publisher_secret_targets(&template, &publisher).expect("exact targets");
 
@@ -615,8 +634,8 @@ mod tests {
         let mut wrong_namespace = template.clone();
         wrong_namespace.process.args[1] = "s3://a3s-durable-cells/a3s/durable-cells/foreign".into();
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &service_profile,
             &wrong_namespace,
             &publisher,
@@ -626,8 +645,8 @@ mod tests {
         let mut missing_advertise = template.clone();
         missing_advertise.process.args.truncate(10);
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &service_profile,
             &missing_advertise,
             &publisher,
@@ -640,8 +659,8 @@ mod tests {
             .environment
             .insert("CELLD_OUTPUT_GATE".into(), "0".into());
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &service_profile,
             &weakened_durability,
             &publisher,
@@ -651,8 +670,8 @@ mod tests {
         let mut disabled_idle_eviction = template.clone();
         disabled_idle_eviction.process.environment.clear();
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &service_profile,
             &disabled_idle_eviction,
             &publisher,
@@ -664,8 +683,8 @@ mod tests {
             .resources
             .ephemeral_storage_bytes = Some(512 * 1024 * 1024);
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &service_profile,
             &unsupported_storage_control,
             &publisher,
@@ -677,8 +696,8 @@ mod tests {
         let drifted_profile = DurableCellServiceProfile::from_spec(drifted_profile_spec)
             .expect("structurally valid drifted profile");
         assert!(validate_pinned_celld_service_projection(
-            &provider_profile,
-            credentials.spec().namespace_id,
+            &provider_projection,
+            credential_projection.namespace_id,
             &drifted_profile,
             &template,
             &publisher,
@@ -689,10 +708,12 @@ mod tests {
         wrong_target.secrets[0].target = SecretBindingTarget::Environment {
             variable: "S0_ACCESS_KEY_ID".into(),
         };
-        assert!(
-            validate_publisher_storage_credentials(&credentials, &wrong_target, &publisher)
-                .is_err()
-        );
+        assert!(validate_publisher_storage_credentials(
+            &credential_projection,
+            &wrong_target,
+            &publisher,
+        )
+        .is_err());
 
         let mut extra = template;
         extra.secrets.push(secret(

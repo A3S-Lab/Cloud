@@ -3,7 +3,9 @@ use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
 use crate::modules::data::{ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicySpec};
-use crate::modules::durable_cells::application::compose_pinned_celld_service_process;
+use crate::modules::durable_cells::application::{
+    compose_pinned_celld_service_process, DurableCellStorageProviderProfileProjection,
+};
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
     DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellProjectionIdentity,
@@ -438,13 +440,22 @@ pub(super) fn provider_workload_acl(
     let provider_profile =
         ObjectNamespaceProviderProfile::parse_acl(storage_provider_profile_acl())
             .expect("S0 provider profile");
+    let provider_spec = provider_profile.spec();
+    let provider_projection = DurableCellStorageProviderProfileProjection {
+        digest: provider_profile.digest().clone(),
+        endpoint: provider_spec.endpoint.clone(),
+        region: provider_spec.region.clone(),
+        bucket: provider_spec.bucket.clone(),
+        prefix: provider_spec.prefix.clone(),
+        virtual_hosted_style: provider_spec.virtual_hosted_style,
+    };
     let application_id = crate::modules::shared_kernel::domain::DurableCellApplicationId::from_uuid(
         uuid::Uuid::parse_str(application_id).expect("application ID"),
     );
     let namespace_id =
         DurableCellProjectionIdentity::storage_namespace_id_for_application(application_id);
     let process = compose_pinned_celld_service_process(
-        &provider_profile,
+        &provider_projection,
         namespace_id,
         8080,
         8081,
