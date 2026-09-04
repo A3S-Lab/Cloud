@@ -26,10 +26,11 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, ExecutionsDurableCellExecutionAdapter,
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    WorkloadsDurableCellWorkloadAdapter,
+    OperationsDurableCellOperationAdapter, WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::durable_cells::{
-    DurableCellBuildArtifactRequest, IDurableCellExecutionPort, IDurableCellWorkloadPort,
+    DurableCellBuildArtifactRequest, IDurableCellExecutionPort, IDurableCellOperationPort,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
@@ -86,6 +87,12 @@ fn workload_port_with_writer_fences(
         workloads,
         writer_fences,
     ))
+}
+
+fn operation_port(
+    operations: Arc<InMemoryOperationRepository>,
+) -> Arc<dyn IDurableCellOperationPort> {
+    Arc::new(OperationsDurableCellOperationAdapter::new(operations))
 }
 
 struct StaticWriterFenceRepository {
@@ -378,7 +385,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
-            operations.clone(),
+            operation_port(operations.clone()),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -491,7 +498,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
-            operations.clone(),
+            operation_port(operations.clone()),
         ),
         execution_port(projects.clone(), queued_executions.clone()),
     );
@@ -509,7 +516,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
-            operations.clone(),
+            operation_port(operations.clone()),
         ),
         execution_port(projects.clone(), cancelling_executions.clone()),
     );
@@ -731,7 +738,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                     receipt: receipt.clone(),
                 }),
             ),
-            operations.clone(),
+            operation_port(operations.clone()),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -788,7 +795,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                     receipt: receipt.clone(),
                 }),
             ),
-            scope_drift_operations,
+            operation_port(scope_drift_operations),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -821,7 +828,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                     receipt: receipt.clone(),
                 }),
             ),
-            failed_operations,
+            operation_port(failed_operations),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -868,7 +875,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                     receipt: receipt.clone(),
                 }),
             ),
-            operations.clone(),
+            operation_port(operations.clone()),
         ),
         execution_port(projects.clone(), queued_executions.clone()),
     );
@@ -911,7 +918,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         legacy_deployments,
         build_artifacts,
         workload_port(applications.clone(), workloads.clone()),
-        DurableCellPriorWriterSeal::new(workload_port(applications, workloads), operations),
+        DurableCellPriorWriterSeal::new(
+            workload_port(applications, workloads),
+            operation_port(operations),
+        ),
         execution_port(projects, legacy_executions.clone()),
     );
     assert!(matches!(

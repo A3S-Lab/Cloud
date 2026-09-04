@@ -112,9 +112,10 @@ use crate::modules::durable_cells::{
     FleetDurableCellNodePoolAdapter, GetDurableCellApplicationHandler,
     GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
     IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
-    IDurableCellNodePoolPort, IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort,
-    IDurableCellStoragePort, IDurableCellWorkloadPort, ListDurableCellApplicationRevisionsHandler,
-    ListDurableCellApplicationsHandler, PublishDurableCellApplicationRouteHandler,
+    IDurableCellNodePoolPort, IDurableCellOperationPort, IDurableCellRoutePublicationPort,
+    IDurableCellSecretBindingPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
+    OperationsDurableCellOperationAdapter, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplicationHandler, SecretsDurableCellBindingAdapter,
     StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
     WorkloadsDurableCellWorkloadAdapter,
@@ -684,6 +685,9 @@ async fn build_api_worker_application(
     let replica_retirements = adapters.workloads.replica_retirements;
     let writer_fences = adapters.workloads.writer_fences;
     let operation_repository = adapters.operations;
+    let durable_cell_operation_port: Arc<dyn IDurableCellOperationPort> = Arc::new(
+        OperationsDurableCellOperationAdapter::new(Arc::clone(&operation_repository)),
+    );
     let workload_targets = adapters.workloads.workload_targets;
     let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
     let resource_claims = adapters.workloads.resource_claims;
@@ -1077,7 +1081,7 @@ async fn build_api_worker_application(
                 Arc::clone(&durable_cell_workload_port),
                 DurableCellPriorWriterSeal::new(
                     Arc::clone(&durable_cell_workload_port),
-                    Arc::clone(&operation_repository),
+                    Arc::clone(&durable_cell_operation_port),
                 ),
                 Arc::clone(&durable_cell_executions),
             ));
@@ -1687,7 +1691,7 @@ async fn build_api_worker_application(
             Arc::clone(&durable_cell_applications),
             Arc::clone(&durable_cell_deployments),
             Arc::clone(&durable_cell_workload_port),
-            Arc::clone(&operation_repository),
+            Arc::clone(&durable_cell_operation_port),
         ));
         let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
             replica_retirements,

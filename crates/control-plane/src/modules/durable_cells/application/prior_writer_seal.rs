@@ -1,17 +1,20 @@
+use super::operation_port::{
+    DurableCellOperationLookupRequest, DurableCellOperationStatus, IDurableCellOperationPort,
+};
 use super::workload_port::{DurableCellWorkloadPriorWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
     ObjectNamespaceRecoveryOperationRequest, ObjectNamespaceRecoveryPoint,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
+    OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
 };
 use crate::modules::durable_cells::domain::DurableCellDeployment;
-use crate::modules::operations::{IOperationRepository, OperationStatus};
 use crate::modules::shared_kernel::domain::{RepositoryError, WorkloadReplicaId};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct DurableCellPriorWriterSeal {
     workload_port: Arc<dyn IDurableCellWorkloadPort>,
-    operations: Arc<dyn IOperationRepository>,
+    operation_port: Arc<dyn IDurableCellOperationPort>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,11 +33,11 @@ pub(super) enum DurableCellPriorWriterSealStatus {
 impl DurableCellPriorWriterSeal {
     pub(crate) fn new(
         workload_port: Arc<dyn IDurableCellWorkloadPort>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_port: Arc<dyn IDurableCellOperationPort>,
     ) -> Self {
         Self {
             workload_port,
-            operations,
+            operation_port,
         }
     }
 
@@ -81,15 +84,20 @@ impl DurableCellPriorWriterSeal {
             });
         };
 
-        let request = self
-            .operations
-            .find_request(prior_writer.continuation_operation_id)
-            .await?
-            .ok_or_else(|| {
-                RepositoryError::Storage(
-                    "Durable Cell prior-writer seal Operation request is missing".into(),
-                )
-            })?;
+        let operation_lookup = DurableCellOperationLookupRequest::new(
+            prior_writer.continuation_operation_id,
+            correlation.projection.organization_id,
+            "storage_namespace",
+            correlation.storage.storage_namespace_id.as_uuid(),
+            OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
+            OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+        );
+        let operation = self
+            .operation_port
+            .load_exact(&operation_lookup)
+            .await
+            .map_err(operation_repository_error)?;
+        let request = operation.request;
         let input: SealObjectNamespaceOperationInput =
             serde_json::from_value(request.input.clone()).map_err(|error| {
                 RepositoryError::Storage(format!(
@@ -111,7 +119,13 @@ impl DurableCellPriorWriterSeal {
             .map_err(|error| conflict("validate Durable Cell prior-writer seal scope", error))?;
         let expected_request = ObjectNamespaceRecoveryOperationRequest::seal(input.clone())
             .map_err(|error| conflict("rebuild Durable Cell prior-writer seal", error))?;
-        if !request.has_same_definition(&expected_request)
+        if request.operation_id != expected_request.id
+            || request.organization_id != expected_request.organization_id
+            || request.subject_kind != expected_request.subject.kind()
+            || request.subject_id != expected_request.subject.id()
+            || request.workflow_name != expected_request.workflow.name()
+            || request.workflow_version != expected_request.workflow.version()
+            || request.input != expected_request.input
             || request.requested_at != expected_request.requested_at
             || input.operation_id != prior_writer.continuation_operation_id
             || input.organization_id != correlation.projection.organization_id
@@ -128,11 +142,7 @@ impl DurableCellPriorWriterSeal {
             ));
         }
 
-        let Some(projection) = self
-            .operations
-            .find_projection(prior_writer.continuation_operation_id)
-            .await?
-        else {
+        let Some(projection) = operation.projection else {
             return Ok(DurableCellPriorWriterSealStatus::Pending {
                 reason: "Durable Cell prior-writer seal is queued".into(),
             });
@@ -146,16 +156,18 @@ impl DurableCellPriorWriterSeal {
             ));
         }
         match projection.status {
-            OperationStatus::Queued
-            | OperationStatus::Running
-            | OperationStatus::Suspended
-            | OperationStatus::Cancelling => Ok(DurableCellPriorWriterSealStatus::Pending {
-                reason: format!(
-                    "Durable Cell prior-writer seal is {}",
-                    projection.status.as_str()
-                ),
-            }),
-            OperationStatus::Failed | OperationStatus::Cancelled => {
+            DurableCellOperationStatus::Queued
+            | DurableCellOperationStatus::Running
+            | DurableCellOperationStatus::Suspended
+            | DurableCellOperationStatus::Cancelling => {
+                Ok(DurableCellPriorWriterSealStatus::Pending {
+                    reason: format!(
+                        "Durable Cell prior-writer seal is {}",
+                        projection.status.as_str()
+                    ),
+                })
+            }
+            DurableCellOperationStatus::Failed | DurableCellOperationStatus::Cancelled => {
                 Ok(DurableCellPriorWriterSealStatus::Failed {
                     reason: format!(
                         "Durable Cell prior-writer seal {}",
@@ -163,7 +175,7 @@ impl DurableCellPriorWriterSeal {
                     ),
                 })
             }
-            OperationStatus::Succeeded => {
+            DurableCellOperationStatus::Succeeded => {
                 if projection.error.is_some() {
                     return Err(RepositoryError::Storage(
                         "succeeded Durable Cell prior-writer seal retained an error".into(),
@@ -219,6 +231,27 @@ fn application_repository_error(
     match error {
         crate::modules::shared_kernel::application::ApplicationError::NotFound(_) => {
             RepositoryError::NotFound
+        }
+        crate::modules::shared_kernel::application::ApplicationError::Internal(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Unavailable(reason) => {
+            RepositoryError::Storage(reason)
+        }
+        crate::modules::shared_kernel::application::ApplicationError::Invalid(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Conflict(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Forbidden(reason) => {
+            RepositoryError::Conflict(reason)
+        }
+    }
+}
+
+fn operation_repository_error(
+    error: crate::modules::shared_kernel::application::ApplicationError,
+) -> RepositoryError {
+    match error {
+        crate::modules::shared_kernel::application::ApplicationError::NotFound(_) => {
+            RepositoryError::Storage(
+                "Durable Cell prior-writer seal Operation request is missing".into(),
+            )
         }
         crate::modules::shared_kernel::application::ApplicationError::Internal(reason)
         | crate::modules::shared_kernel::application::ApplicationError::Unavailable(reason) => {

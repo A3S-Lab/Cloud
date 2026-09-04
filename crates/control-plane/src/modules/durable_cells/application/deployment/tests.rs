@@ -18,8 +18,10 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::infrastructure::{
     DataDurableCellStorageAdapter, FleetDurableCellNodePoolAdapter,
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    SecretsDurableCellBindingAdapter, WorkloadsDurableCellWorkloadAdapter,
+    OperationsDurableCellOperationAdapter, SecretsDurableCellBindingAdapter,
+    WorkloadsDurableCellWorkloadAdapter,
 };
+use crate::modules::durable_cells::IDurableCellOperationPort;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -608,7 +610,9 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         applications.clone(),
         deployments.clone(),
         workload_port.clone(),
-        Arc::new(InMemoryOperationRepository::new()),
+        Arc::new(OperationsDurableCellOperationAdapter::new(Arc::new(
+            InMemoryOperationRepository::new(),
+        ))) as Arc<dyn IDurableCellOperationPort>,
     )
     .prepare_replica_retirement(&retirement, &removal_command, &removal_acknowledgement)
     .await

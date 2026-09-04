@@ -236,7 +236,9 @@ Current boundary debt:
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import Data,
-  Fleet, Operations, and Workloads internal owner types or repositories;
+  Fleet, and Workloads internal owner types or repositories; the prior-writer
+  seal now reads the exact Operations request/projection through one
+  `IDurableCellOperationPort` and owner adapter;
 - S0 credential admission now crosses one consumer-owned
   `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
   provider-profile/retention projections and recovery operations remain in the
@@ -264,10 +266,13 @@ Current boundary debt:
   opaque Runtime Secret references. Stopped-current writer-fence control
   admission and prior-writer receipt observation now cross that port as exact
   owner-neutral projections; Workloads validates receipt scope, owner lineage,
-  revision generation, replica identity, and epoch inside the adapter, while
-  Durable Cells retains only the subsequent Data/Operations recovery
-  projection checks. Workloads remains the lifecycle authority inside the
-  adapter;
+  revision generation, replica identity, and epoch inside the adapter. The
+  prior-writer seal also consumes an Operations-owned request/projection
+  snapshot through `IDurableCellOperationPort`, preserving exact workflow,
+  subject, input, status, sequence, and timestamp checks without importing the
+  Operations repository. Durable Cells retains only the subsequent Data
+  recovery-point projection checks. Workloads and Operations remain the
+  lifecycle authorities inside their adapters;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;
@@ -308,8 +313,10 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica
   convergence, revision-generation lookup, and managed deployment
   creation/replay, bundle-publication pre-start observation, stopped-current
-  writer-fence admission, and prior-writer receipt observation; remaining
-  Runtime, Data, and Operations projection reads remain follow-up slices);
+  writer-fence admission, and prior-writer receipt observation; the exact
+  Operations request/projection read now crosses `IDurableCellOperationPort`,
+  while Runtime and Data recovery-point projection reads remain follow-up
+  slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
