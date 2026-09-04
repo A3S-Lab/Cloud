@@ -135,3 +135,28 @@ fn validate_provider_profile_acl(acl: &str, expected_digest: &Sha256Digest) -> R
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use a3s_acl::builder::{string, BlockBuilder};
+    use a3s_acl::Document;
+
+    #[test]
+    fn provider_profile_validation_is_opaque_but_digest_locked() {
+        let document = Document {
+            blocks: vec![BlockBuilder::new("opaque_profile")
+                .attr("payload", string("provider-owned"))
+                .build()],
+        };
+        let acl = generate_acl(&document);
+        let digest = Sha256Digest::parse(canonical_digest(&document).expect("digest"))
+            .expect("canonical digest");
+
+        validate_provider_profile_acl(&acl, &digest).expect("canonical opaque ACL");
+        assert!(
+            validate_provider_profile_acl(&acl, &Sha256Digest::from_bytes(b"different")).is_err()
+        );
+        assert!(validate_provider_profile_acl(&format!(" {acl}"), &digest).is_err());
+    }
+}
