@@ -10,6 +10,7 @@ mod publisher_profile;
 mod repository;
 mod service_profile;
 mod storage_binding;
+mod storage_contract;
 
 pub use application::{
     DurableCellApplication, DurableCellApplicationDesiredState, DurableCellApplicationRevision,
@@ -48,3 +49,7 @@ pub use service_profile::{
     DURABLE_CELL_PROVIDER_PROTOCOL, DURABLE_CELL_SERVICE_PROFILE_MAX_ACL_BYTES,
 };
 pub use storage_binding::{DurableCellStorageBinding, DurableCellStorageBindingInput};
+pub use storage_contract::{
+    DurableCellStorageDeletionPlanIdentity, DurableCellStorageRecoveryPointIdentity,
+    DurableCellStorageRestoreEvidenceIdentity, DurableCellStorageRestorePlanIdentity,
+};

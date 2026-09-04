@@ -312,8 +312,11 @@ grace-delayed deletion plan and terminal cleanup evidence. Recovery evidence
 re-observes the sealed source manifest and exact restored state digest; deletion
 evidence binds the deleted namespace separately from the retained isolated
 restore namespace. `DurableCellStorageBinding` only verifies that these S0
-contracts match its exact namespace, provider, and policy digests. It adds no
-backup engine, deletion worker, Secret store, object client, Operation, or Flow.
+contracts match its exact namespace, provider, and policy digests. At the
+Durable Cells domain boundary, complete S0 aggregates are represented by
+identity-only projections; Data and the Storage anti-corruption adapter remain
+responsible for aggregate validation and materialization. It adds no backup
+engine, deletion worker, Secret store, object client, Operation, or Flow.
 `CELL0.5-C5a` supplies the owning Workloads receipt/enqueue composition only
 for the stopped current single replica. Component-only `C5b` then uses the
 existing Workload Deployment pre-start gate as the sole later-writer admission:

@@ -237,9 +237,11 @@ Current boundary debt:
   and Durable Cells Runtime receipt policy belongs to Durable Cells
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
-- remaining Durable Cells domain and application paths still import Data,
-  Fleet, and Workloads internal owner types or repositories for the explicitly
-  retained deployment/runtime seams. Provider-workload validation and the
+- remaining Durable Cells application and runtime paths still import Fleet and
+  Workloads internal owner types or repositories for the explicitly retained
+  deployment/runtime seams. The Durable Cells Domain now consumes identity-only
+  S0 recovery projections; complete Data recovery aggregates remain confined to
+  the Storage anti-corruption adapter. Provider-workload validation and the
   writer-fence credential/profile checks now consume only owner-neutral
   Storage projections; Data remains at deployment ingress and inside the
   Storage anti-corruption adapter. The prior-writer seal reads the exact
