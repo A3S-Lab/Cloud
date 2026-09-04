@@ -261,8 +261,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-code-core"
-version = "8.0.4"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=96be2ce34695341f477644bd3c36cf4aa6c39d4f#96be2ce34695341f477644bd3c36cf4aa6c39d4f"
+version = "8.2.0"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=9e8703405a380508451633eaa8ed1ad59b6515a5#9e8703405a380508451633eaa8ed1ad59b6515a5"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
@@ -416,8 +416,8 @@ dependencies = [
 
 [[package]]
 name = "a3s-memory"
-version = "0.1.3"
-source = "git+https://github.com/A3S-Lab/Memory.git?rev=df5a811e65a44e045a7e631455699d075877651e#df5a811e65a44e045a7e631455699d075877651e"
+version = "0.1.4"
+source = "git+https://github.com/A3S-Lab/Memory.git?rev=97a5e885d196be77dc1823ad86238e77d942ed73#97a5e885d196be77dc1823ad86238e77d942ed73"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -518,9 +518,9 @@ dependencies = [
 
 [[package]]
 name = "a3s-search"
-version = "3.0.9"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7aab9b74dbb4da6ecbff7cc51866d28872e8196397fe9f844d132252054bd311"
+checksum = "3ff36036587f1e972f6bad2c9feb5fd927be3cc7c6e332d81f01afc48e29b779"
 dependencies = [
  "a3s-acl 0.2.2",
  "a3s-updater",
@@ -610,13 +610,14 @@ dependencies = [
 
 [[package]]
 name = "a3s-vec"
-version = "0.1.0"
-source = "git+https://github.com/A3S-Lab/Vec.git?rev=019fdb929a57dee1803691e6def60df3946d9561#019fdb929a57dee1803691e6def60df3946d9561"
+version = "0.1.1"
+source = "git+https://github.com/A3S-Lab/Vec.git?rev=416140ec5f9bd6fc8030f9f17735c0b10d099c99#416140ec5f9bd6fc8030f9f17735c0b10d099c99"
 dependencies = [
  "bincode",
+ "bitmaps",
  "crc32fast",
  "fs2",
- "im",
+ "imbl",
  "memmap2",
  "rayon",
  "rayon-core",
@@ -1128,12 +1129,9 @@ checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
 name = "bitmaps"
-version = "2.1.0"
+version = "3.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "031043d04099746d8db04daf1fa424b2bc8bd69d92b25962dcde24da39ab64a2"
-dependencies = [
- "typenum",
-]
+checksum = "303cec55cd9c5fde944b061b902f142b52a8bb5438cc822481ea1e3ebc96bbcb"
 
 [[package]]
 name = "blake2"
@@ -2166,7 +2164,7 @@ dependencies = [
  "libc",
  "option-ext",
  "redox_users 0.5.2",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2374,7 +2372,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3237,7 +3235,7 @@ dependencies = [
  "libc",
  "percent-encoding",
  "pin-project-lite",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tokio",
  "tower-service",
  "tracing",
@@ -3394,18 +3392,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "im"
-version = "15.1.0"
+name = "imbl"
+version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0acd33ff0285af998aaf9b57342af478078f53492322fafc47450e09397e0e9"
+checksum = "bc3be8d8cd36f33a46b1849f31f837c44d9fa87223baee3b4bd96b8f11df81eb"
 dependencies = [
  "bitmaps",
+ "imbl-sized-chunks",
  "rand_core 0.6.4",
  "rand_xoshiro",
  "serde",
- "sized-chunks",
- "typenum",
  "version_check",
+]
+
+[[package]]
+name = "imbl-sized-chunks"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8f4241005618a62f8d57b2febd02510fb96e0137304728543dfc5fd6f052c22d"
+dependencies = [
+ "bitmaps",
 ]
 
 [[package]]
@@ -3468,7 +3474,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "20fd6de4ccfcc187e38bc21cfa543cb5a302cb86a8b114eb7f0bf0dc9f8ac00f"
 dependencies = [
  "io-lifetimes 3.0.1",
- "windows-sys 0.60.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4220,7 +4226,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5098,7 +5104,7 @@ dependencies = [
  "quinn-udp",
  "rustc-hash",
  "rustls",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "thiserror 2.0.20",
  "tokio",
  "tracing",
@@ -5136,9 +5142,9 @@ dependencies = [
  "cfg_aliases",
  "libc",
  "once_cell",
- "socket2 0.6.5",
+ "socket2 0.5.10",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5737,7 +5743,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5837,7 +5843,7 @@ dependencies = [
  "security-framework 3.7.0",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6400,16 +6406,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ee5873ec9cce0195efcb7a4e9507a04cd49aec9c83d0389df45b1ef7ba2e649"
 
 [[package]]
-name = "sized-chunks"
-version = "0.6.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "16d69225bde7a69b235da73377861095455d298f2b970996eec25ddbb42b3d1e"
-dependencies = [
- "bitmaps",
- "typenum",
-]
-
-[[package]]
 name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6718,7 +6714,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -7695,7 +7691,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
