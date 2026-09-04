@@ -761,6 +761,38 @@ impl DurableCellWorkloadPlacementRequest {
     }
 }
 
+/// Exact owner-neutral input for projecting the provider Workload revision.
+/// The Workloads adapter owns decoding and aggregate construction; Durable
+/// Cells receives only its immutable provider projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadProviderProjectionRequest {
+    pub projection: DurableCellProjectionIdentity,
+    pub workload_generation: u64,
+    pub service_template: DurableCellWorkloadTemplate,
+}
+
+impl DurableCellWorkloadProviderProjectionRequest {
+    pub fn new(
+        projection: DurableCellProjectionIdentity,
+        workload_generation: u64,
+        service_template: DurableCellWorkloadTemplate,
+    ) -> Self {
+        Self {
+            projection,
+            workload_generation,
+            service_template,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.projection.validate()?;
+        if self.workload_generation == 0 {
+            return Err("Durable Cell Workloads provider generation is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadRevisionGenerationRequest {
     pub fn new(
         organization_id: OrganizationId,
@@ -799,6 +831,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadPlacementRequest,
     ) -> ApplicationResult<Sha256Digest>;
+
+    fn project_provider_workload(
+        &self,
+        request: &DurableCellWorkloadProviderProjectionRequest,
+    ) -> ApplicationResult<DurableCellProviderWorkloadProjection>;
 
     async fn load_prestart_publication(
         &self,
@@ -910,6 +947,24 @@ mod tests {
         let mut invalid_pool = request;
         invalid_pool.node_pool_id = Some(NodePoolId::from_uuid(Uuid::nil()));
         assert!(invalid_pool.validate().is_err());
+    }
+
+    #[test]
+    fn provider_projection_request_requires_a_valid_generation() {
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"artifact": "pinned"})).expect("template bytes");
+        let template =
+            DurableCellWorkloadTemplate::new(bytes.clone(), Sha256Digest::from_bytes(&bytes))
+                .expect("opaque template");
+        let request =
+            DurableCellWorkloadProviderProjectionRequest::new(placement_projection(), 2, template);
+        request
+            .validate()
+            .expect("valid provider projection request");
+
+        let mut invalid = request;
+        invalid.workload_generation = 0;
+        assert!(invalid.validate().is_err());
     }
 
     #[test]

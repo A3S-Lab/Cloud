@@ -1,9 +1,7 @@
 use super::node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNodePoolPort};
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
-use super::provider_workload::{
-    project_durable_cell_provider_workload, validate_pinned_celld_provider_workload,
-};
+use super::provider_workload::validate_pinned_celld_provider_workload;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
@@ -14,9 +12,9 @@ use super::storage_port::{
 };
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
-    DurableCellWorkloadPlacementRequest, DurableCellWorkloadReconciliationRequest,
-    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadPlacementRequest, DurableCellWorkloadProviderProjectionRequest,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
@@ -32,7 +30,7 @@ use crate::modules::shared_kernel::domain::{
     NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, SecretVersionReference,
     Sha256Digest,
 };
-use crate::modules::workloads::{ServiceTemplate, WorkloadRevision};
+use crate::modules::workloads::ServiceTemplate;
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -285,7 +283,7 @@ struct PreparedDeployment {
     application_revision_id: DurableCellApplicationRevisionId,
     service_profile: DurableCellServiceProfile,
     storage_provider_profile_acl: Option<String>,
-    service_template_digest: Sha256Digest,
+    service_template: DurableCellWorkloadTemplate,
     provider_artifact_digest: Sha256Digest,
     credential_binding_digest: Sha256Digest,
     storage_provider_profile_digest: Sha256Digest,
@@ -318,6 +316,10 @@ impl PreparedDeployment {
             )?;
         }
         let service_template_digest = Sha256Digest::parse(command.workload_template.digest()?)?;
+        let service_template = DurableCellWorkloadTemplate::from_serializable(
+            &command.workload_template,
+            service_template_digest,
+        )?;
         let provider_artifact_digest =
             Sha256Digest::parse(&command.workload_template.artifact.digest)?;
         let canonical_request = serde_json::to_vec(&CanonicalDeploymentRequest {
@@ -327,7 +329,7 @@ impl PreparedDeployment {
             application_id: command.application_id,
             application_revision_id: command.application_revision_id,
             service_profile_digest: service_profile.digest().as_str(),
-            service_template_digest: service_template_digest.as_str(),
+            service_template_digest: service_template.digest().as_str(),
             credential_binding_digest: command.storage_credentials.binding_digest.as_str(),
             retention_policy_digest: command.retention_policy.expected_digest.as_str(),
             node_pool_id: command.node_pool_id,
@@ -341,7 +343,7 @@ impl PreparedDeployment {
             application_revision_id: command.application_revision_id,
             service_profile,
             storage_provider_profile_acl: command.storage_provider_profile_acl.clone(),
-            service_template_digest,
+            service_template,
             provider_artifact_digest,
             credential_binding_digest: command.storage_credentials.binding_digest.clone(),
             storage_provider_profile_digest: command
@@ -396,7 +398,7 @@ impl PreparedDeployment {
                 != self.storage_provider_profile_acl.as_deref()
             || correlation.storage.retention_policy_digest != self.retention_policy_digest
             || correlation.provider.service_profile_digest != *self.service_profile.digest()
-            || correlation.provider.service_template_digest != self.service_template_digest
+            || correlation.provider.service_template_digest != *self.service_template.digest()
             || correlation.provider.provider_artifact_digest != self.provider_artifact_digest
         {
             return Err("Durable Cell deployment replay changed its exact projection".into());
@@ -554,19 +556,16 @@ async fn prepare_correlation(
             projection.organization_id,
             projection.workload_id,
             projection.workload_revision_id,
-            prepared.service_template_digest.clone(),
+            prepared.service_template.digest().clone(),
         ))
         .await?;
-    let workload_revision = WorkloadRevision::create(
-        projection.workload_revision_id,
-        projection.workload_id,
-        workload_generation,
-        command.workload_template.clone(),
-        Utc::now(),
-    )
-    .map_err(ApplicationError::Invalid)?;
-    let provider_workload = project_durable_cell_provider_workload(&workload_revision)
-        .map_err(ApplicationError::Invalid)?;
+    let provider_workload = workload_port.project_provider_workload(
+        &DurableCellWorkloadProviderProjectionRequest::new(
+            projection.clone(),
+            workload_generation,
+            prepared.service_template.clone(),
+        ),
+    )?;
     let provider = DurableCellProviderBinding::for_current_revision(
         &record.application,
         &record.revision,
@@ -616,11 +615,6 @@ fn workload_deployment_request(
     correlation: &DurableCellDeployment,
     idempotency: IdempotencyRequest,
 ) -> ApplicationResult<DurableCellWorkloadDeploymentRequest> {
-    let service_template = DurableCellWorkloadTemplate::from_serializable(
-        &command.workload_template,
-        prepared.service_template_digest.clone(),
-    )
-    .map_err(ApplicationError::Invalid)?;
     let projection = &correlation.projection;
     Ok(DurableCellWorkloadDeploymentRequest::new(
         projection.organization_id,
@@ -637,7 +631,7 @@ fn workload_deployment_request(
         correlation.provider.workload_generation,
         correlation.provider.provider_artifact_digest.clone(),
         correlation.placement_policy_digest.clone(),
-        service_template,
+        prepared.service_template.clone(),
         command.node_pool_id,
         idempotency,
         correlation.request_id,

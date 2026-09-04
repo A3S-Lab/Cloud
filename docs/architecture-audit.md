@@ -299,6 +299,10 @@ Current boundary debt:
   placement-policy digest returned by its Workloads port. The Workloads
   adapter compiles the control value, so placement vocabulary remains owned by
   Workloads at one translation site;
+- Durable Cells deployment now also receives the provider-workload projection
+  through that same port. The Workloads adapter decodes the opaque template
+  and constructs the owner revision, so the deployment application retains no
+  Workloads revision aggregate or constructor;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;

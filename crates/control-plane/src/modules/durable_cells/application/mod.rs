@@ -90,9 +90,10 @@ pub use workload_port::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPlacementRequest,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellWorkloadPort,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 
