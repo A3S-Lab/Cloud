@@ -710,6 +710,11 @@ async fn build_api_worker_application(
     let developer_preview_projections = adapters.developer_workflows.preview_projections;
     let durable_cell_applications = adapters.durable_cell_applications;
     let durable_cell_deployments = adapters.durable_cell_deployments;
+    let durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort> =
+        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+            Arc::clone(&durable_cell_applications),
+            Arc::clone(&workloads),
+        ));
     let connector_execution = if run_operations {
         let connector_response_objects = Arc::new(ConnectorResponseObjectStore::from_client(
             object_storage
@@ -1068,7 +1073,7 @@ async fn build_api_worker_application(
                 Arc::clone(&durable_cell_applications),
                 Arc::clone(&durable_cell_deployments),
                 Arc::clone(&durable_cell_build_artifacts),
-                Arc::clone(&workloads),
+                Arc::clone(&durable_cell_workload_port),
                 DurableCellPriorWriterSeal::new(
                     Arc::clone(&writer_fences),
                     Arc::clone(&operation_repository),
@@ -1890,6 +1895,7 @@ async fn build_api_worker_application(
                 plugin_enrollment_authorizer,
                 assets,
                 workloads,
+                durable_cell_workload_port: Arc::clone(&durable_cell_workload_port),
                 builds,
                 executions,
                 execution_templates,
@@ -2133,6 +2139,7 @@ struct ManagementApplicationDependencies {
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort>,
     builds: Arc<dyn IBuildRunRepository>,
     executions: Arc<dyn IExecutionRepository>,
     execution_templates: Arc<dyn IExecutionTemplateRepository>,
@@ -2228,6 +2235,7 @@ fn build_management_application_with_health(
         plugin_enrollment_authorizer,
         assets,
         workloads,
+        durable_cell_workload_port,
         builds,
         executions,
         execution_templates,
@@ -2467,11 +2475,6 @@ fn build_management_application_with_health(
     let revise_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let start_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let stop_durable_cell_applications = Arc::clone(&durable_cell_applications);
-    let durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort> =
-        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
-            Arc::clone(&durable_cell_applications),
-            Arc::clone(&workloads),
-        ));
     let start_durable_cell_workload_port = Arc::clone(&durable_cell_workload_port);
     let stop_durable_cell_workload_port = Arc::clone(&durable_cell_workload_port);
     let list_durable_cell_applications = Arc::clone(&durable_cell_applications);

@@ -1,7 +1,9 @@
 use crate::modules::durable_cells::application::{
-    DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
-    DurableCellWorkloadDeploymentStatus, DurableCellWorkloadReconciliationRequest,
-    DurableCellWorkloadRevisionGenerationRequest, IDurableCellWorkloadPort,
+    project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
+    DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
+    DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -13,10 +15,11 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, RepositoryError, ResourceName, Sha256Digest,
 };
+use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, IWorkloadRepository,
     ManagedOwnerKind, ManagedOwnerReference, ReconfigureReplicaSetWrite, ServiceTemplate, Workload,
-    WorkloadControlSpec, WorkloadDesiredState, WorkloadRevision,
+    WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica, WorkloadRevision,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -50,6 +53,141 @@ impl WorkloadsDurableCellWorkloadAdapter {
             applications,
             workloads,
         }
+    }
+
+    async fn load_prestart_publication_projection(
+        &self,
+        request: &DurableCellWorkloadPrestartRequest,
+    ) -> ApplicationResult<DurableCellWorkloadPrestartProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let deployment = self
+            .workloads
+            .find_deployment(request.organization_id, request.deployment_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if deployment.id != request.deployment_id
+            || deployment.organization_id != request.organization_id
+            || deployment.workload_id != request.workload_id
+            || deployment.revision_id != request.workload_revision_id
+            || deployment.operation_id != request.operation_id
+            || deployment.node_id != Some(request.node_id)
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell pre-start request changed its Workload Deployment".into(),
+            ));
+        }
+
+        let control = self
+            .workloads
+            .find_workload_control(request.organization_id, request.workload_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        let expected_owner = ManagedOwnerReference::new(
+            ManagedOwnerKind::parse(DURABLE_CELL_MANAGED_OWNER_KIND)
+                .map_err(ApplicationError::Internal)?,
+            request.application_id.as_uuid(),
+            request.application_revision_number,
+            request.application_definition_digest.as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        if control.organization_id != request.organization_id
+            || control.project_id != request.project_id
+            || control.environment_id != request.environment_id
+            || control.workload_id != request.workload_id
+            || control.spec.managed_owner.as_ref() != Some(&expected_owner)
+            || control.spec.placement_policy.members_per_replica() != 1
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell pre-start request changed its managed Workload control".into(),
+            ));
+        }
+
+        let binding = self
+            .workloads
+            .find_deployment_replica_binding(request.organization_id, request.deployment_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        let canonical_replica_id = WorkloadReplica::deterministic_id(request.workload_id, 0)
+            .map_err(ApplicationError::Invalid)?;
+        let replica = self
+            .workloads
+            .find_workload_replica(
+                request.organization_id,
+                request.workload_id,
+                canonical_replica_id,
+            )
+            .await
+            .map_err(ApplicationError::from)?;
+        if binding.deployment_id != request.deployment_id
+            || binding.organization_id != request.organization_id
+            || binding.project_id != request.project_id
+            || binding.environment_id != request.environment_id
+            || binding.workload_id != request.workload_id
+            || binding.revision_id != request.workload_revision_id
+            || binding.replica_id != canonical_replica_id
+            || binding.replica_generation == 0
+            || binding.runtime_generation != binding.replica_generation
+            || binding.node_id != Some(request.node_id)
+            || replica.id != binding.replica_id
+            || replica.ordinal != 0
+            || replica.revision_id != binding.revision_id
+            || replica.revision_generation != request.workload_generation
+            || replica.generation != binding.replica_generation
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell pre-start request changed its canonical writer binding".into(),
+            ));
+        }
+
+        let revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if revision.id != request.workload_revision_id
+            || revision.workload_id != request.workload_id
+            || revision.generation != request.workload_generation
+            || revision.external_build.is_some()
+            || !revision.skill_bindings().is_empty()
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell pre-start request changed its Workload revision".into(),
+            ));
+        }
+        let template = revision
+            .resolved_template()
+            .map_err(ApplicationError::Internal)?;
+        template.validate().map_err(ApplicationError::Internal)?;
+        let template_digest = Sha256Digest::parse(
+            template
+                .digest()
+                .map_err(ApplicationError::Internal)?
+                .as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        let template_bytes = serde_json::to_vec(template)
+            .map_err(|error| ApplicationError::Internal(error.to_string()))?;
+        let service_template = DurableCellWorkloadTemplate::new(template_bytes, template_digest)
+            .map_err(ApplicationError::Internal)?;
+        let provider_workload = project_durable_cell_provider_workload(&revision)
+            .map_err(ApplicationError::Internal)?;
+        let runtime_secrets =
+            project_runtime_secrets(&revision).map_err(ApplicationError::Internal)?;
+        let projection = DurableCellWorkloadPrestartProjection {
+            deployment_id: request.deployment_id,
+            operation_id: request.operation_id,
+            workload_id: request.workload_id,
+            workload_revision_id: request.workload_revision_id,
+            node_id: request.node_id,
+            writer_epoch: binding.replica_generation,
+            provider_workload,
+            service_template,
+            runtime_secrets,
+        };
+        projection
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+        Ok(projection)
     }
 
     async fn validate_control(
@@ -126,6 +264,13 @@ impl WorkloadsDurableCellWorkloadAdapter {
 
 #[async_trait]
 impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
+    async fn load_prestart_publication(
+        &self,
+        request: &DurableCellWorkloadPrestartRequest,
+    ) -> ApplicationResult<DurableCellWorkloadPrestartProjection> {
+        self.load_prestart_publication_projection(request).await
+    }
+
     async fn replay_managed_deployment(
         &self,
         request: &DurableCellWorkloadDeploymentRequest,

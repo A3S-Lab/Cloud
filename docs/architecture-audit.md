@@ -258,8 +258,11 @@ Current boundary debt:
   `IDurableCellWorkloadPort` and one Workloads anti-corruption adapter;
   deployment creation, idempotency replay, aggregate construction, and
   Operation/Event publication now cross that same consumer-owned port through
-  an opaque digest-locked template payload; Workloads remains the lifecycle
-  authority inside the adapter;
+  an opaque digest-locked template payload. Bundle-publication pre-start reads
+  for the exact Deployment, managed control, canonical replica binding, and
+  revision now cross the same port as one owner-neutral projection, including
+  opaque Runtime Secret references; Workloads remains the lifecycle authority
+  inside the adapter;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;
@@ -299,7 +302,8 @@ The required Cloud refactor is a set of consumer-owned ports:
   publication Task creation, recovery, observation, and cancellation);
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica
   convergence, revision-generation lookup, and managed deployment
-  creation/replay; other Workloads reads remain follow-up slices);
+  creation/replay plus bundle-publication pre-start observation; writer-fence
+  and remaining Runtime projection reads remain follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway

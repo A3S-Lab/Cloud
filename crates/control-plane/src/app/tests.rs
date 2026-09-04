@@ -2090,6 +2090,13 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::clone(&forms),
         Arc::clone(&form_semantic_core),
     ));
+    let durable_cell_applications =
+        Arc::new(crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new());
+    let durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort> =
+        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+            durable_cell_applications.clone(),
+            Arc::clone(&workload_port),
+        ));
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -2188,9 +2195,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             developer_preview_projections: Arc::new(
                 InMemoryPullRequestPreviewProjectionRepository::new(),
             ),
-            durable_cell_applications: Arc::new(
-                crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new(),
-            ),
+            durable_cell_applications,
             durable_cell_deployments: Arc::new(
                 crate::modules::durable_cells::InMemoryDurableCellDeploymentRepository::new(),
             ),
@@ -2203,6 +2208,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ),
             assets: unavailable_assets,
             workloads: workload_port,
+            durable_cell_workload_port,
             builds,
             executions: executions.unwrap_or_else(|| Arc::new(InMemoryExecutionRepository::new())),
             execution_templates: Arc::new(InMemoryExecutionTemplateRepository::new()),

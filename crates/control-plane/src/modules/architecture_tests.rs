@@ -740,13 +740,17 @@ fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
 }
 
 #[test]
-fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
+fn durable_cells_workloads_cross_one_consumer_owned_port() {
     let commands =
         std::fs::read_to_string(module_root().join("durable_cells/application/commands.rs"))
             .expect("read Durable Cells command application");
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
             .expect("read Durable Cells deployment application");
+    let bundle_publication = std::fs::read_to_string(
+        module_root().join("durable_cells/application/bundle_publication.rs"),
+    )
+    .expect("read Durable Cells bundle publication application");
     let port =
         std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
             .expect("read Durable Cells Workload port");
@@ -757,6 +761,7 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
 
     let commands = production_source(&commands);
     let deployment = production_source(&deployment);
+    let bundle_publication = production_source(&bundle_publication);
     let port = production_source(&port);
     let adapter = production_source(&adapter);
     assert!(commands.contains("Arc<dyn IDurableCellWorkloadPort>"));
@@ -780,14 +785,33 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
             "Durable Cells deployment bypassed its Workloads port with {forbidden}"
         );
     }
+    assert!(bundle_publication.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(bundle_publication.contains(".load_prestart_publication("));
+    for forbidden in [
+        "IWorkloadRepository",
+        ".find_deployment(",
+        ".find_workload_control(",
+        ".find_deployment_replica_binding(",
+        ".find_workload_replica(",
+        "project_runtime_secrets",
+        "WorkloadReplica::deterministic_id",
+    ] {
+        assert!(
+            !bundle_publication.contains(forbidden),
+            "Durable Cells bundle publication bypassed its Workloads port with {forbidden}"
+        );
+    }
     assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadRevisionGenerationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadDeploymentRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadDeployment"));
+    assert!(port.contains("pub struct DurableCellWorkloadPrestartRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadPrestartProjection"));
     assert!(port.contains("pub trait IDurableCellWorkloadPort"));
     assert!(port.contains("replay_managed_deployment"));
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
+    assert!(port.contains("load_prestart_publication"));
     assert!(!port.contains("crate::modules::workloads"));
     for required in [
         "impl IDurableCellWorkloadPort",
@@ -796,6 +820,9 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
         "replay_deployment",
         "CreateDeploymentBundle",
         "list_revisions",
+        "find_deployment_replica_binding",
+        "find_workload_replica",
+        "project_runtime_secrets",
         "ReconfigureReplicaSetWrite",
         "DurableCellProjectionIdentity",
     ] {

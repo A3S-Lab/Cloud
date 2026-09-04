@@ -1,3 +1,4 @@
+use super::workload_port::DurableCellWorkloadTemplate;
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
     ObjectNamespaceProviderProfile,
@@ -62,8 +63,23 @@ pub(crate) fn validate_durable_cell_provider_workload_binding(
     profile: &DurableCellServiceProfile,
     revision: &WorkloadRevision,
 ) -> Result<(), String> {
-    binding
-        .validate_workload_projection(profile, &project_durable_cell_provider_workload(revision)?)
+    validate_durable_cell_provider_workload_projection(
+        binding,
+        profile,
+        &project_durable_cell_provider_workload(revision)?,
+    )
+}
+
+/// Validates the immutable Workloads projection after it has crossed the
+/// consumer-owned port. This keeps the Durable Cells domain policy independent
+/// of the Workloads aggregate while retaining the same exact projection
+/// checks used during initial admission.
+pub(crate) fn validate_durable_cell_provider_workload_projection(
+    binding: &DurableCellProviderBinding,
+    profile: &DurableCellServiceProfile,
+    projection: &DurableCellProviderWorkloadProjection,
+) -> Result<(), String> {
+    binding.validate_workload_projection(profile, projection)
 }
 
 /// Compile the Durable Cells owner identity into Workloads' generic managed
@@ -260,6 +276,33 @@ pub(super) fn validate_publisher_secret_targets(
     publisher: &DurableCellPublisherProfile,
 ) -> Result<(), String> {
     validate_bindings(&template.secrets, publisher, None)
+}
+
+/// Decodes and validates the opaque Workloads template only at the owner
+/// translation helper. Durable Cells application code receives the resulting
+/// media type, but never imports or reconstructs the Workloads model.
+pub(super) fn validate_pinned_celld_service_template_payload(
+    provider_profile: &ObjectNamespaceProviderProfile,
+    storage_namespace_id: StorageNamespaceId,
+    service_profile: &DurableCellServiceProfile,
+    payload: &DurableCellWorkloadTemplate,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<String, String> {
+    let template = serde_json::from_slice::<ServiceTemplate>(payload.bytes())
+        .map_err(|error| format!("invalid opaque Workloads Service template: {error}"))?;
+    let digest = Sha256Digest::parse(template.digest()?)?;
+    if digest != *payload.digest() {
+        return Err("opaque Workloads Service template digest changed".into());
+    }
+    validate_pinned_celld_service_projection(
+        provider_profile,
+        storage_namespace_id,
+        service_profile,
+        &template,
+        publisher,
+    )?;
+    validate_publisher_secret_targets(&template, publisher)?;
+    Ok(template.artifact.media_type)
 }
 
 /// Reconstructs the exact plaintext-free S0 credential binding from the

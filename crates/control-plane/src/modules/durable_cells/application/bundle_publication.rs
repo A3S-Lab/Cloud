@@ -10,8 +10,12 @@ use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWrite
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
-    durable_cell_managed_owner_reference, validate_durable_cell_provider_workload_binding,
-    validate_pinned_celld_service_projection, validate_publisher_secret_targets,
+    validate_durable_cell_provider_workload_projection,
+    validate_pinned_celld_service_template_payload,
+};
+use super::workload_port::{
+    DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::domain::{
@@ -24,9 +28,6 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, ExecutionId, RepositoryError, Sha256Digest, StorageNamespaceId,
     WorkloadRevisionId,
 };
-use crate::modules::workloads::application::project_runtime_secrets;
-use crate::modules::workloads::domain::entities::WorkloadReplica;
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
     IWorkloadPrestartGate, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
@@ -55,7 +56,7 @@ pub(crate) struct DurableCellBundlePublicationGate {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
     builds: Arc<dyn IDurableCellBuildArtifactPort>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    workloads: Arc<dyn IDurableCellWorkloadPort>,
     prior_writer_seal: DurableCellPriorWriterSeal,
     executions: Arc<dyn IDurableCellExecutionPort>,
 }
@@ -65,7 +66,7 @@ impl DurableCellBundlePublicationGate {
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         builds: Arc<dyn IDurableCellBuildArtifactPort>,
-        workloads: Arc<dyn IWorkloadRepository>,
+        workloads: Arc<dyn IDurableCellWorkloadPort>,
         prior_writer_seal: DurableCellPriorWriterSeal,
         executions: Arc<dyn IDurableCellExecutionPort>,
     ) -> Self {
@@ -108,90 +109,44 @@ impl DurableCellBundlePublicationGate {
                 "Durable Cell pre-start request changed its projection identity".into(),
             ));
         }
-        let deployment = self
+        let workload_request = DurableCellWorkloadPrestartRequest::new(
+            correlation.projection.organization_id,
+            correlation.projection.project_id,
+            correlation.projection.environment_id,
+            correlation.projection.application_id,
+            correlation.projection.application_revision_id,
+            correlation.projection.application_revision_number,
+            correlation.projection.application_definition_digest.clone(),
+            correlation.projection.workload_id,
+            correlation.projection.workload_revision_id,
+            correlation.provider.workload_generation,
+            request.deployment_id,
+            request.operation_id,
+            request.node_id,
+        );
+        let workload = self
             .workloads
-            .find_deployment(request.organization_id, request.deployment_id)
-            .await?;
-        if deployment.id != request.deployment_id
-            || deployment.operation_id != request.operation_id
-            || deployment.organization_id != request.organization_id
-            || deployment.workload_id != request.workload_id
-            || deployment.revision_id != request.workload_revision_id
-        {
-            return Err(RepositoryError::Conflict(
-                "Durable Cell pre-start request changed its Workload Deployment".into(),
-            ));
-        }
-        let control = self
-            .workloads
-            .find_workload_control(request.organization_id, request.workload_id)
-            .await?;
-        let expected_owner = durable_cell_managed_owner_reference(&correlation.projection)
-            .map_err(|error| {
-                RepositoryError::Conflict(format!(
-                    "could not restore Durable Cell managed owner: {error}"
-                ))
-            })?;
-        if control.organization_id != correlation.projection.organization_id
-            || control.project_id != correlation.projection.project_id
-            || control.environment_id != correlation.projection.environment_id
-            || control.workload_id != request.workload_id
-            || control.spec.managed_owner.as_ref() != Some(&expected_owner)
-            || control.spec.placement_policy.members_per_replica() != 1
-        {
-            return Err(RepositoryError::Conflict(
-                "Durable Cell pre-start request changed its managed Workload control".into(),
-            ));
-        }
-        let binding = self
-            .workloads
-            .find_deployment_replica_binding(request.organization_id, request.deployment_id)
-            .await?;
-        let canonical_replica_id = WorkloadReplica::deterministic_id(request.workload_id, 0)
+            .load_prestart_publication(&workload_request)
+            .await
+            .map_err(application_repository_error)?;
+        workload
+            .validate_against(&workload_request)
             .map_err(RepositoryError::Conflict)?;
-        let replica = self
-            .workloads
-            .find_workload_replica(
-                request.organization_id,
-                request.workload_id,
-                canonical_replica_id,
-            )
-            .await?;
-        if binding.deployment_id != request.deployment_id
-            || binding.organization_id != correlation.projection.organization_id
-            || binding.project_id != correlation.projection.project_id
-            || binding.environment_id != correlation.projection.environment_id
-            || binding.workload_id != request.workload_id
-            || binding.revision_id != request.workload_revision_id
-            || binding.replica_id != canonical_replica_id
-            || binding.replica_generation == 0
-            || binding.runtime_generation != binding.replica_generation
-            || binding.node_id != Some(request.node_id)
-            || replica.id != binding.replica_id
-            || replica.ordinal != 0
-            || replica.revision_id != binding.revision_id
-            || replica.revision_generation != correlation.provider.workload_generation
-            || replica.generation != binding.replica_generation
-        {
-            return Err(RepositoryError::Conflict(
-                "Durable Cell pre-start request changed its canonical writer binding".into(),
-            ));
-        }
         Ok(Some(DurableCellPrestartCorrelation {
             deployment: correlation,
-            writer_epoch: binding.replica_generation,
+            workload,
         }))
     }
 
     async fn reconcile_publication(
         &self,
         request: &WorkloadPrestartGateRequest,
-        correlation: &DurableCellDeployment,
+        correlation: &DurableCellPrestartCorrelation,
     ) -> Result<WorkloadPrestartGateStatus, RepositoryError> {
         let execution_id = publication_execution_id(request.workload_revision_id);
         if request.cancellation_requested {
             return self
-                .reconcile_cancellation(request, correlation, execution_id)
+                .reconcile_cancellation(request, &correlation.deployment, execution_id)
                 .await;
         }
 
@@ -207,7 +162,12 @@ impl DurableCellBundlePublicationGate {
                 ..request.clone()
             };
             let creation = match self
-                .compose(&persisted_request, correlation, execution_id)
+                .compose(
+                    &persisted_request,
+                    &correlation.deployment,
+                    &correlation.workload,
+                    execution_id,
+                )
                 .await
             {
                 Ok(creation) => creation,
@@ -234,7 +194,15 @@ impl DurableCellBundlePublicationGate {
             return publication_status(&execution);
         }
 
-        let creation = match self.compose(request, correlation, execution_id).await {
+        let creation = match self
+            .compose(
+                request,
+                &correlation.deployment,
+                &correlation.workload,
+                execution_id,
+            )
+            .await
+        {
             Ok(creation) => creation,
             Err(CompositionError::Failed(reason)) => {
                 return Ok(WorkloadPrestartGateStatus::Failed { reason })
@@ -301,6 +269,7 @@ impl DurableCellBundlePublicationGate {
         &self,
         request: &WorkloadPrestartGateRequest,
         correlation: &DurableCellDeployment,
+        workload: &DurableCellWorkloadPrestartProjection,
         execution_id: ExecutionId,
     ) -> Result<DurableCellExecutionRequest, CompositionError> {
         let provider_profile = correlation
@@ -352,50 +321,38 @@ impl DurableCellBundlePublicationGate {
         )
         .map_err(CompositionError::failed)?;
 
-        let workload_revision = self
-            .workloads
-            .find_revision(request.organization_id, request.workload_revision_id)
-            .await
-            .map_err(CompositionError::Repository)?;
-        let service_template = workload_revision
-            .resolved_template()
-            .map_err(CompositionError::failed)?;
         let service_profile =
             DurableCellServiceProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
-        validate_durable_cell_provider_workload_binding(
+        validate_durable_cell_provider_workload_projection(
             &correlation.provider,
             &service_profile,
-            &workload_revision,
+            &workload.provider_workload,
         )
         .map_err(CompositionError::failed)?;
-        validate_pinned_celld_service_projection(
+        let image_media_type = validate_pinned_celld_service_template_payload(
             &provider_profile,
             correlation.storage.storage_namespace_id,
             &service_profile,
-            service_template,
+            &workload.service_template,
             &publisher,
         )
         .map_err(CompositionError::failed)?;
-        validate_publisher_secret_targets(service_template, &publisher)
-            .map_err(CompositionError::failed)?;
 
         let authority_digest =
             publication_authority_digest(correlation, request.node_id, &bundle, &publisher)
                 .map_err(CompositionError::failed)?;
-        let secrets =
-            project_runtime_secrets(&workload_revision).map_err(CompositionError::failed)?;
         let definition = build_publication_task_definition(
             &provider_profile,
             &publisher,
             PublicationTaskDefinitionInput {
                 storage_namespace_id: correlation.storage.storage_namespace_id,
-                image_media_type: service_template.artifact.media_type.clone(),
+                image_media_type,
                 bundle: ArtifactRef {
                     uri: bundle.uri,
                     digest: bundle.digest,
                     media_type: bundle.media_type,
                 },
-                secrets,
+                secrets: workload.runtime_secrets.clone(),
                 authority: DurableCellExecutionAuthority {
                     kind: PUBLICATION_AUTHORITY_KIND.into(),
                     subject_id: request.workload_revision_id.as_uuid(),
@@ -558,13 +515,12 @@ impl IWorkloadPrestartGate for DurableCellBundlePublicationGate {
                     completed_at: request.now,
                 })
             } else {
-                self.reconcile_publication(request, &correlation.deployment)
-                    .await
+                self.reconcile_publication(request, &correlation).await
             };
         }
         match self
             .prior_writer_seal
-            .reconcile(&correlation.deployment, correlation.writer_epoch)
+            .reconcile(&correlation.deployment, correlation.workload.writer_epoch)
             .await?
         {
             DurableCellPriorWriterSealStatus::Ready { .. } => {}
@@ -584,14 +540,13 @@ impl IWorkloadPrestartGate for DurableCellBundlePublicationGate {
                 completed_at: request.now,
             });
         }
-        self.reconcile_publication(request, &correlation.deployment)
-            .await
+        self.reconcile_publication(request, &correlation).await
     }
 }
 
 struct DurableCellPrestartCorrelation {
     deployment: DurableCellDeployment,
-    writer_epoch: u64,
+    workload: DurableCellWorkloadPrestartProjection,
 }
 
 #[derive(Serialize)]

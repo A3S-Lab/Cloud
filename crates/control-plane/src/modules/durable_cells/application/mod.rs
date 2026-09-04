@@ -42,7 +42,6 @@ pub use node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNodePo
 pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 #[doc(hidden)]
 pub use provider_workload::compose_pinned_celld_service_process;
-#[cfg(test)]
 pub(crate) use provider_workload::project_durable_cell_provider_workload;
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
@@ -73,7 +72,8 @@ pub use secret_binding_port::{
 pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 pub use workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
-    DurableCellWorkloadDeploymentStatus, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPrestartProjection,
+    DurableCellWorkloadPrestartRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
     IDurableCellWorkloadPort,
 };
