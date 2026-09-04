@@ -4,13 +4,19 @@ use crate::modules::shared_kernel::domain::{
     ProjectId, SecretVersionReference, Sha256Digest, StorageNamespaceId,
 };
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::Serialize;
 use serde_json::Value;
 
 const MAX_CREDENTIAL_BINDING_BYTES: usize = 16 * 1024;
 const MAX_PROVIDER_PROFILE_ACL_BYTES: usize = 16 * 1024;
 const MAX_PROVIDER_PROFILE_FIELD_BYTES: usize = 4096;
+const MAX_RETENTION_POLICY_BYTES: usize = 4 * 1024;
+const MAX_RECOVERY_POINTS: u32 = 10_000;
+const MINIMUM_RECOVERY_POINT_AGE_SECONDS: u64 = 60 * 60;
+const MAXIMUM_RECOVERY_POINT_AGE_SECONDS: u64 = 10 * 365 * 24 * 60 * 60;
+const MINIMUM_DELETION_GRACE_SECONDS: u64 = 5 * 60;
+const MAXIMUM_DELETION_GRACE_SECONDS: u64 = 30 * 24 * 60 * 60;
 const MAX_RECOVERY_POINT_BYTES: usize = 32 * 1024;
 const MAX_RECOVERY_POINT_KEY_BYTES: usize = 4096;
 const MAX_SAFE_SERIALIZED_INTEGER: u64 = 9_007_199_254_740_991;
@@ -215,6 +221,113 @@ impl DurableCellStorageProviderProfileProjection {
             return Err("Durable Cell S0 recovery scope requires a non-nil namespace ID".into());
         }
         Ok(format!("{}/.a3s-recovery/{namespace_id}", self.prefix))
+    }
+
+    pub const fn digest(&self) -> &Sha256Digest {
+        &self.digest
+    }
+}
+
+/// Provider-neutral retention values accepted at the Durable Cells Storage
+/// boundary. The Data owner remains responsible for interpreting the policy;
+/// this value contains only the bounded immutable numbers needed by Cloud
+/// correlation and recovery decisions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct DurableCellStorageRetentionPolicySpec {
+    pub minimum_sealed_recovery_points: u32,
+    pub maximum_sealed_recovery_points: u32,
+    pub maximum_recovery_point_age_seconds: u64,
+    pub deletion_grace_period_seconds: u64,
+}
+
+impl DurableCellStorageRetentionPolicySpec {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.minimum_sealed_recovery_points == 0
+            || self.maximum_sealed_recovery_points < self.minimum_sealed_recovery_points
+            || self.maximum_sealed_recovery_points > MAX_RECOVERY_POINTS
+            || !(MINIMUM_RECOVERY_POINT_AGE_SECONDS..=MAXIMUM_RECOVERY_POINT_AGE_SECONDS)
+                .contains(&self.maximum_recovery_point_age_seconds)
+            || !(MINIMUM_DELETION_GRACE_SECONDS..=MAXIMUM_DELETION_GRACE_SECONDS)
+                .contains(&self.deletion_grace_period_seconds)
+        {
+            return Err("Durable Cell S0 retention policy is outside supported bounds".into());
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<Sha256Digest, String> {
+        let bytes = canonical_json_bounded(
+            self,
+            MAX_RETENTION_POLICY_BYTES,
+            "Durable Cell S0 retention policy",
+        )?;
+        Ok(Sha256Digest::from_bytes(&bytes))
+    }
+}
+
+/// Exact retention-policy input supplied by a Durable Cells consumer. The
+/// expected digest is carried separately so an owner adapter can reject a
+/// substituted or re-normalized policy before returning a projection.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageRetentionPolicyRequest {
+    pub spec: DurableCellStorageRetentionPolicySpec,
+    pub expected_digest: Sha256Digest,
+}
+
+impl DurableCellStorageRetentionPolicyRequest {
+    pub fn new(
+        spec: DurableCellStorageRetentionPolicySpec,
+        expected_digest: Sha256Digest,
+    ) -> Result<Self, String> {
+        let request = Self {
+            spec,
+            expected_digest,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.spec.validate()?;
+        if Sha256Digest::parse(self.expected_digest.as_str())? != self.expected_digest
+            || self.spec.digest()? != self.expected_digest
+        {
+            return Err("Durable Cell S0 retention policy digest is not canonical".into());
+        }
+        Ok(())
+    }
+}
+
+/// Immutable retention projection returned by the S0 owner adapter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DurableCellStorageRetentionPolicyProjection {
+    pub spec: DurableCellStorageRetentionPolicySpec,
+    pub digest: Sha256Digest,
+}
+
+impl DurableCellStorageRetentionPolicyProjection {
+    pub fn validate(&self) -> Result<(), String> {
+        self.spec.validate()?;
+        if Sha256Digest::parse(self.digest.as_str())? != self.digest
+            || self.spec.digest()? != self.digest
+        {
+            return Err("Durable Cell S0 retention projection digest drifted".into());
+        }
+        Ok(())
+    }
+
+    pub fn deletion_not_before(
+        &self,
+        requested_at: DateTime<Utc>,
+    ) -> Result<DateTime<Utc>, String> {
+        self.validate()?;
+        requested_at
+            .checked_add_signed(Duration::seconds(
+                self.spec.deletion_grace_period_seconds as i64,
+            ))
+            .ok_or_else(|| "Durable Cell S0 deletion grace period overflowed".into())
     }
 
     pub const fn digest(&self) -> &Sha256Digest {
@@ -438,6 +551,14 @@ pub trait IDurableCellStoragePort: Send + Sync {
         request: &DurableCellStorageProviderProfileRequest,
     ) -> ApplicationResult<DurableCellStorageProviderProfileProjection>;
 
+    /// Resolves the immutable retention values bound to one S0 namespace.
+    /// Data remains the policy parser and digest authority; Durable Cells
+    /// receives only this bounded provider-neutral projection.
+    async fn project_retention_policy(
+        &self,
+        request: &DurableCellStorageRetentionPolicyRequest,
+    ) -> ApplicationResult<DurableCellStorageRetentionPolicyProjection>;
+
     async fn require_active_credentials(
         &self,
         request: &DurableCellStorageCredentialRequest,
@@ -526,6 +647,15 @@ mod tests {
         }
     }
 
+    fn retention_spec() -> DurableCellStorageRetentionPolicySpec {
+        DurableCellStorageRetentionPolicySpec {
+            minimum_sealed_recovery_points: 2,
+            maximum_sealed_recovery_points: 24,
+            maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
+            deletion_grace_period_seconds: 24 * 60 * 60,
+        }
+    }
+
     #[test]
     fn provider_profile_projection_is_bounded_and_derives_disjoint_scopes() {
         let profile = provider_profile();
@@ -557,6 +687,31 @@ mod tests {
         let mut invalid = request;
         invalid.acl.push('\0');
         assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn retention_projection_is_digest_locked_and_exposes_delete_grace() {
+        let spec = retention_spec();
+        let request = DurableCellStorageRetentionPolicyRequest::new(
+            spec,
+            spec.digest().expect("retention digest"),
+        )
+        .expect("retention request");
+        request.validate().expect("valid retention request");
+        let projection = DurableCellStorageRetentionPolicyProjection {
+            spec,
+            digest: request.expected_digest.clone(),
+        };
+        projection.validate().expect("retention projection");
+        let now = canonical_timestamp(Utc::now());
+        assert_eq!(
+            projection.deletion_not_before(now).expect("delete grace"),
+            now + Duration::seconds(spec.deletion_grace_period_seconds as i64)
+        );
+
+        let mut drifted = request;
+        drifted.spec.maximum_sealed_recovery_points += 1;
+        assert!(drifted.validate().is_err());
     }
 
     fn recovery_point(

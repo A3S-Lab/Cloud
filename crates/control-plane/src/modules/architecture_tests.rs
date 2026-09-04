@@ -840,6 +840,62 @@ fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_storage_retention_crosses_one_consumer_owned_port() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment retention application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/storage_port.rs"))
+            .expect("read Durable Cells retention port");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data retention adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(deployment.contains("Arc<dyn IDurableCellStoragePort>"));
+    assert!(deployment.contains(".project_retention_policy("));
+    for required in [
+        "pub struct DurableCellStorageRetentionPolicySpec",
+        "pub struct DurableCellStorageRetentionPolicyRequest",
+        "pub struct DurableCellStorageRetentionPolicyProjection",
+        "async fn project_retention_policy",
+        "deletion_not_before",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Storage retention port lost contract {required}"
+        );
+    }
+    assert!(!port.contains("crate::modules::data"));
+    for required in [
+        "impl IDurableCellStoragePort",
+        "ObjectNamespaceRetentionPolicy::restore",
+        "ObjectNamespaceRetentionPolicySpec",
+        "DurableCellStorageRetentionPolicyProjection",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Data adapter lost retention translation {required}"
+        );
+    }
+    let mut retention_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("Durable Cell S0 retention policy failed Data validation")
+        {
+            retention_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        retention_sites,
+        lines("durable_cells/infrastructure/data_storage.rs"),
+        "Durable Cells must restore S0 retention policies through one owner adapter"
+    );
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

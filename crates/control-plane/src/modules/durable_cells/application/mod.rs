@@ -78,7 +78,9 @@ pub use secret_binding_port::{
 pub use storage_port::{
     DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
     DurableCellStorageProviderProfileRequest, DurableCellStorageRecoveryPointProjection,
-    DurableCellStorageSealInputProjection, DurableCellStorageSealRequest, IDurableCellStoragePort,
+    DurableCellStorageRetentionPolicyProjection, DurableCellStorageRetentionPolicyRequest,
+    DurableCellStorageRetentionPolicySpec, DurableCellStorageSealInputProjection,
+    DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 pub use workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,

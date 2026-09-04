@@ -241,11 +241,10 @@ Current boundary debt:
   seal reads the exact Operations request/projection through one
   `IDurableCellOperationPort` and owner adapter, and receives only an
   owner-neutral S0 recovery projection through the Storage port;
-- S0 credential admission, provider-profile projection, and the exact seal
-  input/output recovery projection now cross one consumer-owned
-  `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
-  retention projections and recovery operations remain in the follow-up
-  storage slices;
+- S0 credential admission, provider-profile projection, immutable retention
+  projection, and the exact seal input/output recovery projection now cross
+  one consumer-owned `IDurableCellStoragePort` and one Data anti-corruption
+  adapter; recovery-operation assembly remains in the follow-up storage slice;
 - exact provider-template Secret version admission now crosses one
   `IDurableCellSecretBindingPort` and one Secrets anti-corruption adapter;
   plaintext and materialization remain outside Durable Cells;
@@ -311,9 +310,9 @@ The required Cloud refactor is a set of consumer-owned ports:
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
 - `IDurableCellStoragePort` (implemented for exact S0 credential admission,
-  the immutable provider-profile projection, and the typed seal input/output
-  recovery projection; retention and recovery-operation projections remain to
-  be split);
+  the immutable provider-profile and retention projections, and the typed seal
+  input/output recovery projection; recovery-operation assembly remains to be
+  split);
 - `IDurableCellSecretBindingPort` (implemented for exact active-version
   admission through the canonical Secrets query);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
@@ -324,8 +323,8 @@ The required Cloud refactor is a set of consumer-owned ports:
   writer-fence admission, and prior-writer receipt observation; the exact
   Operations request/projection read now crosses `IDurableCellOperationPort`,
   and the Data seal input/output recovery projection crosses
-  `IDurableCellStoragePort`, while Runtime and the remaining S0 profile,
-  retention, and recovery-operation projections remain follow-up slices);
+  `IDurableCellStoragePort`, while Runtime and recovery-operation assembly
+  remain follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway
