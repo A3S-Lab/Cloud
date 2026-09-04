@@ -5,18 +5,17 @@ use super::provider_workload::{
     validate_pinned_celld_provider_workload,
 };
 use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
-use super::storage_port::{DurableCellStorageRecoveryPointProjection, IDurableCellStoragePort};
-use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
-use crate::modules::data::{
-    ObjectNamespaceFlowBinding, ObjectNamespaceKey, ObjectNamespaceRecoveryOperationRequest,
-    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
-    SealObjectNamespaceOperationInput,
+use super::storage_port::{
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileRequest,
+    DurableCellStorageSealOperationRequest, DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
+use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellDeployment, DurableCellPublisherProfile,
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
 use crate::modules::fleet::domain::entities::NodeCommand;
+use crate::modules::operations::{OperationRequest, OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
@@ -264,24 +263,77 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
                 return Err(RepositoryError::Conflict(reason));
             }
         };
-        let previous_recovery_point = previous_recovery_point
-            .map(restore_recovery_point)
-            .transpose()
-            .map_err(|error| conflict("restore Durable Cell prior recovery point", error))?;
-        let operation =
-            ObjectNamespaceRecoveryOperationRequest::seal(SealObjectNamespaceOperationInput {
-                operation_id,
-                organization_id: target.replica.organization_id,
-                source: ObjectNamespaceFlowBinding {
-                    provider_profile,
-                    credentials,
-                },
-                previous_recovery_point,
-                writer_epoch: target.replica.generation,
-                writer_fence_receipt_digest: receipt.digest().clone(),
-                sealed_at: fenced_at,
-            })
-            .map_err(|error| conflict("compose Durable Cell namespace seal Operation", error))?;
+        let provider_profile_request = DurableCellStorageProviderProfileRequest::new(
+            provider_profile.canonical_acl(),
+            correlation.storage.provider_profile_digest.clone(),
+        )
+        .map_err(|error| conflict("prepare Durable Cell S0 provider profile request", error))?;
+        let credential_spec = credentials.spec();
+        let credentials_request = DurableCellStorageCredentialRequest::new(
+            credential_spec.organization_id,
+            credential_spec.project_id,
+            credential_spec.environment_id,
+            credential_spec.namespace_id,
+            credential_spec.generation,
+            credential_spec.provider_profile_digest.clone(),
+            credential_spec.access_key_id,
+            credential_spec.secret_access_key,
+            credential_spec.session_token,
+        )
+        .map_err(|error| conflict("prepare Durable Cell S0 credential request", error))?;
+        if credentials_request.binding_digest != *credentials.digest() {
+            return Err(RepositoryError::Conflict(
+                "Durable Cell S0 credential request changed its bound digest".into(),
+            ));
+        }
+        let seal_request = DurableCellStorageSealRequest::new(
+            operation_id,
+            target.replica.organization_id,
+            target.replica.project_id,
+            target.replica.environment_id,
+            correlation.storage.storage_namespace_id,
+            correlation.storage.provider_profile_digest.clone(),
+            target.replica.generation,
+            receipt.digest().clone(),
+            fenced_at,
+        );
+        let operation_request = DurableCellStorageSealOperationRequest::new(
+            seal_request,
+            provider_profile_request,
+            credentials_request,
+            previous_recovery_point,
+        )
+        .map_err(|error| conflict("prepare Durable Cell S0 seal Operation request", error))?;
+        let operation_projection = self
+            .prior_writer_seal
+            .storage_port()
+            .compose_seal_operation(&operation_request)
+            .await
+            .map_err(application_repository_error)?;
+        operation_projection
+            .validate()
+            .map_err(|error| conflict("validate Durable Cell seal Operation projection", error))?;
+        if operation_projection.namespace_id != correlation.storage.storage_namespace_id {
+            return Err(RepositoryError::Conflict(
+                "Durable Cell seal Operation projection changed its namespace".into(),
+            ));
+        }
+        let operation = OperationRequest::new(
+            operation_projection.operation_id,
+            operation_projection.organization_id,
+            OperationSubject::new(
+                "storage_namespace",
+                operation_projection.namespace_id.as_uuid(),
+            )
+            .map_err(|error| conflict("restore Durable Cell seal Operation subject", error))?,
+            WorkflowIdentity::new(
+                operation_projection.workflow_name,
+                operation_projection.workflow_version,
+            )
+            .map_err(|error| conflict("restore Durable Cell seal Operation workflow", error))?,
+            operation_projection.input,
+            operation_projection.requested_at,
+        );
         let commit = WorkloadWriterFenceCommit { receipt, operation };
         commit
             .validate()
@@ -295,27 +347,6 @@ fn seal_operation_id(workload_id: Uuid, writer_epoch: u64) -> OperationId {
         &workload_id,
         format!("{SEAL_OPERATION_NAME}:{writer_epoch}").as_bytes(),
     ))
-}
-
-fn restore_recovery_point(
-    projection: DurableCellStorageRecoveryPointProjection,
-) -> Result<ObjectNamespaceRecoveryPoint, String> {
-    projection.validate()?;
-    ObjectNamespaceRecoveryPoint::restore(
-        ObjectNamespaceRecoveryPointSpec {
-            namespace_id: projection.namespace_id,
-            sequence: projection.sequence,
-            writer_epoch: projection.writer_epoch,
-            provider_profile_digest: projection.provider_profile_digest,
-            manifest_key: ObjectNamespaceKey::parse(projection.manifest_key)?,
-            manifest_digest: projection.manifest_digest,
-            state_digest: projection.state_digest,
-            state_size_bytes: projection.state_size_bytes,
-            predecessor_digest: projection.predecessor_digest,
-            sealed_at: projection.sealed_at,
-        },
-        projection.digest.as_str(),
-    )
 }
 
 fn application_repository_error(error: ApplicationError) -> RepositoryError {
