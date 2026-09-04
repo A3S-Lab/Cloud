@@ -130,7 +130,7 @@ mod tests {
     fn native_code_binding_is_acl_and_capability_bound() {
         let binding = AgentProviderProfileBinding::native_code().expect("native Code profile");
         assert_eq!(binding.kind(), "a3s.code");
-        assert_eq!(binding.revision(), "8.0.4");
+        assert_eq!(binding.revision(), "8.1.0");
         assert_eq!(binding.protocol(), AGENT_PROVIDER_PROTOCOL_V1);
         assert_eq!(binding.native_protocol(), AGENT_PROTOCOL_V1);
         let profile = binding.profile().expect("bound profile");
