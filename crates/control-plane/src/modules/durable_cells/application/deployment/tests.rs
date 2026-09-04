@@ -162,9 +162,12 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     };
     let deployments = Arc::new(InMemoryDurableCellDeploymentRepository::new());
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
-    let workload_port: Arc<dyn IDurableCellWorkloadPort> = Arc::new(
-        WorkloadsDurableCellWorkloadAdapter::new(applications.clone(), workloads.clone()),
-    );
+    let workload_port: Arc<dyn IDurableCellWorkloadPort> =
+        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+            applications.clone(),
+            workloads.clone(),
+            workloads.clone(),
+        ));
     let node_pools = Arc::new(InMemoryNodeRepository::new());
     let node_pool_port: Arc<dyn IDurableCellNodePoolPort> =
         Arc::new(FleetDurableCellNodePoolAdapter::new(node_pools.clone()));
@@ -605,7 +608,6 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         applications.clone(),
         deployments.clone(),
         workload_port.clone(),
-        workloads.clone(),
         Arc::new(InMemoryOperationRepository::new()),
     )
     .prepare_replica_retirement(&retirement, &removal_command, &removal_acknowledgement)

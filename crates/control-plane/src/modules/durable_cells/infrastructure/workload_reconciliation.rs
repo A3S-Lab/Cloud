@@ -2,6 +2,7 @@ use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
+    DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
     DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
     DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
@@ -19,8 +20,9 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, IWorkloadRepository,
-    ManagedOwnerKind, ManagedOwnerReference, ReconfigureReplicaSetWrite, ServiceTemplate, Workload,
-    WorkloadControlSpec, WorkloadDesiredState, WorkloadReplica, WorkloadRevision,
+    IWorkloadWriterFenceRepository, ManagedOwnerKind, ManagedOwnerReference,
+    ReconfigureReplicaSetWrite, ServiceTemplate, Workload, WorkloadControlSpec,
+    WorkloadDesiredState, WorkloadReplica, WorkloadRevision,
 };
 use async_trait::async_trait;
 use chrono::Utc;
@@ -43,17 +45,87 @@ use crate::modules::workloads::application::{
 pub struct WorkloadsDurableCellWorkloadAdapter {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
+    writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
 }
 
 impl WorkloadsDurableCellWorkloadAdapter {
     pub fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
+        writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
     ) -> Self {
         Self {
             applications,
             workloads,
+            writer_fences,
         }
+    }
+
+    async fn load_prior_writer_fence_projection(
+        &self,
+        request: &DurableCellWorkloadPriorWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadPriorWriterFenceProjection>> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let receipt = self
+            .writer_fences
+            .latest_writer_fence(request.organization_id, request.workload_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        let Some(receipt) = receipt else {
+            return Ok(None);
+        };
+        receipt.validate().map_err(|error| {
+            ApplicationError::Internal(format!(
+                "stored Durable Cell writer-fence receipt is invalid: {error}"
+            ))
+        })?;
+        let spec = receipt.spec();
+        let expected_owner = ManagedOwnerReference::new(
+            ManagedOwnerKind::parse(DURABLE_CELL_MANAGED_OWNER_KIND)
+                .map_err(ApplicationError::Internal)?,
+            request.application_id.as_uuid(),
+            request.application_revision_number,
+            request.application_definition_digest.as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        let owner = &spec.managed_owner;
+        if spec.organization_id != request.organization_id
+            || spec.project_id != request.project_id
+            || spec.environment_id != request.environment_id
+            || spec.workload_id != request.workload_id
+            || spec.workload_revision_id != request.workload_revision_id
+            || spec.workload_revision_generation > request.workload_generation
+            || spec.replica_id != request.replica_id
+            || spec.replica_ordinal != request.replica_ordinal
+            || spec.writer_epoch >= request.next_writer_epoch
+            || owner.kind() != expected_owner.kind()
+            || owner.owner_id() != expected_owner.owner_id()
+            || owner.owner_generation() > expected_owner.owner_generation()
+            || owner.owner_generation() == expected_owner.owner_generation()
+                && owner != &expected_owner
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell prior-writer receipt changed its exact lineage".into(),
+            ));
+        }
+        let projection = DurableCellWorkloadPriorWriterFenceProjection {
+            organization_id: spec.organization_id,
+            project_id: spec.project_id,
+            environment_id: spec.environment_id,
+            workload_id: spec.workload_id,
+            workload_revision_id: spec.workload_revision_id,
+            workload_revision_generation: spec.workload_revision_generation,
+            replica_id: spec.replica_id,
+            replica_ordinal: spec.replica_ordinal,
+            writer_epoch: spec.writer_epoch,
+            continuation_operation_id: spec.continuation_operation_id,
+            fenced_at: spec.fenced_at,
+            receipt_digest: receipt.digest().clone(),
+        };
+        projection
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+        Ok(Some(projection))
     }
 
     async fn load_prestart_publication_projection(
@@ -324,6 +396,13 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
         request: &DurableCellWorkloadWriterFenceRequest,
     ) -> ApplicationResult<Option<DurableCellWorkloadWriterFenceProjection>> {
         self.load_writer_fence_admission_projection(request).await
+    }
+
+    async fn load_prior_writer_fence(
+        &self,
+        request: &DurableCellWorkloadPriorWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadPriorWriterFenceProjection>> {
+        self.load_prior_writer_fence_projection(request).await
     }
 
     async fn replay_managed_deployment(

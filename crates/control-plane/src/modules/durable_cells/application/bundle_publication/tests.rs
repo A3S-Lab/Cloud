@@ -73,9 +73,18 @@ fn workload_port(
     applications: Arc<InMemoryDurableCellApplicationRepository>,
     workloads: Arc<InMemoryWorkloadRepository>,
 ) -> Arc<dyn IDurableCellWorkloadPort> {
+    workload_port_with_writer_fences(applications, workloads.clone(), workloads)
+}
+
+fn workload_port_with_writer_fences(
+    applications: Arc<InMemoryDurableCellApplicationRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+    writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
+) -> Arc<dyn IDurableCellWorkloadPort> {
     Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
         applications.clone(),
         workloads,
+        writer_fences,
     ))
 }
 
@@ -367,7 +376,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         deployments.clone(),
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
-        DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
+        DurableCellPriorWriterSeal::new(
+            workload_port(applications.clone(), workloads.clone()),
+            operations.clone(),
+        ),
         execution_port(projects.clone(), executions.clone()),
     );
     let request = WorkloadPrestartGateRequest {
@@ -477,7 +489,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         deployments.clone(),
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
-        DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
+        DurableCellPriorWriterSeal::new(
+            workload_port(applications.clone(), workloads.clone()),
+            operations.clone(),
+        ),
         execution_port(projects.clone(), queued_executions.clone()),
     );
     assert!(matches!(
@@ -492,7 +507,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         deployments.clone(),
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
-        DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
+        DurableCellPriorWriterSeal::new(
+            workload_port(applications.clone(), workloads.clone()),
+            operations.clone(),
+        ),
         execution_port(projects.clone(), cancelling_executions.clone()),
     );
     assert!(matches!(
@@ -706,9 +724,13 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
-            Arc::new(StaticWriterFenceRepository {
-                receipt: receipt.clone(),
-            }),
+            workload_port_with_writer_fences(
+                applications.clone(),
+                workloads.clone(),
+                Arc::new(StaticWriterFenceRepository {
+                    receipt: receipt.clone(),
+                }),
+            ),
             operations.clone(),
         ),
         execution_port(projects.clone(), executions.clone()),
@@ -759,9 +781,13 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
-            Arc::new(StaticWriterFenceRepository {
-                receipt: receipt.clone(),
-            }),
+            workload_port_with_writer_fences(
+                applications.clone(),
+                workloads.clone(),
+                Arc::new(StaticWriterFenceRepository {
+                    receipt: receipt.clone(),
+                }),
+            ),
             scope_drift_operations,
         ),
         execution_port(projects.clone(), executions.clone()),
@@ -788,9 +814,13 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
-            Arc::new(StaticWriterFenceRepository {
-                receipt: receipt.clone(),
-            }),
+            workload_port_with_writer_fences(
+                applications.clone(),
+                workloads.clone(),
+                Arc::new(StaticWriterFenceRepository {
+                    receipt: receipt.clone(),
+                }),
+            ),
             failed_operations,
         ),
         execution_port(projects.clone(), executions.clone()),
@@ -831,9 +861,13 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         build_artifacts.clone(),
         workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
-            Arc::new(StaticWriterFenceRepository {
-                receipt: receipt.clone(),
-            }),
+            workload_port_with_writer_fences(
+                applications.clone(),
+                workloads.clone(),
+                Arc::new(StaticWriterFenceRepository {
+                    receipt: receipt.clone(),
+                }),
+            ),
             operations.clone(),
         ),
         execution_port(projects.clone(), queued_executions.clone()),
@@ -876,8 +910,8 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         legacy_deployments,
         build_artifacts,
-        workload_port(applications, workloads.clone()),
-        DurableCellPriorWriterSeal::new(workloads, operations),
+        workload_port(applications.clone(), workloads.clone()),
+        DurableCellPriorWriterSeal::new(workload_port(applications, workloads), operations),
         execution_port(projects, legacy_executions.clone()),
     );
     assert!(matches!(

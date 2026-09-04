@@ -1,17 +1,16 @@
-use super::provider_workload::durable_cell_managed_owner_reference;
+use super::workload_port::{DurableCellWorkloadPriorWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
     ObjectNamespaceRecoveryOperationRequest, ObjectNamespaceRecoveryPoint,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
 };
 use crate::modules::durable_cells::domain::DurableCellDeployment;
 use crate::modules::operations::{IOperationRepository, OperationStatus};
-use crate::modules::shared_kernel::domain::RepositoryError;
-use crate::modules::workloads::IWorkloadWriterFenceRepository;
+use crate::modules::shared_kernel::domain::{RepositoryError, WorkloadReplicaId};
 use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct DurableCellPriorWriterSeal {
-    writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
+    workload_port: Arc<dyn IDurableCellWorkloadPort>,
     operations: Arc<dyn IOperationRepository>,
 }
 
@@ -30,11 +29,11 @@ pub(super) enum DurableCellPriorWriterSealStatus {
 
 impl DurableCellPriorWriterSeal {
     pub(crate) fn new(
-        writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
+        workload_port: Arc<dyn IDurableCellWorkloadPort>,
         operations: Arc<dyn IOperationRepository>,
     ) -> Self {
         Self {
-            writer_fences,
+            workload_port,
             operations,
         }
     }
@@ -56,48 +55,35 @@ impl DurableCellPriorWriterSeal {
                 "Durable Cell next writer epoch must be positive".into(),
             ));
         }
-        let Some(receipt) = self
-            .writer_fences
-            .latest_writer_fence(
-                correlation.projection.organization_id,
-                correlation.projection.workload_id,
-            )
-            .await?
+        let prior_writer_request = DurableCellWorkloadPriorWriterFenceRequest::new(
+            correlation.projection.organization_id,
+            correlation.projection.project_id,
+            correlation.projection.environment_id,
+            correlation.projection.application_id,
+            correlation.projection.application_revision_id,
+            correlation.projection.application_revision_number,
+            correlation.projection.application_definition_digest.clone(),
+            correlation.projection.workload_id,
+            correlation.projection.workload_revision_id,
+            correlation.provider.workload_generation,
+            WorkloadReplicaId::from_uuid(correlation.projection.workload_id.as_uuid()),
+            0,
+            next_writer_epoch,
+        );
+        let Some(prior_writer) = self
+            .workload_port
+            .load_prior_writer_fence(&prior_writer_request)
+            .await
+            .map_err(application_repository_error)?
         else {
             return Ok(DurableCellPriorWriterSealStatus::Ready {
                 recovery_point: None,
             });
         };
-        receipt.validate().map_err(|error| {
-            RepositoryError::Storage(format!(
-                "stored Durable Cell writer-fence receipt is invalid: {error}"
-            ))
-        })?;
-        let receipt_spec = receipt.spec();
-        let expected_owner = durable_cell_managed_owner_reference(&correlation.projection)
-            .map_err(|error| conflict("restore Durable Cell managed owner", error))?;
-        let previous_owner = &receipt_spec.managed_owner;
-        if receipt_spec.organization_id != correlation.projection.organization_id
-            || receipt_spec.project_id != correlation.projection.project_id
-            || receipt_spec.environment_id != correlation.projection.environment_id
-            || receipt_spec.workload_id != correlation.projection.workload_id
-            || receipt_spec.workload_revision_generation > correlation.provider.workload_generation
-            || receipt_spec.replica_ordinal != 0
-            || receipt_spec.writer_epoch >= next_writer_epoch
-            || previous_owner.kind() != expected_owner.kind()
-            || previous_owner.owner_id() != expected_owner.owner_id()
-            || previous_owner.owner_generation() > expected_owner.owner_generation()
-            || previous_owner.owner_generation() == expected_owner.owner_generation()
-                && previous_owner != &expected_owner
-        {
-            return Err(RepositoryError::Conflict(
-                "Durable Cell prior-writer receipt changed its exact lineage".into(),
-            ));
-        }
 
         let request = self
             .operations
-            .find_request(receipt_spec.continuation_operation_id)
+            .find_request(prior_writer.continuation_operation_id)
             .await?
             .ok_or_else(|| {
                 RepositoryError::Storage(
@@ -127,11 +113,11 @@ impl DurableCellPriorWriterSeal {
             .map_err(|error| conflict("rebuild Durable Cell prior-writer seal", error))?;
         if !request.has_same_definition(&expected_request)
             || request.requested_at != expected_request.requested_at
-            || input.operation_id != receipt_spec.continuation_operation_id
+            || input.operation_id != prior_writer.continuation_operation_id
             || input.organization_id != correlation.projection.organization_id
-            || input.writer_epoch != receipt_spec.writer_epoch
-            || input.writer_fence_receipt_digest != *receipt.digest()
-            || input.sealed_at != receipt_spec.fenced_at
+            || input.writer_epoch != prior_writer.writer_epoch
+            || input.writer_fence_receipt_digest != prior_writer.receipt_digest
+            || input.sealed_at != prior_writer.fenced_at
             || input.source.credentials.spec().namespace_id
                 != correlation.storage.storage_namespace_id
             || input.source.provider_profile.digest()
@@ -144,16 +130,16 @@ impl DurableCellPriorWriterSeal {
 
         let Some(projection) = self
             .operations
-            .find_projection(receipt_spec.continuation_operation_id)
+            .find_projection(prior_writer.continuation_operation_id)
             .await?
         else {
             return Ok(DurableCellPriorWriterSealStatus::Pending {
                 reason: "Durable Cell prior-writer seal is queued".into(),
             });
         };
-        if projection.operation_id != receipt_spec.continuation_operation_id
+        if projection.operation_id != prior_writer.continuation_operation_id
             || projection.last_sequence == 0
-            || projection.updated_at < receipt_spec.fenced_at
+            || projection.updated_at < prior_writer.fenced_at
         {
             return Err(RepositoryError::Storage(
                 "Durable Cell prior-writer seal projection changed its exact identity".into(),
@@ -208,8 +194,8 @@ impl DurableCellPriorWriterSeal {
                 let point = output.recovery_point.spec();
                 if point.namespace_id != correlation.storage.storage_namespace_id
                     || point.provider_profile_digest != correlation.storage.provider_profile_digest
-                    || point.writer_epoch != receipt_spec.writer_epoch
-                    || point.sealed_at < receipt_spec.fenced_at
+                    || point.writer_epoch != prior_writer.writer_epoch
+                    || point.sealed_at < prior_writer.fenced_at
                 {
                     return Err(RepositoryError::Storage(
                         "Durable Cell prior recovery point changed its sealed lineage".into(),
@@ -225,4 +211,23 @@ impl DurableCellPriorWriterSeal {
 
 fn conflict(context: &str, error: impl std::fmt::Display) -> RepositoryError {
     RepositoryError::Conflict(format!("{context}: {error}"))
+}
+
+fn application_repository_error(
+    error: crate::modules::shared_kernel::application::ApplicationError,
+) -> RepositoryError {
+    match error {
+        crate::modules::shared_kernel::application::ApplicationError::NotFound(_) => {
+            RepositoryError::NotFound
+        }
+        crate::modules::shared_kernel::application::ApplicationError::Internal(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Unavailable(reason) => {
+            RepositoryError::Storage(reason)
+        }
+        crate::modules::shared_kernel::application::ApplicationError::Invalid(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Conflict(reason)
+        | crate::modules::shared_kernel::application::ApplicationError::Forbidden(reason) => {
+            RepositoryError::Conflict(reason)
+        }
+    }
 }
