@@ -210,7 +210,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     )
     .await
     .expect("external admission");
-    let correlation = prepare_correlation(workloads.as_ref(), &record, &command, &prepared)
+    let correlation = prepare_correlation(workload_port.as_ref(), &record, &command, &prepared)
         .await
         .expect("correlation");
     deployments

@@ -10,7 +10,10 @@ use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
 use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
-use super::workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
+use super::workload_port::{
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    IDurableCellWorkloadPort,
+};
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile,
     ObjectNamespaceRetentionPolicy,
@@ -163,13 +166,17 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     {
                         return Ok(Err(error));
                     }
-                    let correlation =
-                        match prepare_correlation(workloads.as_ref(), &record, &command, &prepared)
-                            .await
-                        {
-                            Ok(value) => value,
-                            Err(error) => return Ok(Err(error)),
-                        };
+                    let correlation = match prepare_correlation(
+                        workload_port.as_ref(),
+                        &record,
+                        &command,
+                        &prepared,
+                    )
+                    .await
+                    {
+                        Ok(value) => value,
+                        Err(error) => return Ok(Err(error)),
+                    };
                     match deployments
                         .create(CreateDurableCellDeploymentWrite {
                             deployment: correlation,
@@ -529,7 +536,7 @@ fn storage_credential_request(
 }
 
 async fn prepare_correlation(
-    workloads: &dyn IWorkloadRepository,
+    workload_port: &dyn IDurableCellWorkloadPort,
     record: &DurableCellApplicationRecord,
     command: &DeployDurableCellApplication,
     prepared: &PreparedDeployment,
@@ -542,14 +549,14 @@ async fn prepare_correlation(
     let projection =
         DurableCellProjectionIdentity::for_current_revision(&record.application, &record.revision)
             .map_err(ApplicationError::Internal)?;
-    let workload_generation = next_workload_generation(
-        workloads,
-        projection.organization_id,
-        projection.workload_id,
-        projection.workload_revision_id,
-        &command.workload_template,
-    )
-    .await?;
+    let workload_generation = workload_port
+        .resolve_revision_generation(&DurableCellWorkloadRevisionGenerationRequest::new(
+            projection.organization_id,
+            projection.workload_id,
+            projection.workload_revision_id,
+            prepared.service_template_digest.clone(),
+        ))
+        .await?;
     let workload_revision = WorkloadRevision::create(
         projection.workload_revision_id,
         projection.workload_id,
@@ -591,38 +598,6 @@ async fn prepare_correlation(
         },
     )
     .map_err(ApplicationError::Internal)
-}
-
-async fn next_workload_generation(
-    workloads: &dyn IWorkloadRepository,
-    organization_id: OrganizationId,
-    workload_id: crate::modules::shared_kernel::domain::WorkloadId,
-    workload_revision_id: crate::modules::shared_kernel::domain::WorkloadRevisionId,
-    template: &ServiceTemplate,
-) -> ApplicationResult<u64> {
-    let revisions = match workloads.list_revisions(organization_id, workload_id).await {
-        Ok(revisions) => revisions,
-        Err(RepositoryError::NotFound) => Vec::new(),
-        Err(error) => return Err(ApplicationError::from(error)),
-    };
-    if let Some(existing) = revisions
-        .iter()
-        .find(|revision| revision.id == workload_revision_id)
-    {
-        if existing.resolved_template().ok() != Some(template) {
-            return Err(ApplicationError::Conflict(
-                "Durable Cell Workload revision identity already has another template".into(),
-            ));
-        }
-        return Ok(existing.generation);
-    }
-    revisions
-        .iter()
-        .map(|revision| revision.generation)
-        .max()
-        .unwrap_or_default()
-        .checked_add(1)
-        .ok_or_else(|| ApplicationError::Internal("Workload generation is exhausted".into()))
 }
 
 async fn create_managed_workload(

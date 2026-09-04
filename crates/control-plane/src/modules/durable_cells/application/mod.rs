@@ -71,7 +71,10 @@ pub use secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
 pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
-pub use workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
+pub use workload_port::{
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    IDurableCellWorkloadPort,
+};
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 
 #[cfg(test)]

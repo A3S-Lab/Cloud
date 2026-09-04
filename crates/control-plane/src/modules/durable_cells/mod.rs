@@ -27,9 +27,10 @@ pub use application::{
     DurableCellBuildArtifact, DurableCellBuildArtifactRequest, DurableCellNodePoolSelectionRequest,
     DurableCellRoutePublication, DurableCellRoutePublicationRequest,
     DurableCellSecretBindingAdmissionRequest, DurableCellStorageCredentialRequest,
-    DurableCellWorkloadReconciliationRequest, IDurableCellBuildArtifactPort,
-    IDurableCellExecutionPort, IDurableCellNodePoolPort, IDurableCellRoutePublicationPort,
-    IDurableCellSecretBindingPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellNodePoolPort,
+    IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort, IDurableCellStoragePort,
+    IDurableCellWorkloadPort,
 };
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,
