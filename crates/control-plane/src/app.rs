@@ -2480,7 +2480,6 @@ fn build_management_application_with_health(
     let get_durable_cell_revisions = durable_cell_applications;
     let publish_durable_cell_deployments = Arc::clone(&durable_cell_deployments);
     let deploy_durable_cell_deployments = durable_cell_deployments;
-    let deploy_durable_cell_workloads = Arc::clone(&workloads);
     let deploy_durable_cell_secrets = Arc::clone(&secrets);
     let deploy_durable_cell_secret_access =
         exact_secret_version_access(Arc::clone(&deploy_durable_cell_secrets));
@@ -2499,7 +2498,6 @@ fn build_management_application_with_health(
     let deploy_durable_cell_handler = DeployDurableCellApplicationHandler::new(
         deploy_durable_cell_applications,
         deploy_durable_cell_deployments,
-        deploy_durable_cell_workloads,
         Arc::clone(&durable_cell_workload_port),
         deploy_durable_cell_storage,
         deploy_durable_cell_secret_bindings,
