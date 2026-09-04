@@ -9,7 +9,10 @@ use super::resource_access::{application_not_found, environment, revision_not_fo
 use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
-use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
+use super::storage_port::{
+    DurableCellStorageCredentialRequest, DurableCellStorageRetentionPolicyRequest,
+    DurableCellStorageRetentionPolicySpec, IDurableCellStoragePort,
+};
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
@@ -478,6 +481,8 @@ async fn admit_external_bindings(
 ) -> ApplicationResult<()> {
     let storage_request = storage_credential_request(&command.storage_credentials)?;
     storage.require_active_credentials(&storage_request).await?;
+    let retention_request = storage_retention_policy_request(&command.retention_policy)?;
+    storage.project_retention_policy(&retention_request).await?;
     let bindings = command
         .workload_template
         .secrets
@@ -531,6 +536,23 @@ fn storage_credential_request(
         ));
     }
     Ok(request)
+}
+
+fn storage_retention_policy_request(
+    policy: &ObjectNamespaceRetentionPolicy,
+) -> ApplicationResult<DurableCellStorageRetentionPolicyRequest> {
+    policy.validate().map_err(ApplicationError::Internal)?;
+    let spec = policy.spec();
+    DurableCellStorageRetentionPolicyRequest::new(
+        DurableCellStorageRetentionPolicySpec {
+            minimum_sealed_recovery_points: spec.minimum_sealed_recovery_points,
+            maximum_sealed_recovery_points: spec.maximum_sealed_recovery_points,
+            maximum_recovery_point_age_seconds: spec.maximum_recovery_point_age_seconds,
+            deletion_grace_period_seconds: spec.deletion_grace_period_seconds,
+        },
+        policy.digest().clone(),
+    )
+    .map_err(ApplicationError::Internal)
 }
 
 async fn prepare_correlation(

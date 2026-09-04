@@ -1,13 +1,16 @@
 use crate::modules::data::{
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialBinding,
     ObjectNamespaceCredentialBindingSpec, ObjectNamespaceKey, ObjectNamespaceProviderProfile,
-    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
-    SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
+    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec, ObjectNamespaceRetentionPolicy,
+    ObjectNamespaceRetentionPolicySpec, SealObjectNamespaceOperationInput,
+    SealObjectNamespaceOperationOutput,
 };
 use crate::modules::durable_cells::application::{
     DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
     DurableCellStorageProviderProfileRequest, DurableCellStorageRecoveryPointProjection,
-    DurableCellStorageSealInputProjection, DurableCellStorageSealRequest, IDurableCellStoragePort,
+    DurableCellStorageRetentionPolicyProjection, DurableCellStorageRetentionPolicyRequest,
+    DurableCellStorageRetentionPolicySpec, DurableCellStorageSealInputProjection,
+    DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -58,6 +61,44 @@ impl IDurableCellStoragePort for DataDurableCellStorageAdapter {
         if projection.digest != request.expected_digest {
             return Err(ApplicationError::Conflict(
                 "Durable Cell S0 provider profile digest changed at the Data boundary".into(),
+            ));
+        }
+        Ok(projection)
+    }
+
+    async fn project_retention_policy(
+        &self,
+        request: &DurableCellStorageRetentionPolicyRequest,
+    ) -> ApplicationResult<DurableCellStorageRetentionPolicyProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let policy = ObjectNamespaceRetentionPolicy::restore(
+            ObjectNamespaceRetentionPolicySpec {
+                minimum_sealed_recovery_points: request.spec.minimum_sealed_recovery_points,
+                maximum_sealed_recovery_points: request.spec.maximum_sealed_recovery_points,
+                maximum_recovery_point_age_seconds: request.spec.maximum_recovery_point_age_seconds,
+                deletion_grace_period_seconds: request.spec.deletion_grace_period_seconds,
+            },
+            request.expected_digest.as_str(),
+        )
+        .map_err(|error| {
+            ApplicationError::Internal(format!(
+                "Durable Cell S0 retention policy failed Data validation: {error}"
+            ))
+        })?;
+        let spec = policy.spec();
+        let projection = DurableCellStorageRetentionPolicyProjection {
+            spec: DurableCellStorageRetentionPolicySpec {
+                minimum_sealed_recovery_points: spec.minimum_sealed_recovery_points,
+                maximum_sealed_recovery_points: spec.maximum_sealed_recovery_points,
+                maximum_recovery_point_age_seconds: spec.maximum_recovery_point_age_seconds,
+                deletion_grace_period_seconds: spec.deletion_grace_period_seconds,
+            },
+            digest: policy.digest().clone(),
+        };
+        projection.validate().map_err(ApplicationError::Internal)?;
+        if projection.digest != request.expected_digest {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell S0 retention policy digest changed at the Data boundary".into(),
             ));
         }
         Ok(projection)
