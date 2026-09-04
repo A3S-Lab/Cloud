@@ -24,13 +24,14 @@ use crate::modules::durable_cells::domain::{
     DurableCellStorageBinding,
 };
 use crate::modules::durable_cells::infrastructure::{
-    ArtifactsDurableCellBuildArtifactAdapter, ExecutionsDurableCellExecutionAdapter,
-    InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
-    OperationsDurableCellOperationAdapter, WorkloadsDurableCellWorkloadAdapter,
+    ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
+    ExecutionsDurableCellExecutionAdapter, InMemoryDurableCellApplicationRepository,
+    InMemoryDurableCellDeploymentRepository, OperationsDurableCellOperationAdapter,
+    WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::durable_cells::{
     DurableCellBuildArtifactRequest, IDurableCellExecutionPort, IDurableCellOperationPort,
-    IDurableCellWorkloadPort,
+    IDurableCellStoragePort, IDurableCellWorkloadPort,
 };
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
@@ -44,6 +45,7 @@ use crate::modules::projects::domain::events::EnvironmentCreated;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::projects::InMemoryProjectsRepository;
+use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId,
     EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
@@ -93,6 +95,12 @@ fn operation_port(
     operations: Arc<InMemoryOperationRepository>,
 ) -> Arc<dyn IDurableCellOperationPort> {
     Arc::new(OperationsDurableCellOperationAdapter::new(operations))
+}
+
+fn storage_port() -> Arc<dyn IDurableCellStoragePort> {
+    Arc::new(DataDurableCellStorageAdapter::new(Arc::new(
+        InMemorySecretRepository::new(),
+    )))
 }
 
 struct StaticWriterFenceRepository {
@@ -386,6 +394,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
             operation_port(operations.clone()),
+            storage_port(),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -499,6 +508,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
             operation_port(operations.clone()),
+            storage_port(),
         ),
         execution_port(projects.clone(), queued_executions.clone()),
     );
@@ -517,6 +527,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         DurableCellPriorWriterSeal::new(
             workload_port(applications.clone(), workloads.clone()),
             operation_port(operations.clone()),
+            storage_port(),
         ),
         execution_port(projects.clone(), cancelling_executions.clone()),
     );
@@ -739,6 +750,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                 }),
             ),
             operation_port(operations.clone()),
+            storage_port(),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -796,6 +808,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                 }),
             ),
             operation_port(scope_drift_operations),
+            storage_port(),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -829,6 +842,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                 }),
             ),
             operation_port(failed_operations),
+            storage_port(),
         ),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -876,6 +890,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
                 }),
             ),
             operation_port(operations.clone()),
+            storage_port(),
         ),
         execution_port(projects.clone(), queued_executions.clone()),
     );
@@ -921,6 +936,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         DurableCellPriorWriterSeal::new(
             workload_port(applications, workloads),
             operation_port(operations),
+            storage_port(),
         ),
         execution_port(projects, legacy_executions.clone()),
     );

@@ -236,13 +236,15 @@ Current boundary debt:
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
 - remaining Durable Cells domain and application paths still import Data,
-  Fleet, and Workloads internal owner types or repositories; the prior-writer
-  seal now reads the exact Operations request/projection through one
-  `IDurableCellOperationPort` and owner adapter;
-- S0 credential admission now crosses one consumer-owned
-  `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
-  provider-profile/retention projections and recovery operations remain in the
-  follow-up storage slices;
+  Fleet, and Workloads internal owner types or repositories for the explicitly
+  retained operation-assembly and provider-runtime seams; the prior-writer
+  seal reads the exact Operations request/projection through one
+  `IDurableCellOperationPort` and owner adapter, and receives only an
+  owner-neutral S0 recovery projection through the Storage port;
+- S0 credential admission and the exact seal input/output recovery projection
+  now cross one consumer-owned `IDurableCellStoragePort` and one Data
+  anti-corruption adapter; immutable provider-profile/retention projections
+  and recovery operations remain in the follow-up storage slices;
 - exact provider-template Secret version admission now crosses one
   `IDurableCellSecretBindingPort` and one Secrets anti-corruption adapter;
   plaintext and materialization remain outside Durable Cells;
@@ -270,8 +272,11 @@ Current boundary debt:
   prior-writer seal also consumes an Operations-owned request/projection
   snapshot through `IDurableCellOperationPort`, preserving exact workflow,
   subject, input, status, sequence, and timestamp checks without importing the
-  Operations repository. Durable Cells retains only the subsequent Data
-  recovery-point projection checks. Workloads and Operations remain the
+  Operations repository. The Data adapter now validates the concrete seal
+  input/output and returns only the owner-neutral recovery-point projection;
+  the writer-fence application only rehydrates that projection for the
+  existing Data-owned Operation builder, while Durable Cells retains only
+  correlation and gate decisions. Workloads and Operations remain the
   lifecycle authorities inside their adapters;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
@@ -304,8 +309,9 @@ The required Cloud refactor is a set of consumer-owned ports:
 
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
-- `IDurableCellStoragePort` (implemented for exact S0 credential admission;
-  immutable profile and recovery projections remain to be split);
+- `IDurableCellStoragePort` (implemented for exact S0 credential admission and
+  the typed seal input/output recovery projection; immutable profile,
+  retention, and recovery-operation projections remain to be split);
 - `IDurableCellSecretBindingPort` (implemented for exact active-version
   admission through the canonical Secrets query);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound
@@ -315,8 +321,9 @@ The required Cloud refactor is a set of consumer-owned ports:
   creation/replay, bundle-publication pre-start observation, stopped-current
   writer-fence admission, and prior-writer receipt observation; the exact
   Operations request/projection read now crosses `IDurableCellOperationPort`,
-  while Runtime and Data recovery-point projection reads remain follow-up
-  slices);
+  and the Data seal input/output recovery projection crosses
+  `IDurableCellStoragePort`, while Runtime and the remaining S0 profile,
+  retention, and recovery-operation projections remain follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway

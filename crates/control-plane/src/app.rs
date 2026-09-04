@@ -700,6 +700,8 @@ async fn build_api_worker_application(
     let asset_controls = adapters.assets.controls;
     let mcp_profiles = adapters.assets.mcp_profiles;
     let secrets = adapters.secrets;
+    let durable_cell_storage_port: Arc<dyn IDurableCellStoragePort> =
+        Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secrets)));
     let user_files = adapters.user_files;
     let connector_profiles = adapters.connector_profiles;
     let connector_execution_adapters = postgres_adapters.connector_execution();
@@ -1082,6 +1084,7 @@ async fn build_api_worker_application(
                 DurableCellPriorWriterSeal::new(
                     Arc::clone(&durable_cell_workload_port),
                     Arc::clone(&durable_cell_operation_port),
+                    Arc::clone(&durable_cell_storage_port),
                 ),
                 Arc::clone(&durable_cell_executions),
             ));
@@ -1692,6 +1695,7 @@ async fn build_api_worker_application(
             Arc::clone(&durable_cell_deployments),
             Arc::clone(&durable_cell_workload_port),
             Arc::clone(&durable_cell_operation_port),
+            Arc::clone(&durable_cell_storage_port),
         ));
         let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
             replica_retirements,

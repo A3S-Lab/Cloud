@@ -690,6 +690,80 @@ fn durable_cells_storage_admission_crosses_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_storage_recovery_crosses_one_consumer_owned_port() {
+    let prior_writer_seal = std::fs::read_to_string(
+        module_root().join("durable_cells/application/prior_writer_seal.rs"),
+    )
+    .expect("read Durable Cells prior-writer storage recovery application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/storage_port.rs"))
+            .expect("read Durable Cells Storage recovery port");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data recovery adapter");
+
+    let prior_writer_seal = production_source(&prior_writer_seal);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(prior_writer_seal.contains("Arc<dyn IDurableCellStoragePort>"));
+    assert!(prior_writer_seal.contains(".validate_seal_input("));
+    assert!(prior_writer_seal.contains(".project_seal_output("));
+    for forbidden in [
+        "SealObjectNamespaceOperationInput",
+        "SealObjectNamespaceOperationOutput",
+        "ObjectNamespaceRecoveryOperationRequest",
+        "ObjectNamespaceRecoveryPoint",
+        "crate::modules::data",
+    ] {
+        assert!(
+            !prior_writer_seal.contains(forbidden),
+            "Durable Cells prior-writer seal bypassed the Storage recovery port with {forbidden}"
+        );
+    }
+    for required in [
+        "pub struct DurableCellStorageSealRequest",
+        "pub struct DurableCellStorageSealInputProjection",
+        "pub struct DurableCellStorageRecoveryPointProjection",
+        "pub trait IDurableCellStoragePort",
+        "async fn validate_seal_input",
+        "async fn project_seal_output",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Storage port lost recovery projection contract {required}"
+        );
+    }
+    assert!(!port.contains("crate::modules::data"));
+    for required in [
+        "impl IDurableCellStoragePort",
+        "SealObjectNamespaceOperationInput",
+        "SealObjectNamespaceOperationOutput",
+        "ObjectNamespaceRecoveryPoint",
+        "project_recovery_point",
+        "restore_recovery_point",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Data Storage adapter lost recovery translation {required}"
+        );
+    }
+
+    let mut output_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("SealObjectNamespaceOperationOutput")
+        {
+            output_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        output_sites,
+        lines("durable_cells/infrastructure/data_storage.rs"),
+        "Durable Cells must translate Data recovery outputs through one infrastructure adapter"
+    );
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

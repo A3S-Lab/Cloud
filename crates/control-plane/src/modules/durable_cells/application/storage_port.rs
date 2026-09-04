@@ -1,12 +1,17 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, EnvironmentId, OrganizationId, ProjectId, SecretVersionReference,
-    Sha256Digest, StorageNamespaceId,
+    canonical_json_bounded, canonical_timestamp, EnvironmentId, OperationId, OrganizationId,
+    ProjectId, SecretVersionReference, Sha256Digest, StorageNamespaceId,
 };
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
+use serde_json::Value;
 
 const MAX_CREDENTIAL_BINDING_BYTES: usize = 16 * 1024;
+const MAX_RECOVERY_POINT_BYTES: usize = 32 * 1024;
+const MAX_RECOVERY_POINT_KEY_BYTES: usize = 4096;
+const MAX_SAFE_SERIALIZED_INTEGER: u64 = 9_007_199_254_740_991;
 
 /// Plaintext-free, consumer-owned identity for one exact S0 credential
 /// binding. Data and Secrets retain validation, revocation, and materialization
@@ -115,6 +120,196 @@ impl DurableCellStorageCredentialRequest {
     }
 }
 
+/// Exact writer-fence identity accepted by the S0 recovery projection. The
+/// Data adapter validates the persisted Operation input/output against this
+/// request before returning any recovery evidence to Durable Cells.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageSealRequest {
+    pub operation_id: OperationId,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub namespace_id: StorageNamespaceId,
+    pub provider_profile_digest: Sha256Digest,
+    pub writer_epoch: u64,
+    pub writer_fence_receipt_digest: Sha256Digest,
+    pub sealed_at: DateTime<Utc>,
+}
+
+impl DurableCellStorageSealRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        operation_id: OperationId,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        namespace_id: StorageNamespaceId,
+        provider_profile_digest: Sha256Digest,
+        writer_epoch: u64,
+        writer_fence_receipt_digest: Sha256Digest,
+        sealed_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            operation_id,
+            organization_id,
+            project_id,
+            environment_id,
+            namespace_id,
+            provider_profile_digest,
+            writer_epoch,
+            writer_fence_receipt_digest,
+            sealed_at,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.operation_id.as_uuid().is_nil()
+            || self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.namespace_id.as_uuid().is_nil()
+            || self.writer_epoch == 0
+            || self.writer_epoch > MAX_SAFE_SERIALIZED_INTEGER
+            || self.sealed_at != canonical_timestamp(self.sealed_at)
+            || Sha256Digest::parse(self.provider_profile_digest.as_str())?
+                != self.provider_profile_digest
+            || Sha256Digest::parse(self.writer_fence_receipt_digest.as_str())?
+                != self.writer_fence_receipt_digest
+        {
+            return Err("Durable Cell S0 seal request identity is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+/// Immutable, owner-neutral projection of one Data/S0 recovery point. The
+/// provider-specific object key is retained as a bounded string, while the
+/// Data aggregate and its private digest calculation remain behind the owner
+/// adapter.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableCellStorageRecoveryPointProjection {
+    pub namespace_id: StorageNamespaceId,
+    pub sequence: u64,
+    pub writer_epoch: u64,
+    pub provider_profile_digest: Sha256Digest,
+    pub manifest_key: String,
+    pub manifest_digest: Sha256Digest,
+    pub state_digest: Sha256Digest,
+    pub state_size_bytes: u64,
+    pub predecessor_digest: Option<Sha256Digest>,
+    pub sealed_at: DateTime<Utc>,
+    pub digest: Sha256Digest,
+}
+
+impl DurableCellStorageRecoveryPointProjection {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.namespace_id.as_uuid().is_nil()
+            || self.sequence == 0
+            || self.sequence > MAX_SAFE_SERIALIZED_INTEGER
+            || self.writer_epoch == 0
+            || self.writer_epoch > MAX_SAFE_SERIALIZED_INTEGER
+            || self.state_size_bytes == 0
+            || self.state_size_bytes > MAX_SAFE_SERIALIZED_INTEGER
+            || self.manifest_key.is_empty()
+            || self.manifest_key.len() > MAX_RECOVERY_POINT_KEY_BYTES
+            || self.manifest_key.contains(['\\', '\0', '\r', '\n'])
+            || self.manifest_key.starts_with('/')
+            || self
+                .manifest_key
+                .split('/')
+                .any(|component| component.is_empty() || component == "." || component == "..")
+            || self.sealed_at != canonical_timestamp(self.sealed_at)
+            || Sha256Digest::parse(self.provider_profile_digest.as_str())?
+                != self.provider_profile_digest
+            || Sha256Digest::parse(self.manifest_digest.as_str())? != self.manifest_digest
+            || Sha256Digest::parse(self.state_digest.as_str())? != self.state_digest
+            || Sha256Digest::parse(self.digest.as_str())? != self.digest
+        {
+            return Err("Durable Cell S0 recovery point projection is invalid".into());
+        }
+        match (&self.predecessor_digest, self.sequence) {
+            (None, 1) => {}
+            (Some(predecessor), sequence) if sequence > 1 => {
+                if Sha256Digest::parse(predecessor.as_str())? != *predecessor {
+                    return Err("Durable Cell S0 predecessor digest is not canonical".into());
+                }
+            }
+            _ => return Err("Durable Cell S0 recovery lineage is invalid".into()),
+        }
+        canonical_json_bounded(
+            self,
+            MAX_RECOVERY_POINT_BYTES,
+            "Durable Cell S0 recovery point projection",
+        )?;
+        Ok(())
+    }
+
+    pub fn validate_successor_of(&self, previous: &Self) -> Result<(), String> {
+        self.validate()?;
+        previous.validate()?;
+        if self.namespace_id != previous.namespace_id
+            || self.sequence
+                != previous
+                    .sequence
+                    .checked_add(1)
+                    .ok_or_else(|| "Durable Cell S0 recovery sequence is exhausted".to_owned())?
+            || self.predecessor_digest.as_ref() != Some(&previous.digest)
+            || self.writer_epoch < previous.writer_epoch
+            || self.sealed_at < previous.sealed_at
+        {
+            return Err("Durable Cell S0 recovery point is not an exact successor".into());
+        }
+        Ok(())
+    }
+}
+
+/// Typed, owner-neutral result of validating a persisted S0 seal Operation
+/// input. Data owns the concrete Flow binding and recovery aggregate; only
+/// these exact lineage fields cross into Durable Cells.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageSealInputProjection {
+    pub operation_id: OperationId,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub namespace_id: StorageNamespaceId,
+    pub provider_profile_digest: Sha256Digest,
+    pub writer_epoch: u64,
+    pub writer_fence_receipt_digest: Sha256Digest,
+    pub sealed_at: DateTime<Utc>,
+    pub previous_recovery_point: Option<DurableCellStorageRecoveryPointProjection>,
+}
+
+impl DurableCellStorageSealInputProjection {
+    pub fn validate_against(&self, request: &DurableCellStorageSealRequest) -> Result<(), String> {
+        request.validate()?;
+        if self.operation_id != request.operation_id
+            || self.organization_id != request.organization_id
+            || self.project_id != request.project_id
+            || self.environment_id != request.environment_id
+            || self.namespace_id != request.namespace_id
+            || self.provider_profile_digest != request.provider_profile_digest
+            || self.writer_epoch != request.writer_epoch
+            || self.writer_fence_receipt_digest != request.writer_fence_receipt_digest
+            || self.sealed_at != request.sealed_at
+        {
+            return Err("Durable Cell S0 seal input crossed its exact scope".into());
+        }
+        if let Some(previous) = &self.previous_recovery_point {
+            previous.validate()?;
+            if previous.namespace_id != self.namespace_id
+                || previous.provider_profile_digest != self.provider_profile_digest
+                || previous.writer_epoch > self.writer_epoch
+                || previous.sealed_at > self.sealed_at
+            {
+                return Err("Durable Cell S0 seal predecessor crossed its exact lineage".into());
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Serialize)]
 struct DurableCellStorageCredentialIdentity<'a> {
     organization_id: OrganizationId,
@@ -137,12 +332,31 @@ pub trait IDurableCellStoragePort: Send + Sync {
         &self,
         request: &DurableCellStorageCredentialRequest,
     ) -> ApplicationResult<()>;
+
+    /// Parses and validates the Data-owned seal input persisted by
+    /// Operations. The raw JSON is accepted only at this adapter boundary so
+    /// Durable Cells never imports Data's operation request model.
+    async fn validate_seal_input(
+        &self,
+        request: &DurableCellStorageSealRequest,
+        input: &Value,
+    ) -> ApplicationResult<DurableCellStorageSealInputProjection>;
+
+    /// Parses a successful Data-owned seal output and returns only the exact
+    /// immutable recovery-point projection required by the writer gate.
+    async fn project_seal_output(
+        &self,
+        request: &DurableCellStorageSealRequest,
+        input: &DurableCellStorageSealInputProjection,
+        output: &Value,
+    ) -> ApplicationResult<DurableCellStorageRecoveryPointProjection>;
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::SecretId;
+    use crate::modules::shared_kernel::domain::{OperationId, SecretId};
+    use chrono::Duration;
 
     fn reference() -> SecretVersionReference {
         SecretVersionReference::new(SecretId::new(), 1).expect("Secret reference")
@@ -189,5 +403,72 @@ mod tests {
             request.session_token,
         )
         .is_err());
+    }
+
+    fn recovery_point(
+        sequence: u64,
+        predecessor_digest: Option<Sha256Digest>,
+    ) -> DurableCellStorageRecoveryPointProjection {
+        DurableCellStorageRecoveryPointProjection {
+            namespace_id: StorageNamespaceId::new(),
+            sequence,
+            writer_epoch: 3,
+            provider_profile_digest: Sha256Digest::from_bytes(b"profile"),
+            manifest_key: format!("recovery/{sequence}/manifest"),
+            manifest_digest: Sha256Digest::from_bytes(b"manifest"),
+            state_digest: Sha256Digest::from_bytes(b"state"),
+            state_size_bytes: 1,
+            predecessor_digest,
+            sealed_at: canonical_timestamp(Utc::now()),
+            digest: Sha256Digest::from_bytes(format!("point-{sequence}").as_bytes()),
+        }
+    }
+
+    #[test]
+    fn seal_request_and_projection_retain_exact_lineage() {
+        let request = DurableCellStorageSealRequest::new(
+            OperationId::new(),
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            StorageNamespaceId::new(),
+            Sha256Digest::from_bytes(b"profile"),
+            3,
+            Sha256Digest::from_bytes(b"receipt"),
+            canonical_timestamp(Utc::now()),
+        );
+        request.validate().expect("seal request");
+        let mut input = DurableCellStorageSealInputProjection {
+            operation_id: request.operation_id,
+            organization_id: request.organization_id,
+            project_id: request.project_id,
+            environment_id: request.environment_id,
+            namespace_id: request.namespace_id,
+            provider_profile_digest: request.provider_profile_digest.clone(),
+            writer_epoch: request.writer_epoch,
+            writer_fence_receipt_digest: request.writer_fence_receipt_digest.clone(),
+            sealed_at: request.sealed_at,
+            previous_recovery_point: None,
+        };
+        input.validate_against(&request).expect("seal input");
+        input.writer_epoch += 1;
+        assert!(input.validate_against(&request).is_err());
+    }
+
+    #[test]
+    fn recovery_projection_rejects_non_successor_sequences() {
+        let first = recovery_point(1, None);
+        let mut second = recovery_point(3, Some(first.digest.clone()));
+        second.namespace_id = first.namespace_id;
+        second.provider_profile_digest = first.provider_profile_digest.clone();
+        assert!(second.validate_successor_of(&first).is_err());
+
+        let mut successor = recovery_point(2, Some(first.digest.clone()));
+        successor.namespace_id = first.namespace_id;
+        successor.provider_profile_digest = first.provider_profile_digest.clone();
+        successor.sealed_at = first.sealed_at + Duration::milliseconds(1);
+        // The fixture digest is deliberately opaque; shape validation still
+        // proves that a valid successor must carry canonical digests.
+        assert!(successor.validate_successor_of(&first).is_ok());
     }
 }

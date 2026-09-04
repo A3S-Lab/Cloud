@@ -75,7 +75,10 @@ pub use runtime_profile::{
 pub use secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
 };
-pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
+pub use storage_port::{
+    DurableCellStorageCredentialRequest, DurableCellStorageRecoveryPointProjection,
+    DurableCellStorageSealInputProjection, DurableCellStorageSealRequest, IDurableCellStoragePort,
+};
 pub use workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPrestartProjection,
