@@ -1,4 +1,6 @@
-use crate::modules::durable_cells::domain::DurableCellProviderWorkloadProjection;
+use crate::modules::durable_cells::domain::{
+    DurableCellProjectionIdentity, DurableCellProviderWorkloadProjection,
+};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DurableCellApplicationId, DurableCellApplicationRevisionId,
@@ -720,6 +722,45 @@ pub struct DurableCellWorkloadRevisionGenerationRequest {
     pub service_template_digest: Sha256Digest,
 }
 
+/// Exact owner-neutral placement intent used while binding a Durable Cell
+/// deployment. Workloads compiles the control value and returns only its
+/// immutable digest; no placement vocabulary crosses this port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadPlacementRequest {
+    pub projection: DurableCellProjectionIdentity,
+    pub workload_generation: u64,
+    pub node_pool_id: Option<NodePoolId>,
+}
+
+impl DurableCellWorkloadPlacementRequest {
+    pub fn new(
+        projection: DurableCellProjectionIdentity,
+        workload_generation: u64,
+        node_pool_id: Option<NodePoolId>,
+    ) -> Self {
+        Self {
+            projection,
+            workload_generation,
+            node_pool_id,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.projection.validate()?;
+        if self.workload_generation == 0 {
+            return Err("Durable Cell Workloads placement generation is invalid".into());
+        }
+        if let Some(node_pool_id) = self.node_pool_id {
+            if node_pool_id.as_uuid().is_nil() {
+                return Err(
+                    "Durable Cell Workloads placement node-pool identity is invalid".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadRevisionGenerationRequest {
     pub fn new(
         organization_id: OrganizationId,
@@ -754,6 +795,11 @@ impl DurableCellWorkloadRevisionGenerationRequest {
 /// mutation while Workloads retains lifecycle authority.
 #[async_trait]
 pub trait IDurableCellWorkloadPort: Send + Sync {
+    fn compile_placement_policy_digest(
+        &self,
+        request: &DurableCellWorkloadPlacementRequest,
+    ) -> ApplicationResult<Sha256Digest>;
+
     async fn load_prestart_publication(
         &self,
         request: &DurableCellWorkloadPrestartRequest,
@@ -817,6 +863,53 @@ mod tests {
         let mut invalid = request;
         invalid.application_id = DurableCellApplicationId::from_uuid(Uuid::nil());
         assert!(invalid.validate().is_err());
+    }
+
+    fn placement_projection() -> DurableCellProjectionIdentity {
+        let application_id = DurableCellApplicationId::new();
+        let application_revision_id = DurableCellApplicationRevisionId::new();
+        DurableCellProjectionIdentity {
+            organization_id: OrganizationId::new(),
+            project_id: ProjectId::new(),
+            environment_id: EnvironmentId::new(),
+            application_id,
+            application_revision_id,
+            application_revision_number: 1,
+            application_definition_digest: Sha256Digest::from_bytes(b"application"),
+            storage_namespace_id:
+                DurableCellProjectionIdentity::storage_namespace_id_for_application(application_id),
+            workload_id: DurableCellProjectionIdentity::workload_id_for_application(application_id),
+            workload_revision_id:
+                DurableCellProjectionIdentity::workload_revision_id_for_application_revision(
+                    application_revision_id,
+                ),
+            deployment_id: DeploymentId::from_uuid(Uuid::new_v5(
+                &application_revision_id.as_uuid(),
+                b"a3s-cloud:durable-cell:workload-deployment:v1",
+            )),
+            operation_id: OperationId::from_uuid(Uuid::new_v5(
+                &application_revision_id.as_uuid(),
+                b"a3s-cloud:durable-cell:deployment-operation:v1",
+            )),
+        }
+    }
+
+    #[test]
+    fn placement_request_requires_a_valid_generation_and_pool() {
+        let request = DurableCellWorkloadPlacementRequest::new(
+            placement_projection(),
+            2,
+            Some(NodePoolId::new()),
+        );
+        request.validate().expect("valid placement request");
+
+        let mut invalid_generation = request.clone();
+        invalid_generation.workload_generation = 0;
+        assert!(invalid_generation.validate().is_err());
+
+        let mut invalid_pool = request;
+        invalid_pool.node_pool_id = Some(NodePoolId::from_uuid(Uuid::nil()));
+        assert!(invalid_pool.validate().is_err());
     }
 
     #[test]

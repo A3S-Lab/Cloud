@@ -1,11 +1,13 @@
+use crate::modules::durable_cells::application::durable_cell_managed_owner_reference;
 use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
-    DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
-    DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
+    DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
+    DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -384,6 +386,22 @@ impl WorkloadsDurableCellWorkloadAdapter {
 
 #[async_trait]
 impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
+    fn compile_placement_policy_digest(
+        &self,
+        request: &DurableCellWorkloadPlacementRequest,
+    ) -> ApplicationResult<Sha256Digest> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let control = WorkloadControlSpec::managed_replica_set_in_pool(
+            durable_cell_managed_owner_reference(&request.projection)
+                .map_err(ApplicationError::Internal)?,
+            request.workload_generation,
+            1,
+            request.node_pool_id,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        Sha256Digest::parse(control.placement_policy.digest()).map_err(ApplicationError::Internal)
+    }
+
     async fn load_prestart_publication(
         &self,
         request: &DurableCellWorkloadPrestartRequest,

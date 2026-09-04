@@ -295,6 +295,10 @@ Current boundary debt:
   existing generic Operation request inside the Workloads transaction, while
   Durable Cells retains only correlation and gate decisions. Workloads and Operations remain the
   lifecycle authorities inside their adapters;
+- Durable Cells deployment correlation now consumes only the immutable
+  placement-policy digest returned by its Workloads port. The Workloads
+  adapter compiles the control value, so placement vocabulary remains owned by
+  Workloads at one translation site;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;

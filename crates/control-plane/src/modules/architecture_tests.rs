@@ -1360,6 +1360,44 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
 }
 
 #[test]
+fn durable_cells_deployment_uses_the_workloads_placement_compiler() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
+            .expect("read Durable Cells Workloads placement port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
+    )
+    .expect("read Durable Cells Workloads placement adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(
+        deployment.contains("compile_placement_policy_digest("),
+        "Durable Cells deployment must consume the Workloads placement port"
+    );
+    assert!(
+        !deployment.contains("WorkloadControlSpec"),
+        "Durable Cells deployment reconstructed the Workloads control value"
+    );
+    assert!(
+        port.contains("pub struct DurableCellWorkloadPlacementRequest"),
+        "the Workloads port must expose an owner-neutral placement request"
+    );
+    assert!(
+        port.contains("fn compile_placement_policy_digest("),
+        "the Workloads port must own placement-digest compilation"
+    );
+    assert!(
+        adapter.contains("WorkloadControlSpec::managed_replica_set_in_pool("),
+        "the Workloads adapter must remain the placement compiler"
+    );
+}
+
+#[test]
 fn durable_cells_node_pool_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

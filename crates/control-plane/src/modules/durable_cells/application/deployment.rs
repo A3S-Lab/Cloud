@@ -2,8 +2,7 @@ use super::node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNod
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
-    durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
-    validate_pinned_celld_provider_workload,
+    project_durable_cell_provider_workload, validate_pinned_celld_provider_workload,
 };
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use super::secret_binding_port::{
@@ -15,8 +14,9 @@ use super::storage_port::{
 };
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
+    DurableCellWorkloadPlacementRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
@@ -32,7 +32,7 @@ use crate::modules::shared_kernel::domain::{
     NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, SecretVersionReference,
     Sha256Digest,
 };
-use crate::modules::workloads::{ServiceTemplate, WorkloadControlSpec, WorkloadRevision};
+use crate::modules::workloads::{ServiceTemplate, WorkloadRevision};
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -135,7 +135,9 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
 
             let (correlation, correlation_replayed) = match deployments.replay(&idempotency).await {
                 Ok(Some(correlation)) => {
-                    if let Err(error) = prepared.validate_correlation(&correlation) {
+                    if let Err(error) =
+                        prepared.validate_correlation(&correlation, workload_port.as_ref())
+                    {
                         return Err(BootError::Internal(error));
                     }
                     (correlation, true)
@@ -376,7 +378,11 @@ impl PreparedDeployment {
         )
     }
 
-    fn validate_correlation(&self, correlation: &DurableCellDeployment) -> Result<(), String> {
+    fn validate_correlation(
+        &self,
+        correlation: &DurableCellDeployment,
+        workload_port: &dyn IDurableCellWorkloadPort,
+    ) -> Result<(), String> {
         correlation.validate()?;
         let projection = &correlation.projection;
         if projection.organization_id != self.organization_id
@@ -395,13 +401,14 @@ impl PreparedDeployment {
         {
             return Err("Durable Cell deployment replay changed its exact projection".into());
         }
-        let control = WorkloadControlSpec::managed_replica_set_in_pool(
-            durable_cell_managed_owner_reference(projection)?,
-            correlation.provider.workload_generation,
-            1,
-            self.node_pool_id,
-        )?;
-        if control.placement_policy.digest() != correlation.placement_policy_digest.as_str() {
+        let placement_policy_digest = workload_port
+            .compile_placement_policy_digest(&DurableCellWorkloadPlacementRequest::new(
+                projection.clone(),
+                correlation.provider.workload_generation,
+                self.node_pool_id,
+            ))
+            .map_err(|error| error.to_string())?;
+        if placement_policy_digest.as_str() != correlation.placement_policy_digest.as_str() {
             return Err("Durable Cell deployment replay changed its placement projection".into());
         }
         Ok(())
@@ -581,14 +588,19 @@ async fn prepare_correlation(
         },
     )
     .map_err(ApplicationError::Invalid)?;
-    let control = managed_control(&projection, workload_generation, command.node_pool_id)?;
+    let placement_policy_digest = workload_port.compile_placement_policy_digest(
+        &DurableCellWorkloadPlacementRequest::new(
+            projection.clone(),
+            workload_generation,
+            command.node_pool_id,
+        ),
+    )?;
     DurableCellDeployment::bind(
         projection,
         storage,
         prepared.storage_provider_profile_acl.as_deref(),
         provider,
-        Sha256Digest::parse(control.placement_policy.digest())
-            .map_err(ApplicationError::Internal)?,
+        placement_policy_digest,
         DurableCellDeploymentRequest {
             requested_by: command.actor_principal_id,
             request_id: command.request_id,
@@ -662,20 +674,6 @@ fn validate_workload_projection(
         return Err("Durable Cell managed Workload replay drifted".into());
     }
     Ok(())
-}
-
-fn managed_control(
-    projection: &DurableCellProjectionIdentity,
-    generation: u64,
-    node_pool_id: Option<NodePoolId>,
-) -> ApplicationResult<WorkloadControlSpec> {
-    WorkloadControlSpec::managed_replica_set_in_pool(
-        durable_cell_managed_owner_reference(projection).map_err(ApplicationError::Internal)?,
-        generation,
-        1,
-        node_pool_id,
-    )
-    .map_err(ApplicationError::Invalid)
 }
 
 fn require_storage_credentials_in_template(
