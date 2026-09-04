@@ -262,8 +262,12 @@ Current boundary debt:
   for the exact Deployment, managed control, canonical replica binding, and
   revision now cross the same port as one owner-neutral projection, including
   opaque Runtime Secret references. Stopped-current writer-fence control
-  admission now crosses that port as an exact owner-neutral replica projection;
-  Workloads remains the lifecycle authority inside the adapter;
+  admission and prior-writer receipt observation now cross that port as exact
+  owner-neutral projections; Workloads validates receipt scope, owner lineage,
+  revision generation, replica identity, and epoch inside the adapter, while
+  Durable Cells retains only the subsequent Data/Operations recovery
+  projection checks. Workloads remains the lifecycle authority inside the
+  adapter;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;
@@ -303,9 +307,9 @@ The required Cloud refactor is a set of consumer-owned ports:
   publication Task creation, recovery, observation, and cancellation);
 - `IDurableCellWorkloadPort` (implemented for deterministic managed replica
   convergence, revision-generation lookup, and managed deployment
-  creation/replay, bundle-publication pre-start observation, and stopped-current
-  writer-fence admission; remaining Runtime projection reads remain follow-up
-  slices);
+  creation/replay, bundle-publication pre-start observation, stopped-current
+  writer-fence admission, and prior-writer receipt observation; remaining
+  Runtime, Data, and Operations projection reads remain follow-up slices);
 - `IDurableCellNodePoolPort` (implemented for exact optional node-pool
   admission);
 - `IDurableCellRoutePublicationPort` (implemented for Route/Gateway

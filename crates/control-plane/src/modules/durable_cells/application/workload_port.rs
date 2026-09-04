@@ -500,6 +500,128 @@ impl DurableCellWorkloadWriterFenceProjection {
     }
 }
 
+/// Exact owner-neutral identity used when Durable Cells validates the
+/// continuation seal for a previously fenced writer. Workloads remains the
+/// authority for locating and validating the receipt; the consumer sends only
+/// the current projection and the next epoch that is about to be admitted.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadPriorWriterFenceRequest {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub application_id: DurableCellApplicationId,
+    pub application_revision_id: DurableCellApplicationRevisionId,
+    pub application_revision_number: u64,
+    pub application_definition_digest: Sha256Digest,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_generation: u64,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_ordinal: u32,
+    pub next_writer_epoch: u64,
+}
+
+impl DurableCellWorkloadPriorWriterFenceRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        application_id: DurableCellApplicationId,
+        application_revision_id: DurableCellApplicationRevisionId,
+        application_revision_number: u64,
+        application_definition_digest: Sha256Digest,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        workload_generation: u64,
+        replica_id: WorkloadReplicaId,
+        replica_ordinal: u32,
+        next_writer_epoch: u64,
+    ) -> Self {
+        Self {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id,
+            application_revision_id,
+            application_revision_number,
+            application_definition_digest,
+            workload_id,
+            workload_revision_id,
+            workload_generation,
+            replica_id,
+            replica_ordinal,
+            next_writer_epoch,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.application_id.as_uuid().is_nil()
+            || self.application_revision_id.as_uuid().is_nil()
+            || self.application_revision_number == 0
+            || self.workload_id.as_uuid().is_nil()
+            || self.workload_revision_id.as_uuid().is_nil()
+            || self.workload_generation == 0
+            || self.replica_id.as_uuid().is_nil()
+            || self.replica_ordinal != 0
+            || self.next_writer_epoch == 0
+        {
+            return Err("Durable Cell prior writer-fence identity is invalid".into());
+        }
+        Sha256Digest::parse(self.application_definition_digest.as_str())?;
+        Ok(())
+    }
+}
+
+/// Immutable Workloads receipt projection consumed while checking the prior
+/// writer's namespace seal. Receipt owner metadata is validated inside the
+/// Workloads adapter and is intentionally not exposed across this port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadPriorWriterFenceProjection {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_revision_generation: u64,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_ordinal: u32,
+    pub writer_epoch: u64,
+    pub continuation_operation_id: OperationId,
+    pub fenced_at: DateTime<Utc>,
+    pub receipt_digest: Sha256Digest,
+}
+
+impl DurableCellWorkloadPriorWriterFenceProjection {
+    pub fn validate_against(
+        &self,
+        request: &DurableCellWorkloadPriorWriterFenceRequest,
+    ) -> Result<(), String> {
+        request.validate()?;
+        if self.organization_id != request.organization_id
+            || self.project_id != request.project_id
+            || self.environment_id != request.environment_id
+            || self.workload_id != request.workload_id
+            || self.workload_revision_id != request.workload_revision_id
+            || self.workload_revision_generation == 0
+            || self.workload_revision_generation > request.workload_generation
+            || self.replica_id != request.replica_id
+            || self.replica_ordinal != request.replica_ordinal
+            || self.writer_epoch == 0
+            || self.writer_epoch >= request.next_writer_epoch
+            || self.continuation_operation_id.as_uuid().is_nil()
+            || self.fenced_at != canonical_timestamp(self.fenced_at)
+        {
+            return Err("Durable Cell prior writer-fence projection drifted".into());
+        }
+        Sha256Digest::parse(self.receipt_digest.as_str())?;
+        Ok(())
+    }
+}
+
 fn validate_secret_reference(secret: &SecretReference) -> Result<(), String> {
     if secret.name.is_empty()
         || secret.name.len() > 255
@@ -641,6 +763,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadWriterFenceRequest,
     ) -> ApplicationResult<Option<DurableCellWorkloadWriterFenceProjection>>;
+
+    async fn load_prior_writer_fence(
+        &self,
+        request: &DurableCellWorkloadPriorWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadPriorWriterFenceProjection>>;
 
     async fn replay_managed_deployment(
         &self,
@@ -842,6 +969,46 @@ mod tests {
 
         let mut drifted = projection;
         drifted.replica_generation += 1;
+        assert!(drifted.validate_against(&request).is_err());
+    }
+
+    #[test]
+    fn prior_writer_fence_projection_is_locked_to_the_next_epoch() {
+        let request = DurableCellWorkloadPriorWriterFenceRequest::new(
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            DurableCellApplicationId::new(),
+            DurableCellApplicationRevisionId::new(),
+            2,
+            Sha256Digest::from_bytes(b"application"),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            5,
+            WorkloadReplicaId::new(),
+            0,
+            12,
+        );
+        let projection = DurableCellWorkloadPriorWriterFenceProjection {
+            organization_id: request.organization_id,
+            project_id: request.project_id,
+            environment_id: request.environment_id,
+            workload_id: request.workload_id,
+            workload_revision_id: request.workload_revision_id,
+            workload_revision_generation: request.workload_generation,
+            replica_id: request.replica_id,
+            replica_ordinal: request.replica_ordinal,
+            writer_epoch: 7,
+            continuation_operation_id: OperationId::new(),
+            fenced_at: canonical_timestamp(Utc::now()),
+            receipt_digest: Sha256Digest::from_bytes(b"receipt"),
+        };
+        projection
+            .validate_against(&request)
+            .expect("exact prior writer-fence projection");
+
+        let mut drifted = projection;
+        drifted.writer_epoch = request.next_writer_epoch;
         assert!(drifted.validate_against(&request).is_err());
     }
 }

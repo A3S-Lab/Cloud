@@ -2021,6 +2021,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
+    let writer_fence_port = workloads.clone();
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
     let routes: Arc<dyn IEdgeRepository> = edge.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge;
@@ -2096,6 +2097,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
             durable_cell_applications.clone(),
             Arc::clone(&workload_port),
+            writer_fence_port,
         ));
     build_management_application_with_health(
         config(),

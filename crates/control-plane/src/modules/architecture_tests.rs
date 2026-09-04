@@ -754,6 +754,10 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     let writer_fence =
         std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
             .expect("read Durable Cells writer-fence application");
+    let prior_writer_seal = std::fs::read_to_string(
+        module_root().join("durable_cells/application/prior_writer_seal.rs"),
+    )
+    .expect("read Durable Cells prior-writer seal application");
     let port =
         std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
             .expect("read Durable Cells Workload port");
@@ -766,6 +770,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     let deployment = production_source(&deployment);
     let bundle_publication = production_source(&bundle_publication);
     let writer_fence = production_source(&writer_fence);
+    let prior_writer_seal = production_source(&prior_writer_seal);
     let port = production_source(&port);
     let adapter = production_source(&adapter);
     assert!(commands.contains("Arc<dyn IDurableCellWorkloadPort>"));
@@ -797,6 +802,14 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
             "Durable Cells writer fence bypassed its Workloads port with {forbidden}"
         );
     }
+    assert!(prior_writer_seal.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(prior_writer_seal.contains(".load_prior_writer_fence("));
+    for forbidden in ["IWorkloadWriterFenceRepository", ".latest_writer_fence("] {
+        assert!(
+            !prior_writer_seal.contains(forbidden),
+            "Durable Cells prior-writer seal bypassed its Workloads port with {forbidden}"
+        );
+    }
     assert!(bundle_publication.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(bundle_publication.contains(".load_prestart_publication("));
     for forbidden in [
@@ -821,12 +834,15 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("pub struct DurableCellWorkloadPrestartProjection"));
     assert!(port.contains("pub struct DurableCellWorkloadWriterFenceRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadWriterFenceProjection"));
+    assert!(port.contains("pub struct DurableCellWorkloadPriorWriterFenceRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadPriorWriterFenceProjection"));
     assert!(port.contains("pub trait IDurableCellWorkloadPort"));
     assert!(port.contains("replay_managed_deployment"));
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
     assert!(port.contains("load_prestart_publication"));
     assert!(port.contains("load_writer_fence_admission"));
+    assert!(port.contains("load_prior_writer_fence"));
     assert!(!port.contains("crate::modules::workloads"));
     for required in [
         "impl IDurableCellWorkloadPort",
@@ -839,6 +855,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "find_workload_replica",
         "project_runtime_secrets",
         "load_writer_fence_admission_projection",
+        "load_prior_writer_fence_projection",
+        "IWorkloadWriterFenceRepository",
+        "latest_writer_fence",
         "ReconfigureReplicaSetWrite",
         "DurableCellProjectionIdentity",
     ] {

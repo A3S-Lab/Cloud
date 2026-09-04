@@ -73,7 +73,8 @@ pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStorageP
 pub use workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPrestartProjection,
-    DurableCellWorkloadPrestartRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
+    DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
     DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
     IDurableCellWorkloadPort,

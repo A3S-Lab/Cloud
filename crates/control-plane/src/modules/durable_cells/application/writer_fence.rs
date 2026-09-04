@@ -20,8 +20,8 @@ use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
 };
 use crate::modules::workloads::{
-    IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository, RetiringReplicaTarget,
-    WorkloadWriterFenceCommit, WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
+    IWorkloadWriterFenceAdapter, RetiringReplicaTarget, WorkloadWriterFenceCommit,
+    WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
 };
 use a3s_cloud_contracts::NodeCommandAck;
 use async_trait::async_trait;
@@ -47,14 +47,14 @@ impl DurableCellWriterFenceAdapter {
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         workloads: Arc<dyn IDurableCellWorkloadPort>,
-        writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
         operations: Arc<dyn IOperationRepository>,
     ) -> Self {
+        let prior_writer_seal = DurableCellPriorWriterSeal::new(Arc::clone(&workloads), operations);
         Self {
             applications,
             deployments,
             workloads,
-            prior_writer_seal: DurableCellPriorWriterSeal::new(writer_fences, operations),
+            prior_writer_seal,
         }
     }
 

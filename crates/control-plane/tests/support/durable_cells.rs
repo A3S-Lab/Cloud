@@ -510,6 +510,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     let cqrs_workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
         cqrs_repository.clone(),
         cqrs_workloads.clone(),
+        cqrs_workloads.clone(),
     ));
     let cqrs_builds = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
     let cqrs_build_artifacts = Arc::new(ArtifactsDurableCellBuildArtifactAdapter::new(
@@ -989,6 +990,7 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     let lifecycle_workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
         lifecycle_applications.clone(),
         lifecycle_workloads.clone(),
+        lifecycle_workloads.clone(),
     ));
     let stop_command = StopDurableCellApplication {
         organization_id: tenant.organization_id,
@@ -1158,6 +1160,7 @@ fn projection_deployment_handler(
     ));
     let workload_port = Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
         applications.clone(),
+        workloads.clone(),
         workloads.clone(),
     ));
     let node_pool_port = Arc::new(FleetDurableCellNodePoolAdapter::new(Arc::new(

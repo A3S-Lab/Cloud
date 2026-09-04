@@ -122,9 +122,12 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
 
     let applications = Arc::new(InMemoryDurableCellApplicationRepository::new());
     let workloads = Arc::new(InMemoryWorkloadRepository::default());
-    let workload_port: Arc<dyn IDurableCellWorkloadPort> = Arc::new(
-        WorkloadsDurableCellWorkloadAdapter::new(applications.clone(), workloads.clone()),
-    );
+    let workload_port: Arc<dyn IDurableCellWorkloadPort> =
+        Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+            applications.clone(),
+            workloads.clone(),
+            workloads.clone(),
+        ));
     let create_handler = CreateDurableCellApplicationHandler::new(
         projects,
         applications.clone(),

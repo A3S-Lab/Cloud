@@ -714,6 +714,7 @@ async fn build_api_worker_application(
         Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
             Arc::clone(&durable_cell_applications),
             Arc::clone(&workloads),
+            Arc::clone(&writer_fences),
         ));
     let connector_execution = if run_operations {
         let connector_response_objects = Arc::new(ConnectorResponseObjectStore::from_client(
@@ -1075,7 +1076,7 @@ async fn build_api_worker_application(
                 Arc::clone(&durable_cell_build_artifacts),
                 Arc::clone(&durable_cell_workload_port),
                 DurableCellPriorWriterSeal::new(
-                    Arc::clone(&writer_fences),
+                    Arc::clone(&durable_cell_workload_port),
                     Arc::clone(&operation_repository),
                 ),
                 Arc::clone(&durable_cell_executions),
@@ -1686,7 +1687,6 @@ async fn build_api_worker_application(
             Arc::clone(&durable_cell_applications),
             Arc::clone(&durable_cell_deployments),
             Arc::clone(&durable_cell_workload_port),
-            writer_fences,
             Arc::clone(&operation_repository),
         ));
         let replica_retirement_reconciler = ReplicaRetirementReconciler::new(
