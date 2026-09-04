@@ -841,14 +841,12 @@ fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
 
 #[test]
 fn durable_cells_deployment_correlation_keeps_provider_profile_opaque() {
-    let deployment = std::fs::read_to_string(
-        module_root().join("durable_cells/domain/deployment.rs"),
-    )
-    .expect("read Durable Cells deployment domain");
-    let adapter = std::fs::read_to_string(
-        module_root().join("durable_cells/infrastructure/data_storage.rs"),
-    )
-    .expect("read Durable Cells Data Storage adapter");
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/domain/deployment.rs"))
+            .expect("read Durable Cells deployment domain");
+    let adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/data_storage.rs"))
+            .expect("read Durable Cells Data Storage adapter");
 
     let deployment = production_source(&deployment);
     let adapter = production_source(&adapter);
