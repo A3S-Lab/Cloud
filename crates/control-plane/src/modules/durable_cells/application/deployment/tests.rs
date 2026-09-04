@@ -236,7 +236,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         applications.clone(),
         deployments.clone(),
         workload_port.clone(),
-        storage_port,
+        Arc::clone(&storage_port),
         secret_binding_port,
         node_pool_port,
     );
@@ -613,6 +613,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         Arc::new(OperationsDurableCellOperationAdapter::new(Arc::new(
             InMemoryOperationRepository::new(),
         ))) as Arc<dyn IDurableCellOperationPort>,
+        Arc::clone(&storage_port),
     )
     .prepare_replica_retirement(&retirement, &removal_command, &removal_acknowledgement)
     .await

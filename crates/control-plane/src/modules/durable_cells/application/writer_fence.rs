@@ -5,9 +5,11 @@ use super::provider_workload::{
     validate_pinned_celld_provider_workload,
 };
 use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
+use super::storage_port::{DurableCellStorageRecoveryPointProjection, IDurableCellStoragePort};
 use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
-    ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
+    ObjectNamespaceFlowBinding, ObjectNamespaceKey, ObjectNamespaceRecoveryOperationRequest,
+    ObjectNamespaceRecoveryPoint, ObjectNamespaceRecoveryPointSpec,
     SealObjectNamespaceOperationInput,
 };
 use crate::modules::durable_cells::domain::{
@@ -48,9 +50,10 @@ impl DurableCellWriterFenceAdapter {
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         workloads: Arc<dyn IDurableCellWorkloadPort>,
         operation_port: Arc<dyn IDurableCellOperationPort>,
+        storage_port: Arc<dyn IDurableCellStoragePort>,
     ) -> Self {
         let prior_writer_seal =
-            DurableCellPriorWriterSeal::new(Arc::clone(&workloads), operation_port);
+            DurableCellPriorWriterSeal::new(Arc::clone(&workloads), operation_port, storage_port);
         Self {
             applications,
             deployments,
@@ -261,6 +264,10 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
                 return Err(RepositoryError::Conflict(reason));
             }
         };
+        let previous_recovery_point = previous_recovery_point
+            .map(restore_recovery_point)
+            .transpose()
+            .map_err(|error| conflict("restore Durable Cell prior recovery point", error))?;
         let operation =
             ObjectNamespaceRecoveryOperationRequest::seal(SealObjectNamespaceOperationInput {
                 operation_id,
@@ -288,6 +295,27 @@ fn seal_operation_id(workload_id: Uuid, writer_epoch: u64) -> OperationId {
         &workload_id,
         format!("{SEAL_OPERATION_NAME}:{writer_epoch}").as_bytes(),
     ))
+}
+
+fn restore_recovery_point(
+    projection: DurableCellStorageRecoveryPointProjection,
+) -> Result<ObjectNamespaceRecoveryPoint, String> {
+    projection.validate()?;
+    ObjectNamespaceRecoveryPoint::restore(
+        ObjectNamespaceRecoveryPointSpec {
+            namespace_id: projection.namespace_id,
+            sequence: projection.sequence,
+            writer_epoch: projection.writer_epoch,
+            provider_profile_digest: projection.provider_profile_digest,
+            manifest_key: ObjectNamespaceKey::parse(projection.manifest_key)?,
+            manifest_digest: projection.manifest_digest,
+            state_digest: projection.state_digest,
+            state_size_bytes: projection.state_size_bytes,
+            predecessor_digest: projection.predecessor_digest,
+            sealed_at: projection.sealed_at,
+        },
+        projection.digest.as_str(),
+    )
 }
 
 fn application_repository_error(error: ApplicationError) -> RepositoryError {
