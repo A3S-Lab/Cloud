@@ -2,15 +2,16 @@ use super::*;
 use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
-use crate::modules::data::{ObjectNamespaceProviderProfile, ObjectNamespaceRetentionPolicySpec};
+use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::application::{
     compose_pinned_celld_service_process, DurableCellStorageProviderProfileProjection,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
     DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellProjectionIdentity,
-    DurableCellPublisherProfile, DurableCellRollbackPolicy, DurableCellServiceProfile,
-    DurableCellServiceProfileSpec, DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DurableCellPublisherProfile, DurableCellRetentionPolicySpec, DurableCellRollbackPolicy,
+    DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::secrets::domain::{CreateSecretWrite, Secret, SecretChanged};
 use crate::modules::shared_kernel::domain::{
@@ -407,7 +408,7 @@ pub(super) fn deployment_binding(
         access_key_id: access_key,
         secret_access_key: secret_key,
         session_token: None,
-        retention_policy: ObjectNamespaceRetentionPolicySpec {
+        retention_policy: DurableCellRetentionPolicySpec {
             minimum_sealed_recovery_points: 2,
             maximum_sealed_recovery_points: 24,
             maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,

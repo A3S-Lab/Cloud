@@ -246,6 +246,9 @@ Current boundary debt:
   Operations request/projection through one `IDurableCellOperationPort` and
   owner adapter, and receives only owner-neutral S0 projections through the
   Storage port;
+- the public `DurableCellDeploymentBinding` ACL now owns its provider-neutral
+  retention contract; concrete Data credential and retention aggregates are
+  materialized only by the inbound ACL adapter;
 - S0 credential admission, provider-profile projection, immutable retention
   projection, exact seal input/output recovery projection, and digest-locked
   seal-Operation composition now cross one consumer-owned

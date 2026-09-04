@@ -1,10 +1,5 @@
-use crate::modules::data::{
-    ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
-    ObjectNamespaceRetentionPolicy, ObjectNamespaceRetentionPolicySpec,
-};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, SecretId, SecretVersionReference, Sha256Digest,
-    StorageNamespaceId,
+    SecretId, SecretVersionReference, Sha256Digest,
 };
 use a3s_acl::builder::{integer, string, BlockBuilder};
 use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
@@ -27,9 +22,44 @@ const REQUIRED_ATTRIBUTES: [&str; 11] = [
 ];
 const OPTIONAL_ATTRIBUTES: [&str; 2] = ["session_token_secret_id", "session_token_secret_version"];
 const MAX_SAFE_ACL_INTEGER: u64 = 9_007_199_254_740_991;
+const MAX_RECOVERY_POINTS: u32 = 10_000;
+const MINIMUM_RECOVERY_POINT_AGE_SECONDS: u64 = 60 * 60;
+const MAXIMUM_RECOVERY_POINT_AGE_SECONDS: u64 = 10 * 365 * 24 * 60 * 60;
+const MINIMUM_DELETION_GRACE_SECONDS: u64 = 5 * 60;
+const MAXIMUM_DELETION_GRACE_SECONDS: u64 = 30 * 24 * 60 * 60;
 
 pub const DURABLE_CELL_DEPLOYMENT_SCHEMA: &str = "cloud.durable-cell.deployment.v1";
 pub const DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES: usize = 16 * 1024;
+
+/// Provider-neutral S0 retention values carried by the Durable Cell
+/// deployment ACL. Data owns the persisted retention aggregate; this bounded
+/// contract keeps the public Durable Cell language independent of that type.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DurableCellRetentionPolicySpec {
+    pub minimum_sealed_recovery_points: u32,
+    pub maximum_sealed_recovery_points: u32,
+    pub maximum_recovery_point_age_seconds: u64,
+    pub deletion_grace_period_seconds: u64,
+}
+
+impl DurableCellRetentionPolicySpec {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.minimum_sealed_recovery_points == 0
+            || self.maximum_sealed_recovery_points < self.minimum_sealed_recovery_points
+            || self.maximum_sealed_recovery_points > MAX_RECOVERY_POINTS
+            || !(MINIMUM_RECOVERY_POINT_AGE_SECONDS..=MAXIMUM_RECOVERY_POINT_AGE_SECONDS)
+                .contains(&self.maximum_recovery_point_age_seconds)
+            || !(MINIMUM_DELETION_GRACE_SECONDS..=MAXIMUM_DELETION_GRACE_SECONDS)
+                .contains(&self.deletion_grace_period_seconds)
+        {
+            return Err(
+                "Durable Cell deployment retention policy is outside supported bounds".into(),
+            );
+        }
+        Ok(())
+    }
+}
 
 /// Public, plaintext-free deployment bindings for one Durable Cell revision.
 /// Tenant and namespace identity are deliberately absent: the Durable Cells
@@ -43,7 +73,7 @@ pub struct DurableCellDeploymentBindingSpec {
     pub access_key_id: SecretVersionReference,
     pub secret_access_key: SecretVersionReference,
     pub session_token: Option<SecretVersionReference>,
-    pub retention_policy: ObjectNamespaceRetentionPolicySpec,
+    pub retention_policy: DurableCellRetentionPolicySpec,
 }
 
 impl DurableCellDeploymentBindingSpec {
@@ -129,37 +159,6 @@ impl DurableCellDeploymentBinding {
             return Err("Durable Cell deployment binding drifted from canonical ACL".into());
         }
         Ok(())
-    }
-
-    pub fn bind_scope(
-        &self,
-        organization_id: OrganizationId,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
-        namespace_id: StorageNamespaceId,
-    ) -> Result<
-        (
-            ObjectNamespaceCredentialBinding,
-            ObjectNamespaceRetentionPolicy,
-        ),
-        String,
-    > {
-        self.validate()?;
-        let credentials =
-            ObjectNamespaceCredentialBinding::from_spec(ObjectNamespaceCredentialBindingSpec {
-                organization_id,
-                project_id,
-                environment_id,
-                namespace_id,
-                generation: self.spec.credential_generation,
-                provider_profile_digest: self.spec.provider_profile_digest.clone(),
-                access_key_id: self.spec.access_key_id,
-                secret_access_key: self.spec.secret_access_key,
-                session_token: self.spec.session_token,
-            })?;
-        let retention =
-            ObjectNamespaceRetentionPolicy::from_spec(self.spec.retention_policy.clone())?;
-        Ok((credentials, retention))
     }
 
     pub const fn spec(&self) -> &DurableCellDeploymentBindingSpec {
@@ -297,7 +296,7 @@ fn parse_binding(document: &Document) -> Result<DurableCellDeploymentBindingSpec
             .zip(session_version)
             .map(|(id, version)| SecretVersionReference::new(SecretId::from_uuid(id), version))
             .transpose()?,
-        retention_policy: ObjectNamespaceRetentionPolicySpec {
+        retention_policy: DurableCellRetentionPolicySpec {
             minimum_sealed_recovery_points: required_u32(block, "minimum_sealed_recovery_points")?,
             maximum_sealed_recovery_points: required_u32(block, "maximum_sealed_recovery_points")?,
             maximum_recovery_point_age_seconds: required_u64(
@@ -398,6 +397,7 @@ fn acl_integer(label: &str, value: u64) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::shared_kernel::domain::{OrganizationId, StorageNamespaceId};
 
     fn reference() -> SecretVersionReference {
         SecretVersionReference::new(SecretId::new(), 1).expect("reference")
@@ -411,7 +411,7 @@ mod tests {
             access_key_id: reference(),
             secret_access_key: reference(),
             session_token: Some(reference()),
-            retention_policy: ObjectNamespaceRetentionPolicySpec {
+            retention_policy: DurableCellRetentionPolicySpec {
                 minimum_sealed_recovery_points: 2,
                 maximum_sealed_recovery_points: 24,
                 maximum_recovery_point_age_seconds: 30 * 24 * 60 * 60,
@@ -430,17 +430,16 @@ mod tests {
         .expect("canonical binding");
         assert_eq!(restored, binding);
 
+        assert_eq!(binding.spec().credential_generation, 1);
+        assert_eq!(
+            binding
+                .spec()
+                .retention_policy
+                .maximum_sealed_recovery_points,
+            24
+        );
         let organization_id = OrganizationId::new();
-        let project_id = ProjectId::new();
-        let environment_id = EnvironmentId::new();
         let namespace_id = StorageNamespaceId::new();
-        let (credentials, retention) = binding
-            .bind_scope(organization_id, project_id, environment_id, namespace_id)
-            .expect("scoped bindings");
-        credentials
-            .validate_scope(organization_id, project_id, environment_id, namespace_id)
-            .expect("exact scope");
-        assert_eq!(retention.spec(), &binding.spec().retention_policy);
         assert!(!binding
             .canonical_acl()
             .contains(&organization_id.to_string()));

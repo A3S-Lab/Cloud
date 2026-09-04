@@ -1014,6 +1014,36 @@ fn durable_cells_provider_workload_validation_uses_storage_projections() {
 }
 
 #[test]
+fn durable_cells_deployment_acl_keeps_data_materialization_at_the_inbound_edge() {
+    let binding =
+        std::fs::read_to_string(module_root().join("durable_cells/domain/deployment_binding.rs"))
+            .expect("read Durable Cells deployment binding domain");
+    let admission = std::fs::read_to_string(
+        module_root().join("durable_cells/presentation/deployment_admission.rs"),
+    )
+    .expect("read Durable Cells deployment ACL admission");
+
+    let binding = production_source(&binding);
+    let admission = production_source(&admission);
+    assert!(
+        !binding.contains("crate::modules::data"),
+        "Durable Cell deployment ACL domain imported Data concrete types"
+    );
+    assert!(binding.contains("DurableCellRetentionPolicySpec"));
+    for required in [
+        "ObjectNamespaceCredentialBinding::from_spec",
+        "ObjectNamespaceRetentionPolicy::from_spec",
+        "ObjectNamespaceRetentionPolicySpec",
+    ] {
+        assert!(
+            admission.contains(required),
+            "Durable Cell inbound admission lost Data materialization {required}"
+        );
+    }
+    assert!(!binding.contains("bind_scope("));
+}
+
+#[test]
 fn durable_cells_secret_binding_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
