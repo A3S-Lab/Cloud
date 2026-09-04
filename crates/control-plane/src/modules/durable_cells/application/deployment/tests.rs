@@ -604,7 +604,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let writer_fence = DurableCellWriterFenceAdapter::new(
         applications.clone(),
         deployments.clone(),
-        workloads.clone(),
+        workload_port.clone(),
         workloads.clone(),
         Arc::new(InMemoryOperationRepository::new()),
     )

@@ -1685,7 +1685,7 @@ async fn build_api_worker_application(
         let durable_cell_writer_fences = Arc::new(DurableCellWriterFenceAdapter::new(
             Arc::clone(&durable_cell_applications),
             Arc::clone(&durable_cell_deployments),
-            Arc::clone(&workloads),
+            Arc::clone(&durable_cell_workload_port),
             writer_fences,
             Arc::clone(&operation_repository),
         ));
