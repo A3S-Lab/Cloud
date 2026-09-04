@@ -11,13 +11,16 @@ use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWrite
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
     validate_durable_cell_provider_workload_projection,
-    validate_pinned_celld_service_template_payload,
+    validate_pinned_celld_service_template_payload_projection,
+};
+use super::storage_port::{
+    DurableCellStorageProviderProfileProjection, DurableCellStorageProviderProfileRequest,
+    IDurableCellStoragePort,
 };
 use super::workload_port::{
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     IDurableCellWorkloadPort,
 };
-use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellPublisherProfile, DurableCellServiceProfile,
     IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
@@ -57,6 +60,7 @@ pub(crate) struct DurableCellBundlePublicationGate {
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
     builds: Arc<dyn IDurableCellBuildArtifactPort>,
     workloads: Arc<dyn IDurableCellWorkloadPort>,
+    storage: Arc<dyn IDurableCellStoragePort>,
     prior_writer_seal: DurableCellPriorWriterSeal,
     executions: Arc<dyn IDurableCellExecutionPort>,
 }
@@ -75,6 +79,7 @@ impl DurableCellBundlePublicationGate {
             deployments,
             builds,
             workloads,
+            storage: prior_writer_seal.storage_port(),
             prior_writer_seal,
             executions,
         }
@@ -273,8 +278,24 @@ impl DurableCellBundlePublicationGate {
         execution_id: ExecutionId,
     ) -> Result<DurableCellExecutionRequest, CompositionError> {
         let provider_profile = correlation
-            .require_storage_provider_profile()
-            .map_err(CompositionError::failed)?;
+            .storage_provider_profile_acl
+            .as_deref()
+            .ok_or_else(|| {
+                CompositionError::failed(
+                    "Durable Cell publication requires the bound S0 provider profile",
+                )
+            })?;
+        let provider_profile = self
+            .storage
+            .project_provider_profile(
+                &DurableCellStorageProviderProfileRequest::new(
+                    provider_profile,
+                    correlation.storage.provider_profile_digest.clone(),
+                )
+                .map_err(CompositionError::failed)?,
+            )
+            .await
+            .map_err(CompositionError::application)?;
         let publisher =
             DurableCellPublisherProfile::pinned_celld_v0_2_1().map_err(CompositionError::failed)?;
 
@@ -329,7 +350,7 @@ impl DurableCellBundlePublicationGate {
             &workload.provider_workload,
         )
         .map_err(CompositionError::failed)?;
-        let image_media_type = validate_pinned_celld_service_template_payload(
+        let image_media_type = validate_pinned_celld_service_template_payload_projection(
             &provider_profile,
             correlation.storage.storage_namespace_id,
             &service_profile,
@@ -408,13 +429,13 @@ struct PublicationTaskDefinition {
 /// retained real-provider test use this constructor so command, S0 namespace,
 /// mount, Secret, resource, and network semantics cannot drift independently.
 fn build_publication_task_definition(
-    provider_profile: &ObjectNamespaceProviderProfile,
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     publisher: &DurableCellPublisherProfile,
     definition: PublicationTaskDefinitionInput,
 ) -> Result<PublicationTaskDefinition, String> {
     provider_profile.validate()?;
     publisher.validate()?;
-    if provider_profile.spec().virtual_hosted_style {
+    if provider_profile.virtual_hosted_style {
         return Err("celld v0.2.1 publication requires path-style S0 addressing".into());
     }
     if !matches!(
@@ -440,15 +461,11 @@ fn build_publication_task_definition(
                 "deploy".into(),
                 publisher.bundle_mount().into(),
                 "--bucket".into(),
-                format!(
-                    "s3://{}/{}",
-                    provider_profile.spec().bucket,
-                    namespace_prefix
-                ),
+                format!("s3://{}/{}", provider_profile.bucket, namespace_prefix),
                 "--endpoint".into(),
-                provider_profile.spec().endpoint.clone(),
+                provider_profile.endpoint.clone(),
                 "--region".into(),
-                provider_profile.spec().region.clone(),
+                provider_profile.region.clone(),
             ],
             working_directory: Some(publisher.bundle_mount().into()),
             environment: BTreeMap::new(),

@@ -46,6 +46,10 @@ impl DurableCellPriorWriterSeal {
         }
     }
 
+    pub(crate) fn storage_port(&self) -> Arc<dyn IDurableCellStoragePort> {
+        Arc::clone(&self.storage_port)
+    }
+
     /// Reconciles the sole prior-writer admission authority for a Durable Cell.
     /// A missing receipt means this is the first writer. Once Workloads has
     /// issued a receipt, only the exact successful S0 seal may admit a later

@@ -9,6 +9,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 const MAX_CREDENTIAL_BINDING_BYTES: usize = 16 * 1024;
+const MAX_PROVIDER_PROFILE_ACL_BYTES: usize = 16 * 1024;
+const MAX_PROVIDER_PROFILE_FIELD_BYTES: usize = 4096;
 const MAX_RECOVERY_POINT_BYTES: usize = 32 * 1024;
 const MAX_RECOVERY_POINT_KEY_BYTES: usize = 4096;
 const MAX_SAFE_SERIALIZED_INTEGER: u64 = 9_007_199_254_740_991;
@@ -117,6 +119,106 @@ impl DurableCellStorageCredentialRequest {
             "Durable Cell S0 credential identity",
         )?;
         Ok(Sha256Digest::from_bytes(&bytes))
+    }
+}
+
+/// Opaque, immutable S0 provider-profile input accepted by the Durable Cells
+/// consumer port. Data remains the authority for parsing the canonical ACL and
+/// validating provider semantics; this request carries only the ACL bytes and
+/// the digest already bound to the Durable Cell deployment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellStorageProviderProfileRequest {
+    pub acl: String,
+    pub expected_digest: Sha256Digest,
+}
+
+impl DurableCellStorageProviderProfileRequest {
+    pub fn new(acl: impl Into<String>, expected_digest: Sha256Digest) -> Result<Self, String> {
+        let request = Self {
+            acl: acl.into(),
+            expected_digest,
+        };
+        request.validate()?;
+        Ok(request)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.acl.is_empty()
+            || self.acl.len() > MAX_PROVIDER_PROFILE_ACL_BYTES
+            // Canonical ACL is a bounded, line-oriented document; newlines
+            // are part of its wire representation. NUL is the only control
+            // byte rejected before the consumer-owned parser runs.
+            || self.acl.contains('\0')
+            || Sha256Digest::parse(self.expected_digest.as_str())? != self.expected_digest
+        {
+            return Err("Durable Cell S0 provider-profile request is invalid".into());
+        }
+        Ok(())
+    }
+}
+
+/// Immutable, provider-neutral S0 profile semantics required by the pinned
+/// Durable Cell adapter. No credential, client, repository, or namespace
+/// lifecycle crosses this projection.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableCellStorageProviderProfileProjection {
+    pub digest: Sha256Digest,
+    pub endpoint: String,
+    pub region: String,
+    pub bucket: String,
+    pub prefix: String,
+    pub virtual_hosted_style: bool,
+}
+
+impl DurableCellStorageProviderProfileProjection {
+    pub fn validate(&self) -> Result<(), String> {
+        if Sha256Digest::parse(self.digest.as_str())? != self.digest
+            || self.endpoint.is_empty()
+            || self.endpoint.len() > MAX_PROVIDER_PROFILE_FIELD_BYTES
+            || self.region.is_empty()
+            || self.region.len() > MAX_PROVIDER_PROFILE_FIELD_BYTES
+            || self.bucket.is_empty()
+            || self.bucket.len() > MAX_PROVIDER_PROFILE_FIELD_BYTES
+            || self.prefix.is_empty()
+            || self.prefix.len() > MAX_PROVIDER_PROFILE_FIELD_BYTES
+            || [
+                self.endpoint.as_str(),
+                self.region.as_str(),
+                self.bucket.as_str(),
+                self.prefix.as_str(),
+            ]
+            .iter()
+            .any(|value| value.contains(['\0', '\r', '\n']))
+        {
+            return Err("Durable Cell S0 provider-profile projection is invalid".into());
+        }
+        canonical_json_bounded(
+            self,
+            MAX_PROVIDER_PROFILE_ACL_BYTES,
+            "Durable Cell S0 provider-profile projection",
+        )?;
+        Ok(())
+    }
+
+    pub fn namespace_prefix(&self, namespace_id: StorageNamespaceId) -> Result<String, String> {
+        self.validate()?;
+        if namespace_id.as_uuid().is_nil() {
+            return Err("Durable Cell S0 namespace requires a non-nil namespace ID".into());
+        }
+        Ok(format!("{}/{}", self.prefix, namespace_id))
+    }
+
+    pub fn recovery_prefix(&self, namespace_id: StorageNamespaceId) -> Result<String, String> {
+        self.validate()?;
+        if namespace_id.as_uuid().is_nil() {
+            return Err("Durable Cell S0 recovery scope requires a non-nil namespace ID".into());
+        }
+        Ok(format!("{}/.a3s-recovery/{namespace_id}", self.prefix))
+    }
+
+    pub const fn digest(&self) -> &Sha256Digest {
+        &self.digest
     }
 }
 
@@ -328,6 +430,14 @@ struct DurableCellStorageCredentialIdentity<'a> {
 /// repository, plaintext, or credential lifecycle crosses this interface.
 #[async_trait]
 pub trait IDurableCellStoragePort: Send + Sync {
+    /// Resolves one canonical Data/S0 provider-profile ACL into the bounded
+    /// semantics needed by Durable Cell publication. The owner adapter is the
+    /// only place that parses or restores the concrete profile aggregate.
+    async fn project_provider_profile(
+        &self,
+        request: &DurableCellStorageProviderProfileRequest,
+    ) -> ApplicationResult<DurableCellStorageProviderProfileProjection>;
+
     async fn require_active_credentials(
         &self,
         request: &DurableCellStorageCredentialRequest,
@@ -403,6 +513,50 @@ mod tests {
             request.session_token,
         )
         .is_err());
+    }
+
+    fn provider_profile() -> DurableCellStorageProviderProfileProjection {
+        DurableCellStorageProviderProfileProjection {
+            digest: Sha256Digest::from_bytes(b"provider-profile"),
+            endpoint: "https://s3.example.test/".into(),
+            region: "us-east-1".into(),
+            bucket: "a3s-test".into(),
+            prefix: "durable-cells".into(),
+            virtual_hosted_style: false,
+        }
+    }
+
+    #[test]
+    fn provider_profile_projection_is_bounded_and_derives_disjoint_scopes() {
+        let profile = provider_profile();
+        profile.validate().expect("provider profile projection");
+        let namespace = StorageNamespaceId::new();
+        assert_eq!(
+            profile
+                .namespace_prefix(namespace)
+                .expect("namespace prefix"),
+            format!("durable-cells/{namespace}")
+        );
+        assert_eq!(
+            profile.recovery_prefix(namespace).expect("recovery prefix"),
+            format!("durable-cells/.a3s-recovery/{namespace}")
+        );
+        let mut invalid = profile;
+        invalid.prefix.clear();
+        assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn provider_profile_request_requires_a_canonical_digest_bound_acl() {
+        let request = DurableCellStorageProviderProfileRequest::new(
+            "object_namespace_provider {}",
+            Sha256Digest::from_bytes(b"profile"),
+        )
+        .expect("profile request");
+        request.validate().expect("valid profile request");
+        let mut invalid = request;
+        invalid.acl.push('\0');
+        assert!(invalid.validate().is_err());
     }
 
     fn recovery_point(

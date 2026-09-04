@@ -241,10 +241,11 @@ Current boundary debt:
   seal reads the exact Operations request/projection through one
   `IDurableCellOperationPort` and owner adapter, and receives only an
   owner-neutral S0 recovery projection through the Storage port;
-- S0 credential admission and the exact seal input/output recovery projection
-  now cross one consumer-owned `IDurableCellStoragePort` and one Data
-  anti-corruption adapter; immutable provider-profile/retention projections
-  and recovery operations remain in the follow-up storage slices;
+- S0 credential admission, provider-profile projection, and the exact seal
+  input/output recovery projection now cross one consumer-owned
+  `IDurableCellStoragePort` and one Data anti-corruption adapter; immutable
+  retention projections and recovery operations remain in the follow-up
+  storage slices;
 - exact provider-template Secret version admission now crosses one
   `IDurableCellSecretBindingPort` and one Secrets anti-corruption adapter;
   plaintext and materialization remain outside Durable Cells;
@@ -309,9 +310,10 @@ The required Cloud refactor is a set of consumer-owned ports:
 
 - `IDurableCellBuildArtifactPort` (implemented for successful typed BuildRun
   bundle consumption);
-- `IDurableCellStoragePort` (implemented for exact S0 credential admission and
-  the typed seal input/output recovery projection; immutable profile,
-  retention, and recovery-operation projections remain to be split);
+- `IDurableCellStoragePort` (implemented for exact S0 credential admission,
+  the immutable provider-profile projection, and the typed seal input/output
+  recovery projection; retention and recovery-operation projections remain to
+  be split);
 - `IDurableCellSecretBindingPort` (implemented for exact active-version
   admission through the canonical Secrets query);
 - `IDurableCellExecutionPort` (implemented for deterministic node-bound

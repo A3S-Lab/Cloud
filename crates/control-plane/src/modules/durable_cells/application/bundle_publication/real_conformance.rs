@@ -8,6 +8,7 @@ use crate::modules::data::{
     ObjectNamespaceKey, ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec,
     ObjectNamespaceRead,
 };
+use crate::modules::durable_cells::application::DurableCellStorageProviderProfileProjection;
 use crate::modules::durable_cells::infrastructure::materialize_bound_execution_for_conformance;
 use crate::modules::edge::infrastructure::gateway_http_upstream;
 use crate::modules::edge::{
@@ -1791,8 +1792,17 @@ fn publication_execution(
     secrets: Vec<SecretReference>,
 ) -> Result<Execution, String> {
     let execution_id = ExecutionId::new();
+    let storage_profile_projection = DurableCellStorageProviderProfileProjection {
+        digest: storage_profile.digest().clone(),
+        endpoint: storage_profile.spec().endpoint.clone(),
+        region: storage_profile.spec().region.clone(),
+        bucket: storage_profile.spec().bucket.clone(),
+        prefix: storage_profile.spec().prefix.clone(),
+        virtual_hosted_style: storage_profile.spec().virtual_hosted_style,
+    };
+    storage_profile_projection.validate()?;
     let definition = build_publication_task_definition(
-        storage_profile,
+        &storage_profile_projection,
         publisher,
         PublicationTaskDefinitionInput {
             storage_namespace_id,
@@ -1804,7 +1814,7 @@ fn publication_execution(
                     format!(
                         "cell0.5-c3:{}:{}:{}",
                         publisher.digest(),
-                        storage_profile.digest(),
+                        storage_profile_projection.digest(),
                         bundle.digest
                     )
                     .as_bytes(),

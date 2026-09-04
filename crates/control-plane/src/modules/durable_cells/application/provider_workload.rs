@@ -1,3 +1,4 @@
+use super::storage_port::DurableCellStorageProviderProfileProjection;
 use super::workload_port::DurableCellWorkloadTemplate;
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
@@ -112,9 +113,29 @@ pub fn compose_pinned_celld_service_process(
     internal_container_port: u16,
     publisher: &DurableCellPublisherProfile,
 ) -> Result<ServiceProcess, String> {
+    let provider_profile = project_storage_profile(provider_profile)?;
+    compose_pinned_celld_service_process_projection(
+        &provider_profile,
+        storage_namespace_id,
+        public_container_port,
+        internal_container_port,
+        publisher,
+    )
+}
+
+/// Compose the reviewed celld process from the owner-neutral S0 profile
+/// projection. Data ACL parsing is deliberately kept in the adapter wrapper
+/// above; publication and recovery consumers use this boundary value only.
+pub(crate) fn compose_pinned_celld_service_process_projection(
+    provider_profile: &DurableCellStorageProviderProfileProjection,
+    storage_namespace_id: StorageNamespaceId,
+    public_container_port: u16,
+    internal_container_port: u16,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<ServiceProcess, String> {
     provider_profile.validate()?;
     publisher.validate()?;
-    if provider_profile.spec().virtual_hosted_style {
+    if provider_profile.virtual_hosted_style {
         return Err("celld v0.2.1 Service requires path-style S0 addressing".into());
     }
     if public_container_port == 0
@@ -128,15 +149,11 @@ pub fn compose_pinned_celld_service_process(
         command: publisher.command().to_vec(),
         args: vec![
             "--bucket".into(),
-            format!(
-                "s3://{}/{}",
-                provider_profile.spec().bucket,
-                namespace_prefix
-            ),
+            format!("s3://{}/{}", provider_profile.bucket, namespace_prefix),
             "--endpoint".into(),
-            provider_profile.spec().endpoint.clone(),
+            provider_profile.endpoint.clone(),
             "--region".into(),
-            provider_profile.spec().region.clone(),
+            provider_profile.region.clone(),
             "--listen".into(),
             format!("0.0.0.0:{public_container_port}"),
             "--internal-listen".into(),
@@ -165,6 +182,23 @@ pub fn compose_pinned_celld_service_process(
 /// rejects rather than silently accepting that unsupported resource promise.
 pub(super) fn validate_pinned_celld_service_projection(
     provider_profile: &ObjectNamespaceProviderProfile,
+    storage_namespace_id: StorageNamespaceId,
+    service_profile: &DurableCellServiceProfile,
+    template: &ServiceTemplate,
+    publisher: &DurableCellPublisherProfile,
+) -> Result<(), String> {
+    let provider_profile = project_storage_profile(provider_profile)?;
+    validate_pinned_celld_service_projection_projection(
+        &provider_profile,
+        storage_namespace_id,
+        service_profile,
+        template,
+        publisher,
+    )
+}
+
+pub(crate) fn validate_pinned_celld_service_projection_projection(
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     storage_namespace_id: StorageNamespaceId,
     service_profile: &DurableCellServiceProfile,
     template: &ServiceTemplate,
@@ -208,7 +242,7 @@ pub(super) fn validate_pinned_celld_service_projection(
         .ok_or_else(|| {
             "Durable Cell provider Service omitted its internal Runtime port".to_owned()
         })?;
-    let expected = compose_pinned_celld_service_process(
+    let expected = compose_pinned_celld_service_process_projection(
         provider_profile,
         storage_namespace_id,
         public.container_port,
@@ -281,8 +315,8 @@ pub(super) fn validate_publisher_secret_targets(
 /// Decodes and validates the opaque Workloads template only at the owner
 /// translation helper. Durable Cells application code receives the resulting
 /// media type, but never imports or reconstructs the Workloads model.
-pub(super) fn validate_pinned_celld_service_template_payload(
-    provider_profile: &ObjectNamespaceProviderProfile,
+pub(crate) fn validate_pinned_celld_service_template_payload_projection(
+    provider_profile: &DurableCellStorageProviderProfileProjection,
     storage_namespace_id: StorageNamespaceId,
     service_profile: &DurableCellServiceProfile,
     payload: &DurableCellWorkloadTemplate,
@@ -294,7 +328,7 @@ pub(super) fn validate_pinned_celld_service_template_payload(
     if digest != *payload.digest() {
         return Err("opaque Workloads Service template digest changed".into());
     }
-    validate_pinned_celld_service_projection(
+    validate_pinned_celld_service_projection_projection(
         provider_profile,
         storage_namespace_id,
         service_profile,
@@ -303,6 +337,23 @@ pub(super) fn validate_pinned_celld_service_template_payload(
     )?;
     validate_publisher_secret_targets(&template, publisher)?;
     Ok(template.artifact.media_type)
+}
+
+fn project_storage_profile(
+    provider_profile: &ObjectNamespaceProviderProfile,
+) -> Result<DurableCellStorageProviderProfileProjection, String> {
+    provider_profile.validate()?;
+    let spec = provider_profile.spec();
+    let projection = DurableCellStorageProviderProfileProjection {
+        digest: provider_profile.digest().clone(),
+        endpoint: spec.endpoint.clone(),
+        region: spec.region.clone(),
+        bucket: spec.bucket.clone(),
+        prefix: spec.prefix.clone(),
+        virtual_hosted_style: spec.virtual_hosted_style,
+    };
+    projection.validate()?;
+    Ok(projection)
 }
 
 /// Reconstructs the exact plaintext-free S0 credential binding from the
