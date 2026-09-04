@@ -3,7 +3,7 @@ use super::node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNod
 use super::provider_workload::compose_pinned_celld_service_process;
 use super::provider_workload::{
     durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
-    validate_durable_cell_provider_workload_binding, validate_pinned_celld_provider_workload,
+    validate_pinned_celld_provider_workload,
 };
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use super::secret_binding_port::{
@@ -11,8 +11,9 @@ use super::secret_binding_port::{
 };
 use super::storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 use super::workload_port::{
+    DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
 };
 use crate::modules::data::{
     ObjectNamespaceCredentialBinding, ObjectNamespaceProviderProfile,
@@ -25,21 +26,13 @@ use crate::modules::durable_cells::domain::{
     DurableCellStorageBinding, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
-    NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, ResourceName,
-    SecretVersionReference, Sha256Digest,
+    NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, SecretVersionReference,
+    Sha256Digest,
 };
-use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
-};
-use crate::modules::workloads::{
-    CreateDeploymentBundle, Deployment, DeploymentBundle, DeploymentRequested, IWorkloadRepository,
-    ServiceTemplate, Workload, WorkloadControlSpec, WorkloadDesiredState, WorkloadRevision,
-};
+use crate::modules::workloads::{ServiceTemplate, WorkloadControlSpec, WorkloadRevision};
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -74,7 +67,7 @@ impl Command for DeployDurableCellApplication {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DurableCellDeploymentMutationResult {
     pub correlation: DurableCellDeployment,
-    pub workload: DeploymentBundle,
+    pub workload: DurableCellWorkloadDeployment,
     pub replayed: bool,
 }
 
@@ -82,7 +75,6 @@ pub struct DurableCellDeploymentMutationResult {
 pub struct DeployDurableCellApplicationHandler {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
     workload_port: Arc<dyn IDurableCellWorkloadPort>,
     storage: Arc<dyn IDurableCellStoragePort>,
     secret_bindings: Arc<dyn IDurableCellSecretBindingPort>,
@@ -93,7 +85,6 @@ impl DeployDurableCellApplicationHandler {
     pub fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
-        workloads: Arc<dyn IWorkloadRepository>,
         workload_port: Arc<dyn IDurableCellWorkloadPort>,
         storage: Arc<dyn IDurableCellStoragePort>,
         secret_bindings: Arc<dyn IDurableCellSecretBindingPort>,
@@ -102,7 +93,6 @@ impl DeployDurableCellApplicationHandler {
         Self {
             applications,
             deployments,
-            workloads,
             workload_port,
             storage,
             secret_bindings,
@@ -122,7 +112,6 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
     > {
         let applications = Arc::clone(&self.applications);
         let deployments = Arc::clone(&self.deployments);
-        let workloads = Arc::clone(&self.workloads);
         let workload_port = Arc::clone(&self.workload_port);
         let storage = Arc::clone(&self.storage);
         let secret_bindings = Arc::clone(&self.secret_bindings);
@@ -196,14 +185,23 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
-            match workloads.replay_deployment(&workload_idempotency).await {
-                Ok(Some(bundle)) => {
-                    if let Err(error) = validate_workload_bundle(
-                        &correlation,
-                        &prepared.service_profile,
-                        &command.workload_template,
-                        &bundle,
-                    ) {
+            let workload_request = match workload_deployment_request(
+                &command,
+                &prepared,
+                &correlation,
+                workload_idempotency,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
+            };
+            match workload_port
+                .replay_managed_deployment(&workload_request)
+                .await
+            {
+                Ok(Some(workload)) => {
+                    if let Err(error) =
+                        validate_workload_projection(&correlation, &workload_request, &workload)
+                    {
                         return Err(BootError::Internal(error));
                     }
                     if let Err(error) = workload_port
@@ -219,12 +217,12 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                     }
                     return Ok(Ok(DurableCellDeploymentMutationResult {
                         correlation,
-                        workload: bundle,
+                        workload,
                         replayed: true,
                     }));
                 }
                 Ok(None) => {}
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             }
 
             // A persisted intent may precede its Workload bundle when the
@@ -243,18 +241,18 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
             {
                 return Ok(Err(error));
             }
-            let bundle = match create_managed_workload(
-                workloads.as_ref(),
-                &command,
-                &prepared,
-                &correlation,
-                workload_idempotency,
-            )
-            .await
+            let workload = match workload_port
+                .create_managed_deployment(&workload_request)
+                .await
             {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
+            if let Err(error) =
+                validate_workload_projection(&correlation, &workload_request, &workload)
+            {
+                return Err(BootError::Internal(error));
+            }
             if let Err(error) = workload_port
                 .converge_managed_replicas(&DurableCellWorkloadReconciliationRequest::new(
                     command.organization_id,
@@ -268,8 +266,8 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
             }
             Ok(Ok(DurableCellDeploymentMutationResult {
                 correlation,
-                workload: bundle,
-                replayed: correlation_replayed,
+                replayed: correlation_replayed || workload.replayed,
+                workload,
             }))
         })
     }
@@ -600,150 +598,68 @@ async fn prepare_correlation(
     .map_err(ApplicationError::Internal)
 }
 
-async fn create_managed_workload(
-    workloads: &dyn IWorkloadRepository,
+fn workload_deployment_request(
     command: &DeployDurableCellApplication,
     prepared: &PreparedDeployment,
     correlation: &DurableCellDeployment,
     idempotency: IdempotencyRequest,
-) -> ApplicationResult<DeploymentBundle> {
-    let projection = &correlation.projection;
-    let workload = match workloads
-        .find_workload(projection.organization_id, projection.workload_id)
-        .await
-    {
-        Ok(value) => {
-            validate_existing_workload(&value, projection)?;
-            value
-        }
-        Err(RepositoryError::NotFound) => Workload::create(
-            projection.workload_id,
-            projection.organization_id,
-            projection.project_id,
-            projection.environment_id,
-            managed_workload_name(projection.application_id)?,
-            correlation.requested_at,
-        ),
-        Err(error) => return Err(error.into()),
-    };
-    let requested_at = std::cmp::max(Utc::now(), workload.updated_at);
-    let revision = WorkloadRevision::create(
-        projection.workload_revision_id,
-        projection.workload_id,
-        correlation.provider.workload_generation,
-        command.workload_template.clone(),
-        requested_at,
-    )
-    .map_err(ApplicationError::Invalid)?;
-    validate_durable_cell_provider_workload_binding(
-        &correlation.provider,
-        &prepared.service_profile,
-        &revision,
-    )
-    .map_err(ApplicationError::Invalid)?;
-    let control = managed_control(
-        projection,
-        correlation.provider.workload_generation,
-        command.node_pool_id,
-    )?;
-    if control.placement_policy.digest() != correlation.placement_policy_digest.as_str() {
-        return Err(ApplicationError::Conflict(
-            "Durable Cell placement projection changed after admission".into(),
-        ));
-    }
-    let deployment = Deployment::create(
-        projection.deployment_id,
-        projection.organization_id,
-        projection.workload_id,
-        projection.workload_revision_id,
-        projection.operation_id,
-        requested_at,
-    );
-    let operation = OperationRequest::new(
-        projection.operation_id,
-        projection.organization_id,
-        OperationSubject::new("deployment", projection.deployment_id.as_uuid())
-            .map_err(ApplicationError::Internal)?,
-        WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
-            .map_err(ApplicationError::Internal)?,
-        serde_json::json!({
-            "deploymentId": projection.deployment_id,
-            "organizationId": projection.organization_id,
-            "revisionId": projection.workload_revision_id,
-            "workloadId": projection.workload_id,
-        }),
-        requested_at,
-    );
-    let event = DeploymentRequested::envelope(&deployment, &revision, correlation.request_id)
-        .map_err(|error| ApplicationError::Internal(error.to_string()))?;
-    let bundle = workloads
-        .create_deployment(CreateDeploymentBundle {
-            workload,
-            control,
-            revision,
-            deployment,
-            operation,
-            idempotency,
-            event,
-        })
-        .await
-        .map_err(ApplicationError::from)?;
-    validate_workload_bundle(
-        correlation,
-        &prepared.service_profile,
+) -> ApplicationResult<DurableCellWorkloadDeploymentRequest> {
+    let service_template = DurableCellWorkloadTemplate::from_serializable(
         &command.workload_template,
-        &bundle,
+        prepared.service_template_digest.clone(),
     )
-    .map_err(ApplicationError::Internal)?;
-    Ok(bundle)
+    .map_err(ApplicationError::Invalid)?;
+    let projection = &correlation.projection;
+    Ok(DurableCellWorkloadDeploymentRequest::new(
+        projection.organization_id,
+        projection.project_id,
+        projection.environment_id,
+        projection.application_id,
+        projection.application_revision_id,
+        projection.application_revision_number,
+        projection.application_definition_digest.clone(),
+        projection.workload_id,
+        projection.workload_revision_id,
+        projection.deployment_id,
+        projection.operation_id,
+        correlation.provider.workload_generation,
+        correlation.provider.provider_artifact_digest.clone(),
+        correlation.placement_policy_digest.clone(),
+        service_template,
+        command.node_pool_id,
+        idempotency,
+        correlation.request_id,
+        correlation.requested_at,
+    ))
 }
 
-fn validate_workload_bundle(
+fn validate_workload_projection(
     correlation: &DurableCellDeployment,
-    service_profile: &DurableCellServiceProfile,
-    template: &ServiceTemplate,
-    bundle: &DeploymentBundle,
+    request: &DurableCellWorkloadDeploymentRequest,
+    workload: &DurableCellWorkloadDeployment,
 ) -> Result<(), String> {
     let projection = &correlation.projection;
-    if bundle.workload.id != projection.workload_id
-        || bundle.workload.organization_id != projection.organization_id
-        || bundle.workload.project_id != projection.project_id
-        || bundle.workload.environment_id != projection.environment_id
-        || bundle.revision.id != projection.workload_revision_id
-        || bundle.revision.workload_id != projection.workload_id
-        || bundle.revision.generation != correlation.provider.workload_generation
-        || bundle.revision.resolved_template()? != template
-        || bundle.deployment.id != projection.deployment_id
-        || bundle.deployment.organization_id != projection.organization_id
-        || bundle.deployment.workload_id != projection.workload_id
-        || bundle.deployment.revision_id != projection.workload_revision_id
-        || bundle.deployment.operation_id != projection.operation_id
-        || bundle.operation.id != projection.operation_id
-        || bundle.operation.organization_id != projection.organization_id
-    {
-        return Err("Durable Cell managed Workload replay drifted".into());
-    }
-    validate_durable_cell_provider_workload_binding(
-        &correlation.provider,
-        service_profile,
-        &bundle.revision,
-    )
-}
-
-fn validate_existing_workload(
-    workload: &Workload,
-    projection: &DurableCellProjectionIdentity,
-) -> ApplicationResult<()> {
-    if workload.id != projection.workload_id
+    workload.validate()?;
+    if request.workload_id != projection.workload_id
+        || request.workload_revision_id != projection.workload_revision_id
+        || request.deployment_id != projection.deployment_id
+        || request.operation_id != projection.operation_id
         || workload.organization_id != projection.organization_id
         || workload.project_id != projection.project_id
         || workload.environment_id != projection.environment_id
-        || workload.name != managed_workload_name(projection.application_id)?
-        || workload.desired_state != WorkloadDesiredState::Running
+        || workload.workload_id != projection.workload_id
+        || workload.revision_id != projection.workload_revision_id
+        || workload.deployment_id != projection.deployment_id
+        || workload.operation_id != projection.operation_id
+        || workload.generation != correlation.provider.workload_generation
+        || workload.template_digest.as_ref() != Some(&correlation.provider.service_template_digest)
+        || workload.artifact_digest.as_ref() != Some(&correlation.provider.provider_artifact_digest)
+        || workload.expected_artifact_digest.as_ref()
+            != Some(&correlation.provider.provider_artifact_digest)
+        || workload.requested_at < correlation.requested_at
+        || workload.deployment_aggregate_version == 0
     {
-        return Err(ApplicationError::Conflict(
-            "Durable Cell managed Workload identity or desired state drifted".into(),
-        ));
+        return Err("Durable Cell managed Workload replay drifted".into());
     }
     Ok(())
 }
@@ -760,16 +676,6 @@ fn managed_control(
         node_pool_id,
     )
     .map_err(ApplicationError::Invalid)
-}
-
-fn managed_workload_name(
-    application_id: DurableCellApplicationId,
-) -> ApplicationResult<ResourceName> {
-    ResourceName::parse(format!(
-        "durable-cell-{}",
-        application_id.as_uuid().simple()
-    ))
-    .map_err(ApplicationError::Internal)
 }
 
 fn require_storage_credentials_in_template(

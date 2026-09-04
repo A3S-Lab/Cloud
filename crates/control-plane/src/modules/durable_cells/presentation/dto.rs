@@ -4,10 +4,8 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::{
     DurableCellApplicationMutationResult, DurableCellDeploymentMutationResult,
-    DurableCellRoutePublication, DurableCellRoutePublicationResult,
+    DurableCellRoutePublication, DurableCellRoutePublicationResult, DurableCellWorkloadDeployment,
 };
-use crate::modules::workloads::domain::entities::SkillWorkloadRevisionBinding;
-use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -236,7 +234,7 @@ impl From<DurableCellDeploymentMutationResult> for DurableCellDeploymentResponse
     fn from(result: DurableCellDeploymentMutationResult) -> Self {
         Self {
             correlation: result.correlation.into(),
-            workload: DurableCellWorkloadDeploymentResponse::from_bundle(result.workload, None),
+            workload: DurableCellWorkloadDeploymentResponse::from_projection(result.workload),
             replayed: result.replayed,
         }
     }
@@ -289,63 +287,31 @@ pub struct DurableCellSkillWorkloadRevisionBindingResponse {
     pub mount_target: String,
 }
 
-impl From<&SkillWorkloadRevisionBinding> for DurableCellSkillWorkloadRevisionBindingResponse {
-    fn from(binding: &SkillWorkloadRevisionBinding) -> Self {
-        Self {
-            organization_id: binding.organization_id().as_uuid(),
-            asset_id: binding.asset_id().as_uuid(),
-            asset_release_id: binding.asset_release_id().as_uuid(),
-            artifact_digest: binding.artifact_digest().to_string(),
-            artifact_media_type: binding.artifact_media_type().into(),
-            artifact_size_bytes: binding.artifact_size_bytes(),
-            mount_name: binding.mount_name(),
-            mount_target: binding.mount_target(),
-        }
-    }
-}
-
 impl DurableCellWorkloadDeploymentResponse {
-    fn from_bundle(bundle: DeploymentBundle, rollback_source_revision_id: Option<Uuid>) -> Self {
-        let external_source_revision_id = bundle
-            .revision
-            .external_build
-            .as_ref()
-            .map(|reference| reference.source_revision_id.as_uuid());
-        let build_run_id = bundle
-            .revision
-            .external_build
-            .as_ref()
-            .map(|reference| reference.build_run_id.as_uuid());
-        let skill_bindings = bundle
-            .revision
-            .skill_bindings()
-            .iter()
-            .map(DurableCellSkillWorkloadRevisionBindingResponse::from)
-            .collect();
+    fn from_projection(projection: DurableCellWorkloadDeployment) -> Self {
         Self {
-            organization_id: bundle.workload.organization_id.as_uuid(),
-            project_id: bundle.workload.project_id.as_uuid(),
-            environment_id: bundle.workload.environment_id.as_uuid(),
-            workload_id: bundle.workload.id.as_uuid(),
-            revision_id: bundle.revision.id.as_uuid(),
-            deployment_id: bundle.deployment.id.as_uuid(),
-            operation_id: bundle.operation.id.as_uuid(),
-            generation: bundle.revision.generation,
-            status: bundle.deployment.status.as_str().into(),
-            artifact_source_uri: bundle.revision.request.artifact.uri,
-            expected_artifact_digest: bundle.revision.request.artifact.expected_digest,
-            request_digest: bundle.revision.request_digest,
-            artifact_digest: bundle
-                .revision
-                .template
-                .map(|template| template.artifact.digest),
-            template_digest: bundle.revision.template_digest,
-            requested_at: bundle.deployment.requested_at,
-            replayed: bundle.replayed,
-            external_source_revision_id,
-            build_run_id,
-            rollback_source_revision_id,
-            skill_bindings,
+            organization_id: projection.organization_id.as_uuid(),
+            project_id: projection.project_id.as_uuid(),
+            environment_id: projection.environment_id.as_uuid(),
+            workload_id: projection.workload_id.as_uuid(),
+            revision_id: projection.revision_id.as_uuid(),
+            deployment_id: projection.deployment_id.as_uuid(),
+            operation_id: projection.operation_id.as_uuid(),
+            generation: projection.generation,
+            status: projection.status.as_str().into(),
+            artifact_source_uri: projection.artifact_source_uri,
+            expected_artifact_digest: projection
+                .expected_artifact_digest
+                .map(|digest| digest.to_string()),
+            request_digest: projection.request_digest.to_string(),
+            artifact_digest: projection.artifact_digest.map(|digest| digest.to_string()),
+            template_digest: projection.template_digest.map(|digest| digest.to_string()),
+            requested_at: projection.requested_at,
+            replayed: projection.replayed,
+            external_source_revision_id: None,
+            build_run_id: None,
+            rollback_source_revision_id: None,
+            skill_bindings: Vec::new(),
         }
     }
 }

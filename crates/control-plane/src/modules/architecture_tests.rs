@@ -765,16 +765,36 @@ fn durable_cells_workload_reconciliation_crosses_one_consumer_owned_port() {
     assert!(deployment.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(deployment.contains(".converge_managed_replicas("));
     assert!(deployment.contains(".resolve_revision_generation("));
+    assert!(deployment.contains(".replay_managed_deployment("));
+    assert!(deployment.contains(".create_managed_deployment("));
     assert!(!deployment.contains("next_workload_generation"));
     assert!(!deployment.contains("managed_replica_lifecycle"));
+    for forbidden in [
+        "IWorkloadRepository",
+        "CreateDeploymentBundle",
+        "Deployment::create",
+        "DeploymentRequested",
+    ] {
+        assert!(
+            !deployment.contains(forbidden),
+            "Durable Cells deployment bypassed its Workloads port with {forbidden}"
+        );
+    }
     assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadRevisionGenerationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadDeploymentRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadDeployment"));
     assert!(port.contains("pub trait IDurableCellWorkloadPort"));
+    assert!(port.contains("replay_managed_deployment"));
+    assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
     assert!(!port.contains("crate::modules::workloads"));
     for required in [
         "impl IDurableCellWorkloadPort",
         "IWorkloadRepository",
+        "create_deployment",
+        "replay_deployment",
+        "CreateDeploymentBundle",
         "list_revisions",
         "ReconfigureReplicaSetWrite",
         "DurableCellProjectionIdentity",

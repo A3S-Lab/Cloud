@@ -72,7 +72,9 @@ pub use secret_binding_port::{
 };
 pub use storage_port::{DurableCellStorageCredentialRequest, IDurableCellStoragePort};
 pub use workload_port::{
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
+    DurableCellWorkloadDeploymentStatus, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
     IDurableCellWorkloadPort,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;

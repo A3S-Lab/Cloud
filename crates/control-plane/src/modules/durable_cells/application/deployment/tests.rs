@@ -31,14 +31,14 @@ use crate::modules::secrets::domain::{
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId,
-    SecretId, SecretVersionReference,
+    ResourceName, SecretId, SecretVersionReference,
 };
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use crate::modules::workloads::{
-    HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadWriterFenceAdapter,
-    IWorkloadWriterFenceRepository, OciArtifact, ReplicaRetirementCompletion,
-    ReplicaRetirementDispatch, ReplicaRuntimeFence, SecretBinding, SecretBindingTarget,
-    ServicePort, ServiceResources, WorkloadDeploymentAvailabilityImpact,
+    HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository,
+    IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository, OciArtifact,
+    ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence, SecretBinding,
+    SecretBindingTarget, ServicePort, ServiceResources, WorkloadDeploymentAvailabilityImpact,
     WorkloadDeploymentFailurePhase, WorkloadDeploymentHealthChanged,
     WorkloadDeploymentHealthStatus, WorkloadReplicaLifecycle,
 };
@@ -230,7 +230,6 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let handler = DeployDurableCellApplicationHandler::new(
         applications.clone(),
         deployments.clone(),
-        workloads.clone(),
         workload_port.clone(),
         storage_port,
         secret_binding_port,
@@ -243,13 +242,13 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         .expect("recover deployment");
     assert!(recovered.replayed);
     assert_eq!(recovered.correlation, correlation);
-    assert_eq!(recovered.workload.workload.id, projection.workload_id);
+    assert_eq!(recovered.workload.workload_id, projection.workload_id);
     assert_eq!(
-        recovered.workload.revision.id,
+        recovered.workload.revision_id,
         projection.workload_revision_id
     );
-    assert_eq!(recovered.workload.deployment.id, projection.deployment_id);
-    assert_eq!(recovered.workload.operation.id, projection.operation_id);
+    assert_eq!(recovered.workload.deployment_id, projection.deployment_id);
+    assert_eq!(recovered.workload.operation_id, projection.operation_id);
     let control = workloads
         .find_workload_control(organization_id, projection.workload_id)
         .await
@@ -272,7 +271,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     workloads
         .fail(
             projection.deployment_id,
-            recovered.workload.deployment.aggregate_version,
+            recovered.workload.deployment_aggregate_version,
             "complete the first fixture generation".into(),
             Utc::now(),
         )
@@ -391,8 +390,8 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let placed_at = canonical_timestamp(Utc::now());
     let resolving = workloads
         .mark_resolving(
-            third.workload.deployment.id,
-            third.workload.deployment.aggregate_version,
+            third.workload.deployment_id,
+            third.workload.deployment_aggregate_version,
             placed_at,
         )
         .await

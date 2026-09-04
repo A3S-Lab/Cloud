@@ -862,13 +862,13 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     assert!(recovered.replayed);
     assert!(!recovered.workload.replayed);
     assert_eq!(recovered.correlation.projection, projection);
-    assert_eq!(recovered.workload.workload.id, projection.workload_id);
+    assert_eq!(recovered.workload.workload_id, projection.workload_id);
     assert_eq!(
-        recovered.workload.revision.id,
+        recovered.workload.revision_id,
         projection.workload_revision_id
     );
-    assert_eq!(recovered.workload.deployment.id, projection.deployment_id);
-    assert_eq!(recovered.workload.operation.id, projection.operation_id);
+    assert_eq!(recovered.workload.deployment_id, projection.deployment_id);
+    assert_eq!(recovered.workload.operation_id, projection.operation_id);
 
     let exact_replay = handler.execute(command, cqrs_context()).await??;
     assert!(exact_replay.replayed);
@@ -1173,7 +1173,6 @@ fn projection_deployment_handler(
         Arc::new(PostgresDurableCellDeploymentRepository::new(
             executor.clone(),
         )),
-        workloads,
         workload_port,
         storage,
         secret_bindings,
