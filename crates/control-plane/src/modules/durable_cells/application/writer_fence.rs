@@ -4,6 +4,7 @@ use super::provider_workload::{
     validate_pinned_celld_provider_workload,
 };
 use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
+use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
 use crate::modules::data::{
     ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
     SealObjectNamespaceOperationInput,
@@ -14,13 +15,13 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::fleet::domain::entities::NodeCommand;
 use crate::modules::operations::IOperationRepository;
+use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
 };
 use crate::modules::workloads::{
-    IWorkloadRepository, IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository,
-    RetiringReplicaTarget, WorkloadWriterFenceCommit, WorkloadWriterFenceReceipt,
-    WorkloadWriterFenceReceiptSpec,
+    IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository, RetiringReplicaTarget,
+    WorkloadWriterFenceCommit, WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
 };
 use a3s_cloud_contracts::NodeCommandAck;
 use async_trait::async_trait;
@@ -37,7 +38,7 @@ const MAX_ACKNOWLEDGEMENT_BYTES: usize = 128 * 1024;
 pub(crate) struct DurableCellWriterFenceAdapter {
     applications: Arc<dyn IDurableCellApplicationRepository>,
     deployments: Arc<dyn IDurableCellDeploymentRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    workloads: Arc<dyn IDurableCellWorkloadPort>,
     prior_writer_seal: DurableCellPriorWriterSeal,
 }
 
@@ -45,7 +46,7 @@ impl DurableCellWriterFenceAdapter {
     pub(crate) fn new(
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
-        workloads: Arc<dyn IWorkloadRepository>,
+        workloads: Arc<dyn IDurableCellWorkloadPort>,
         writer_fences: Arc<dyn IWorkloadWriterFenceRepository>,
         operations: Arc<dyn IOperationRepository>,
     ) -> Self {
@@ -113,17 +114,37 @@ impl DurableCellWriterFenceAdapter {
             // CELL0.5-C5a and must remain an ordinary Workloads retirement.
             return Ok(None);
         }
-        let control = self
+        let workload_request = DurableCellWorkloadWriterFenceRequest::new(
+            projection.organization_id,
+            projection.project_id,
+            projection.environment_id,
+            projection.application_id,
+            projection.application_revision_id,
+            projection.application_revision_number,
+            projection.application_definition_digest.clone(),
+            projection.workload_id,
+            projection.workload_revision_id,
+            target.revision.generation,
+            target.replica.id,
+            target.replica.generation,
+            target.replica.ordinal,
+        );
+        let Some(workload) = self
             .workloads
-            .find_workload_control(projection.organization_id, projection.workload_id)
-            .await?;
-        let owner = durable_cell_managed_owner_reference(projection)
-            .map_err(|error| conflict("restore Durable Cell managed owner", error))?;
-        if control.spec.placement_policy.desired_replicas() != 0
-            || control.spec.managed_owner.as_ref() != Some(&owner)
-        {
+            .load_writer_fence_admission(&workload_request)
+            .await
+            .map_err(application_repository_error)?
+        else {
             return Ok(None);
-        }
+        };
+        workload
+            .validate_against(&workload_request)
+            .map_err(|error| {
+                conflict(
+                    "validate Durable Cell writer-fence Workload projection",
+                    error,
+                )
+            })?;
         if target.replica.ordinal != 0 {
             return Err(RepositoryError::Conflict(
                 "CELL0.5 writer fencing requires the canonical single replica".into(),
@@ -266,6 +287,18 @@ fn seal_operation_id(workload_id: Uuid, writer_epoch: u64) -> OperationId {
         &workload_id,
         format!("{SEAL_OPERATION_NAME}:{writer_epoch}").as_bytes(),
     ))
+}
+
+fn application_repository_error(error: ApplicationError) -> RepositoryError {
+    match error {
+        ApplicationError::Internal(reason) | ApplicationError::Unavailable(reason) => {
+            RepositoryError::Storage(reason)
+        }
+        ApplicationError::NotFound(_) => RepositoryError::NotFound,
+        ApplicationError::Invalid(reason)
+        | ApplicationError::Conflict(reason)
+        | ApplicationError::Forbidden(reason) => RepositoryError::Conflict(reason),
+    }
 }
 
 fn conflict(context: &str, error: impl std::fmt::Display) -> RepositoryError {

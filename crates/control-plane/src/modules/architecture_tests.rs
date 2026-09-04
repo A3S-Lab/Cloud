@@ -751,6 +751,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         module_root().join("durable_cells/application/bundle_publication.rs"),
     )
     .expect("read Durable Cells bundle publication application");
+    let writer_fence =
+        std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
     let port =
         std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
             .expect("read Durable Cells Workload port");
@@ -762,6 +765,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     let commands = production_source(&commands);
     let deployment = production_source(&deployment);
     let bundle_publication = production_source(&bundle_publication);
+    let writer_fence = production_source(&writer_fence);
     let port = production_source(&port);
     let adapter = production_source(&adapter);
     assert!(commands.contains("Arc<dyn IDurableCellWorkloadPort>"));
@@ -783,6 +787,14 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         assert!(
             !deployment.contains(forbidden),
             "Durable Cells deployment bypassed its Workloads port with {forbidden}"
+        );
+    }
+    assert!(writer_fence.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(writer_fence.contains(".load_writer_fence_admission("));
+    for forbidden in ["IWorkloadRepository", ".find_workload_control("] {
+        assert!(
+            !writer_fence.contains(forbidden),
+            "Durable Cells writer fence bypassed its Workloads port with {forbidden}"
         );
     }
     assert!(bundle_publication.contains("Arc<dyn IDurableCellWorkloadPort>"));
@@ -807,11 +819,14 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("pub struct DurableCellWorkloadDeployment"));
     assert!(port.contains("pub struct DurableCellWorkloadPrestartRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadPrestartProjection"));
+    assert!(port.contains("pub struct DurableCellWorkloadWriterFenceRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadWriterFenceProjection"));
     assert!(port.contains("pub trait IDurableCellWorkloadPort"));
     assert!(port.contains("replay_managed_deployment"));
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
     assert!(port.contains("load_prestart_publication"));
+    assert!(port.contains("load_writer_fence_admission"));
     assert!(!port.contains("crate::modules::workloads"));
     for required in [
         "impl IDurableCellWorkloadPort",
@@ -823,6 +838,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "find_deployment_replica_binding",
         "find_workload_replica",
         "project_runtime_secrets",
+        "load_writer_fence_admission_projection",
         "ReconfigureReplicaSetWrite",
         "DurableCellProjectionIdentity",
     ] {

@@ -3,7 +3,7 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DurableCellApplicationId, DurableCellApplicationRevisionId,
     EnvironmentId, IdempotencyRequest, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
-    Sha256Digest, WorkloadId, WorkloadRevisionId,
+    Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_runtime::contract::{SecretReference, SecretTarget};
 use async_trait::async_trait;
@@ -391,6 +391,115 @@ impl DurableCellWorkloadPrestartProjection {
     }
 }
 
+/// Exact owner-neutral identity used when a stopped Durable Cell asks
+/// Workloads to prepare a single-writer fence. The Workloads adapter checks
+/// the mutable control projection and returns `None` for an ordinary
+/// retirement, so the Durable Cells application never reads that repository.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadWriterFenceRequest {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub application_id: DurableCellApplicationId,
+    pub application_revision_id: DurableCellApplicationRevisionId,
+    pub application_revision_number: u64,
+    pub application_definition_digest: Sha256Digest,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_generation: u64,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub replica_ordinal: u32,
+}
+
+impl DurableCellWorkloadWriterFenceRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        application_id: DurableCellApplicationId,
+        application_revision_id: DurableCellApplicationRevisionId,
+        application_revision_number: u64,
+        application_definition_digest: Sha256Digest,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        workload_generation: u64,
+        replica_id: WorkloadReplicaId,
+        replica_generation: u64,
+        replica_ordinal: u32,
+    ) -> Self {
+        Self {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id,
+            application_revision_id,
+            application_revision_number,
+            application_definition_digest,
+            workload_id,
+            workload_revision_id,
+            workload_generation,
+            replica_id,
+            replica_generation,
+            replica_ordinal,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.application_id.as_uuid().is_nil()
+            || self.application_revision_id.as_uuid().is_nil()
+            || self.application_revision_number == 0
+            || self.workload_id.as_uuid().is_nil()
+            || self.workload_revision_id.as_uuid().is_nil()
+            || self.workload_generation == 0
+            || self.replica_id.as_uuid().is_nil()
+            || self.replica_generation == 0
+        {
+            return Err("Durable Cell Workloads writer-fence identity is invalid".into());
+        }
+        Sha256Digest::parse(self.application_definition_digest.as_str())?;
+        Ok(())
+    }
+}
+
+/// Immutable Workloads admission returned for the exact stopped current
+/// Durable Cell replica. A missing value means the retirement belongs to a
+/// different owner or an older rollout and must follow ordinary Workloads
+/// cleanup semantics.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadWriterFenceProjection {
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_generation: u64,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub replica_ordinal: u32,
+}
+
+impl DurableCellWorkloadWriterFenceProjection {
+    pub fn validate_against(
+        &self,
+        request: &DurableCellWorkloadWriterFenceRequest,
+    ) -> Result<(), String> {
+        request.validate()?;
+        if self.workload_id != request.workload_id
+            || self.workload_revision_id != request.workload_revision_id
+            || self.workload_generation != request.workload_generation
+            || self.replica_id != request.replica_id
+            || self.replica_generation != request.replica_generation
+            || self.replica_ordinal != request.replica_ordinal
+            || self.replica_generation == 0
+        {
+            return Err("Durable Cell Workloads writer-fence projection drifted".into());
+        }
+        Ok(())
+    }
+}
+
 fn validate_secret_reference(secret: &SecretReference) -> Result<(), String> {
     if secret.name.is_empty()
         || secret.name.len() > 255
@@ -527,6 +636,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadPrestartRequest,
     ) -> ApplicationResult<DurableCellWorkloadPrestartProjection>;
+
+    async fn load_writer_fence_admission(
+        &self,
+        request: &DurableCellWorkloadWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadWriterFenceProjection>>;
 
     async fn replay_managed_deployment(
         &self,
@@ -695,5 +809,39 @@ mod tests {
             ..secret
         };
         assert!(validate_secret_reference(&invalid).is_err());
+    }
+
+    #[test]
+    fn writer_fence_projection_is_exactly_bound_to_replica_identity() {
+        let request = DurableCellWorkloadWriterFenceRequest::new(
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            DurableCellApplicationId::new(),
+            DurableCellApplicationRevisionId::new(),
+            2,
+            Sha256Digest::from_bytes(b"application"),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            5,
+            WorkloadReplicaId::new(),
+            9,
+            0,
+        );
+        let projection = DurableCellWorkloadWriterFenceProjection {
+            workload_id: request.workload_id,
+            workload_revision_id: request.workload_revision_id,
+            workload_generation: request.workload_generation,
+            replica_id: request.replica_id,
+            replica_generation: request.replica_generation,
+            replica_ordinal: request.replica_ordinal,
+        };
+        projection
+            .validate_against(&request)
+            .expect("exact writer-fence projection");
+
+        let mut drifted = projection;
+        drifted.replica_generation += 1;
+        assert!(drifted.validate_against(&request).is_err());
     }
 }

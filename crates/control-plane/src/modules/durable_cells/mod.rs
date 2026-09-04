@@ -31,6 +31,7 @@ pub use application::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPrestartProjection,
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
     IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellNodePoolPort,
     IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort, IDurableCellStoragePort,
     IDurableCellWorkloadPort,

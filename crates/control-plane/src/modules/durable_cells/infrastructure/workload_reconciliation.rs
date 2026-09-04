@@ -3,7 +3,8 @@ use crate::modules::durable_cells::application::{
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
+    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
+    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -190,6 +191,53 @@ impl WorkloadsDurableCellWorkloadAdapter {
         Ok(projection)
     }
 
+    async fn load_writer_fence_admission_projection(
+        &self,
+        request: &DurableCellWorkloadWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadWriterFenceProjection>> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let control = self
+            .workloads
+            .find_workload_control(request.organization_id, request.workload_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if control.organization_id != request.organization_id
+            || control.project_id != request.project_id
+            || control.environment_id != request.environment_id
+            || control.workload_id != request.workload_id
+        {
+            return Err(ApplicationError::Internal(
+                "Durable Cell writer-fence Workload control crossed its tenant scope".into(),
+            ));
+        }
+        let expected_owner = ManagedOwnerReference::new(
+            ManagedOwnerKind::parse(DURABLE_CELL_MANAGED_OWNER_KIND)
+                .map_err(ApplicationError::Internal)?,
+            request.application_id.as_uuid(),
+            request.application_revision_number,
+            request.application_definition_digest.as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        if control.spec.placement_policy.desired_replicas() != 0
+            || control.spec.placement_policy.members_per_replica() != 1
+            || control.spec.managed_owner.as_ref() != Some(&expected_owner)
+        {
+            return Ok(None);
+        }
+        let projection = DurableCellWorkloadWriterFenceProjection {
+            workload_id: request.workload_id,
+            workload_revision_id: request.workload_revision_id,
+            workload_generation: request.workload_generation,
+            replica_id: request.replica_id,
+            replica_generation: request.replica_generation,
+            replica_ordinal: request.replica_ordinal,
+        };
+        projection
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+        Ok(Some(projection))
+    }
+
     async fn validate_control(
         &self,
         request: &DurableCellWorkloadDeploymentRequest,
@@ -269,6 +317,13 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
         request: &DurableCellWorkloadPrestartRequest,
     ) -> ApplicationResult<DurableCellWorkloadPrestartProjection> {
         self.load_prestart_publication_projection(request).await
+    }
+
+    async fn load_writer_fence_admission(
+        &self,
+        request: &DurableCellWorkloadWriterFenceRequest,
+    ) -> ApplicationResult<Option<DurableCellWorkloadWriterFenceProjection>> {
+        self.load_writer_fence_admission_projection(request).await
     }
 
     async fn replay_managed_deployment(
