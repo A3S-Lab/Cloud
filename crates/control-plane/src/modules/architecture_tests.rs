@@ -758,10 +758,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         module_root().join("durable_cells/application/prior_writer_seal.rs"),
     )
     .expect("read Durable Cells prior-writer seal application");
-    let operation_port = std::fs::read_to_string(
-        module_root().join("durable_cells/application/operation_port.rs"),
-    )
-    .expect("read Durable Cells Operation port");
+    let operation_port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/operation_port.rs"))
+            .expect("read Durable Cells Operation port");
     let port =
         std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
             .expect("read Durable Cells Workload port");
@@ -769,10 +768,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
     )
     .expect("read Durable Cells Workloads adapter");
-    let operation_adapter = std::fs::read_to_string(
-        module_root().join("durable_cells/infrastructure/operations.rs"),
-    )
-    .expect("read Durable Cells Operations adapter");
+    let operation_adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/operations.rs"))
+            .expect("read Durable Cells Operations adapter");
 
     let commands = production_source(&commands);
     let deployment = production_source(&deployment);
