@@ -1,12 +1,15 @@
+use crate::modules::durable_cells::domain::DurableCellProviderWorkloadProjection;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DurableCellApplicationId, DurableCellApplicationRevisionId,
-    EnvironmentId, IdempotencyRequest, NodePoolId, OperationId, OrganizationId, ProjectId,
+    EnvironmentId, IdempotencyRequest, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
     Sha256Digest, WorkloadId, WorkloadRevisionId,
 };
+use a3s_runtime::contract::{SecretReference, SecretTarget};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
+use std::collections::BTreeSet;
 use uuid::Uuid;
 
 const MAX_WORKLOAD_TEMPLATE_BYTES: usize = 1024 * 1024;
@@ -256,6 +259,183 @@ impl DurableCellWorkloadDeployment {
     }
 }
 
+/// Exact, owner-neutral Workloads facts required by the Durable Cell
+/// pre-start publication gate. The Workloads adapter performs every aggregate
+/// read and returns only immutable projections plus opaque template bytes;
+/// Durable Cells does not receive a Workloads aggregate, repository, or event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadPrestartRequest {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub application_id: DurableCellApplicationId,
+    pub application_revision_id: DurableCellApplicationRevisionId,
+    pub application_revision_number: u64,
+    pub application_definition_digest: Sha256Digest,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_generation: u64,
+    pub deployment_id: DeploymentId,
+    pub operation_id: OperationId,
+    pub node_id: NodeId,
+}
+
+impl DurableCellWorkloadPrestartRequest {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        application_id: DurableCellApplicationId,
+        application_revision_id: DurableCellApplicationRevisionId,
+        application_revision_number: u64,
+        application_definition_digest: Sha256Digest,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        workload_generation: u64,
+        deployment_id: DeploymentId,
+        operation_id: OperationId,
+        node_id: NodeId,
+    ) -> Self {
+        Self {
+            organization_id,
+            project_id,
+            environment_id,
+            application_id,
+            application_revision_id,
+            application_revision_number,
+            application_definition_digest,
+            workload_id,
+            workload_revision_id,
+            workload_generation,
+            deployment_id,
+            operation_id,
+            node_id,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.environment_id.as_uuid().is_nil()
+            || self.application_id.as_uuid().is_nil()
+            || self.application_revision_id.as_uuid().is_nil()
+            || self.application_revision_number == 0
+            || self.workload_id.as_uuid().is_nil()
+            || self.workload_revision_id.as_uuid().is_nil()
+            || self.workload_generation == 0
+            || self.deployment_id.as_uuid().is_nil()
+            || self.operation_id.as_uuid().is_nil()
+            || self.node_id.as_uuid().is_nil()
+        {
+            return Err("Durable Cell Workloads pre-start identity is invalid".into());
+        }
+        Sha256Digest::parse(self.application_definition_digest.as_str())?;
+        Ok(())
+    }
+}
+
+/// Immutable Workloads projection consumed by the publication Execution
+/// compiler. Secret references remain opaque Runtime references; their
+/// plaintext is never present in this value.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadPrestartProjection {
+    pub deployment_id: DeploymentId,
+    pub operation_id: OperationId,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub node_id: NodeId,
+    pub writer_epoch: u64,
+    pub provider_workload: DurableCellProviderWorkloadProjection,
+    pub service_template: DurableCellWorkloadTemplate,
+    pub runtime_secrets: Vec<SecretReference>,
+}
+
+impl DurableCellWorkloadPrestartProjection {
+    pub fn validate_against(
+        &self,
+        request: &DurableCellWorkloadPrestartRequest,
+    ) -> Result<(), String> {
+        request.validate()?;
+        if self.deployment_id != request.deployment_id
+            || self.operation_id != request.operation_id
+            || self.workload_id != request.workload_id
+            || self.workload_revision_id != request.workload_revision_id
+            || self.node_id != request.node_id
+            || self.writer_epoch == 0
+            || self.provider_workload.workload_id != request.workload_id
+            || self.provider_workload.workload_revision_id != request.workload_revision_id
+            || self.provider_workload.workload_generation != request.workload_generation
+            || self.provider_workload.service_template_digest != *self.service_template.digest()
+            || self.runtime_secrets.len() > 128
+        {
+            return Err("Durable Cell Workloads pre-start projection drifted".into());
+        }
+        self.provider_workload.validate()?;
+        let mut names = BTreeSet::new();
+        let mut targets = BTreeSet::new();
+        for secret in &self.runtime_secrets {
+            validate_secret_reference(secret)?;
+            let target = match &secret.target {
+                SecretTarget::Environment { variable } => format!("environment:{variable}"),
+                SecretTarget::File { path, .. } => format!("file:{path}"),
+                SecretTarget::RegistryCredential => "registry_credential".into(),
+            };
+            if !names.insert(secret.name.as_str()) || !targets.insert(target) {
+                return Err(
+                    "Durable Cell Workloads pre-start Secret references are ambiguous".into(),
+                );
+            }
+        }
+        Ok(())
+    }
+}
+
+fn validate_secret_reference(secret: &SecretReference) -> Result<(), String> {
+    if secret.name.is_empty()
+        || secret.name.len() > 255
+        || secret
+            .name
+            .bytes()
+            .any(|byte| !(byte.is_ascii_alphanumeric() || b"-_ .".contains(&byte)))
+        || secret.name.starts_with(['-', '_', '.', ' '])
+        || secret.name.ends_with(['-', '_', '.', ' '])
+        || secret.reference.is_empty()
+        || secret.reference.len() > 1024
+        || secret.name.contains(['\0', '\r', '\n'])
+        || secret.reference.contains(['\0', '\r', '\n'])
+    {
+        return Err("Durable Cell Workloads pre-start Secret reference is invalid".into());
+    }
+    match &secret.target {
+        SecretTarget::Environment { variable } => {
+            let mut bytes = variable.bytes();
+            if variable.len() > 255
+                || !bytes
+                    .next()
+                    .is_some_and(|byte| byte.is_ascii_alphabetic() || byte == b'_')
+                || !bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+            {
+                return Err("Durable Cell Workloads Secret environment target is invalid".into());
+            }
+        }
+        SecretTarget::File { path, mode } => {
+            if path.is_empty()
+                || path.len() > 4096
+                || !path.starts_with('/')
+                || path.contains('\0')
+                || path.split('/').any(|segment| segment == "..")
+                || *mode == 0
+                || *mode > 0o777
+            {
+                return Err("Durable Cell Workloads Secret file target is invalid".into());
+            }
+        }
+        SecretTarget::RegistryCredential => {}
+    }
+    Ok(())
+}
+
 /// Exact identity of the Durable Cell application whose managed Workload
 /// projection must be reconciled.
 ///
@@ -343,6 +523,11 @@ impl DurableCellWorkloadRevisionGenerationRequest {
 /// mutation while Workloads retains lifecycle authority.
 #[async_trait]
 pub trait IDurableCellWorkloadPort: Send + Sync {
+    async fn load_prestart_publication(
+        &self,
+        request: &DurableCellWorkloadPrestartRequest,
+    ) -> ApplicationResult<DurableCellWorkloadPrestartProjection>;
+
     async fn replay_managed_deployment(
         &self,
         request: &DurableCellWorkloadDeploymentRequest,
@@ -441,5 +626,74 @@ mod tests {
             DurableCellWorkloadTemplate::new(bytes.clone(), Sha256Digest::from_bytes(&bytes),)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn prestart_projection_is_exactly_scoped_and_digest_locked() {
+        let request = DurableCellWorkloadPrestartRequest::new(
+            OrganizationId::new(),
+            ProjectId::new(),
+            EnvironmentId::new(),
+            DurableCellApplicationId::new(),
+            DurableCellApplicationRevisionId::new(),
+            4,
+            Sha256Digest::from_bytes(b"application"),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            7,
+            DeploymentId::new(),
+            OperationId::new(),
+            NodeId::new(),
+        );
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"artifact": "pinned"})).expect("template bytes");
+        let template_digest = Sha256Digest::from_bytes(&bytes);
+        let projection = DurableCellWorkloadPrestartProjection {
+            deployment_id: request.deployment_id,
+            operation_id: request.operation_id,
+            workload_id: request.workload_id,
+            workload_revision_id: request.workload_revision_id,
+            node_id: request.node_id,
+            writer_epoch: 2,
+            provider_workload: DurableCellProviderWorkloadProjection {
+                workload_id: request.workload_id,
+                workload_revision_id: request.workload_revision_id,
+                workload_generation: request.workload_generation,
+                service_template_digest: template_digest.clone(),
+                provider_artifact_digest: Sha256Digest::from_bytes(b"provider"),
+                ports: Vec::new(),
+                health: None,
+            },
+            service_template: DurableCellWorkloadTemplate::new(bytes, template_digest)
+                .expect("opaque template"),
+            runtime_secrets: Vec::new(),
+        };
+        projection
+            .validate_against(&request)
+            .expect("exact pre-start projection");
+
+        let mut drifted = projection;
+        drifted.node_id = NodeId::new();
+        assert!(drifted.validate_against(&request).is_err());
+    }
+
+    #[test]
+    fn prestart_projection_rejects_invalid_secret_targets() {
+        let secret = SecretReference {
+            name: "s0-access-key-id".into(),
+            reference: "cloud-secret://revision/secret/1".into(),
+            target: SecretTarget::Environment {
+                variable: "AWS_ACCESS_KEY_ID".into(),
+            },
+        };
+        assert!(validate_secret_reference(&secret).is_ok());
+        let invalid = SecretReference {
+            target: SecretTarget::File {
+                path: "/run/../secret".into(),
+                mode: 0o600,
+            },
+            ..secret
+        };
+        assert!(validate_secret_reference(&invalid).is_err());
     }
 }

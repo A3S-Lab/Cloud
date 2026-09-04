@@ -1,4 +1,6 @@
-use super::super::provider_workload::project_durable_cell_provider_workload;
+use super::super::provider_workload::{
+    durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
+};
 use super::*;
 use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
@@ -24,8 +26,11 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, ExecutionsDurableCellExecutionAdapter,
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
+    WorkloadsDurableCellWorkloadAdapter,
 };
-use crate::modules::durable_cells::{DurableCellBuildArtifactRequest, IDurableCellExecutionPort};
+use crate::modules::durable_cells::{
+    DurableCellBuildArtifactRequest, IDurableCellExecutionPort, IDurableCellWorkloadPort,
+};
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::operations::domain::entities::{
@@ -43,10 +48,11 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,
     PrincipalId, ProjectId, ResourceName, SecretId, SecretVersionReference, SourceRevisionId,
 };
+use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaRetirementRepository,
-    IWorkloadWriterFenceRepository, InMemoryWorkloadRepository, OciArtifact,
+    IWorkloadRepository, IWorkloadWriterFenceRepository, InMemoryWorkloadRepository, OciArtifact,
     ReconfigureReplicaSetWrite, ReplicaRetirementCompletion, ReplicaRetirementDispatch,
     ReplicaRuntimeFence, SecretBinding, SecretBindingTarget, ServicePort, ServiceResources,
     ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision, WorkloadWriterFenceReceipt,
@@ -60,6 +66,16 @@ fn execution_port(
 ) -> Arc<dyn IDurableCellExecutionPort> {
     Arc::new(ExecutionsDurableCellExecutionAdapter::new(
         projects, executions,
+    ))
+}
+
+fn workload_port(
+    applications: Arc<InMemoryDurableCellApplicationRepository>,
+    workloads: Arc<InMemoryWorkloadRepository>,
+) -> Arc<dyn IDurableCellWorkloadPort> {
+    Arc::new(WorkloadsDurableCellWorkloadAdapter::new(
+        applications.clone(),
+        workloads,
     ))
 }
 
@@ -350,7 +366,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
         execution_port(projects.clone(), executions.clone()),
     );
@@ -460,7 +476,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
         execution_port(projects.clone(), queued_executions.clone()),
     );
@@ -475,7 +491,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(workloads.clone(), operations.clone()),
         execution_port(projects.clone(), cancelling_executions.clone()),
     );
@@ -688,7 +704,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
                 receipt: receipt.clone(),
@@ -741,7 +757,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
                 receipt: receipt.clone(),
@@ -770,7 +786,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
                 receipt: receipt.clone(),
@@ -813,7 +829,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         applications.clone(),
         deployments.clone(),
         build_artifacts.clone(),
-        workloads.clone(),
+        workload_port(applications.clone(), workloads.clone()),
         DurableCellPriorWriterSeal::new(
             Arc::new(StaticWriterFenceRepository {
                 receipt: receipt.clone(),
@@ -857,10 +873,10 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         .await?;
     let legacy_executions = Arc::new(InMemoryExecutionRepository::new());
     let legacy_gate = DurableCellBundlePublicationGate::new(
-        applications,
+        applications.clone(),
         legacy_deployments,
         build_artifacts,
-        workloads.clone(),
+        workload_port(applications, workloads.clone()),
         DurableCellPriorWriterSeal::new(workloads, operations),
         execution_port(projects, legacy_executions.clone()),
     );
