@@ -1,3 +1,4 @@
+use super::operation_port::IDurableCellOperationPort;
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 use super::provider_workload::{
     durable_cell_managed_owner_reference, restore_publisher_storage_credentials,
@@ -14,7 +15,6 @@ use crate::modules::durable_cells::domain::{
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
 use crate::modules::fleet::domain::entities::NodeCommand;
-use crate::modules::operations::IOperationRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
@@ -47,9 +47,10 @@ impl DurableCellWriterFenceAdapter {
         applications: Arc<dyn IDurableCellApplicationRepository>,
         deployments: Arc<dyn IDurableCellDeploymentRepository>,
         workloads: Arc<dyn IDurableCellWorkloadPort>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_port: Arc<dyn IDurableCellOperationPort>,
     ) -> Self {
-        let prior_writer_seal = DurableCellPriorWriterSeal::new(Arc::clone(&workloads), operations);
+        let prior_writer_seal =
+            DurableCellPriorWriterSeal::new(Arc::clone(&workloads), operation_port);
         Self {
             applications,
             deployments,

@@ -758,6 +758,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         module_root().join("durable_cells/application/prior_writer_seal.rs"),
     )
     .expect("read Durable Cells prior-writer seal application");
+    let operation_port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/operation_port.rs"))
+            .expect("read Durable Cells Operation port");
     let port =
         std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
             .expect("read Durable Cells Workload port");
@@ -765,14 +768,19 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
     )
     .expect("read Durable Cells Workloads adapter");
+    let operation_adapter =
+        std::fs::read_to_string(module_root().join("durable_cells/infrastructure/operations.rs"))
+            .expect("read Durable Cells Operations adapter");
 
     let commands = production_source(&commands);
     let deployment = production_source(&deployment);
     let bundle_publication = production_source(&bundle_publication);
     let writer_fence = production_source(&writer_fence);
     let prior_writer_seal = production_source(&prior_writer_seal);
+    let operation_port = production_source(&operation_port);
     let port = production_source(&port);
     let adapter = production_source(&adapter);
+    let operation_adapter = production_source(&operation_adapter);
     assert!(commands.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(commands.contains(".converge_managed_replicas("));
     assert!(!commands.contains("IWorkloadRepository"));
@@ -803,8 +811,17 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         );
     }
     assert!(prior_writer_seal.contains("Arc<dyn IDurableCellWorkloadPort>"));
+    assert!(prior_writer_seal.contains("Arc<dyn IDurableCellOperationPort>"));
     assert!(prior_writer_seal.contains(".load_prior_writer_fence("));
-    for forbidden in ["IWorkloadWriterFenceRepository", ".latest_writer_fence("] {
+    assert!(prior_writer_seal.contains(".load_exact("));
+    for forbidden in [
+        "IWorkloadWriterFenceRepository",
+        ".latest_writer_fence(",
+        "IOperationRepository",
+        ".find_request(",
+        ".find_projection(",
+        "crate::modules::operations::OperationStatus",
+    ] {
         assert!(
             !prior_writer_seal.contains(forbidden),
             "Durable Cells prior-writer seal bypassed its Workloads port with {forbidden}"
@@ -866,6 +883,48 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
             "Durable Cells Workloads adapter lost owner translation {required}"
         );
     }
+
+    for required in [
+        "pub struct DurableCellOperationLookupRequest",
+        "pub struct DurableCellOperationRequestProjection",
+        "pub struct DurableCellOperationProjection",
+        "pub struct DurableCellOperationSnapshot",
+        "pub enum DurableCellOperationStatus",
+        "pub trait IDurableCellOperationPort",
+        "load_exact",
+    ] {
+        assert!(
+            operation_port.contains(required),
+            "Durable Cells Operation port lost boundary contract {required}"
+        );
+    }
+    assert!(!operation_port.contains("crate::modules::operations"));
+    for required in [
+        "impl IDurableCellOperationPort",
+        "IOperationRepository",
+        "find_request",
+        "find_projection",
+        "OperationStatus",
+        "DurableCellOperationRequestProjection",
+        "DurableCellOperationProjection",
+    ] {
+        assert!(
+            operation_adapter.contains(required),
+            "Durable Cells Operations adapter lost owner translation {required}"
+        );
+    }
+
+    let mut operation_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells") && source.contains("IOperationRepository") {
+            operation_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        operation_sites,
+        lines("durable_cells/infrastructure/operations.rs"),
+        "Durable Cells must translate Operations reads through one infrastructure adapter"
+    );
 
     let mut workload_sites = BTreeSet::new();
     visit_production_sources(|relative, source| {

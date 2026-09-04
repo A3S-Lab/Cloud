@@ -7,6 +7,7 @@ mod deployment_postgres;
 mod edge_route_publication;
 mod executions_bound_task;
 mod fleet_node_pool;
+mod operations;
 mod secrets_binding;
 mod workload_reconciliation;
 
@@ -21,5 +22,6 @@ pub use edge_route_publication::EdgeDurableCellRoutePublicationAdapter;
 pub(crate) use executions_bound_task::materialize_bound_execution_for_conformance;
 pub(crate) use executions_bound_task::ExecutionsDurableCellExecutionAdapter;
 pub use fleet_node_pool::FleetDurableCellNodePoolAdapter;
+pub(crate) use operations::OperationsDurableCellOperationAdapter;
 pub use secrets_binding::SecretsDurableCellBindingAdapter;
 pub use workload_reconciliation::WorkloadsDurableCellWorkloadAdapter;

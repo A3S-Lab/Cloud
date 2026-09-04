@@ -5,6 +5,7 @@ mod commands;
 mod deployment;
 mod execution_port;
 mod node_pool_port;
+mod operation_port;
 mod prior_writer_seal;
 mod provider_workload;
 mod queries;
@@ -39,6 +40,11 @@ pub use execution_port::{
     IDurableCellExecutionPort,
 };
 pub use node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNodePoolPort};
+pub use operation_port::{
+    DurableCellOperationLookupRequest, DurableCellOperationProjection,
+    DurableCellOperationRequestProjection, DurableCellOperationSnapshot,
+    DurableCellOperationStatus, IDurableCellOperationPort,
+};
 pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 #[doc(hidden)]
 pub use provider_workload::compose_pinned_celld_service_process;
