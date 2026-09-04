@@ -74,7 +74,12 @@ jobs:
   box-certification:
     name: Real A3S Box provider
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # The real Box lifecycle matrix is intentionally serial: it exercises
+    # process-death recovery, secret/artifact cleanup, Skill publication, and
+    # Agent checkpoint/fork replay on one isolated provider home.  Keep the
+    # full evidence run intact and allow enough time for the hardware-backed
+    # stages to finish instead of cancelling the final checkpoint gate.
+    timeout-minutes: 90
     services:
       postgres:
         image: postgres:17.5-bookworm@sha256:fbcea1bd13b6a882cd6caa6b58db3ae5c102efe50ec625b3e2a5cbc50db5bfe4
