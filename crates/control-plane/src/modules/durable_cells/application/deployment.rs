@@ -398,7 +398,11 @@ impl PreparedDeployment {
             || projection.application_revision_id != self.application_revision_id
             || correlation.storage.credential_binding_digest != self.credential_binding_digest
             || correlation.storage.provider_profile_digest != self.storage_provider_profile_digest
-            || correlation.storage_provider_profile()? != self.storage_provider_profile
+            || correlation.storage_provider_profile_acl()?
+                != self
+                    .storage_provider_profile
+                    .as_ref()
+                    .map(|profile| profile.canonical_acl())
             || correlation.storage.retention_policy_digest != self.retention_policy_digest
             || correlation.provider.service_profile_digest != *self.service_profile.digest()
             || correlation.provider.service_template_digest != self.service_template_digest
@@ -632,7 +636,10 @@ async fn prepare_correlation(
     DurableCellDeployment::bind(
         projection,
         storage,
-        prepared.storage_provider_profile.as_ref(),
+        prepared
+            .storage_provider_profile
+            .as_ref()
+            .map(|profile| profile.canonical_acl()),
         provider,
         Sha256Digest::parse(control.placement_policy.digest())
             .map_err(ApplicationError::Internal)?,

@@ -298,7 +298,7 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
     let correlation = DurableCellDeployment::bind(
         projection.clone(),
         storage,
-        Some(&storage_profile),
+        Some(storage_profile.canonical_acl()),
         provider,
         Sha256Digest::parse(control.placement_policy.digest())?,
         DurableCellDeploymentRequest {

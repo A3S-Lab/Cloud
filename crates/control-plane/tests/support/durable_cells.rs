@@ -337,7 +337,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             provider_profile_digest: storage_provider_profile.digest().clone(),
             retention_policy_digest: digest('3'),
         },
-        Some(&storage_provider_profile),
+        Some(storage_provider_profile.canonical_acl()),
         DurableCellProviderBinding {
             application_id,
             application_revision_id: successor.id,

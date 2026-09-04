@@ -21,7 +21,7 @@ pub use application_definition::{
 };
 pub use deployment::{DurableCellDeployment, DurableCellDeploymentRequest};
 pub use deployment_binding::{
-    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec,
+    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellRetentionPolicySpec,
     DURABLE_CELL_DEPLOYMENT_MAX_ACL_BYTES, DURABLE_CELL_DEPLOYMENT_SCHEMA,
 };
 pub use deployment_repository::{

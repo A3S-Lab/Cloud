@@ -1,9 +1,11 @@
 use super::{DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellStorageBinding};
-use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, PrincipalId, Sha256Digest};
+use a3s_acl::{canonical_digest, generate_acl, parse_acl};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
+
+const MAX_PROVIDER_PROFILE_ACL_BYTES: usize = 16 * 1024;
 
 /// Immutable correlation intent for projecting one Durable Cell application
 /// revision through the existing S0, Workloads, Operations, and Fleet owners.
@@ -37,7 +39,7 @@ impl DurableCellDeployment {
     pub fn bind(
         projection: DurableCellProjectionIdentity,
         storage: DurableCellStorageBinding,
-        storage_provider_profile: Option<&ObjectNamespaceProviderProfile>,
+        storage_provider_profile_acl: Option<&str>,
         provider: DurableCellProviderBinding,
         placement_policy_digest: Sha256Digest,
         request: DurableCellDeploymentRequest,
@@ -45,8 +47,7 @@ impl DurableCellDeployment {
         let deployment = Self {
             projection,
             storage,
-            storage_provider_profile_acl: storage_provider_profile
-                .map(|profile| profile.canonical_acl().into()),
+            storage_provider_profile_acl: storage_provider_profile_acl.map(str::to_owned),
             provider,
             placement_policy_digest,
             requested_by: request.requested_by,
@@ -67,10 +68,7 @@ impl DurableCellDeployment {
         self.projection.validate()?;
         self.storage.validate()?;
         if let Some(acl) = &self.storage_provider_profile_acl {
-            ObjectNamespaceProviderProfile::restore(
-                acl,
-                self.storage.provider_profile_digest.as_str(),
-            )?;
+            validate_provider_profile_acl(acl, &self.storage.provider_profile_digest)?;
         }
         self.provider.validate()?;
         if self.storage.organization_id != self.projection.organization_id
@@ -102,27 +100,63 @@ impl DurableCellDeployment {
         Ok(())
     }
 
-    pub fn require_storage_provider_profile(
-        &self,
-    ) -> Result<ObjectNamespaceProviderProfile, String> {
-        self.storage_provider_profile()?.ok_or_else(|| {
+    pub fn require_storage_provider_profile_acl(&self) -> Result<&str, String> {
+        self.storage_provider_profile_acl()?.ok_or_else(|| {
             "Durable Cell deployment does not bind the optional exact S0 provider profile"
                 .to_owned()
         })
     }
 
-    pub fn storage_provider_profile(
-        &self,
-    ) -> Result<Option<ObjectNamespaceProviderProfile>, String> {
+    pub fn storage_provider_profile_acl(&self) -> Result<Option<&str>, String> {
         self.validate()?;
-        self.storage_provider_profile_acl
-            .as_deref()
-            .map(|acl| {
-                ObjectNamespaceProviderProfile::restore(
-                    acl,
-                    self.storage.provider_profile_digest.as_str(),
-                )
-            })
-            .transpose()
+        Ok(self.storage_provider_profile_acl.as_deref())
+    }
+}
+
+/// Validate only the immutable wire identity held by the Durable Cells
+/// correlation. Data remains responsible for parsing the provider-specific
+/// schema and enforcing endpoint, bucket, and addressing semantics at its
+/// Storage adapter.
+fn validate_provider_profile_acl(acl: &str, expected_digest: &Sha256Digest) -> Result<(), String> {
+    if acl.is_empty() || acl.len() > MAX_PROVIDER_PROFILE_ACL_BYTES || acl.contains('\0') {
+        return Err("Durable Cell deployment provider profile ACL size is invalid".into());
+    }
+    let document = parse_acl(acl).map_err(|error| {
+        format!("Durable Cell deployment provider profile ACL is invalid: {error}")
+    })?;
+    if generate_acl(&document) != acl {
+        return Err("Durable Cell deployment provider profile ACL is not canonical".into());
+    }
+    let digest = Sha256Digest::parse(canonical_digest(&document).map_err(|error| {
+        format!("Durable Cell deployment provider profile is not canonicalizable: {error}")
+    })?)?;
+    if &digest != expected_digest {
+        return Err("Durable Cell deployment provider profile ACL and digest do not match".into());
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use a3s_acl::builder::{string, BlockBuilder};
+    use a3s_acl::Document;
+
+    #[test]
+    fn provider_profile_validation_is_opaque_but_digest_locked() {
+        let document = Document {
+            blocks: vec![BlockBuilder::new("opaque_profile")
+                .attr("payload", string("provider-owned"))
+                .build()],
+        };
+        let acl = generate_acl(&document);
+        let digest = Sha256Digest::parse(canonical_digest(&document).expect("digest"))
+            .expect("canonical digest");
+
+        validate_provider_profile_acl(&acl, &digest).expect("canonical opaque ACL");
+        assert!(
+            validate_provider_profile_acl(&acl, &Sha256Digest::from_bytes(b"different")).is_err()
+        );
+        assert!(validate_provider_profile_acl(&format!(" {acl}"), &digest).is_err());
     }
 }

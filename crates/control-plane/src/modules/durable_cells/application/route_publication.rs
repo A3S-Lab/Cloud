@@ -706,7 +706,7 @@ mod tests {
         DurableCellDeployment::bind(
             projection,
             storage,
-            Some(&storage_provider_profile),
+            Some(storage_provider_profile.canonical_acl()),
             provider,
             digest('1'),
             crate::modules::durable_cells::domain::DurableCellDeploymentRequest {
