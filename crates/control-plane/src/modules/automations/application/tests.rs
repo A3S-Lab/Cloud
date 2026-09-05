@@ -6,14 +6,18 @@ use crate::modules::automations::domain::{
     AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
 };
-use crate::modules::automations::infrastructure::InMemoryAutomationWebhookRepository;
+use crate::modules::automations::infrastructure::{
+    DigestBoundJsonSchemaValidator, InMemoryAutomationWebhookRepository,
+    AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
+};
 use crate::modules::shared_kernel::application::ApplicationError;
+use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest};
 use a3s_cloud_contracts::{
     AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationInvocationEnvelopeV1,
     AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationRevisionV1,
-    AutomationWebhookEndpointV1, AutomationWebhookRequestV1, AutomationWebhookSecretReferenceV1,
-    AutomationWebhookSignatureAlgorithmV1, AutomationWebhookSignatureV1,
-    AUTOMATION_INVOCATION_SCHEMA_V1,
+    AutomationTriggerV1, AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
+    AutomationWebhookSecretReferenceV1, AutomationWebhookSignatureAlgorithmV1,
+    AutomationWebhookSignatureV1, AUTOMATION_INVOCATION_SCHEMA_V1,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -85,6 +89,25 @@ fn revision() -> AutomationRevisionV1 {
     let definition = AutomationDefinitionV1::parse_acl(WEBHOOK_DEFINITION).expect("definition");
     AutomationRevisionV1::from_definition(id(0x100), 1, None, definition.spec().clone())
         .expect("revision")
+}
+
+fn revision_with_schema_digest(schema_digest: &str) -> AutomationRevisionV1 {
+    let definition = AutomationDefinitionV1::parse_acl(WEBHOOK_DEFINITION).expect("definition");
+    let mut spec = definition.spec().clone();
+    let AutomationTriggerV1::Webhook(trigger) = &mut spec.trigger else {
+        panic!("webhook trigger")
+    };
+    trigger.request_schema_digest = schema_digest.into();
+    let definition = AutomationDefinitionV1::from_spec(spec).expect("definition with schema");
+    AutomationRevisionV1::from_definition(id(0x110), 1, None, definition.spec().clone())
+        .expect("revision")
+}
+
+fn schema_digest(schema: &serde_json::Value) -> String {
+    sha256_digest(
+        &canonical_json_bounded(schema, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES, "test schema")
+            .expect("canonical schema"),
+    )
 }
 
 fn create_command(revision: AutomationRevisionV1) -> CreateAutomationWebhookEndpoint {
@@ -436,6 +459,62 @@ async fn verifier_and_schema_ports_are_required_before_persistence() {
             .await,
         Err(ApplicationError::Invalid(message)) if message.contains("schema")
     ));
+}
+
+#[tokio::test]
+async fn digest_bound_schema_rejection_prevents_delivery_persistence() {
+    let schema = json!({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "required": ["release"],
+        "properties": {"release": {"type": "string"}},
+        "additionalProperties": false
+    });
+    let schema_digest = schema_digest(&schema);
+    let schema_validator = DigestBoundJsonSchemaValidator::new(schema_digest.clone(), schema)
+        .expect("digest-bound schema validator");
+    let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
+    let command = create_command(revision_with_schema_digest(&schema_digest));
+    let endpoint = endpoint_from(&command);
+    let service = AutomationWebhookAdmissionService::new(
+        repository.clone(),
+        Arc::new(AcceptAll),
+        Arc::new(schema_validator),
+    );
+    let created = service
+        .create_endpoint(command)
+        .await
+        .expect("create endpoint");
+    let delivery_id = id(0x611);
+    let (request, invocation) = request_and_invocation(
+        &endpoint,
+        &created.revision,
+        delivery_id,
+        br#"{"release":7}"#,
+        timestamp("2026-09-05T00:00:01.000Z"),
+    );
+
+    let result = service
+        .admit(AdmitAutomationWebhookDelivery {
+            request,
+            invocation: Some(invocation),
+            receipt_id: id(0x612),
+            recorded_at: timestamp("2026-09-05T00:00:02.000Z"),
+        })
+        .await;
+    assert!(matches!(
+        result,
+        Err(ApplicationError::Invalid(message))
+            if message == "Automation webhook payload does not satisfy its request schema"
+    ));
+    assert!(repository
+        .find_delivery(endpoint.endpoint_id, delivery_id)
+        .await
+        .expect("delivery lookup")
+        .is_none());
+    assert!(repository.receipts().await.is_empty());
+    assert!(repository.audit_records().await.is_empty());
+    assert!(repository.outbox_messages().await.is_empty());
 }
 
 #[test]
