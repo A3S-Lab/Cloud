@@ -39,6 +39,7 @@ hmac.workspace = true
 hyper.workspace = true
 hyper-util.workspace = true
 http-body-util.workspace = true
+jsonschema.workspace = true
 lettre.workspace = true
 object_store.workspace = true
 openidconnect.workspace = true

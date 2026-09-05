@@ -14,9 +14,26 @@ binds an admitted or replayed delivery to the same endpoint generation,
 revision digest, body digest, and invocation identity. Rejection constructors
 make endpoint lifecycle reasons explicit.
 
-Secret material, provider-specific source facts, HTTP listeners, Gateway
-routes, schema registries, persistence, and invocation workers remain owned by
-their respective runtime boundaries. The endpoint stores only the schema
-digest and the Secret identity/version needed for those boundaries to perform
-their checks. This slice therefore establishes the admission boundary and
-regression tests without claiming public webhook availability.
+Signature verification uses HMAC-SHA256 over the captured raw body and compares
+the canonical lowercase-hex `hmac-sha256:` fact in constant time. Secret
+material, provider-specific source facts, HTTP listeners, Gateway
+routes, schema registries, and invocation workers remain owned by their
+respective runtime boundaries. The endpoint stores only the schema digest and
+the Secret identity/version needed for those boundaries to perform their
+checks. `crates/control-plane/src/modules/automations` composes that contract
+through an application-owned admission service, an atomic in-memory repository,
+and a PostgreSQL adapter. Migration `183` retains the canonical revision ACL
+and digest, one immutable first-delivery projection, and append-only replay,
+conflict, and lifecycle receipts; the shared Audit and Outbox records are
+written in the same transaction. Restore reparses and validates every bounded
+contract before returning it, and no Secret plaintext is persisted. The
+concrete verifier resolves only the exact Secret ID/version through the
+published Secrets materializer and keeps plaintext transient; materialization
+failures are redacted. The component-only
+`DigestBoundJsonSchemaValidator` is one such explicit infrastructure adapter:
+it compiles one already-selected self-contained schema only when its canonical
+sorted-JSON SHA-256 matches the endpoint/request digest, bounds the schema and
+payload shape, and disables URL/file retrieval. It does not own schema
+selection, registry storage, or publication. Live PostgreSQL
+recovery/concurrency evidence, HTTP listener, Gateway route, worker, and public
+webhook availability remain outside this slice.

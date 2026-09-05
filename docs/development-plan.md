@@ -5503,8 +5503,10 @@ Follow the detailed gates in
    `APP0.2-C1/C2/C3/C4/C5/C6/C7` authorities, the `APP0.2-C8` management
    adapter plus C12 management interface, and component-only
    `APP0.2-C9/C10/C11/C13/C14/C15`,
-   and land `K0.1` and `AUT0.1` as independent contract/persistence/API slices
-   with no temporary provider clients;
+   and land `K0.1` and `AUT0.1` plus the component-only `AUT0.2-C1/C2/C3/C4/C5`
+   and `AUT0.3-C1` calendar boundary
+   contract/admission/PostgreSQL/Secret-verification boundary slices with no
+   temporary provider clients;
 4. complete the `I0.2`, required `I0.6` rerank/media, `A0.5`, `A1.4`, selected
    `AR0.1`-`AR0.5`, `U0.4`, `MCP0.5`, `S0`, and Connector ports, then deliver
    `K0.2` through `K0.5` and `AUT0.2` through `AUT0.5`;
