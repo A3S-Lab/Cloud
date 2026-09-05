@@ -9,8 +9,8 @@ use crate::modules::durable_cells::application::{
     DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
-    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadTemplateProjection, DurableCellWorkloadWriterFenceProjection,
+    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -21,7 +21,7 @@ use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, RepositoryError, ResourceName, Sha256Digest,
+    IdempotencyRequest, RepositoryError, ResourceName, SecretVersionReference, Sha256Digest,
 };
 use crate::modules::workloads::application::project_runtime_secrets;
 use crate::modules::workloads::{
@@ -390,6 +390,34 @@ impl WorkloadsDurableCellWorkloadAdapter {
 
 #[async_trait]
 impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
+    fn project_template(
+        &self,
+        opaque_template: &DurableCellWorkloadTemplate,
+    ) -> ApplicationResult<DurableCellWorkloadTemplateProjection> {
+        let template = decode_service_template(opaque_template)?;
+        template.validate().map_err(ApplicationError::Invalid)?;
+        let template_digest =
+            Sha256Digest::parse(template.digest().map_err(ApplicationError::Invalid)?)
+                .map_err(ApplicationError::Invalid)?;
+        let secret_references = template
+            .secrets
+            .iter()
+            .map(|binding| SecretVersionReference::new(binding.secret_id, binding.version))
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(ApplicationError::Invalid)?;
+        let provider_artifact_digest = Sha256Digest::parse(template.artifact.digest.clone())
+            .map_err(ApplicationError::Invalid)?;
+        let projection = DurableCellWorkloadTemplateProjection::new(
+            template_digest,
+            provider_artifact_digest,
+            secret_references,
+        );
+        projection
+            .validate_against(opaque_template)
+            .map_err(ApplicationError::Invalid)?;
+        Ok(projection)
+    }
+
     fn compile_placement_policy_digest(
         &self,
         request: &DurableCellWorkloadPlacementRequest,

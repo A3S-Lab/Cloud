@@ -9,7 +9,7 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DurableCellApplicationId, DurableCellApplicationRevisionId,
     EnvironmentId, IdempotencyRequest, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
-    Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
+    SecretVersionReference, Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
 use a3s_runtime::contract::{SecretReference, SecretTarget};
 use async_trait::async_trait;
@@ -20,6 +20,7 @@ use uuid::Uuid;
 
 const MAX_WORKLOAD_TEMPLATE_BYTES: usize = 1024 * 1024;
 const MAX_WORKLOAD_ARTIFACT_URI_BYTES: usize = 4096;
+const MAX_WORKLOAD_TEMPLATE_SECRET_REFERENCES: usize = 128;
 
 /// Opaque, immutable bytes for the already-resolved Workloads Service
 /// template. Workloads remains the authority for interpreting this payload;
@@ -67,6 +68,44 @@ impl DurableCellWorkloadTemplate {
 
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
+    }
+}
+
+/// Exact owner-neutral metadata projected from one opaque Workloads Service
+/// template. Durable Cells may validate replay integrity, tenant scope, and
+/// credential inclusion without interpreting the owner template itself.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadTemplateProjection {
+    pub service_template_digest: Sha256Digest,
+    pub provider_artifact_digest: Sha256Digest,
+    pub secret_references: Vec<SecretVersionReference>,
+}
+
+impl DurableCellWorkloadTemplateProjection {
+    pub fn new(
+        service_template_digest: Sha256Digest,
+        provider_artifact_digest: Sha256Digest,
+        secret_references: Vec<SecretVersionReference>,
+    ) -> Self {
+        Self {
+            service_template_digest,
+            provider_artifact_digest,
+            secret_references,
+        }
+    }
+
+    pub fn validate_against(&self, template: &DurableCellWorkloadTemplate) -> Result<(), String> {
+        if self.service_template_digest != *template.digest()
+            || self.secret_references.len() > MAX_WORKLOAD_TEMPLATE_SECRET_REFERENCES
+        {
+            return Err("Durable Cell Workloads template binding projection is invalid".into());
+        }
+        Sha256Digest::parse(self.service_template_digest.as_str())?;
+        Sha256Digest::parse(self.provider_artifact_digest.as_str())?;
+        for reference in &self.secret_references {
+            reference.validate()?;
+        }
+        Ok(())
     }
 }
 
@@ -868,6 +907,11 @@ impl DurableCellWorkloadRevisionGenerationRequest {
 /// mutation while Workloads retains lifecycle authority.
 #[async_trait]
 pub trait IDurableCellWorkloadPort: Send + Sync {
+    fn project_template(
+        &self,
+        template: &DurableCellWorkloadTemplate,
+    ) -> ApplicationResult<DurableCellWorkloadTemplateProjection>;
+
     fn compile_placement_policy_digest(
         &self,
         request: &DurableCellWorkloadPlacementRequest,
@@ -922,6 +966,7 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::shared_kernel::domain::SecretId;
     use uuid::Uuid;
 
     #[test]
@@ -1061,6 +1106,44 @@ mod tests {
             DurableCellWorkloadTemplate::new(bytes.clone(), Sha256Digest::from_bytes(&bytes),)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn template_projection_is_digest_locked_and_bounded() {
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"artifact": "pinned"})).expect("template bytes");
+        let template_digest = Sha256Digest::from_bytes(&bytes);
+        let template = DurableCellWorkloadTemplate::new(bytes, template_digest.clone())
+            .expect("opaque template");
+        let provider_artifact_digest = Sha256Digest::from_bytes(b"provider artifact");
+        let projection = DurableCellWorkloadTemplateProjection::new(
+            template_digest,
+            provider_artifact_digest.clone(),
+            vec![SecretVersionReference::new(SecretId::new(), 1).expect("Secret reference")],
+        );
+        projection
+            .validate_against(&template)
+            .expect("template binding projection");
+        assert_eq!(
+            projection.provider_artifact_digest,
+            provider_artifact_digest
+        );
+
+        let mut drifted = projection.clone();
+        drifted.service_template_digest = Sha256Digest::from_bytes(b"other template");
+        assert!(drifted.validate_against(&template).is_err());
+
+        let mut invalid = projection.clone();
+        invalid.secret_references[0].version = 0;
+        assert!(invalid.validate_against(&template).is_err());
+
+        let mut unbounded = projection;
+        unbounded.secret_references = vec![
+            SecretVersionReference::new(SecretId::new(), 1)
+                .expect("Secret reference");
+            MAX_WORKLOAD_TEMPLATE_SECRET_REFERENCES + 1
+        ];
+        assert!(unbounded.validate_against(&template).is_err());
     }
 
     #[test]

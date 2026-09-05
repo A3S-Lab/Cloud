@@ -1095,13 +1095,16 @@ fn durable_cells_deployment_acl_keeps_data_materialization_at_the_inbound_edge()
         "DurableCellStorageCredentialRequest::new",
         "DurableCellStorageRetentionPolicyRequest::new",
         "DurableCellStorageRetentionPolicySpec",
+        "DurableCellWorkloadTemplate::from_serializable",
     ] {
         assert!(
             admission.contains(required),
-            "Durable Cell inbound admission lost bounded Storage translation {required}"
+            "Durable Cell inbound admission lost bounded owner translation {required}"
         );
     }
     assert!(!application.contains("crate::modules::data"));
+    assert!(!application.contains("crate::modules::workloads"));
+    assert!(!application.contains("ServiceTemplate"));
     assert!(!application.contains("ObjectNamespaceCredentialBinding"));
     assert!(!application.contains("ObjectNamespaceRetentionPolicy"));
     assert!(!binding.contains("bind_scope("));
@@ -1218,6 +1221,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "WorkloadRevision::",
         "project_durable_cell_provider_workload",
         "validate_pinned_celld_provider_workload",
+        "crate::modules::workloads",
+        "ServiceTemplate",
     ] {
         assert!(
             !deployment.contains(forbidden),
@@ -1268,6 +1273,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadRevisionGenerationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderProjectionRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadTemplateProjection"));
     assert!(port.contains("pub struct DurableCellWorkloadDeploymentRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadDeployment"));
     assert!(port.contains("pub struct DurableCellWorkloadPrestartRequest"));
@@ -1280,6 +1286,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("replay_managed_deployment"));
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
+    assert!(port.contains("project_template("));
     assert!(port.contains("project_provider_workload"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderValidationRequest"));
     assert!(port.contains("validate_provider_workload"));
@@ -1303,6 +1310,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "latest_writer_fence",
         "ReconfigureReplicaSetWrite",
         "WorkloadRevision::create",
+        "project_template(",
         "project_provider_workload",
         "validate_pinned_celld_provider_workload",
         "DurableCellProjectionIdentity",

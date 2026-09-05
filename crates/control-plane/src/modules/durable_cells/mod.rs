@@ -40,11 +40,11 @@ pub use application::{
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
     DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderValidationRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellBuildArtifactPort,
-    IDurableCellExecutionPort, IDurableCellNodePoolPort, IDurableCellOperationPort,
-    IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort, IDurableCellStoragePort,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadTemplate, DurableCellWorkloadTemplateProjection,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellBuildArtifactPort, IDurableCellExecutionPort, IDurableCellNodePoolPort,
+    IDurableCellOperationPort, IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort,
+    IDurableCellStoragePort, IDurableCellWorkloadPort,
 };
 pub(crate) use application::{
     DurableCellBundlePublicationGate, DurableCellPriorWriterSeal, DurableCellWriterFenceAdapter,

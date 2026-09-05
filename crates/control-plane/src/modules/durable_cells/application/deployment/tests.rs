@@ -37,16 +37,16 @@ use crate::modules::secrets::domain::{
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId,
-    ResourceName, SecretId, SecretVersionReference,
+    ResourceName, SecretId, SecretVersionReference, Sha256Digest,
 };
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use crate::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository,
     IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository, OciArtifact,
     ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence, SecretBinding,
-    SecretBindingTarget, ServicePort, ServiceResources, WorkloadDeploymentAvailabilityImpact,
-    WorkloadDeploymentFailurePhase, WorkloadDeploymentHealthChanged,
-    WorkloadDeploymentHealthStatus, WorkloadReplicaLifecycle,
+    SecretBindingTarget, ServicePort, ServiceResources, ServiceTemplate,
+    WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentFailurePhase,
+    WorkloadDeploymentHealthChanged, WorkloadDeploymentHealthStatus, WorkloadReplicaLifecycle,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
@@ -175,13 +175,13 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         application_revision_id: record.revision.id,
         service_profile_acl: profile.canonical_acl().into(),
         storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
-        workload_template: service_template(
+        workload_template: opaque_service_template(service_template(
             &profile,
             &storage_provider_profile,
             projection.storage_namespace_id,
             access_key_id,
             secret_access_key,
-        ),
+        )),
         storage_credentials: storage_credentials_request,
         retention_policy: retention_policy_request,
         node_pool_id: None,
@@ -210,12 +210,16 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secret_port)));
 
     let mut missing_storage_process = command.clone();
-    missing_storage_process.workload_template.process.args = vec![
+    let mut missing_storage_template: ServiceTemplate =
+        serde_json::from_slice(missing_storage_process.workload_template.bytes())
+            .expect("decoded Workloads template");
+    missing_storage_template.process.args = vec![
         "--listen".into(),
         "0.0.0.0:8080".into(),
         "--internal-listen".into(),
         "0.0.0.0:8081".into(),
     ];
+    missing_storage_process.workload_template = opaque_service_template(missing_storage_template);
     let missing_process_prepared =
         PreparedDeployment::new(&missing_storage_process).expect("neutral preparation");
     assert!(admit_external_bindings(
@@ -996,6 +1000,13 @@ fn service_template(
             stabilization_window_ms: 5000,
         }),
     }
+}
+
+fn opaque_service_template(template: ServiceTemplate) -> DurableCellWorkloadTemplate {
+    let digest = Sha256Digest::parse(template.digest().expect("Service template digest"))
+        .expect("canonical Service template digest");
+    DurableCellWorkloadTemplate::from_serializable(&template, digest)
+        .expect("opaque Workloads template")
 }
 
 async fn store_secret(
