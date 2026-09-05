@@ -105,14 +105,15 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`87b77ac9097d767aca861337048576dd78c2e4bc` (durable per-attempt deadlines,
+`b2d3a760ad5b0b9ff3cfd86e4a5c827bb4316c0e` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
 bounded history export pages, plus stable attempt correlation in event
 bridges).
 This revision also provides safe CLI/Skill CRUD for local workflow DSL files,
-including bounded NDJSON operation streams and optimistic base-digest checks.
+including bounded NDJSON operation streams, strict UTF-8 decoding, exact
+string-valued CLI options, and optimistic base-digest checks.
 That stream is an authoring transport: Flow still publishes a portable,
 validated snapshot for the local file. For hosted collaboration, Cloud should
 persist the ordered operation journal and materialized snapshots in its own
