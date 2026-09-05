@@ -105,7 +105,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`ade7cedd15dfa12fc720dba2330c03ab902685c8` (durable per-attempt deadlines,
+`fa7a0aa67135211fc6e8ca2b39245018d3eeb346` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
