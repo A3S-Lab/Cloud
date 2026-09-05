@@ -104,7 +104,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`39c78dfd51ff121bbe3283f0ee8525e7bd9ada86` (durable per-attempt deadlines,
+`2769ca286dd042811806d57c1b0d9a99a33c3db5` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, and tip-validated
 disposable projection checkpoints).
 The same revision must be recorded in the Cloud compatibility lock before a
@@ -127,6 +127,9 @@ SHA-256 digest validate against the history tip, and otherwise replays the
 authoritative event stream (or only its indexed tail). Cloud must not copy
 or mutate checkpoint snapshots as a second execution history; its own
 tenant-authorized visibility projection remains rebuildable from Flow facts.
+For archive/export and visibility rebuilds, Cloud should consume
+`FlowEngine::history_page` with its exclusive sequence cursor rather than
+loading an unbounded history into memory.
 
 ## 5. Non-duplication checklist
 
