@@ -102,9 +102,11 @@ identity shape, event ordering, deterministic replay, fencing, deadlines, and
 durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
-The current Flow Activity contract is published by Flow `main` at revision
-`8dfe9143a00d0f5fb5f41884e640b908e917e71d` (durable per-attempt deadlines,
-fenced and idempotent unknown-outcome reconciliation).
+The current Flow Activity and projection-cache contract is published by Flow
+`main` at revision
+`bb5ac0d4a8414a760cbd0e07c1cad5f234cc2b96` (durable per-attempt deadlines,
+fenced and idempotent unknown-outcome reconciliation, and tip-validated
+disposable projection checkpoints).
 The same revision must be recorded in the Cloud compatibility lock before a
 release bundle is published. Cloud integration code must
 consume the public `ScheduleActivity`, `ActivityInvocation`,
@@ -117,6 +119,13 @@ Activity definition and derives the attempt deadline from the durable
 `activity_started` timestamp. A timeout is an unknown provider outcome, not a
 successful cancellation or an implicit retry; Cloud must reconcile it using
 the recorded attempt and idempotency identities.
+
+Cloud visibility and operations may request a Flow projection checkpoint after
+an execution transition. The checkpoint is an acceleration cache only: Flow
+accepts it when `run_id`, `last_sequence`, and `last_event_id` match the history
+tip, and otherwise replays the authoritative event stream. Cloud must not copy
+or mutate checkpoint snapshots as a second execution history; its own
+tenant-authorized visibility projection remains rebuildable from Flow facts.
 
 ## 5. Non-duplication checklist
 
