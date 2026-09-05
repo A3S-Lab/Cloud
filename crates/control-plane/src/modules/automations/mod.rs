@@ -15,9 +15,10 @@ pub use application::{
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
 };
 pub use domain::{
-    AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
-    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
-    IAutomationWebhookSignatureVerifier, TransitionAutomationWebhookEndpoint,
+    AutomationScheduleCalculator, AutomationWebhookAdmission, AutomationWebhookDeliveryRecord,
+    AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
+    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
