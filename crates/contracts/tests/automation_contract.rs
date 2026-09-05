@@ -6,8 +6,13 @@ use a3s_cloud_contracts::{
     AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationMisfireModeV1,
     AutomationMisfirePolicyV1, AutomationOutboxMessageV1, AutomationRevisionV1,
     AutomationScheduleTriggerV1, AutomationSubscriptionReferenceV1, AutomationTargetV1,
-    AutomationTriggerPolicyV1, AutomationWebhookTriggerV1, AutomationWorkflowTargetV1,
+    AutomationTriggerPolicyV1, AutomationWebhookAdmissionDecisionV1,
+    AutomationWebhookDeliveryReceiptV1, AutomationWebhookEndpointStateV1,
+    AutomationWebhookEndpointV1, AutomationWebhookRejectionReasonV1, AutomationWebhookRequestV1,
+    AutomationWebhookSecretReferenceV1, AutomationWebhookSignatureAlgorithmV1,
+    AutomationWebhookSignatureV1, AutomationWebhookTriggerV1, AutomationWorkflowTargetV1,
     AUTOMATION_DEFINITION_SCHEMA_V1, AUTOMATION_INVOCATION_SCHEMA_V1,
+    AUTOMATION_WEBHOOK_REQUEST_SCHEMA_V1,
 };
 use chrono::{DateTime, Utc};
 use serde_json::json;
@@ -365,6 +370,286 @@ fn automation_contracts_are_send_and_sync_and_have_acl_only_fixtures() {
     assert!(files
         .iter()
         .all(|path| path.extension().and_then(|value| value.to_str()) == Some("acl")));
+}
+
+#[test]
+fn webhook_endpoint_pins_revision_and_has_monotonic_lifecycle_generation() {
+    let revision = AutomationRevisionV1::from_definition(id(0x920), 1, None, webhook_spec())
+        .expect("webhook revision");
+    let created_at = timestamp("2026-09-05T00:00:00.000Z");
+    let mut endpoint = AutomationWebhookEndpointV1::for_revision(
+        id(0x921),
+        "release-hook",
+        AutomationWebhookSecretReferenceV1 {
+            secret_id: id(0x922),
+            version: 3,
+        },
+        4_096,
+        &revision,
+        created_at,
+    )
+    .expect("endpoint");
+    endpoint.validate().expect("endpoint invariants");
+    assert_eq!(endpoint.generation, 1);
+    assert_eq!(
+        endpoint.signature_algorithm,
+        AutomationWebhookSignatureAlgorithmV1::HmacSha256
+    );
+
+    endpoint
+        .disable(timestamp("2026-09-05T00:00:01.000Z"))
+        .expect("disable");
+    assert_eq!(endpoint.state, AutomationWebhookEndpointStateV1::Disabled);
+    assert_eq!(endpoint.generation, 2);
+    endpoint
+        .enable(timestamp("2026-09-05T00:00:02.000Z"))
+        .expect("enable");
+    assert_eq!(endpoint.state, AutomationWebhookEndpointStateV1::Active);
+    assert_eq!(endpoint.generation, 3);
+
+    endpoint
+        .revoke(timestamp("2026-09-05T00:00:03.000Z"))
+        .expect("revoke");
+    assert_eq!(endpoint.state, AutomationWebhookEndpointStateV1::Revoked);
+    assert_eq!(endpoint.generation, 4);
+    assert!(endpoint
+        .enable(timestamp("2026-09-05T00:00:04.000Z"))
+        .is_err());
+
+    let mut forged = endpoint.clone();
+    forged.revision_digest = digest('1');
+    assert!(forged.validate_for_revision(&revision).is_err());
+}
+
+#[test]
+fn webhook_capture_is_bounded_canonical_and_endpoint_pinned() {
+    let revision = AutomationRevisionV1::from_definition(id(0x930), 1, None, webhook_spec())
+        .expect("webhook revision");
+    let endpoint = AutomationWebhookEndpointV1::for_revision(
+        id(0x931),
+        "capture-hook",
+        AutomationWebhookSecretReferenceV1 {
+            secret_id: id(0x932),
+            version: 7,
+        },
+        256,
+        &revision,
+        timestamp("2026-09-05T00:00:00.000Z"),
+    )
+    .expect("endpoint");
+    let signature = AutomationWebhookSignatureV1 {
+        algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+        key_version: 7,
+        value: format!("hmac-sha256:{}", "a".repeat(64)),
+    };
+    signature.validate().expect("signature");
+    let body = br#"{"release":"stable","number":1}"#;
+    let request = AutomationWebhookRequestV1::from_json(
+        &endpoint,
+        id(0x933),
+        signature,
+        "application/json",
+        body,
+        timestamp("2026-09-05T00:00:01.000Z"),
+    )
+    .expect("capture");
+    request
+        .validate_for_endpoint(&endpoint)
+        .expect("capture invariants");
+    assert_eq!(request.schema, AUTOMATION_WEBHOOK_REQUEST_SCHEMA_V1);
+    assert_eq!(request.body_size_bytes, body.len() as u64);
+
+    let mut tampered = request.clone();
+    tampered.body_base64.push('=');
+    assert!(tampered.validate_for_endpoint(&endpoint).is_err());
+
+    let mut wrong_key = request.clone();
+    wrong_key.signature.key_version = 8;
+    assert!(wrong_key.validate_for_endpoint(&endpoint).is_err());
+
+    let mut wrong_schema = request;
+    wrong_schema.request_schema_digest = digest('1');
+    assert!(wrong_schema.validate_for_endpoint(&endpoint).is_err());
+}
+
+#[test]
+fn webhook_admission_receipt_replays_only_the_same_delivery_and_body() {
+    let revision = AutomationRevisionV1::from_definition(id(0x940), 1, None, webhook_spec())
+        .expect("webhook revision");
+    let endpoint = AutomationWebhookEndpointV1::for_revision(
+        id(0x941),
+        "receipt-hook",
+        AutomationWebhookSecretReferenceV1 {
+            secret_id: id(0x942),
+            version: 2,
+        },
+        512,
+        &revision,
+        timestamp("2026-09-05T00:00:00.000Z"),
+    )
+    .expect("endpoint");
+    let delivery_id = id(0x943);
+    let request = AutomationWebhookRequestV1::from_json(
+        &endpoint,
+        delivery_id,
+        AutomationWebhookSignatureV1 {
+            algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+            key_version: 2,
+            value: format!("hmac-sha256:{}", "b".repeat(64)),
+        },
+        "application/json",
+        br#"{"release":"stable"}"#,
+        timestamp("2026-09-05T00:00:01.000Z"),
+    )
+    .expect("request");
+    let origin = AutomationInvocationOriginV1::Event {
+        event_id: delivery_id,
+        event_key: "automation.webhook.received".into(),
+        event_digest: request.body_digest.clone(),
+        observed_at: request.received_at,
+    };
+    let subscription = revision
+        .spec()
+        .definition
+        .trigger
+        .subscription()
+        .expect("subscription");
+    let deduplication_key = revision
+        .spec()
+        .definition
+        .policy
+        .deduplication
+        .render_key(
+            revision.spec().definition.automation_id,
+            revision.spec().revision_id,
+            &origin,
+            Some(subscription.subscription_id),
+        )
+        .expect("deduplication key");
+    let invocation = AutomationInvocationEnvelopeV1 {
+        schema: AUTOMATION_INVOCATION_SCHEMA_V1.into(),
+        invocation_id: id(0x944),
+        automation_id: revision.spec().definition.automation_id,
+        automation_revision_id: revision.spec().revision_id,
+        automation_revision_digest: revision.digest().into(),
+        organization_id: revision.spec().definition.organization_id,
+        project_id: revision.spec().definition.project_id,
+        environment_id: revision.spec().definition.environment_id,
+        target: revision.spec().definition.target.clone(),
+        origin,
+        subscription: Some(subscription.clone()),
+        deduplication_key,
+        input: AutomationInvocationInputV1::inline_json(json!({"release": "stable"}))
+            .expect("input"),
+        authorization: AutomationInvocationAuthorizationV1 {
+            policy_digest: revision
+                .spec()
+                .definition
+                .authorization
+                .policy_digest
+                .clone(),
+            grant_snapshot_digest: digest('a'),
+            principal_id: None,
+        },
+        requested_at: timestamp("2026-09-05T00:00:01.000Z"),
+        correlation_id: id(0x945),
+        causation_id: None,
+    };
+    let receipt = AutomationWebhookDeliveryReceiptV1::admitted(
+        id(0x946),
+        &endpoint,
+        &revision,
+        &request,
+        &invocation,
+        timestamp("2026-09-05T00:00:02.000Z"),
+    )
+    .expect("admitted receipt");
+    assert_eq!(
+        receipt.decision,
+        AutomationWebhookAdmissionDecisionV1::Admitted
+    );
+    let replay = AutomationWebhookDeliveryReceiptV1::replay_of(
+        id(0x947),
+        &receipt,
+        &endpoint,
+        &revision,
+        &request,
+        timestamp("2026-09-05T00:00:03.000Z"),
+    )
+    .expect("replay receipt");
+    assert_eq!(
+        replay.decision,
+        AutomationWebhookAdmissionDecisionV1::Replayed
+    );
+
+    let mut conflict = request;
+    conflict.body_digest = digest('f');
+    assert!(AutomationWebhookDeliveryReceiptV1::replay_of(
+        id(0x948),
+        &receipt,
+        &endpoint,
+        &revision,
+        &conflict,
+        timestamp("2026-09-05T00:00:03.000Z"),
+    )
+    .is_err());
+}
+
+#[test]
+fn webhook_rejection_receipts_bind_reason_to_endpoint_state() {
+    let revision = AutomationRevisionV1::from_definition(id(0x950), 1, None, webhook_spec())
+        .expect("webhook revision");
+    let mut endpoint = AutomationWebhookEndpointV1::for_revision(
+        id(0x951),
+        "reject-hook",
+        AutomationWebhookSecretReferenceV1 {
+            secret_id: id(0x952),
+            version: 1,
+        },
+        256,
+        &revision,
+        timestamp("2026-09-05T00:00:00.000Z"),
+    )
+    .expect("endpoint");
+    let request = AutomationWebhookRequestV1::from_json(
+        &endpoint,
+        id(0x953),
+        AutomationWebhookSignatureV1 {
+            algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+            key_version: 1,
+            value: format!("hmac-sha256:{}", "c".repeat(64)),
+        },
+        "application/json",
+        br#"{"ok":true}"#,
+        timestamp("2026-09-05T00:00:01.000Z"),
+    )
+    .expect("request");
+    assert!(AutomationWebhookDeliveryReceiptV1::rejected(
+        id(0x954),
+        &endpoint,
+        &revision,
+        &request,
+        AutomationWebhookRejectionReasonV1::EndpointDisabled,
+        timestamp("2026-09-05T00:00:02.000Z"),
+    )
+    .is_err());
+    endpoint
+        .disable(timestamp("2026-09-05T00:00:02.000Z"))
+        .expect("disable");
+    let receipt = AutomationWebhookDeliveryReceiptV1::rejected(
+        id(0x955),
+        &endpoint,
+        &revision,
+        &request,
+        AutomationWebhookRejectionReasonV1::EndpointDisabled,
+        timestamp("2026-09-05T00:00:03.000Z"),
+    )
+    .expect("rejection receipt");
+    receipt.validate().expect("rejection invariants");
+    assert_eq!(
+        receipt.decision,
+        AutomationWebhookAdmissionDecisionV1::Rejected
+    );
 }
 
 fn schedule_spec() -> AutomationDefinitionSpecV1 {
