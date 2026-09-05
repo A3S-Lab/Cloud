@@ -3,6 +3,7 @@ mod definition;
 mod events;
 mod invocation;
 mod validation;
+mod webhook;
 
 pub use definition::{
     AutomationApplicationTargetV1, AutomationAuthorizationPolicyV1, AutomationConcurrencyModeV1,
@@ -26,6 +27,17 @@ pub use invocation::{
     AutomationInvocationInputV1, AutomationInvocationOriginV1,
     AUTOMATION_INVOCATION_ENVELOPE_MAX_BYTES, AUTOMATION_INVOCATION_INLINE_MAX_BYTES,
     AUTOMATION_INVOCATION_SCHEMA_V1,
+};
+pub use webhook::{
+    AutomationWebhookAdmissionDecisionV1, AutomationWebhookDeliveryReceiptV1,
+    AutomationWebhookEndpointStateV1, AutomationWebhookEndpointV1,
+    AutomationWebhookRejectionReasonV1, AutomationWebhookRequestV1,
+    AutomationWebhookSecretReferenceV1, AutomationWebhookSignatureAlgorithmV1,
+    AutomationWebhookSignatureV1, AUTOMATION_WEBHOOK_ENDPOINT_SCHEMA_V1,
+    AUTOMATION_WEBHOOK_MAX_BODY_BYTES, AUTOMATION_WEBHOOK_MAX_CAPTURE_BASE64_BYTES,
+    AUTOMATION_WEBHOOK_MAX_CONTENT_TYPE_BYTES, AUTOMATION_WEBHOOK_MAX_ENDPOINT_KEY_BYTES,
+    AUTOMATION_WEBHOOK_MAX_SIGNATURE_BYTES, AUTOMATION_WEBHOOK_RECEIPT_SCHEMA_V1,
+    AUTOMATION_WEBHOOK_REQUEST_SCHEMA_V1,
 };
 
 /// Short aliases keep the public contract ergonomic while the versioned names
