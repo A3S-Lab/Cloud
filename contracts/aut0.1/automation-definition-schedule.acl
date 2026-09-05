@@ -1,0 +1,30 @@
+automation_definition {
+  automation_id = "018f0000-0000-7000-8000-000000000301"
+  environment_id = "018f0000-0000-7000-8000-000000000304"
+  name = "daily-report"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.automation.definition.v1"
+  authorization {
+    policy_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    required_grants = ["automation:invoke", "workflow:run"]
+  }
+  policy {
+    concurrency_mode = "queue"
+    deduplication_scope = "automation"
+    deduplication_template = "automation/{automation_id}/revision/{revision_id}/scheduled/{scheduled_at}"
+    deduplication_window_ms = 86400000
+    maximum_concurrency = 8
+    misfire_grace_ms = 3600000
+    misfire_mode = "fire_once"
+  }
+  workflow_revision {
+    revision_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    workflow_definition_id = "018f0000-0000-7000-8000-000000000305"
+    workflow_revision_id = "018f0000-0000-7000-8000-000000000306"
+  }
+  schedule {
+    expression = "0 0 9 * * * *"
+    timezone = "Asia/Shanghai"
+  }
+}
