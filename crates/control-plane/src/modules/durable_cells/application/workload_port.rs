@@ -3,7 +3,7 @@ use super::storage_port::{
 };
 use crate::modules::durable_cells::domain::{
     DurableCellProjectionIdentity, DurableCellProviderWorkloadProjection,
-    DurableCellPublisherProfile, DurableCellServiceProfile,
+    DurableCellPublisherProfile, DurableCellServiceProfile, DurableCellStorageBinding,
 };
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
@@ -463,6 +463,7 @@ pub struct DurableCellWorkloadWriterFenceRequest {
     pub workload_id: WorkloadId,
     pub workload_revision_id: WorkloadRevisionId,
     pub workload_generation: u64,
+    pub service_template_digest: Sha256Digest,
     pub replica_id: WorkloadReplicaId,
     pub replica_generation: u64,
     pub replica_ordinal: u32,
@@ -481,6 +482,7 @@ impl DurableCellWorkloadWriterFenceRequest {
         workload_id: WorkloadId,
         workload_revision_id: WorkloadRevisionId,
         workload_generation: u64,
+        service_template_digest: Sha256Digest,
         replica_id: WorkloadReplicaId,
         replica_generation: u64,
         replica_ordinal: u32,
@@ -496,6 +498,7 @@ impl DurableCellWorkloadWriterFenceRequest {
             workload_id,
             workload_revision_id,
             workload_generation,
+            service_template_digest,
             replica_id,
             replica_generation,
             replica_ordinal,
@@ -512,6 +515,8 @@ impl DurableCellWorkloadWriterFenceRequest {
             || self.workload_id.as_uuid().is_nil()
             || self.workload_revision_id.as_uuid().is_nil()
             || self.workload_generation == 0
+            || Sha256Digest::parse(self.service_template_digest.as_str())?
+                != self.service_template_digest
             || self.replica_id.as_uuid().is_nil()
             || self.replica_generation == 0
         {
@@ -534,6 +539,7 @@ pub struct DurableCellWorkloadWriterFenceProjection {
     pub replica_id: WorkloadReplicaId,
     pub replica_generation: u64,
     pub replica_ordinal: u32,
+    pub service_template: DurableCellWorkloadTemplate,
 }
 
 impl DurableCellWorkloadWriterFenceProjection {
@@ -549,6 +555,7 @@ impl DurableCellWorkloadWriterFenceProjection {
             || self.replica_generation != request.replica_generation
             || self.replica_ordinal != request.replica_ordinal
             || self.replica_generation == 0
+            || self.service_template.digest() != &request.service_template_digest
         {
             return Err("Durable Cell Workloads writer-fence projection drifted".into());
         }
@@ -1159,6 +1166,36 @@ impl DurableCellWorkloadProviderTemplateProjection {
     }
 }
 
+/// Owner-neutral request for deriving the exact S0 Secret references from an
+/// opaque Workloads template. The Workloads adapter performs the translation;
+/// no Service or Secret-binding model is exposed to Durable Cells.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadProviderCredentialProjectionRequest {
+    pub storage: DurableCellStorageBinding,
+    pub service_template: DurableCellWorkloadTemplate,
+    pub publisher: DurableCellPublisherProfile,
+}
+
+impl DurableCellWorkloadProviderCredentialProjectionRequest {
+    pub fn new(
+        storage: DurableCellStorageBinding,
+        service_template: DurableCellWorkloadTemplate,
+        publisher: DurableCellPublisherProfile,
+    ) -> Self {
+        Self {
+            storage,
+            service_template,
+            publisher,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.storage.validate()?;
+        self.publisher.validate()?;
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadRevisionGenerationRequest {
     pub fn new(
         organization_id: OrganizationId,
@@ -1217,6 +1254,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadProviderTemplateValidationRequest,
     ) -> ApplicationResult<DurableCellWorkloadProviderTemplateProjection>;
+
+    fn project_provider_credentials(
+        &self,
+        request: &DurableCellWorkloadProviderCredentialProjectionRequest,
+    ) -> ApplicationResult<DurableCellStorageCredentialRequest>;
 
     async fn load_runtime_projection(
         &self,
@@ -1601,6 +1643,8 @@ mod tests {
 
     #[test]
     fn writer_fence_projection_is_exactly_bound_to_replica_identity() {
+        let template_bytes = br#"{"template":"x"}"#;
+        let template_digest = Sha256Digest::from_bytes(template_bytes);
         let request = DurableCellWorkloadWriterFenceRequest::new(
             OrganizationId::new(),
             ProjectId::new(),
@@ -1612,10 +1656,13 @@ mod tests {
             WorkloadId::new(),
             WorkloadRevisionId::new(),
             5,
+            template_digest.clone(),
             WorkloadReplicaId::new(),
             9,
             0,
         );
+        let template = DurableCellWorkloadTemplate::new(template_bytes.to_vec(), template_digest)
+            .expect("opaque template");
         let projection = DurableCellWorkloadWriterFenceProjection {
             workload_id: request.workload_id,
             workload_revision_id: request.workload_revision_id,
@@ -1623,6 +1670,7 @@ mod tests {
             replica_id: request.replica_id,
             replica_generation: request.replica_generation,
             replica_ordinal: request.replica_ordinal,
+            service_template: template,
         };
         projection
             .validate_against(&request)

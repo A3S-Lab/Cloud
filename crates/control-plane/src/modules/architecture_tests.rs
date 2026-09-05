@@ -1061,7 +1061,9 @@ fn durable_cells_provider_workload_validation_uses_storage_projections() {
             "Durable Cells provider-workload policy lost neutral Storage contract {required}"
         );
     }
-    assert!(writer_fence.contains("project_publisher_storage_credentials"));
+    assert!(writer_fence.contains(".project_provider_credentials("));
+    assert!(writer_fence.contains(".validate_provider_workload("));
+    assert!(!writer_fence.contains("project_publisher_storage_credentials"));
     assert!(writer_fence.contains("project_provider_profile"));
     assert!(deployment.contains("DurableCellStorageProviderProfileRequest"));
     assert!(deployment.contains("project_provider_profile"));
@@ -1232,7 +1234,13 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     }
     assert!(writer_fence.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(writer_fence.contains(".load_writer_fence_admission("));
-    for forbidden in ["IWorkloadRepository", ".find_workload_control("] {
+    for forbidden in [
+        "IWorkloadRepository",
+        ".find_workload_control(",
+        "project_publisher_storage_credentials",
+        "validate_pinned_celld_provider_workload",
+        ".resolved_template()",
+    ] {
         assert!(
             !writer_fence.contains(forbidden),
             "Durable Cells writer fence bypassed its Workloads port with {forbidden}"
@@ -1293,6 +1301,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("project_template("));
     assert!(port.contains("project_provider_workload"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderValidationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderCredentialProjectionRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateValidationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateProjection"));
     assert!(port.contains("validate_provider_workload"));
@@ -1321,6 +1330,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "project_provider_workload",
         "validate_pinned_celld_provider_workload",
         "validate_pinned_celld_service_template_payload_projection",
+        "project_provider_credentials",
         "validate_provider_template",
         "DurableCellProjectionIdentity",
     ] {

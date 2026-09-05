@@ -1,5 +1,7 @@
+use crate::modules::durable_cells::application::DurableCellStorageCredentialRequest;
 use crate::modules::durable_cells::application::{
-    durable_cell_managed_owner_reference, validate_pinned_celld_provider_workload,
+    durable_cell_managed_owner_reference, project_publisher_storage_credentials,
+    validate_pinned_celld_provider_workload,
     validate_pinned_celld_service_template_payload_projection,
 };
 use crate::modules::durable_cells::application::{
@@ -7,8 +9,9 @@ use crate::modules::durable_cells::application::{
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
-    DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
-    DurableCellWorkloadProviderTemplateProjection,
+    DurableCellWorkloadPriorWriterFenceRequest,
+    DurableCellWorkloadProviderCredentialProjectionRequest,
+    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderTemplateProjection,
     DurableCellWorkloadProviderTemplateValidationRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
@@ -308,6 +311,36 @@ impl WorkloadsDurableCellWorkloadAdapter {
         {
             return Ok(None);
         }
+        let revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if revision.id != request.workload_revision_id
+            || revision.workload_id != request.workload_id
+            || revision.generation != request.workload_generation
+            || revision.external_build.is_some()
+            || !revision.skill_bindings().is_empty()
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell writer-fence request changed its Workloads revision".into(),
+            ));
+        }
+        let template = revision
+            .resolved_template()
+            .map_err(ApplicationError::Internal)?;
+        template.validate().map_err(ApplicationError::Internal)?;
+        let template_digest = Sha256Digest::parse(
+            template
+                .digest()
+                .map_err(ApplicationError::Internal)?
+                .as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        let template_bytes = serde_json::to_vec(template)
+            .map_err(|error| ApplicationError::Internal(error.to_string()))?;
+        let service_template = DurableCellWorkloadTemplate::new(template_bytes, template_digest)
+            .map_err(ApplicationError::Internal)?;
         let projection = DurableCellWorkloadWriterFenceProjection {
             workload_id: request.workload_id,
             workload_revision_id: request.workload_revision_id,
@@ -315,6 +348,7 @@ impl WorkloadsDurableCellWorkloadAdapter {
             replica_id: request.replica_id,
             replica_generation: request.replica_generation,
             replica_ordinal: request.replica_ordinal,
+            service_template,
         };
         projection
             .validate_against(request)
@@ -487,6 +521,16 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
         )
         .map_err(ApplicationError::Invalid)?;
         DurableCellWorkloadProviderTemplateProjection::new(media_type)
+            .map_err(ApplicationError::Invalid)
+    }
+
+    fn project_provider_credentials(
+        &self,
+        request: &DurableCellWorkloadProviderCredentialProjectionRequest,
+    ) -> ApplicationResult<DurableCellStorageCredentialRequest> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let template = decode_service_template(&request.service_template)?;
+        project_publisher_storage_credentials(&request.storage, &template, &request.publisher)
             .map_err(ApplicationError::Invalid)
     }
 

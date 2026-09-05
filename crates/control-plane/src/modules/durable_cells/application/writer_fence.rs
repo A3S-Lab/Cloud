@@ -1,17 +1,16 @@
 use super::operation_port::IDurableCellOperationPort;
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
-use super::provider_workload::{
-    durable_cell_managed_owner_reference, project_publisher_storage_credentials,
-    validate_pinned_celld_provider_workload,
-};
+use super::provider_workload::durable_cell_managed_owner_reference;
 use super::runtime_profile::admit_durable_cell_replica_runtime_remove;
 use super::storage_port::{
     DurableCellStorageProviderProfileRequest, DurableCellStorageSealOperationRequest,
     DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
 use super::workload_port::{
+    DurableCellWorkloadProviderCredentialProjectionRequest,
     DurableCellWorkloadReplicaRuntimeBinding, DurableCellWorkloadRuntimeProjectionRequest,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellDeployment, DurableCellPublisherProfile,
@@ -67,7 +66,13 @@ impl DurableCellWriterFenceAdapter {
     async fn find_stopped_correlation(
         &self,
         target: &RetiringReplicaTarget,
-    ) -> Result<Option<DurableCellDeployment>, RepositoryError> {
+    ) -> Result<
+        Option<(
+            DurableCellDeployment,
+            DurableCellWorkloadWriterFenceProjection,
+        )>,
+        RepositoryError,
+    > {
         if target.replica.evacuation_node_id.is_some() {
             return Ok(None);
         }
@@ -131,6 +136,7 @@ impl DurableCellWriterFenceAdapter {
             projection.workload_id,
             projection.workload_revision_id,
             target.revision.generation,
+            correlation.provider.service_template_digest.clone(),
             target.replica.id,
             target.replica.generation,
             target.replica.ordinal,
@@ -156,7 +162,7 @@ impl DurableCellWriterFenceAdapter {
                 "CELL0.5 writer fencing requires the canonical single replica".into(),
             ));
         }
-        Ok(Some(correlation))
+        Ok(Some((correlation, workload)))
     }
 }
 
@@ -168,7 +174,7 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
         command: &NodeCommand,
         acknowledgement: &NodeCommandAck,
     ) -> Result<Option<WorkloadWriterFenceCommit>, RepositoryError> {
-        let Some(correlation) = self.find_stopped_correlation(target).await? else {
+        let Some((correlation, workload)) = self.find_stopped_correlation(target).await? else {
             return Ok(None);
         };
         let replica_binding = target.replica_binding.as_ref().ok_or_else(|| {
@@ -198,21 +204,27 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
             .map_err(application_repository_error)?;
         let publisher = DurableCellPublisherProfile::pinned_celld_v0_2_1()
             .map_err(|error| conflict("restore pinned Durable Cell publisher profile", error))?;
-        let template = target
-            .revision
-            .resolved_template()
-            .map_err(|error| conflict("resolve Durable Cell provider Workload", error))?;
-        let credentials =
-            project_publisher_storage_credentials(&correlation.storage, template, &publisher)
-                .map_err(|error| conflict("restore Durable Cell S0 credentials", error))?;
-        validate_pinned_celld_provider_workload(
-            &credentials,
-            &provider_profile,
-            &service_profile,
-            template,
-            &publisher,
-        )
-        .map_err(|error| conflict("validate Durable Cell provider Workload", error))?;
+        let credentials = self
+            .workloads
+            .project_provider_credentials(
+                &DurableCellWorkloadProviderCredentialProjectionRequest::new(
+                    correlation.storage.clone(),
+                    workload.service_template.clone(),
+                    publisher.clone(),
+                ),
+            )
+            .map_err(application_repository_error)?;
+        self.workloads
+            .validate_provider_workload(
+                &super::workload_port::DurableCellWorkloadProviderValidationRequest::new(
+                    credentials.clone(),
+                    provider_profile.clone(),
+                    service_profile.clone(),
+                    workload.service_template.clone(),
+                    publisher.clone(),
+                ),
+            )
+            .map_err(application_repository_error)?;
         let runtime_projection_request = DurableCellWorkloadRuntimeProjectionRequest::for_replica(
             target.replica.organization_id,
             correlation.projection.workload_id,

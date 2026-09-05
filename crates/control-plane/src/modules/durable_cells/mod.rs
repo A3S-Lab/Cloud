@@ -38,6 +38,7 @@ pub use application::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPlacementRequest,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
+    DurableCellWorkloadProviderCredentialProjectionRequest,
     DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderTemplateProjection,
     DurableCellWorkloadProviderTemplateValidationRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,

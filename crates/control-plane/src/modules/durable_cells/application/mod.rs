@@ -50,7 +50,7 @@ pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 pub use provider_workload::compose_pinned_celld_service_process;
 pub(crate) use provider_workload::{
     durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
-    validate_pinned_celld_provider_workload,
+    project_publisher_storage_credentials, validate_pinned_celld_provider_workload,
     validate_pinned_celld_service_template_payload_projection,
 };
 pub use queries::{
@@ -92,6 +92,7 @@ pub use workload_port::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPlacementRequest,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
+    DurableCellWorkloadProviderCredentialProjectionRequest,
     DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderTemplateProjection,
     DurableCellWorkloadProviderTemplateValidationRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,

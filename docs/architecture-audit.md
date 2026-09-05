@@ -312,6 +312,10 @@ Current boundary debt:
   request on that port as well; the Workloads adapter returns only the bounded
   artifact media type needed to compose the generic publication Task, so the
   Durable Cells application does not decode or validate a Service template;
+- Stopped-current writer-fence admission now returns the exact opaque template
+  through the same Workloads projection and derives S0 credential references
+  through a consumer-owned port; the writer-fence application no longer
+  resolves or validates a Workloads `ServiceTemplate` directly.
 - ACL admission now seals the resolved Workloads Service template into opaque,
   digest-locked bytes. Deployment orchestration obtains only a bounded Secret-
   reference and artifact-digest projection through the Workloads port and no
