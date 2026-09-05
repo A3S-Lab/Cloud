@@ -3002,7 +3002,7 @@ Automations target contract rather than retaining another scheduler.
 
 | Sub-gate | State | Outcome |
 | --- | --- | --- |
-| `AUT0.1` | Planned | AutomationDefinition/revision, exact target union, invocation envelope, subscription reference, deduplication, concurrency/misfire policy, closed ACL, authorization, audit, and Outbox contracts |
+| `AUT0.1` | Implemented; component-only | `crates/contracts` now freezes canonical `cloud.automation.definition.v1`, digest-linked `cloud.automation.revision.v1`, and `cloud.automation.invocation.v1` contracts. The closed schedule/webhook/plugin-event/source-event trigger union targets one exact ApplicationRelease, WorkflowRevision, or Task revision; policy-derived deduplication, bounded concurrency/misfire rules, authorization snapshots, redacted audit facts, and transactional Outbox identities are validated with canonical ACL/JSON tests. No scheduler, webhook worker, event consumer, persistence, or public availability is claimed; those remain in `AUT0.2`-`AUT0.6`. |
 | `AUT0.2` | Planned | Signed webhook endpoints, bounded capture, schema validation, exact target, replay, disable/revoke, and Gateway recovery |
 | `AUT0.3` | Planned | Timezone-aware schedules, catch-up/misfire/concurrency rules, lease-safe due evaluation, and P0 scheduled Task adaptation through the existing Boot task rail |
 | `AUT0.4` | Planned | Plugin-trigger subscriptions and normalized event dispatch while Sources retains provider connection/revision authority and U0 retains package authority |
