@@ -4,7 +4,7 @@ use std::path::Path;
 
 const ACL_V0_3_SOURCE: &str = "git+https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166222495585909d81f2caffdca90273c99";
 const BOOT_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88";
-const CODE_CORE_SOURCE: &str = "git+https://github.com/A3S-Lab/Code.git?rev=96be2ce34695341f477644bd3c36cf4aa6c39d4f#96be2ce34695341f477644bd3c36cf4aa6c39d4f";
+const CODE_CORE_SOURCE: &str = "git+https://github.com/A3S-Lab/Code.git?rev=273e97c96f40e8500e7e4c865cd1bafd6ceebe3c#273e97c96f40e8500e7e4c865cd1bafd6ceebe3c";
 const CRATES_IO_SOURCE: &str = "registry+https://github.com/rust-lang/crates.io-index";
 const ORM_SCHEMA_ADMISSION_SOURCE: &str = "git+https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002dc84b07d88a85f2a4a87f913655e62b5";
 
@@ -94,7 +94,7 @@ fn code_core_uses_the_exact_agent_release_contract_revision() {
         1,
         "Cloud must resolve exactly one Code Core package"
     );
-    assert_eq!(packages[0].version, "8.0.4");
+    assert_eq!(packages[0].version, "8.2.0");
     assert_eq!(packages[0].source, CODE_CORE_SOURCE);
 }
 
