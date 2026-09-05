@@ -9,16 +9,16 @@ permissions:
   packages: read
 
 jobs:
-  require-main:
-    name: Require the protected main branch
+  require-release:
+    name: Require the protected release branch
     runs-on: ubuntu-24.04
     steps:
-      - name: Reject non-main dispatches before credentials are delegated
-        run: test "$GITHUB_REF" = refs/heads/main
+      - name: Reject non-release dispatches before credentials are delegated
+        run: test "$GITHUB_REF" = refs/heads/release
 
   bundle-publication:
     name: Real celld publication and behavior through Box, S0, and Gateway
-    needs: require-main
+    needs: require-release
     uses: ./.github/workflows/box-conformance.yml
     with:
       run_cell_bundle_publication: true
