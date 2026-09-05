@@ -108,6 +108,12 @@ jobs:
       A3S_CLOUD_A0_4_CLI_REVISION: d48efa67922e82c15c5f7fd059c860d327cc6dd8
       A3S_CLOUD_A0_4_CLI_TAG: v0.13.5
       A3S_CLOUD_A0_4_CLI_VERSION: 0.13.5
+      # The released CLI and the Cloud control-plane SDK are separate
+      # processes. Keep both exact Code Core pins explicit and record them in
+      # the retained evidence instead of assuming that the CLI release and
+      # Cloud SDK are released together.
+      A3S_CLOUD_A0_4_CLI_CODE_CORE_VERSION: 8.0.4
+      A3S_CLOUD_A0_4_CLOUD_CODE_CORE_VERSION: 8.2.0
       A3S_CLOUD_A0_4_REGISTRY_IMAGE: registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
     defaults:
       run:
@@ -265,10 +271,10 @@ jobs:
             "https://raw.githubusercontent.com/A3S-Lab/CLI/$A3S_CLOUD_A0_4_CLI_REVISION/Cargo.toml" \
             --output "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml"
           grep --fixed-strings \
-            'a3s-code-core = "=8.0.4"' \
+            "a3s-code-core = \"=$A3S_CLOUD_A0_4_CLI_CODE_CORE_VERSION\"" \
             "$RUNNER_TEMP/a0-4-agent-runtime-cli-Cargo.toml"
           grep --fixed-strings \
-            'a3s-code-core = { version = "=8.0.4"' \
+            "a3s-code-core = { version = \"=$A3S_CLOUD_A0_4_CLOUD_CODE_CORE_VERSION\"" \
             apps/cloud/Cargo.toml
           cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
             "$build_dir/config.acl"
@@ -966,6 +972,8 @@ jobs:
             --arg cliRevision "$A3S_CLOUD_A0_4_CLI_REVISION" \
             --arg cliArchiveUrl "$A3S_CLOUD_A0_4_CLI_ARCHIVE_URL" \
             --arg cliArchiveDigest "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
+            --arg cliCodeCoreVersion "$A3S_CLOUD_A0_4_CLI_CODE_CORE_VERSION" \
+            --arg cloudCodeCoreVersion "$A3S_CLOUD_A0_4_CLOUD_CODE_CORE_VERSION" \
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
             --arg containerfileDigest "$containerfile_digest" \
@@ -980,13 +988,14 @@ jobs:
               cloudRevision: $cloud,
               boxRevision: $box,
               ociRuntimeRevision: $ociRuntime,
+              cloudCodeCoreVersion: $cloudCodeCoreVersion,
               sourceRelease: {
                 repository: "A3S-Lab/CLI",
                 tag: $cliTag,
                 revision: $cliRevision,
                 archiveUri: $cliArchiveUrl,
                 archiveDigest: $cliArchiveDigest,
-                codeCoreVersion: "8.0.4"
+                codeCoreVersion: $cliCodeCoreVersion
               },
               build: {
                 baseImage: $baseImage,
@@ -1039,6 +1048,8 @@ jobs:
             --arg cliRevision "$A3S_CLOUD_A0_4_CLI_REVISION" \
             --arg cliArchiveUrl "$A3S_CLOUD_A0_4_CLI_ARCHIVE_URL" \
             --arg cliArchiveDigest "$A3S_CLOUD_A0_4_CLI_ARCHIVE_DIGEST" \
+            --arg cliCodeCoreVersion "$A3S_CLOUD_A0_4_CLI_CODE_CORE_VERSION" \
+            --arg cloudCodeCoreVersion "$A3S_CLOUD_A0_4_CLOUD_CODE_CORE_VERSION" \
             --arg baseImage "$A3S_CLOUD_A0_4_AGENT_BASE_IMAGE" \
             --arg registryImage "$A3S_CLOUD_A0_4_REGISTRY_IMAGE" \
             --arg containerfileDigest "$containerfile_digest" \
@@ -1051,12 +1062,13 @@ jobs:
              and .cloudRevision == $cloud
              and .boxRevision == $box
              and .ociRuntimeRevision == $ociRuntime
+             and .cloudCodeCoreVersion == $cloudCodeCoreVersion
              and .sourceRelease.repository == "A3S-Lab/CLI"
              and .sourceRelease.tag == $cliTag
              and .sourceRelease.revision == $cliRevision
              and .sourceRelease.archiveUri == $cliArchiveUrl
              and .sourceRelease.archiveDigest == $cliArchiveDigest
-             and .sourceRelease.codeCoreVersion == "8.0.4"
+             and .sourceRelease.codeCoreVersion == $cliCodeCoreVersion
              and .build.baseImage == $baseImage
              and .build.registryImage == $registryImage
              and .build.builder.name == "a3s-box"
