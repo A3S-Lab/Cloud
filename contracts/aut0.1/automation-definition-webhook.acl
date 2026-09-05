@@ -1,0 +1,31 @@
+automation_definition {
+  automation_id = "018f0000-0000-7000-8000-000000000401"
+  environment_id = "018f0000-0000-7000-8000-000000000404"
+  name = "release-webhook"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.automation.definition.v1"
+  authorization {
+    policy_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    required_grants = ["application:invoke", "automation:invoke"]
+  }
+  policy {
+    concurrency_mode = "drop"
+    deduplication_scope = "subscription"
+    deduplication_template = "automation/{automation_id}/revision/{revision_id}/subscription/{subscription_id}/event/{event_id}"
+    deduplication_window_ms = 604800000
+    maximum_concurrency = 2
+    misfire_grace_ms = 0
+    misfire_mode = "skip"
+  }
+  application_release {
+    application_id = "018f0000-0000-7000-8000-000000000405"
+    application_release_id = "018f0000-0000-7000-8000-000000000406"
+    release_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+  webhook {
+    request_schema_digest = "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    subscription_id = "018f0000-0000-7000-8000-000000000407"
+    subscription_revision_digest = "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+  }
+}

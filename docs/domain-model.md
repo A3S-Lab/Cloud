@@ -2108,6 +2108,16 @@ Primary aggregates and immutable records:
 
 - `AutomationDefinition` and `AutomationRevision`
 - `AutomationInvocationReceipt`
+
+The component-only `AUT0.1` contract freezes these identities before durable
+Automations persistence exists. A canonical definition admits exactly one
+schedule, webhook, plugin-event, or source-event trigger and one immutable
+ApplicationRelease, WorkflowRevision, or Task target. A revision is contiguous
+and digest-linked; an invocation envelope carries the matching origin,
+policy-derived deduplication key, bounded input, and authorization snapshot.
+Audit and Outbox values retain only redacted identifiers and digests. No
+scheduler, webhook/event worker, receipt table, or target-owned run history is
+introduced by this foundation.
 - `ConnectorProfile` and `ConnectorRevision`
 - `ConnectorRevisionRevocation`
 - `ConnectorExecutionEvidence`

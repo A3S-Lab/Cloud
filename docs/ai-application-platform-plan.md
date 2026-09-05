@@ -771,7 +771,7 @@ implementing a Cloud substitute is prohibited by this plan.
 
 | Sub-gate | Outcome | Dependencies |
 | --- | --- | --- |
-| `AUT0.1` | Freeze AutomationDefinition, immutable revision, target union, invocation envelope, subscription reference, deduplication key, concurrency/misfire policy, canonical ACL, authorization, audit, and Outbox contracts | `F0`, `C0.1`, `W0.3` run-start contract |
+| `AUT0.1` | Implemented component foundation: `a3s-cloud-contracts` freezes canonical `cloud.automation.definition.v1`, digest-linked `cloud.automation.revision.v1`, and `cloud.automation.invocation.v1` values. The closed schedule/webhook/plugin-event/source-event trigger union targets one exact ApplicationRelease, WorkflowRevision, or Task revision; policy-derived deduplication, bounded concurrency/misfire rules, authorization snapshots, redacted audit facts, and transactional Outbox identities are validated by canonical ACL/JSON tests. No scheduler, webhook worker, event consumer, persistence, or public availability is added | `F0`, `C0.1`, `W0.3` run-start contract |
 | `AUT0.2` | Add signed webhook trigger endpoints, bounded request capture, schema validation, exact target pinning, replay, disable/revoke, and Gateway recovery | `AUT0.1`, `E0`, `C0.3` |
 | `AUT0.3` | Add timezone-aware schedules, catch-up/misfire/concurrency rules, lease-safe due evaluation, and P0 scheduled Task adaptation through the existing Boot task rail | `AUT0.1`, Boot compatibility lock, P0 profile contract |
 | `AUT0.4` | Add plugin-trigger subscriptions and normalized event dispatch; preserve Sources connection/revision authority and U0 package authority | `AUT0.1`, `U0.4`, applicable Sources contracts |
