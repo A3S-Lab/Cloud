@@ -1,4 +1,5 @@
 mod concurrency;
+mod due;
 mod entities;
 mod misfire;
 mod repositories;
@@ -6,6 +7,7 @@ mod schedule;
 mod services;
 
 pub use concurrency::{AutomationConcurrencyDecision, AutomationConcurrencyEvaluator};
+pub use due::{AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator};
 pub use entities::{AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord};
 pub use misfire::{AutomationScheduleDueSelection, AutomationScheduleMisfireEvaluator};
 pub use repositories::{

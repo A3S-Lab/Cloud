@@ -16,6 +16,7 @@ pub use application::{
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator, AutomationScheduleCalculator,
+    AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
     AutomationScheduleDueSelection, AutomationScheduleMisfireEvaluator, AutomationWebhookAdmission,
     AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
