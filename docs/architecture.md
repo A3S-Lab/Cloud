@@ -1765,9 +1765,13 @@ verifies durable retention recovery, control-plane restart,
 recover-before-cancel ordering, a stable Runtime generation and provider
 identity across process death, a strictly newer process-incarnation timestamp,
 and cleanup. That retained gate consumed exact crates.io releases
-`a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`. The current
-component pins the exact `a3s-code-core 8.0.4` Git revision for the Code-owned
-final release contract; it requires fresh retained real-provider evidence. The
+`a3s-code-core 8.0.1` and `a3s-flow 1.1.0`, completing `A1.2`. The Agent
+Runtime component pins the exact `a3s-code-core 8.0.4` Git revision for the
+Code-owned final release contract and requires fresh retained real-provider
+evidence. The Cloud control-plane's compile-time Code SDK is a separate
+process dependency and currently pins `a3s-code-core 8.2.0`; the A0.4 gate
+records both exact pins rather than assuming that the CLI release and Cloud SDK
+are released together. The
 component-level `A1.3` foundation now freezes the provider-neutral contract and
 canonical immutable profile/capability evidence, migrates new Code command and
 event delivery through an adapter without invalidating durable legacy history,
