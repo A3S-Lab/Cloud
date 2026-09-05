@@ -257,7 +257,7 @@ pub(crate) fn validate_pinned_celld_service_projection_projection(
 /// Validates one complete profile-bound provider Workload without resolving
 /// Secret material. Workloads remains the Service owner and Secrets remains
 /// the only materialization authority.
-pub(super) fn validate_pinned_celld_provider_workload(
+pub(crate) fn validate_pinned_celld_provider_workload(
     credentials: &DurableCellStorageCredentialRequest,
     provider_profile: &DurableCellStorageProviderProfileProjection,
     service_profile: &DurableCellServiceProfile,

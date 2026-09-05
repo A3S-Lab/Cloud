@@ -50,6 +50,7 @@ pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
 pub use provider_workload::compose_pinned_celld_service_process;
 pub(crate) use provider_workload::{
     durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
+    validate_pinned_celld_provider_workload,
 };
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
@@ -90,10 +91,10 @@ pub use workload_port::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPlacementRequest,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
-    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadReconciliationRequest,
-    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
-    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderValidationRequest,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
+    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
+    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 
