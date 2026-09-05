@@ -12,9 +12,10 @@ pub trait IAutomationWebhookSignatureVerifier: Send + Sync {
     ) -> Result<(), String>;
 }
 
-/// Schema evaluation is deliberately a port.  AUT0.2-C1 freezes the schema
-/// digest and payload capture, while a registry/evaluator is a later runtime
-/// integration.  Admission cannot silently skip this port.
+/// Schema evaluation is deliberately a port.  AUT0.2 freezes the schema digest
+/// and payload capture; component adapters may evaluate an already-selected
+/// document, while registry selection and runtime publication remain outside
+/// this context. Admission cannot silently skip this port.
 #[async_trait]
 pub trait IAutomationWebhookSchemaValidator: Send + Sync {
     async fn validate(
