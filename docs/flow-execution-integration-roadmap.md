@@ -103,7 +103,7 @@ durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
 The current Flow Activity contract is published by Flow `main` at revision
-`2a111c35ffc68ab5c5c83e224d63c520d8558a40` (unknown-outcome reconciliation).
+`a70800cc3c9c5ae2c1b19a7e8b2b0404c09d726c` (fenced, idempotent unknown-outcome reconciliation).
 The same revision must be recorded in the Cloud compatibility lock before a
 release bundle is published. Cloud integration code must
 consume the public `ScheduleActivity`, `ActivityInvocation`,
