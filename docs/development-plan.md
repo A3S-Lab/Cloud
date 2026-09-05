@@ -5504,7 +5504,7 @@ Follow the detailed gates in
    adapter plus C12 management interface, and component-only
    `APP0.2-C9/C10/C11/C13/C14/C15`,
    and land `K0.1` and `AUT0.1` plus the component-only `AUT0.2-C1/C2/C3/C4/C5`
-   and `AUT0.3-C1/C2` calendar and misfire boundaries
+   and `AUT0.3-C1/C2/C3` calendar, misfire, and concurrency boundaries
    contract/admission/PostgreSQL/Secret-verification boundary slices with no
    temporary provider clients;
 4. complete the `I0.2`, required `I0.6` rerank/media, `A0.5`, `A1.4`, selected
