@@ -262,7 +262,7 @@ dependencies = [
 [[package]]
 name = "a3s-code-core"
 version = "8.2.0"
-source = "git+https://github.com/A3S-Lab/Code.git?rev=491d3b94fdd6bb2f94f8d2e4d6c0d586fb0b989c#491d3b94fdd6bb2f94f8d2e4d6c0d586fb0b989c"
+source = "git+https://github.com/A3S-Lab/Code.git?rev=36db7f8bcdf9e04fd8cf77e66e55285b218804c9#36db7f8bcdf9e04fd8cf77e66e55285b218804c9"
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
