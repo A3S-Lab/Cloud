@@ -105,7 +105,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`f4c0d728284a2c36d346bf51f80a0e8df55c8712` (durable per-attempt deadlines,
+`65cc61a4a96dc0c85b9ef837dce18a6ad130a262` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
@@ -113,7 +113,8 @@ bounded history export pages, plus stable attempt correlation in event
 bridges).
 This revision also provides safe CLI/Skill CRUD for local workflow DSL files,
 including bounded JSON-array/NDJSON operation streams (10,000 operations;
-1 MiB per NDJSON line), strict UTF-8 decoding, exact string-valued CLI options,
+1 MiB per NDJSON record, including ignored whitespace), strict UTF-8 decoding,
+exact string-valued CLI options,
 optimistic base-digest checks, stable-ID-preserving
 `set-edge` updates (including explicit handle removal), and registry-driven
 scoped `add-node` placement for iteration/loop children.
