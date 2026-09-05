@@ -1769,7 +1769,8 @@ and cleanup. That retained gate consumed exact crates.io releases
 Runtime component pins the exact `a3s-code-core 8.0.4` Git revision for the
 Code-owned final release contract and requires fresh retained real-provider
 evidence. The Cloud control-plane's compile-time Code SDK is a separate
-process dependency and currently pins `a3s-code-core 8.2.0`; the A0.4 gate
+process dependency and currently pins `a3s-code-core 8.2.0` at Code revision
+`36db7f8b`; the A0.4 gate
 records both exact pins rather than assuming that the CLI release and Cloud SDK
 are released together. The
 component-level `A1.3` foundation now freezes the provider-neutral contract and
