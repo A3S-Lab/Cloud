@@ -51,6 +51,7 @@ pub use provider_workload::compose_pinned_celld_service_process;
 pub(crate) use provider_workload::{
     durable_cell_managed_owner_reference, project_durable_cell_provider_workload,
     validate_pinned_celld_provider_workload,
+    validate_pinned_celld_service_template_payload_projection,
 };
 pub use queries::{
     GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
@@ -91,12 +92,14 @@ pub use workload_port::{
     DurableCellWorkloadDeploymentStatus, DurableCellWorkloadPlacementRequest,
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
-    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderValidationRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadReplicaRuntimeBinding,
-    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
-    DurableCellWorkloadRuntimeProjectionRequest, DurableCellWorkloadTemplate,
-    DurableCellWorkloadTemplateProjection, DurableCellWorkloadWriterFenceProjection,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderTemplateProjection,
+    DurableCellWorkloadProviderTemplateValidationRequest,
+    DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadReplicaRuntimeBinding, DurableCellWorkloadRevisionGenerationRequest,
+    DurableCellWorkloadRuntimeProjection, DurableCellWorkloadRuntimeProjectionRequest,
+    DurableCellWorkloadTemplate, DurableCellWorkloadTemplateProjection,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellWorkloadPort,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 

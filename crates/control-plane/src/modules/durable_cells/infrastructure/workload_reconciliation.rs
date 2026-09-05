@@ -1,5 +1,6 @@
 use crate::modules::durable_cells::application::{
     durable_cell_managed_owner_reference, validate_pinned_celld_provider_workload,
+    validate_pinned_celld_service_template_payload_projection,
 };
 use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
@@ -7,6 +8,8 @@ use crate::modules::durable_cells::application::{
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
     DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
+    DurableCellWorkloadProviderTemplateProjection,
+    DurableCellWorkloadProviderTemplateValidationRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
     DurableCellWorkloadRuntimeProjectionRequest, DurableCellWorkloadTemplate,
@@ -468,6 +471,23 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
             &request.publisher,
         )
         .map_err(ApplicationError::Invalid)
+    }
+
+    fn validate_provider_template(
+        &self,
+        request: &DurableCellWorkloadProviderTemplateValidationRequest,
+    ) -> ApplicationResult<DurableCellWorkloadProviderTemplateProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let media_type = validate_pinned_celld_service_template_payload_projection(
+            &request.provider_profile,
+            request.storage_namespace_id,
+            &request.service_profile,
+            &request.service_template,
+            &request.publisher,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        DurableCellWorkloadProviderTemplateProjection::new(media_type)
+            .map_err(ApplicationError::Invalid)
     }
 
     async fn load_runtime_projection(

@@ -308,6 +308,10 @@ Current boundary debt:
 - Pinned provider-workload admission now uses an owner-neutral validation
   request on the same port; Workloads alone decodes the template and applies
   its Service/profile/credential shape rules before Durable Cells proceeds;
+- Bundle-publication replay now uses an owner-neutral template-validation
+  request on that port as well; the Workloads adapter returns only the bounded
+  artifact media type needed to compose the generic publication Task, so the
+  Durable Cells application does not decode or validate a Service template;
 - ACL admission now seals the resolved Workloads Service template into opaque,
   digest-locked bytes. Deployment orchestration obtains only a bounded Secret-
   reference and artifact-digest projection through the Workloads port and no

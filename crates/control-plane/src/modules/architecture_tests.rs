@@ -809,7 +809,8 @@ fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
     let provider = production_source(&provider);
     assert!(publication.contains("Arc<dyn IDurableCellStoragePort>"));
     assert!(publication.contains(".project_provider_profile("));
-    assert!(publication.contains("validate_pinned_celld_service_template_payload_projection"));
+    assert!(publication.contains(".validate_provider_template("));
+    assert!(!publication.contains("validate_pinned_celld_service_template_payload_projection"));
     for forbidden in [
         "crate::modules::data",
         "ObjectNamespaceProviderProfile",
@@ -1256,6 +1257,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     }
     assert!(bundle_publication.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(bundle_publication.contains(".load_prestart_publication("));
+    assert!(bundle_publication.contains(".validate_provider_template("));
+    assert!(bundle_publication.contains("DurableCellWorkloadProviderTemplateValidationRequest"));
     for forbidden in [
         "IWorkloadRepository",
         ".find_deployment(",
@@ -1264,6 +1267,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         ".find_workload_replica(",
         "project_runtime_secrets",
         "WorkloadReplica::deterministic_id",
+        "validate_pinned_celld_service_template_payload_projection",
     ] {
         assert!(
             !bundle_publication.contains(forbidden),
@@ -1289,7 +1293,10 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("project_template("));
     assert!(port.contains("project_provider_workload"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderValidationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateValidationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateProjection"));
     assert!(port.contains("validate_provider_workload"));
+    assert!(port.contains("validate_provider_template"));
     assert!(port.contains("load_prestart_publication"));
     assert!(port.contains("load_writer_fence_admission"));
     assert!(port.contains("load_prior_writer_fence"));
@@ -1313,6 +1320,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "project_template(",
         "project_provider_workload",
         "validate_pinned_celld_provider_workload",
+        "validate_pinned_celld_service_template_payload_projection",
+        "validate_provider_template",
         "DurableCellProjectionIdentity",
     ] {
         assert!(

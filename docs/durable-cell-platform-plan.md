@@ -42,6 +42,10 @@ The pinned provider admission check follows that port as well, retaining
 Workloads ownership of Service/template and credential-shape validation while
 Durable Cells consumes only the resulting application error boundary.
 
+Publication recovery uses the same owner boundary: the opaque provider
+template is validated by Workloads and Durable Cells receives only its bounded
+artifact media type for the generic publication Task.
+
 The ACL admission adapter also seals the resolved Workloads Service template
 into opaque, digest-locked bytes before calling the deployment application.
 Exact Secret-version references and the resolved artifact digest are projected

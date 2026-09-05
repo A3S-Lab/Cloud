@@ -9,17 +9,14 @@ use super::execution_port::{
 use super::prior_writer_seal::{DurableCellPriorWriterSeal, DurableCellPriorWriterSealStatus};
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
-use super::provider_workload::{
-    validate_durable_cell_provider_workload_projection,
-    validate_pinned_celld_service_template_payload_projection,
-};
+use super::provider_workload::validate_durable_cell_provider_workload_projection;
 use super::storage_port::{
     DurableCellStorageProviderProfileProjection, DurableCellStorageProviderProfileRequest,
     IDurableCellStoragePort,
 };
 use super::workload_port::{
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderTemplateValidationRequest, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellPublisherProfile, DurableCellServiceProfile,
@@ -350,14 +347,17 @@ impl DurableCellBundlePublicationGate {
             &workload.provider_workload,
         )
         .map_err(CompositionError::failed)?;
-        let image_media_type = validate_pinned_celld_service_template_payload_projection(
-            &provider_profile,
-            correlation.storage.storage_namespace_id,
-            &service_profile,
-            &workload.service_template,
-            &publisher,
-        )
-        .map_err(CompositionError::failed)?;
+        let image_media_type = self
+            .workloads
+            .validate_provider_template(&DurableCellWorkloadProviderTemplateValidationRequest::new(
+                provider_profile.clone(),
+                correlation.storage.storage_namespace_id,
+                service_profile,
+                workload.service_template.clone(),
+                publisher.clone(),
+            ))
+            .map_err(CompositionError::application)?
+            .artifact_media_type;
 
         let authority_digest =
             publication_authority_digest(correlation, request.node_id, &bundle, &publisher)

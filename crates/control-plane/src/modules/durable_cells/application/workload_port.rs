@@ -9,7 +9,8 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DurableCellApplicationId, DurableCellApplicationRevisionId,
     EnvironmentId, IdempotencyRequest, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
-    SecretVersionReference, Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
+    SecretVersionReference, Sha256Digest, StorageNamespaceId, WorkloadId, WorkloadReplicaId,
+    WorkloadRevisionId,
 };
 use a3s_runtime::contract::{RuntimeUnitSpec, SecretReference, SecretTarget};
 use async_trait::async_trait;
@@ -1092,6 +1093,72 @@ impl DurableCellWorkloadProviderValidationRequest {
     }
 }
 
+/// Exact owner-neutral request for validating an already-resolved provider
+/// template during publication. The Workloads adapter is the only layer that
+/// decodes the opaque template and applies its Service/profile rules.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadProviderTemplateValidationRequest {
+    pub provider_profile: DurableCellStorageProviderProfileProjection,
+    pub storage_namespace_id: StorageNamespaceId,
+    pub service_profile: DurableCellServiceProfile,
+    pub service_template: DurableCellWorkloadTemplate,
+    pub publisher: DurableCellPublisherProfile,
+}
+
+impl DurableCellWorkloadProviderTemplateValidationRequest {
+    pub fn new(
+        provider_profile: DurableCellStorageProviderProfileProjection,
+        storage_namespace_id: StorageNamespaceId,
+        service_profile: DurableCellServiceProfile,
+        service_template: DurableCellWorkloadTemplate,
+        publisher: DurableCellPublisherProfile,
+    ) -> Self {
+        Self {
+            provider_profile,
+            storage_namespace_id,
+            service_profile,
+            service_template,
+            publisher,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.provider_profile.validate()?;
+        if self.storage_namespace_id.as_uuid().is_nil() {
+            return Err("Durable Cell provider template namespace is invalid".into());
+        }
+        self.publisher.validate()?;
+        Ok(())
+    }
+}
+
+/// Bounded provider metadata returned after the Workloads owner validates an
+/// opaque template. No Workloads Service model crosses the application port.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadProviderTemplateProjection {
+    pub artifact_media_type: String,
+}
+
+impl DurableCellWorkloadProviderTemplateProjection {
+    pub fn new(artifact_media_type: impl Into<String>) -> Result<Self, String> {
+        let projection = Self {
+            artifact_media_type: artifact_media_type.into(),
+        };
+        projection.validate()?;
+        Ok(projection)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.artifact_media_type.is_empty()
+            || self.artifact_media_type.len() > 255
+            || self.artifact_media_type.contains(['\0', '\r', '\n'])
+        {
+            return Err("Durable Cell provider artifact media type is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadRevisionGenerationRequest {
     pub fn new(
         organization_id: OrganizationId,
@@ -1145,6 +1212,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadProviderValidationRequest,
     ) -> ApplicationResult<()>;
+
+    fn validate_provider_template(
+        &self,
+        request: &DurableCellWorkloadProviderTemplateValidationRequest,
+    ) -> ApplicationResult<DurableCellWorkloadProviderTemplateProjection>;
 
     async fn load_runtime_projection(
         &self,
@@ -1419,6 +1491,43 @@ mod tests {
             MAX_WORKLOAD_TEMPLATE_SECRET_REFERENCES + 1
         ];
         assert!(unbounded.validate_against(&template).is_err());
+    }
+
+    #[test]
+    fn provider_template_validation_request_requires_a_namespace_and_bounded_result() {
+        let bytes =
+            serde_json::to_vec(&serde_json::json!({"artifact": "pinned"})).expect("template bytes");
+        let template =
+            DurableCellWorkloadTemplate::new(bytes.clone(), Sha256Digest::from_bytes(&bytes))
+                .expect("opaque template");
+        let provider_profile = DurableCellStorageProviderProfileProjection {
+            digest: Sha256Digest::from_bytes(b"provider profile"),
+            endpoint: "https://storage.example.test".into(),
+            region: "test".into(),
+            bucket: "bucket".into(),
+            prefix: "prefix".into(),
+            virtual_hosted_style: false,
+        };
+        let request = DurableCellWorkloadProviderTemplateValidationRequest::new(
+            provider_profile,
+            StorageNamespaceId::new(),
+            DurableCellServiceProfile::pinned_celld_v0_2_1().expect("service profile"),
+            template,
+            DurableCellPublisherProfile::pinned_celld_v0_2_1().expect("publisher"),
+        );
+        request.validate().expect("valid provider template request");
+
+        let projection = DurableCellWorkloadProviderTemplateProjection::new(
+            "application/vnd.oci.image.index.v1+json",
+        )
+        .expect("media type projection");
+        projection.validate().expect("valid media type projection");
+
+        let mut invalid_request = request;
+        invalid_request.storage_namespace_id = StorageNamespaceId::from_uuid(Uuid::nil());
+        assert!(invalid_request.validate().is_err());
+
+        assert!(DurableCellWorkloadProviderTemplateProjection::new("\n").is_err());
     }
 
     #[test]
