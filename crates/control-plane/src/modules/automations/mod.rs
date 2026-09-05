@@ -15,8 +15,9 @@ pub use application::{
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
 };
 pub use domain::{
-    AutomationScheduleCalculator, AutomationWebhookAdmission, AutomationWebhookDeliveryRecord,
-    AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
+    AutomationScheduleCalculator, AutomationScheduleDueSelection,
+    AutomationScheduleMisfireEvaluator, AutomationWebhookAdmission,
+    AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
     TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
