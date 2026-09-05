@@ -1,9 +1,11 @@
 mod entities;
+mod misfire;
 mod repositories;
 mod schedule;
 mod services;
 
 pub use entities::{AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord};
+pub use misfire::{AutomationScheduleDueSelection, AutomationScheduleMisfireEvaluator};
 pub use repositories::{
     AdmitAutomationWebhookDeliveryWrite, AutomationWebhookAdmission, EndpointLifecycleAction,
     IAutomationWebhookRepository, TransitionAutomationWebhookEndpoint,
