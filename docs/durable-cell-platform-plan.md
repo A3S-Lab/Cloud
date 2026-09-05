@@ -49,6 +49,14 @@ back through the Workloads port, so deployment admission can check Secrets
 scope, S0 credential inclusion, and replay integrity without importing or
 interpreting the Workloads Service model.
 
+Runtime receipt admission follows the same owner-port rule. The Workloads
+adapter loads the pinned revision and returns an immutable provider-plus-
+`RuntimeUnitSpec` projection, including a separate exact replica target view
+for writer-fence cleanup. Durable Cells validates only the generic Runtime
+Service shape, profile ports, digests, and Fleet receipt evidence; it does not
+compile a Workloads revision or import `WorkloadRevision`/`DeploymentReplicaBinding`
+into its Runtime policy.
+
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 [ROADMAP](../ROADMAP.md) remains authoritative for portfolio ordering and public

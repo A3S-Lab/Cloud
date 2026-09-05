@@ -9,7 +9,10 @@ use super::storage_port::{
     DurableCellStorageProviderProfileRequest, DurableCellStorageSealOperationRequest,
     DurableCellStorageSealRequest, IDurableCellStoragePort,
 };
-use super::workload_port::{DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort};
+use super::workload_port::{
+    DurableCellWorkloadReplicaRuntimeBinding, DurableCellWorkloadRuntimeProjectionRequest,
+    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+};
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellDeployment, DurableCellPublisherProfile,
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
@@ -210,14 +213,44 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
             &publisher,
         )
         .map_err(|error| conflict("validate Durable Cell provider Workload", error))?;
+        let runtime_projection_request = DurableCellWorkloadRuntimeProjectionRequest::for_replica(
+            target.replica.organization_id,
+            correlation.projection.workload_id,
+            correlation.projection.workload_revision_id,
+            correlation.provider.workload_generation,
+            correlation.provider.service_template_digest.clone(),
+            correlation.provider.service_profile_digest.clone(),
+            replica_binding.runtime_unit_id.clone(),
+            replica_binding.runtime_generation,
+        );
+        let runtime_projection = self
+            .workloads
+            .load_runtime_projection(&runtime_projection_request)
+            .await
+            .map_err(application_repository_error)?;
+        let replica_node_id = replica_binding.node_id.ok_or_else(|| {
+            RepositoryError::Conflict(
+                "Durable Cell writer fence omitted its Runtime node binding".into(),
+            )
+        })?;
+        let replica_runtime_binding = DurableCellWorkloadReplicaRuntimeBinding::new(
+            replica_binding.workload_id,
+            replica_binding.revision_id,
+            replica_binding.replica_id,
+            replica_binding.replica_generation,
+            target.replica.ordinal,
+            replica_node_id,
+            replica_binding.runtime_unit_id.clone(),
+            replica_binding.runtime_generation,
+        );
         let envelope = command
             .envelope(acknowledgement.lease_id)
             .map_err(|error| conflict("restore Fleet RuntimeRemove envelope", error))?;
         admit_durable_cell_replica_runtime_remove(
             &correlation.provider,
             &service_profile,
-            &target.revision,
-            replica_binding,
+            &runtime_projection,
+            &replica_runtime_binding,
             &envelope,
             acknowledgement,
         )

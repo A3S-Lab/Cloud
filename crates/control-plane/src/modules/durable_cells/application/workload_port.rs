@@ -11,7 +11,7 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, NodeId, NodePoolId, OperationId, OrganizationId, ProjectId,
     SecretVersionReference, Sha256Digest, WorkloadId, WorkloadReplicaId, WorkloadRevisionId,
 };
-use a3s_runtime::contract::{SecretReference, SecretTarget};
+use a3s_runtime::contract::{RuntimeUnitSpec, SecretReference, SecretTarget};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -21,6 +21,16 @@ use uuid::Uuid;
 const MAX_WORKLOAD_TEMPLATE_BYTES: usize = 1024 * 1024;
 const MAX_WORKLOAD_ARTIFACT_URI_BYTES: usize = 4096;
 const MAX_WORKLOAD_TEMPLATE_SECRET_REFERENCES: usize = 128;
+
+/// The published identity form used by the ordinary Workloads Runtime
+/// Service projection. Keeping this tiny identity helper beside the port
+/// prevents consumer policy from reconstructing a foreign aggregate.
+pub(crate) fn ordinary_runtime_unit_id(
+    workload_id: WorkloadId,
+    workload_revision_id: WorkloadRevisionId,
+) -> String {
+    format!("workload:{}:revision:{}", workload_id, workload_revision_id)
+}
 
 /// Opaque, immutable bytes for the already-resolved Workloads Service
 /// template. Workloads remains the authority for interpreting this payload;
@@ -814,6 +824,215 @@ pub struct DurableCellWorkloadProviderProjectionRequest {
     pub service_template: DurableCellWorkloadTemplate,
 }
 
+/// Exact owner-neutral request for compiling one Workloads revision into the
+/// generic Runtime Service contract. Workloads remains responsible for
+/// loading the revision, decoding its Service template, and invoking the sole
+/// Runtime compiler; Durable Cells supplies only the identity and immutable
+/// profile digest that must be bound to the result.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadRuntimeProjectionRequest {
+    pub organization_id: OrganizationId,
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub workload_generation: u64,
+    pub service_template_digest: Sha256Digest,
+    pub semantics_profile_digest: Sha256Digest,
+    /// `None` means the revision's ordinary Service unit identity and
+    /// generation. `Some` is reserved for an already-bound replica Runtime
+    /// target whose identity is owned by Workloads.
+    pub runtime_unit_id: Option<String>,
+    pub runtime_generation: Option<u64>,
+}
+
+impl DurableCellWorkloadRuntimeProjectionRequest {
+    pub fn for_revision(
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        workload_generation: u64,
+        service_template_digest: Sha256Digest,
+        semantics_profile_digest: Sha256Digest,
+    ) -> Self {
+        Self {
+            organization_id,
+            workload_id,
+            workload_revision_id,
+            workload_generation,
+            service_template_digest,
+            semantics_profile_digest,
+            runtime_unit_id: None,
+            runtime_generation: None,
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn for_replica(
+        organization_id: OrganizationId,
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        workload_generation: u64,
+        service_template_digest: Sha256Digest,
+        semantics_profile_digest: Sha256Digest,
+        runtime_unit_id: String,
+        runtime_generation: u64,
+    ) -> Self {
+        Self {
+            organization_id,
+            workload_id,
+            workload_revision_id,
+            workload_generation,
+            service_template_digest,
+            semantics_profile_digest,
+            runtime_unit_id: Some(runtime_unit_id),
+            runtime_generation: Some(runtime_generation),
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.workload_id.as_uuid().is_nil()
+            || self.workload_revision_id.as_uuid().is_nil()
+            || self.workload_generation == 0
+            || Sha256Digest::parse(self.service_template_digest.as_str())?
+                != self.service_template_digest
+            || Sha256Digest::parse(self.semantics_profile_digest.as_str())?
+                != self.semantics_profile_digest
+        {
+            return Err("Durable Cell Workloads Runtime projection identity is invalid".into());
+        }
+        match (&self.runtime_unit_id, self.runtime_generation) {
+            (None, None) => {}
+            (Some(unit_id), Some(generation))
+                if !unit_id.trim().is_empty()
+                    && unit_id.len() <= 512
+                    && !unit_id.contains(['\0', '\r', '\n'])
+                    && generation > 0 => {}
+            _ => return Err("Durable Cell Workloads Runtime replica target is incomplete".into()),
+        }
+        Ok(())
+    }
+
+    fn expected_runtime_unit_id(&self) -> String {
+        self.runtime_unit_id.clone().unwrap_or_else(|| {
+            ordinary_runtime_unit_id(self.workload_id, self.workload_revision_id)
+        })
+    }
+
+    fn expected_runtime_generation(&self) -> u64 {
+        self.runtime_generation.unwrap_or(self.workload_generation)
+    }
+}
+
+/// Immutable Workloads-owned projection returned by the Runtime compiler.
+/// The provider projection is included so Durable Cells can bind the generic
+/// Runtime spec to the same revision and artifact without importing a
+/// Workloads aggregate or Service template.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadRuntimeProjection {
+    pub provider: DurableCellProviderWorkloadProjection,
+    pub spec: RuntimeUnitSpec,
+}
+
+impl DurableCellWorkloadRuntimeProjection {
+    pub fn new(
+        provider: DurableCellProviderWorkloadProjection,
+        spec: RuntimeUnitSpec,
+    ) -> Result<Self, String> {
+        let projection = Self { provider, spec };
+        projection.validate()?;
+        Ok(projection)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.provider.validate()?;
+        self.spec.validate()?;
+        if self.spec.generation == 0
+            || self.spec.artifact.digest != self.provider.provider_artifact_digest.as_str()
+        {
+            return Err("Durable Cell Workloads Runtime projection drifted".into());
+        }
+        Ok(())
+    }
+
+    pub fn validate_against(
+        &self,
+        request: &DurableCellWorkloadRuntimeProjectionRequest,
+    ) -> Result<(), String> {
+        request.validate()?;
+        self.validate()?;
+        if self.provider.workload_id != request.workload_id
+            || self.provider.workload_revision_id != request.workload_revision_id
+            || self.provider.workload_generation != request.workload_generation
+            || self.provider.service_template_digest != request.service_template_digest
+            || self.spec.unit_id != request.expected_runtime_unit_id()
+            || self.spec.generation != request.expected_runtime_generation()
+            || self.spec.semantics_profile_digest.as_deref()
+                != Some(request.semantics_profile_digest.as_str())
+        {
+            return Err(
+                "Durable Cell Workloads Runtime projection changed its exact binding".into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+/// Owner-neutral identity of one Workloads replica Runtime target. The
+/// concrete `DeploymentReplicaBinding` stays inside the Workloads adapter;
+/// Durable Cells only receives the fields needed to fence one exact receipt.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadReplicaRuntimeBinding {
+    pub workload_id: WorkloadId,
+    pub workload_revision_id: WorkloadRevisionId,
+    pub replica_id: WorkloadReplicaId,
+    pub replica_generation: u64,
+    pub replica_ordinal: u32,
+    pub node_id: NodeId,
+    pub runtime_unit_id: String,
+    pub runtime_generation: u64,
+}
+
+impl DurableCellWorkloadReplicaRuntimeBinding {
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        workload_id: WorkloadId,
+        workload_revision_id: WorkloadRevisionId,
+        replica_id: WorkloadReplicaId,
+        replica_generation: u64,
+        replica_ordinal: u32,
+        node_id: NodeId,
+        runtime_unit_id: String,
+        runtime_generation: u64,
+    ) -> Self {
+        Self {
+            workload_id,
+            workload_revision_id,
+            replica_id,
+            replica_generation,
+            replica_ordinal,
+            node_id,
+            runtime_unit_id,
+            runtime_generation,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.workload_id.as_uuid().is_nil()
+            || self.workload_revision_id.as_uuid().is_nil()
+            || self.replica_id.as_uuid().is_nil()
+            || self.replica_generation == 0
+            || self.node_id.as_uuid().is_nil()
+            || self.runtime_generation != self.replica_generation
+            || self.runtime_unit_id.trim().is_empty()
+            || self.runtime_unit_id.len() > 512
+            || self.runtime_unit_id.contains(['\0', '\r', '\n'])
+        {
+            return Err("Durable Cell Workloads replica Runtime binding is invalid".into());
+        }
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadProviderProjectionRequest {
     pub fn new(
         projection: DurableCellProjectionIdentity,
@@ -926,6 +1145,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadProviderValidationRequest,
     ) -> ApplicationResult<()>;
+
+    async fn load_runtime_projection(
+        &self,
+        request: &DurableCellWorkloadRuntimeProjectionRequest,
+    ) -> ApplicationResult<DurableCellWorkloadRuntimeProjection>;
 
     async fn load_prestart_publication(
         &self,
@@ -1056,6 +1280,57 @@ mod tests {
         let mut invalid = request;
         invalid.workload_generation = 0;
         assert!(invalid.validate().is_err());
+    }
+
+    #[test]
+    fn runtime_projection_request_keeps_revision_and_replica_targets_complete() {
+        let template_digest = Sha256Digest::from_bytes(b"template");
+        let semantics_digest = Sha256Digest::from_bytes(b"semantics");
+        let revision = DurableCellWorkloadRuntimeProjectionRequest::for_revision(
+            OrganizationId::new(),
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            3,
+            template_digest.clone(),
+            semantics_digest.clone(),
+        );
+        revision.validate().expect("revision Runtime request");
+
+        let replica = DurableCellWorkloadRuntimeProjectionRequest::for_replica(
+            revision.organization_id,
+            revision.workload_id,
+            revision.workload_revision_id,
+            revision.workload_generation,
+            template_digest,
+            semantics_digest,
+            "workload:replica:1".into(),
+            9,
+        );
+        replica.validate().expect("replica Runtime request");
+
+        let mut incomplete = replica;
+        incomplete.runtime_generation = None;
+        assert!(incomplete.validate().is_err());
+    }
+
+    #[test]
+    fn replica_runtime_binding_rejects_generation_and_node_drift() {
+        let mut binding = DurableCellWorkloadReplicaRuntimeBinding::new(
+            WorkloadId::new(),
+            WorkloadRevisionId::new(),
+            WorkloadReplicaId::new(),
+            4,
+            0,
+            NodeId::new(),
+            "workload:replica:1".into(),
+            4,
+        );
+        binding.validate().expect("valid replica Runtime binding");
+        binding.runtime_generation = 3;
+        assert!(binding.validate().is_err());
+        binding.runtime_generation = 4;
+        binding.node_id = NodeId::from_uuid(Uuid::nil());
+        assert!(binding.validate().is_err());
     }
 
     #[test]

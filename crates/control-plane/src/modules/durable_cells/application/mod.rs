@@ -92,10 +92,11 @@ pub use workload_port::{
     DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
     DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
     DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderValidationRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, DurableCellWorkloadTemplateProjection,
-    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadReplicaRuntimeBinding,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
+    DurableCellWorkloadRuntimeProjectionRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadTemplateProjection, DurableCellWorkloadWriterFenceProjection,
+    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
 pub(crate) use writer_fence::DurableCellWriterFenceAdapter;
 

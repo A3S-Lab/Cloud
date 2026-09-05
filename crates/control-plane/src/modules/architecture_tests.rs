@@ -1417,6 +1417,66 @@ fn durable_cells_deployment_uses_the_workloads_placement_compiler() {
 }
 
 #[test]
+fn durable_cells_runtime_projection_crosses_one_workloads_port() {
+    let runtime =
+        std::fs::read_to_string(module_root().join("durable_cells/application/runtime_profile.rs"))
+            .expect("read Durable Cells Runtime profile application");
+    let writer_fence =
+        std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
+            .expect("read Durable Cells Runtime Workloads port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
+    )
+    .expect("read Durable Cells Runtime Workloads adapter");
+
+    let runtime = production_source(&runtime);
+    let writer_fence = production_source(&writer_fence);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+
+    for forbidden in [
+        "crate::modules::workloads",
+        "WorkloadRevision",
+        "DeploymentReplicaBinding",
+        "project_runtime_spec_with_digest",
+    ] {
+        assert!(
+            !runtime.contains(forbidden),
+            "Durable Cells Runtime profile bypassed the Workloads port with {forbidden}"
+        );
+    }
+    assert!(
+        writer_fence.contains(".load_runtime_projection("),
+        "Durable Cells writer fencing must obtain Runtime semantics through the Workloads port"
+    );
+    for required in [
+        "pub struct DurableCellWorkloadRuntimeProjectionRequest",
+        "pub struct DurableCellWorkloadRuntimeProjection",
+        "pub struct DurableCellWorkloadReplicaRuntimeBinding",
+        "load_runtime_projection",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Runtime Workloads port lost {required}"
+        );
+    }
+    for required in [
+        "async fn load_runtime_projection",
+        "find_revision",
+        "project_runtime_spec_with_digest",
+        "DurableCellWorkloadRuntimeProjection::new",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Runtime Workloads adapter lost owner translation {required}"
+        );
+    }
+}
+
+#[test]
 fn durable_cells_node_pool_admission_crosses_one_consumer_owned_port() {
     let deployment =
         std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))

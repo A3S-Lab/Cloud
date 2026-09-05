@@ -3,7 +3,7 @@ use crate::modules::durable_cells::application::{
     admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
     admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
     project_durable_cell_operator_binding, project_durable_cell_provider_workload,
-    project_durable_cell_runtime_spec,
+    project_durable_cell_runtime_spec, DurableCellWorkloadRuntimeProjection,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
@@ -13,6 +13,7 @@ use crate::modules::shared_kernel::domain::{
     BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
     OrganizationId, PrincipalId, ProjectId, ResourceName,
 };
+use crate::modules::workloads::application::project_runtime_spec_with_digest;
 use crate::modules::workloads::{
     HttpHealthCheck, OciArtifact, ServicePort, ServiceProcess, ServiceResources, ServiceTemplate,
     WorkloadRevision,
@@ -180,6 +181,17 @@ fn binding(fixture: &Fixture) -> DurableCellProviderBinding {
     .expect("provider binding")
 }
 
+fn runtime_projection(fixture: &Fixture) -> DurableCellWorkloadRuntimeProjection {
+    let provider = project_durable_cell_provider_workload(&fixture.workload_revision)
+        .expect("provider Workload projection");
+    let spec = project_runtime_spec_with_digest(
+        &fixture.workload_revision,
+        Some(fixture.profile.digest().as_str()),
+    )
+    .expect("Runtime Service projection");
+    DurableCellWorkloadRuntimeProjection::new(provider, spec).expect("Runtime Workloads projection")
+}
+
 #[test]
 fn provider_selection_binds_one_existing_digest_pinned_workload_revision() {
     let fixture = fixture();
@@ -282,9 +294,9 @@ fn provider_template_rejects_extra_surface_shared_socket_or_internal_health() {
 fn provider_projects_only_an_ordinary_profile_bound_runtime_service() {
     let fixture = fixture();
     let binding = binding(&fixture);
-    let spec =
-        project_durable_cell_runtime_spec(&binding, &fixture.profile, &fixture.workload_revision)
-            .expect("Runtime Service");
+    let workload = runtime_projection(&fixture);
+    let spec = project_durable_cell_runtime_spec(&binding, &fixture.profile, &workload)
+        .expect("Runtime Service");
     assert_eq!(spec.class, RuntimeUnitClass::Service);
     assert_eq!(
         spec.semantics_profile_digest.as_deref(),
@@ -305,15 +317,15 @@ fn provider_projects_only_an_ordinary_profile_bound_runtime_service() {
 fn runtime_admission_consumes_the_exact_existing_fleet_receipt() {
     let fixture = fixture();
     let binding = binding(&fixture);
-    let spec =
-        project_durable_cell_runtime_spec(&binding, &fixture.profile, &fixture.workload_revision)
-            .expect("Runtime Service");
+    let workload = runtime_projection(&fixture);
+    let spec = project_durable_cell_runtime_spec(&binding, &fixture.profile, &workload)
+        .expect("Runtime Service");
     let observation = healthy_observation(&spec, RuntimeHealthState::Healthy);
     let (command, acknowledgement) = runtime_apply_receipt(spec, observation);
     let endpoints = admit_durable_cell_runtime_apply(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &command,
         &acknowledgement,
     )
@@ -330,7 +342,7 @@ fn runtime_admission_consumes_the_exact_existing_fleet_receipt() {
     assert!(admit_durable_cell_runtime_apply(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &command,
         &forged,
     )
@@ -353,7 +365,7 @@ fn runtime_admission_consumes_the_exact_existing_fleet_receipt() {
     assert!(admit_durable_cell_runtime_apply(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &unhealthy_command,
         &unhealthy_ack,
     )
@@ -364,18 +376,15 @@ fn runtime_admission_consumes_the_exact_existing_fleet_receipt() {
 fn operator_observation_adopts_only_the_exact_healthy_runtime() {
     let fixture = fixture();
     let binding = binding(&fixture);
-    let spec =
-        project_durable_cell_runtime_spec(&binding, &fixture.profile, &fixture.workload_revision)
-            .expect("Runtime Service");
+    let workload = runtime_projection(&fixture);
+    let spec = project_durable_cell_runtime_spec(&binding, &fixture.profile, &workload)
+        .expect("Runtime Service");
     let apply_observation = healthy_observation(&spec, RuntimeHealthState::Healthy);
     let (apply_command, apply_acknowledgement) =
         runtime_apply_receipt(spec.clone(), apply_observation);
-    let operator_binding = project_durable_cell_operator_binding(
-        &binding,
-        &fixture.profile,
-        &fixture.workload_revision,
-    )
-    .expect("operator binding");
+    let operator_binding =
+        project_durable_cell_operator_binding(&binding, &fixture.profile, &workload)
+            .expect("operator binding");
     assert_eq!(
         operator_binding.runtime_spec_digest,
         spec.digest().expect("digest")
@@ -427,7 +436,7 @@ fn operator_observation_adopts_only_the_exact_healthy_runtime() {
     let admitted = admit_durable_cell_operator_observation(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &apply_command,
         &apply_acknowledgement,
         &operator_command,
@@ -444,7 +453,7 @@ fn operator_observation_adopts_only_the_exact_healthy_runtime() {
     assert!(admit_durable_cell_operator_observation(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &apply_command,
         &apply_acknowledgement,
         &cross_node_command,
@@ -463,7 +472,7 @@ fn operator_observation_adopts_only_the_exact_healthy_runtime() {
     assert!(admit_durable_cell_operator_observation(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &apply_command,
         &apply_acknowledgement,
         &operator_command,
@@ -476,16 +485,16 @@ fn operator_observation_adopts_only_the_exact_healthy_runtime() {
 fn drain_and_cleanup_admit_only_existing_runtime_receipts() {
     let fixture = fixture();
     let binding = binding(&fixture);
-    let spec =
-        project_durable_cell_runtime_spec(&binding, &fixture.profile, &fixture.workload_revision)
-            .expect("Runtime Service");
+    let workload = runtime_projection(&fixture);
+    let spec = project_durable_cell_runtime_spec(&binding, &fixture.profile, &workload)
+        .expect("Runtime Service");
 
     let (stop_command, stop_acknowledgement) = runtime_stop_receipt(&spec);
     assert_eq!(stop_command.payload.kind(), "runtime_stop");
     admit_durable_cell_runtime_stop(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &stop_command,
         &stop_acknowledgement,
     )
@@ -496,7 +505,7 @@ fn drain_and_cleanup_admit_only_existing_runtime_receipts() {
     admit_durable_cell_runtime_remove(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &remove_command,
         &remove_acknowledgement,
     )
@@ -507,7 +516,7 @@ fn drain_and_cleanup_admit_only_existing_runtime_receipts() {
     assert!(admit_durable_cell_runtime_remove(
         &binding,
         &fixture.profile,
-        &fixture.workload_revision,
+        &workload,
         &remove_command,
         &stale,
     )

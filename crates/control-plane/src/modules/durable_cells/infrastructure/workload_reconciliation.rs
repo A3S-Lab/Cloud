@@ -8,7 +8,8 @@ use crate::modules::durable_cells::application::{
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
     DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
-    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
+    DurableCellWorkloadRuntimeProjectionRequest, DurableCellWorkloadTemplate,
     DurableCellWorkloadTemplateProjection, DurableCellWorkloadWriterFenceProjection,
     DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
@@ -23,7 +24,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, RepositoryError, ResourceName, SecretVersionReference, Sha256Digest,
 };
-use crate::modules::workloads::application::project_runtime_secrets;
+use crate::modules::workloads::application::{
+    project_runtime_secrets, project_runtime_spec_with_digest,
+};
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, IWorkloadRepository,
     IWorkloadWriterFenceRepository, ManagedOwnerKind, ManagedOwnerReference,
@@ -465,6 +468,51 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
             &request.publisher,
         )
         .map_err(ApplicationError::Invalid)
+    }
+
+    async fn load_runtime_projection(
+        &self,
+        request: &DurableCellWorkloadRuntimeProjectionRequest,
+    ) -> ApplicationResult<DurableCellWorkloadRuntimeProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if revision.id != request.workload_revision_id
+            || revision.workload_id != request.workload_id
+            || revision.generation != request.workload_generation
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell Runtime request changed its Workloads revision identity".into(),
+            ));
+        }
+        let provider = project_durable_cell_provider_workload(&revision)
+            .map_err(ApplicationError::Internal)?;
+        if provider.service_template_digest != request.service_template_digest {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell Runtime request changed its Workloads template".into(),
+            ));
+        }
+        let mut spec = project_runtime_spec_with_digest(
+            &revision,
+            Some(request.semantics_profile_digest.as_str()),
+        )
+        .map_err(ApplicationError::Internal)?;
+        if let (Some(unit_id), Some(generation)) =
+            (&request.runtime_unit_id, request.runtime_generation)
+        {
+            spec.unit_id.clone_from(unit_id);
+            spec.generation = generation;
+            spec.validate().map_err(ApplicationError::Internal)?;
+        }
+        let projection = DurableCellWorkloadRuntimeProjection::new(provider, spec)
+            .map_err(ApplicationError::Internal)?;
+        projection
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+        Ok(projection)
     }
 
     async fn load_prestart_publication(

@@ -1,13 +1,15 @@
-//! Durable Cells policy for compiling and admitting the generic Runtime
-//! Service protocol. Runtime remains the sole lifecycle authority; this module
-//! adds only product correlation and profile-digest checks.
+//! Durable Cells policy for validating and admitting the generic Runtime
+//! Service protocol. Workloads remains the sole Runtime compiler and Runtime
+//! remains the sole lifecycle authority; this module adds only product
+//! correlation and profile-digest checks.
 
-use super::provider_workload::validate_durable_cell_provider_workload_binding;
-use crate::modules::durable_cells::domain::{
-    DurableCellProviderBinding, DurableCellServiceProfile,
+use super::workload_port::{
+    ordinary_runtime_unit_id, DurableCellWorkloadReplicaRuntimeBinding,
+    DurableCellWorkloadRuntimeProjection,
 };
-use crate::modules::workloads::application::project_runtime_spec_with_digest;
-use crate::modules::workloads::{DeploymentReplicaBinding, WorkloadRevision};
+use crate::modules::durable_cells::domain::{
+    DurableCellProviderBinding, DurableCellProviderWorkloadProjection, DurableCellServiceProfile,
+};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandEnvelope, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
     NodeDurableCellOperatorBindingV1, NodeDurableCellOperatorObservationV1,
@@ -29,15 +31,10 @@ pub struct DurableCellRuntimeEndpoints {
 pub fn project_durable_cell_runtime_spec(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
 ) -> Result<RuntimeUnitSpec, String> {
-    validate_durable_cell_provider_workload_binding(binding, service_profile, workload_revision)?;
-    let spec = project_runtime_spec_with_digest(
-        workload_revision,
-        Some(binding.service_profile_digest.as_str()),
-    )?;
-    validate_runtime_spec(binding, service_profile, workload_revision, &spec)?;
-    Ok(spec)
+    validate_runtime_projection(binding, service_profile, workload)?;
+    Ok(workload.spec.clone())
 }
 
 /// Bind the Cell provider's node-local operator port to the same exact
@@ -47,9 +44,9 @@ pub fn project_durable_cell_runtime_spec(
 pub fn project_durable_cell_operator_binding(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
 ) -> Result<NodeDurableCellOperatorBindingV1, String> {
-    let spec = project_durable_cell_runtime_spec(binding, service_profile, workload_revision)?;
+    let spec = project_durable_cell_runtime_spec(binding, service_profile, workload)?;
     let operator = NodeDurableCellOperatorBindingV1 {
         schema: NodeDurableCellOperatorBindingV1::SCHEMA.into(),
         application_id: binding.application_id.as_uuid(),
@@ -75,11 +72,11 @@ pub fn project_durable_cell_operator_binding(
 pub fn admit_durable_cell_runtime_apply(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
     command: &NodeCommandEnvelope,
     acknowledgement: &NodeCommandAck,
 ) -> Result<DurableCellRuntimeEndpoints, String> {
-    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload_revision)?;
+    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload)?;
     command.validate()?;
     acknowledgement.validate_against(command)?;
     if acknowledgement.schema != NodeCommandAck::SCHEMA {
@@ -112,7 +109,7 @@ pub fn admit_durable_cell_runtime_apply(
 pub fn admit_durable_cell_operator_observation(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
     runtime_apply_command: &NodeCommandEnvelope,
     runtime_apply_acknowledgement: &NodeCommandAck,
     operator_command: &NodeCommandEnvelope,
@@ -121,12 +118,11 @@ pub fn admit_durable_cell_operator_observation(
     admit_durable_cell_runtime_apply(
         binding,
         service_profile,
-        workload_revision,
+        workload,
         runtime_apply_command,
         runtime_apply_acknowledgement,
     )?;
-    let expected =
-        project_durable_cell_operator_binding(binding, service_profile, workload_revision)?;
+    let expected = project_durable_cell_operator_binding(binding, service_profile, workload)?;
     operator_command.validate()?;
     operator_acknowledgement.validate_against(operator_command)?;
     if operator_acknowledgement.schema != NodeCommandAck::SCHEMA {
@@ -169,11 +165,11 @@ pub fn admit_durable_cell_operator_observation(
 pub fn admit_durable_cell_runtime_stop(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
     command: &NodeCommandEnvelope,
     acknowledgement: &NodeCommandAck,
 ) -> Result<(), String> {
-    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload_revision)?;
+    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload)?;
     validate_current_receipt(command, acknowledgement, "RuntimeStop")?;
     let NodeCommandPayload::RuntimeStop { request } = &command.payload else {
         return Err("Durable Cell drain requires the existing Fleet RuntimeStop command".into());
@@ -223,11 +219,11 @@ pub fn admit_durable_cell_runtime_stop(
 pub fn admit_durable_cell_runtime_remove(
     binding: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
+    workload: &DurableCellWorkloadRuntimeProjection,
     command: &NodeCommandEnvelope,
     acknowledgement: &NodeCommandAck,
 ) -> Result<(), String> {
-    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload_revision)?;
+    let expected = project_durable_cell_runtime_spec(binding, service_profile, workload)?;
     validate_current_receipt(command, acknowledgement, "RuntimeRemove")?;
     let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
         return Err(
@@ -253,25 +249,28 @@ pub fn admit_durable_cell_runtime_remove(
 pub(crate) fn admit_durable_cell_replica_runtime_remove(
     provider: &DurableCellProviderBinding,
     service_profile: &DurableCellServiceProfile,
-    workload_revision: &WorkloadRevision,
-    replica_binding: &DeploymentReplicaBinding,
+    workload: &DurableCellWorkloadRuntimeProjection,
+    replica_binding: &DurableCellWorkloadReplicaRuntimeBinding,
     command: &NodeCommandEnvelope,
     acknowledgement: &NodeCommandAck,
 ) -> Result<(), String> {
-    validate_durable_cell_provider_workload_binding(provider, service_profile, workload_revision)?;
-    let node_id = replica_binding
-        .node_id
-        .ok_or_else(|| "Durable Cell cleanup omitted its Workloads node binding".to_owned())?;
-    if replica_binding.workload_id != workload_revision.workload_id
-        || replica_binding.revision_id != workload_revision.id
-        || replica_binding.replica_generation == 0
-        || replica_binding.runtime_generation != replica_binding.replica_generation
-        || replica_binding.runtime_unit_id.trim().is_empty()
+    validate_runtime_projection_identity(provider, workload)?;
+    replica_binding.validate()?;
+    if replica_binding.workload_id != workload.provider.workload_id
+        || replica_binding.workload_revision_id != workload.provider.workload_revision_id
     {
         return Err("Durable Cell cleanup has an invalid Workloads replica binding".into());
     }
+    validate_runtime_spec(
+        provider,
+        service_profile,
+        &workload.provider,
+        &workload.spec,
+        &replica_binding.runtime_unit_id,
+        replica_binding.runtime_generation,
+    )?;
     validate_current_receipt(command, acknowledgement, "replica RuntimeRemove")?;
-    if command.node_id != node_id.as_uuid()
+    if command.node_id != replica_binding.node_id.as_uuid()
         || command.aggregate_id != replica_binding.replica_id.as_uuid()
     {
         return Err("Durable Cell cleanup changed its Workloads replica identity".into());
@@ -337,13 +336,15 @@ fn validate_runtime_evidence_time(
 fn validate_runtime_spec(
     binding: &DurableCellProviderBinding,
     profile: &DurableCellServiceProfile,
-    revision: &WorkloadRevision,
+    provider: &DurableCellProviderWorkloadProjection,
     spec: &RuntimeUnitSpec,
+    expected_unit_id: &str,
+    expected_generation: u64,
 ) -> Result<(), String> {
-    validate_durable_cell_provider_workload_binding(binding, profile, revision)?;
+    binding.validate_workload_projection(profile, provider)?;
     spec.validate()?;
-    if spec.unit_id != revision.runtime_unit_id()
-        || spec.generation != binding.workload_generation
+    if spec.unit_id != expected_unit_id
+        || spec.generation != expected_generation
         || spec.class != RuntimeUnitClass::Service
         || spec.artifact.digest != binding.provider_artifact_digest.as_str()
         || spec.semantics_profile_digest.as_deref() != Some(binding.service_profile_digest.as_str())
@@ -389,6 +390,38 @@ fn validate_runtime_spec(
         }
         _ => Err("Durable Cell Runtime Service changed its public HTTP readiness probe".into()),
     }
+}
+
+fn validate_runtime_projection(
+    binding: &DurableCellProviderBinding,
+    profile: &DurableCellServiceProfile,
+    workload: &DurableCellWorkloadRuntimeProjection,
+) -> Result<(), String> {
+    validate_runtime_projection_identity(binding, workload)?;
+    let expected_unit_id =
+        ordinary_runtime_unit_id(binding.workload_id, binding.workload_revision_id);
+    validate_runtime_spec(
+        binding,
+        profile,
+        &workload.provider,
+        &workload.spec,
+        &expected_unit_id,
+        binding.workload_generation,
+    )
+}
+
+fn validate_runtime_projection_identity(
+    binding: &DurableCellProviderBinding,
+    workload: &DurableCellWorkloadRuntimeProjection,
+) -> Result<(), String> {
+    workload.validate()?;
+    if workload.provider.workload_id != binding.workload_id
+        || workload.provider.workload_revision_id != binding.workload_revision_id
+        || workload.provider.workload_generation != binding.workload_generation
+    {
+        return Err("Durable Cell Runtime projection changed its provider revision".into());
+    }
+    Ok(())
 }
 
 fn admit_running_observation(
