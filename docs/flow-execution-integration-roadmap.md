@@ -60,10 +60,11 @@ facts.
    roles, credentials, node catalogs, or model policy.
 5. **Unknown is not success.** Provider process exit, telemetry, or broker
    delivery cannot close a Cloud operation without the authoritative owner
-   receipt. Ambiguous Activity attempts remain pending until reconciled. Cloud
-   must persist the Flow `attempt_id` and `idempotency_key` on its Outbox
-   receipt, and accept a result only with the current `fencing_token` after
-   any `activity_lease_acquired` redelivery event.
+   receipt. Ambiguous Activity attempts become Flow `unknown` and remain
+   suspended until Cloud reconciles them. Cloud must persist the Flow
+   `attempt_id` and `idempotency_key` on its Outbox receipt, and accept a
+   result only with the current `fencing_token` after any
+   `activity_lease_acquired` redelivery event.
 6. **ACL remains canonical.** Cloud parses and emits product configuration only
    through `a3s-acl`; it constructs Flow DAG inputs programmatically and does
    not add a second graph parser.
@@ -101,12 +102,12 @@ identity shape, event ordering, deterministic replay, fencing, deadlines, and
 durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
-The current Flow Activity contract is published by Flow `main` at revision
-`c71ed4c4356828c6b53549e88087deb1599e73c6` (following the ledger
-implementation at `426c017`). Cloud integration code must consume the public
-`ScheduleActivity`, `ActivityInvocation`, `ActivitySnapshot`, and
-`heartbeat_activity` APIs only; it must not import Flow internals or duplicate
-the Activity projection.
+The current Flow Activity contract is published by Flow `main` at the exact
+revision recorded in the Cloud compatibility lock. Cloud integration code must
+consume the public `ScheduleActivity`, `ActivityInvocation`,
+`ActivitySnapshot`, `ActivityResolution`, `heartbeat_activity`, and
+`resolve_unknown_activity` APIs only; it must not import Flow internals or
+duplicate the Activity projection.
 
 ## 5. Non-duplication checklist
 
