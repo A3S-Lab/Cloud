@@ -1205,6 +1205,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(deployment.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(deployment.contains(".converge_managed_replicas("));
     assert!(deployment.contains(".resolve_revision_generation("));
+    assert!(deployment.contains(".project_provider_workload("));
     assert!(deployment.contains(".replay_managed_deployment("));
     assert!(deployment.contains(".create_managed_deployment("));
     assert!(!deployment.contains("next_workload_generation"));
@@ -1214,6 +1215,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "CreateDeploymentBundle",
         "Deployment::create",
         "DeploymentRequested",
+        "WorkloadRevision::",
+        "project_durable_cell_provider_workload",
     ] {
         assert!(
             !deployment.contains(forbidden),
@@ -1263,6 +1266,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     }
     assert!(port.contains("pub struct DurableCellWorkloadReconciliationRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadRevisionGenerationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderProjectionRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadDeploymentRequest"));
     assert!(port.contains("pub struct DurableCellWorkloadDeployment"));
     assert!(port.contains("pub struct DurableCellWorkloadPrestartRequest"));
@@ -1275,6 +1279,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("replay_managed_deployment"));
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
+    assert!(port.contains("project_provider_workload"));
     assert!(port.contains("load_prestart_publication"));
     assert!(port.contains("load_writer_fence_admission"));
     assert!(port.contains("load_prior_writer_fence"));
@@ -1294,6 +1299,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "IWorkloadWriterFenceRepository",
         "latest_writer_fence",
         "ReconfigureReplicaSetWrite",
+        "WorkloadRevision::create",
+        "project_provider_workload",
         "DurableCellProjectionIdentity",
     ] {
         assert!(
@@ -1356,6 +1363,44 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         workload_sites,
         lines("durable_cells/infrastructure/workload_reconciliation.rs"),
         "Durable Cells must translate managed Workloads reconciliation through one infrastructure adapter"
+    );
+}
+
+#[test]
+fn durable_cells_deployment_uses_the_workloads_placement_compiler() {
+    let deployment =
+        std::fs::read_to_string(module_root().join("durable_cells/application/deployment.rs"))
+            .expect("read Durable Cells deployment application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
+            .expect("read Durable Cells Workloads placement port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
+    )
+    .expect("read Durable Cells Workloads placement adapter");
+
+    let deployment = production_source(&deployment);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(
+        deployment.contains("compile_placement_policy_digest("),
+        "Durable Cells deployment must consume the Workloads placement port"
+    );
+    assert!(
+        !deployment.contains("WorkloadControlSpec"),
+        "Durable Cells deployment reconstructed the Workloads control value"
+    );
+    assert!(
+        port.contains("pub struct DurableCellWorkloadPlacementRequest"),
+        "the Workloads port must expose an owner-neutral placement request"
+    );
+    assert!(
+        port.contains("fn compile_placement_policy_digest("),
+        "the Workloads port must own placement-digest compilation"
+    );
+    assert!(
+        adapter.contains("WorkloadControlSpec::managed_replica_set_in_pool("),
+        "the Workloads adapter must remain the placement compiler"
     );
 }
 

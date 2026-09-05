@@ -1,15 +1,18 @@
+use crate::modules::durable_cells::application::durable_cell_managed_owner_reference;
 use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
-    DurableCellWorkloadPrestartProjection, DurableCellWorkloadPrestartRequest,
-    DurableCellWorkloadPriorWriterFenceProjection, DurableCellWorkloadPriorWriterFenceRequest,
+    DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
+    DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
+    DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
     DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
     DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
     DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
-    IDurableCellApplicationRepository, DURABLE_CELL_MANAGED_OWNER_KIND,
+    DurableCellProviderWorkloadProjection, IDurableCellApplicationRepository,
+    DURABLE_CELL_MANAGED_OWNER_KIND,
 };
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
@@ -384,6 +387,39 @@ impl WorkloadsDurableCellWorkloadAdapter {
 
 #[async_trait]
 impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
+    fn compile_placement_policy_digest(
+        &self,
+        request: &DurableCellWorkloadPlacementRequest,
+    ) -> ApplicationResult<Sha256Digest> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let control = WorkloadControlSpec::managed_replica_set_in_pool(
+            durable_cell_managed_owner_reference(&request.projection)
+                .map_err(ApplicationError::Internal)?,
+            request.workload_generation,
+            1,
+            request.node_pool_id,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        Sha256Digest::parse(control.placement_policy.digest()).map_err(ApplicationError::Internal)
+    }
+
+    fn project_provider_workload(
+        &self,
+        request: &DurableCellWorkloadProviderProjectionRequest,
+    ) -> ApplicationResult<DurableCellProviderWorkloadProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let template = decode_service_template(&request.service_template)?;
+        let revision = WorkloadRevision::create(
+            request.projection.workload_revision_id,
+            request.projection.workload_id,
+            request.workload_generation,
+            template,
+            Utc::now(),
+        )
+        .map_err(ApplicationError::Invalid)?;
+        project_durable_cell_provider_workload(&revision).map_err(ApplicationError::Invalid)
+    }
+
     async fn load_prestart_publication(
         &self,
         request: &DurableCellWorkloadPrestartRequest,
@@ -727,28 +763,34 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
 fn decode_template(
     request: &DurableCellWorkloadDeploymentRequest,
 ) -> ApplicationResult<ServiceTemplate> {
-    let template = serde_json::from_slice::<ServiceTemplate>(request.service_template.bytes())
-        .map_err(|error| {
-            ApplicationError::Internal(format!(
-                "Workloads template could not be decoded at its owner boundary: {error}"
-            ))
-        })?;
+    let template = decode_service_template(&request.service_template)?;
+    let artifact_digest =
+        Sha256Digest::parse(&template.artifact.digest).map_err(ApplicationError::Internal)?;
+    if artifact_digest != request.provider_artifact_digest {
+        return Err(ApplicationError::Conflict(
+            "Durable Cell Workloads artifact digest changed at the owner boundary".into(),
+        ));
+    }
+    Ok(template)
+}
+
+fn decode_service_template(
+    payload: &DurableCellWorkloadTemplate,
+) -> ApplicationResult<ServiceTemplate> {
+    let template = serde_json::from_slice::<ServiceTemplate>(payload.bytes()).map_err(|error| {
+        ApplicationError::Internal(format!(
+            "Workloads template could not be decoded at its owner boundary: {error}"
+        ))
+    })?;
     template.validate().map_err(|error| {
         ApplicationError::Invalid(format!("invalid Workloads template: {error}"))
     })?;
     let template_digest =
         Sha256Digest::parse(template.digest().map_err(ApplicationError::Internal)?)
             .map_err(ApplicationError::Internal)?;
-    if template_digest != *request.service_template.digest() {
+    if template_digest != *payload.digest() {
         return Err(ApplicationError::Conflict(
             "Durable Cell Workloads template digest changed at the owner boundary".into(),
-        ));
-    }
-    let artifact_digest =
-        Sha256Digest::parse(&template.artifact.digest).map_err(ApplicationError::Internal)?;
-    if artifact_digest != request.provider_artifact_digest {
-        return Err(ApplicationError::Conflict(
-            "Durable Cell Workloads artifact digest changed at the owner boundary".into(),
         ));
     }
     Ok(template)

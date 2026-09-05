@@ -27,6 +27,17 @@ the canonical provider-profile ACL/digest identity, while immutable S0
 profile semantics, retention, and seal-Operation composition cross the
 Storage port. Real provider, recovery, and lifecycle evidence remain open.
 
+The deployment application also consumes Workloads placement through its
+consumer-owned port as an immutable digest compiled by the Workloads adapter.
+It does not construct the Workloads control value or duplicate placement
+vocabulary; the adapter remains the sole translation site while the
+correlation retains only the digest fence.
+
+Provider-workload projection follows the same boundary: the deployment
+application passes an opaque, digest-locked template to the Workloads port,
+and the adapter alone decodes it and constructs the Workloads revision before
+returning the bounded provider projection.
+
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 [ROADMAP](../ROADMAP.md) remains authoritative for portfolio ordering and public
