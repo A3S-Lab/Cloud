@@ -76,6 +76,7 @@ The slices are dependency-ordered. They are gates, not calendar promises.
 | Slice | Cloud outcome | Flow dependency | Exit evidence |
 | --- | --- | --- | --- |
 | `CFLOW-0` Contract lock | Pin the exact Flow revision, protocol versions, event/command fixtures, identity fields, error classes, and compatibility policy in `compat/cloud-stack.acl` | `FLOW-R1` | Clean revision bundle passes ACL, Flow, Cloud, ORM, Event, Boot, and integration fixture checks; no private Flow import or duplicate state owner |
+| `CFLOW-0A` Hosted authoring stream | Persist tenant-authorized workflow operations as an ordered, idempotent journal; project snapshots, enforce base-digest CAS, and resume SSE/WebSocket consumers by cursor | Flow authoring operation contract | Concurrent writers produce one sequence, duplicate operation IDs are safe, stale bases conflict without data loss, reconnecting consumers resume without gaps/duplicates, and only validated snapshots reach publication |
 | `CFLOW-1` Operation-to-Activity bridge | Map Cloud `Operation` and owner Outbox facts to Flow Activity IDs, attempt IDs, idempotency keys, deadlines, cancellation, and reconciliation | `FLOW-R2` | Kill/restart after dispatch, provider success, response loss, and lease expiry; exactly one owner receipt closes the operation |
 | `CFLOW-2` Product adapters | Bind Workflow, Agent, Function, Inference, Connector, HumanTask, Durable Cell, and nested Workflow steps through owner Application ports | `FLOW-R2`, `W0`, `A1`, `FN0`, `I0`, `CELL0` | Each adapter preserves one Cloud semantic identity plus one Flow execution identity; no product context writes Flow history directly |
 | `CFLOW-3` Visibility and operations | Build tenant-authorized projections for current state, history summaries, attempts, suspensions, traces, audit, and reconciliation; expose pause/resume/cancel/terminate/reset/redrive through Cloud control APIs | `FLOW-R3`, `FLOW-R5` | Queries use rebuildable projections; every mutation is authorized, idempotent, audited, and safe under repeated requests |
@@ -104,7 +105,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`945a53054d699b01b38ea074ac37750325c7bda6` (durable per-attempt deadlines,
+`87b77ac9097d767aca861337048576dd78c2e4bc` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
