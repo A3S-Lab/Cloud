@@ -13,16 +13,24 @@ signals, callbacks, approvals, and child workflows.
 
 | Order | Planned outcome | Exit evidence |
 | --- | --- | --- |
-| `FLOW-R1` | Stabilize the generic workflow document, node/edge typing, deterministic compiler, immutable runtime build identity, history schema, and patch markers | Invalid graphs fail before start; replay under the same build is byte-stable; incompatible code is rejected visibly |
-| `FLOW-R2` | Complete expected-sequence append, activities, durable timers, signals, callbacks, cancellation, compensation markers, child workflows, continue-as-new, and bounded history | Concurrent append, lost response, worker replacement, timer recovery, parent/child crash windows, and cancellation races pass |
-| `FLOW-R3` | Publish worker leasing, task routing, history archival, search attributes, execution diagnostics, metrics, and operational repair contracts | A worker can disappear after any transition without losing an acknowledged decision or repeating a committed one |
-| `FLOW-R4` | Qualify Cloud node adapters for Agent, Function, Inference, Connector, HumanTask, Durable Cell, and nested Workflow through owner ports | A heterogeneous Flow preserves one WorkflowRun history while every side effect retains its own product operation identity |
+| `FLOW-R1` | Stabilize the generic workflow document, node/edge typing, deterministic compiler, versioned event envelope, immutable runtime-build identity, patch markers, payload limits, and store capability profile | Invalid graphs and incompatible stores fail before start; supported histories replay byte-stably; protocol fixtures and negative cases pass |
+| `FLOW-R2` | Complete the Activity/Step side-effect contract: expected-sequence append, attempt identity, idempotency, fencing, heartbeats, checkpoints, timers, signals, callbacks, cancellation, compensation markers, child workflows, and continue-as-new | Worker/process loss, response loss, duplicate delivery, unknown outcomes, parent/child crash windows, and cancellation races converge to one durable owner result |
+| `FLOW-R3` | Scale durable state and dispatch with snapshots, incremental projections, history archival, worker leasing, task routing, backpressure hooks, visibility projections, diagnostics, metrics, and repair contracts | Append/replay cost stays bounded as history grows; queue loss and worker replacement are reconstructible; stale leases cannot commit |
+| `FLOW-R4` | Provide typed Query/Update, structured concurrency, dynamic bounded fan-out, versioned worker protocol, telemetry context, and Cloud adapter certification for Agent, Function, Inference, Connector, HumanTask, Durable Cell, and nested Workflow | Mixed-version workers and heterogeneous adapters preserve one Flow history while each side effect retains its own Cloud operation identity |
+| `FLOW-R5` | Maintain cross-language fixtures, replay/chaos/load conformance, migration tooling, release automation, and exact-revision compatibility evidence | Real-provider failure, upgrade, security, cleanup, package, and Cloud integration gates pass before a public kernel claim |
 
 Flow owns generic graph and replay semantics. The Cloud Workflow bounded
 context owns tenant Workflow assets, revisions, publish policy, node catalog
 bindings, authorization, credentials, quotas, and product outcomes. Flow does
 not invoke Cloud repositories directly and Cloud does not duplicate Flow
 history or timers.
+
+The Cloud-owned execution integration is tracked in the
+[Flow execution-integration roadmap](../flow-execution-integration-roadmap.md).
+Recurring schedules, calendar/time-zone policy, visibility/search, pause/reset/
+redrive APIs, Lane admission, Workloads/Fleet placement, worker fleet rollout,
+and regional recovery remain Cloud capabilities; Flow supplies only the
+durable primitives and versioned protocols needed to implement them.
 
 ## A3S Lane
 
@@ -109,4 +117,3 @@ This group is ready when:
   topology, and worker generations; and
 - object-provider loss and restore preserve manifest-to-byte integrity without
   making the provider database a product authority.
-

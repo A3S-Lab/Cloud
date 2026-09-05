@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-09-03.**
+**Status as of 2026-09-05.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -32,6 +32,7 @@ plans.
 | [Multi-tenant developer platform architecture](docs/multi-tenant-developer-platform-architecture.md) | Installation/Organization/Project/Environment scope, tenant IAM, system-admin RBAC, isolation, quota, and lifecycle |
 | [Platform capability architecture](docs/platform-capability-architecture.md) | A3S-native preservation of OpenShift- and TokenHub-class platform outcomes without copied control planes |
 | [Workflow and evolution plan](docs/workflow-evolution-plan.md) | Detailed `W0`, heterogeneous `A1`, and governed `EV0` contracts, ordered slices, safety policy, and recovery evidence |
+| [Flow execution integration roadmap](docs/flow-execution-integration-roadmap.md) | Cloud-owned integration slices for A3S Flow: Operation/Activity bridging, product adapters, visibility, control APIs, schedules, pressure, rollout, and recovery |
 | [AI application platform plan](docs/ai-application-platform-plan.md) | Detailed `APP0`, `K0`, `AUT0`, built-in node coverage, Flow-preservation contract, and public parity evidence |
 | [Durable Cell Service plan](docs/durable-cell-platform-plan.md) | Detailed `CELL0` authority, provider boundary, storage/fencing contract, ordered gates, and fault evidence |
 | [Inference plan](docs/inference-plan.md) | Detailed `I0` domain, protocol, scheduling, Gateway, usage, and conformance contracts |

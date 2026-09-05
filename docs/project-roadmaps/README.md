@@ -90,7 +90,7 @@ though it is not itself a submodule.
 | A3S OCI Runtime | [Foundations and execution](foundations-and-execution.md) | Low-level process, container, MicroVM, and isolation lifecycle |
 | A3S Box | [Foundations and execution](foundations-and-execution.md) | Node-local images, networks, volumes, builds, and workload provider behavior |
 | A3S Runtime | [Foundations and execution](foundations-and-execution.md) | Provider-neutral lifecycle for one generic Task or Service unit |
-| A3S Flow | [Coordination and data planes](coordination-and-data-planes.md) | Deterministic durable workflow coordination and replay |
+| A3S Flow | [Coordination and data planes](coordination-and-data-planes.md) · [Cloud integration roadmap](../flow-execution-integration-roadmap.md) | Deterministic durable workflow coordination and replay; Cloud-owned integration and control-plane composition |
 | A3S Lane | [Coordination and data planes](coordination-and-data-planes.md) | Priority, concurrency, pressure, and post-admission dispatch |
 | A3S Gateway | [Coordination and data planes](coordination-and-data-planes.md) | The only external request plane and immutable target snapshots |
 | A3S Power | [Coordination and data planes](coordination-and-data-planes.md) | Model execution and distributed inference mechanisms |
@@ -168,4 +168,3 @@ participates in a Cloud release.
 - Every material boundary change updates this index, the owning project
   section, its local roadmap, the Cloud product roadmap, and the exact-revision
   integration fixture in the same release train.
-
