@@ -102,8 +102,10 @@ identity shape, event ordering, deterministic replay, fencing, deadlines, and
 durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
-The current Flow Activity contract is published by Flow `main` at the exact
-revision recorded in the Cloud compatibility lock. Cloud integration code must
+The current Flow Activity contract is published by Flow `main` at revision
+`2a111c35ffc68ab5c5c83e224d63c520d8558a40` (unknown-outcome reconciliation).
+The same revision must be recorded in the Cloud compatibility lock before a
+release bundle is published. Cloud integration code must
 consume the public `ScheduleActivity`, `ActivityInvocation`,
 `ActivitySnapshot`, `ActivityResolution`, `heartbeat_activity`, and
 `resolve_unknown_activity` APIs only; it must not import Flow internals or
