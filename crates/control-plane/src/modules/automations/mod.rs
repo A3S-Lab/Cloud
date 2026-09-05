@@ -20,6 +20,7 @@ pub use domain::{
     IAutomationWebhookSignatureVerifier, TransitionAutomationWebhookEndpoint,
 };
 pub use infrastructure::{
-    HmacSha256AutomationWebhookSignatureVerifier, InMemoryAutomationWebhookRepository,
-    PostgresAutomationWebhookRepository,
+    DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
+    InMemoryAutomationWebhookRepository, PostgresAutomationWebhookRepository,
+    AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };

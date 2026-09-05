@@ -192,6 +192,7 @@ dependencies = [
  "http-body-util",
  "hyper 1.11.1",
  "hyper-util",
+ "jsonschema 0.48.5",
  "lettre",
  "object_store",
  "openidconnect",

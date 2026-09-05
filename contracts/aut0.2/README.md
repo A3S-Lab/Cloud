@@ -29,8 +29,11 @@ written in the same transaction. Restore reparses and validates every bounded
 contract before returning it, and no Secret plaintext is persisted. The
 concrete verifier resolves only the exact Secret ID/version through the
 published Secrets materializer and keeps plaintext transient; materialization
-failures are redacted. Schema evaluation remains an explicit port, so the
-component cannot accidentally claim a registry or evaluator without an
-infrastructure adapter. Live PostgreSQL recovery/concurrency evidence, HTTP
-listener, Gateway route, worker, and public webhook availability remain outside
-this slice.
+failures are redacted. The component-only
+`DigestBoundJsonSchemaValidator` is one such explicit infrastructure adapter:
+it compiles one already-selected self-contained schema only when its canonical
+sorted-JSON SHA-256 matches the endpoint/request digest, bounds the schema and
+payload shape, and disables URL/file retrieval. It does not own schema
+selection, registry storage, or publication. Live PostgreSQL
+recovery/concurrency evidence, HTTP listener, Gateway route, worker, and public
+webhook availability remain outside this slice.
