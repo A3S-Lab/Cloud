@@ -11,7 +11,7 @@ use a3s_cloud_control_plane::modules::durable_cells::application::{
     CreateDurableCellApplicationHandler, DeployDurableCellApplication,
     DeployDurableCellApplicationHandler, DurableCellStorageCredentialRequest,
     DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicyRequest,
-    DurableCellStorageRetentionPolicySpec, GetDurableCellApplication,
+    DurableCellStorageRetentionPolicySpec, DurableCellWorkloadTemplate, GetDurableCellApplication,
     GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
     ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
     ReviseDurableCellApplicationHandler, StartDurableCellApplication,
@@ -1207,6 +1207,18 @@ fn projection_deployment_command(
     let retention_digest = retention_spec.digest()?;
     let retention_policy =
         DurableCellStorageRetentionPolicyRequest::new(retention_spec, retention_digest)?;
+    let resolved_workload_template = durable_cell_service_template(
+        &profile,
+        &storage_provider_profile,
+        input.storage_namespace_id,
+        input.access_key_id,
+        input.secret_access_key,
+    );
+    let workload_template_digest = Sha256Digest::parse(resolved_workload_template.digest()?)?;
+    let workload_template = DurableCellWorkloadTemplate::from_serializable(
+        &resolved_workload_template,
+        workload_template_digest,
+    )?;
     Ok(DeployDurableCellApplication {
         organization_id: input.organization_id,
         project_id: input.project_id,
@@ -1215,13 +1227,7 @@ fn projection_deployment_command(
         application_revision_id: input.application_revision_id,
         service_profile_acl: DURABLE_CELL_SERVICE_PROFILE_ACL.into(),
         storage_provider_profile_acl: Some(storage_provider_profile.canonical_acl().into()),
-        workload_template: durable_cell_service_template(
-            &profile,
-            &storage_provider_profile,
-            input.storage_namespace_id,
-            input.access_key_id,
-            input.secret_access_key,
-        ),
+        workload_template,
         storage_credentials,
         retention_policy,
         node_pool_id: None,

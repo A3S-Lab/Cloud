@@ -42,6 +42,13 @@ The pinned provider admission check follows that port as well, retaining
 Workloads ownership of Service/template and credential-shape validation while
 Durable Cells consumes only the resulting application error boundary.
 
+The ACL admission adapter also seals the resolved Workloads Service template
+into opaque, digest-locked bytes before calling the deployment application.
+Exact Secret-version references and the resolved artifact digest are projected
+back through the Workloads port, so deployment admission can check Secrets
+scope, S0 credential inclusion, and replay integrity without importing or
+interpreting the Workloads Service model.
+
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 [ROADMAP](../ROADMAP.md) remains authoritative for portfolio ordering and public

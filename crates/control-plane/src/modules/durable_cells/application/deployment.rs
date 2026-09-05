@@ -14,7 +14,7 @@ use super::workload_port::{
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadProviderProjectionRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
-    IDurableCellWorkloadPort,
+    DurableCellWorkloadTemplateProjection, IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
@@ -27,10 +27,8 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
-    NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, SecretVersionReference,
-    Sha256Digest,
+    NodePoolId, OrganizationId, PrincipalId, ProjectId, RepositoryError, Sha256Digest,
 };
-use crate::modules::workloads::ServiceTemplate;
 use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
 use chrono::Utc;
 use serde::Serialize;
@@ -46,9 +44,9 @@ pub struct DeployDurableCellApplication {
     pub application_revision_id: DurableCellApplicationRevisionId,
     pub service_profile_acl: String,
     pub storage_provider_profile_acl: Option<String>,
-    /// Internal, already-resolved adapter projection. C5 must expose this
-    /// through canonical A3S ACL rather than serializing this Rust value.
-    pub workload_template: ServiceTemplate,
+    /// Internal, already-resolved opaque projection emitted by canonical A3S
+    /// ACL admission. Only the Workloads adapter may interpret these bytes.
+    pub workload_template: DurableCellWorkloadTemplate,
     pub storage_credentials: DurableCellStorageCredentialRequest,
     pub retention_policy: DurableCellStorageRetentionPolicyRequest,
     pub node_pool_id: Option<NodePoolId>,
@@ -286,7 +284,6 @@ struct PreparedDeployment {
     service_profile: DurableCellServiceProfile,
     storage_provider_profile_acl: Option<String>,
     service_template: DurableCellWorkloadTemplate,
-    provider_artifact_digest: Sha256Digest,
     credential_binding_digest: Sha256Digest,
     storage_provider_profile_digest: Sha256Digest,
     retention_policy_digest: Sha256Digest,
@@ -297,7 +294,6 @@ struct PreparedDeployment {
 impl PreparedDeployment {
     fn new(command: &DeployDurableCellApplication) -> Result<Self, String> {
         let service_profile = DurableCellServiceProfile::parse_acl(&command.service_profile_acl)?;
-        command.workload_template.validate()?;
         command.storage_credentials.validate()?;
         command.retention_policy.validate()?;
         let expected_namespace =
@@ -317,13 +313,7 @@ impl PreparedDeployment {
                 command.storage_credentials.provider_profile_digest.clone(),
             )?;
         }
-        let service_template_digest = Sha256Digest::parse(command.workload_template.digest()?)?;
-        let service_template = DurableCellWorkloadTemplate::from_serializable(
-            &command.workload_template,
-            service_template_digest,
-        )?;
-        let provider_artifact_digest =
-            Sha256Digest::parse(&command.workload_template.artifact.digest)?;
+        let service_template = command.workload_template.clone();
         let canonical_request = serde_json::to_vec(&CanonicalDeploymentRequest {
             organization_id: command.organization_id,
             project_id: command.project_id,
@@ -346,7 +336,6 @@ impl PreparedDeployment {
             service_profile,
             storage_provider_profile_acl: command.storage_provider_profile_acl.clone(),
             service_template,
-            provider_artifact_digest,
             credential_binding_digest: command.storage_credentials.binding_digest.clone(),
             storage_provider_profile_digest: command
                 .storage_credentials
@@ -401,9 +390,16 @@ impl PreparedDeployment {
             || correlation.storage.retention_policy_digest != self.retention_policy_digest
             || correlation.provider.service_profile_digest != *self.service_profile.digest()
             || correlation.provider.service_template_digest != *self.service_template.digest()
-            || correlation.provider.provider_artifact_digest != self.provider_artifact_digest
         {
             return Err("Durable Cell deployment replay changed its exact projection".into());
+        }
+        let template_projection = workload_port
+            .project_template(&self.service_template)
+            .map_err(|error| error.to_string())?;
+        if correlation.provider.provider_artifact_digest
+            != template_projection.provider_artifact_digest
+        {
+            return Err("Durable Cell deployment replay changed its provider artifact".into());
         }
         let placement_policy_digest = workload_port
             .compile_placement_policy_digest(&DurableCellWorkloadPlacementRequest::new(
@@ -486,6 +482,7 @@ async fn admit_external_bindings(
     prepared: &PreparedDeployment,
     command: &DeployDurableCellApplication,
 ) -> ApplicationResult<()> {
+    let template_projection = workload_port.project_template(&prepared.service_template)?;
     storage
         .require_active_credentials(&command.storage_credentials)
         .await?;
@@ -511,25 +508,15 @@ async fn admit_external_bindings(
             ),
         )?;
     }
-    let bindings = command
-        .workload_template
-        .secrets
-        .iter()
-        .map(|binding| SecretVersionReference::new(binding.secret_id, binding.version))
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(ApplicationError::Invalid)?;
     secret_bindings
         .validate_active_bindings(&DurableCellSecretBindingAdmissionRequest::new(
             command.organization_id,
             command.project_id,
             command.environment_id,
-            bindings,
+            template_projection.secret_references.clone(),
         ))
         .await?;
-    require_storage_credentials_in_template(
-        &command.storage_credentials,
-        &command.workload_template,
-    )?;
+    require_storage_credentials_in_bindings(&command.storage_credentials, &template_projection)?;
     node_pool_port
         .validate_selection(&DurableCellNodePoolSelectionRequest::new(
             command.organization_id,
@@ -674,14 +661,15 @@ fn validate_workload_projection(
     Ok(())
 }
 
-fn require_storage_credentials_in_template(
+fn require_storage_credentials_in_bindings(
     credentials: &DurableCellStorageCredentialRequest,
-    template: &ServiceTemplate,
+    bindings: &DurableCellWorkloadTemplateProjection,
 ) -> ApplicationResult<()> {
     if credentials.references().iter().any(|reference| {
-        !template.secrets.iter().any(|binding| {
-            binding.secret_id == reference.secret_id && binding.version == reference.version
-        })
+        !bindings
+            .secret_references
+            .iter()
+            .any(|binding| binding == reference)
     }) {
         return Err(ApplicationError::Invalid(
             "Durable Cell provider template omitted an exact S0 credential binding".into(),

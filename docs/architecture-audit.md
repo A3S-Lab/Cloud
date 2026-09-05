@@ -306,6 +306,10 @@ Current boundary debt:
 - Pinned provider-workload admission now uses an owner-neutral validation
   request on the same port; Workloads alone decodes the template and applies
   its Service/profile/credential shape rules before Durable Cells proceeds;
+- ACL admission now seals the resolved Workloads Service template into opaque,
+  digest-locked bytes. Deployment orchestration obtains only a bounded Secret-
+  reference and artifact-digest projection through the Workloads port and no
+  longer imports the Workloads Service model;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;

@@ -7,12 +7,13 @@ use crate::modules::durable_cells::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
     DurableCellDeploymentMutationResult, DurableCellStorageCredentialRequest,
     DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
+    DurableCellWorkloadTemplate,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, NodePoolId,
-    OrganizationId, PrincipalId, ProjectId,
+    OrganizationId, PrincipalId, ProjectId, Sha256Digest,
 };
 use crate::modules::workloads::presentation::{parse_workload_manifest, WorkloadManifest};
 use crate::modules::workloads::{
@@ -151,7 +152,21 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                 Ok(value) => value,
                 Err(error) => return Ok(Err(map_artifact_error(error))),
             };
-            let workload_template = match requested_template.resolve(artifact) {
+            let resolved_workload_template = match requested_template.resolve(artifact) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            let workload_template_digest = match resolved_workload_template
+                .digest()
+                .and_then(Sha256Digest::parse)
+            {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            let workload_template = match DurableCellWorkloadTemplate::from_serializable(
+                &resolved_workload_template,
+                workload_template_digest,
+            ) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
