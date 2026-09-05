@@ -102,8 +102,8 @@ durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
 The current Flow Activity contract is published by Flow `main` at revision
-`2ea683b003c3192ec4ee2d796066f0c5364092f6` (following the ledger implementation
-at `426c017`). Cloud integration code must consume the public
+`c477419e6cc1f0c92b3a8c98213da201e339a9f8`; following the ledger
+implementation at `426c017`). Cloud integration code must consume the public
 `ScheduleActivity`, `ActivityInvocation`, `ActivitySnapshot`, and
 `heartbeat_activity` APIs only; it must not import Flow internals or duplicate
 the Activity projection.
