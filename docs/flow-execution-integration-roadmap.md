@@ -105,7 +105,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`fa7a0aa67135211fc6e8ca2b39245018d3eeb346` (durable per-attempt deadlines,
+`a4ea1549f3fcc7df5142d8eafb3181a0e622232a` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
@@ -117,7 +117,9 @@ including bounded JSON-array/NDJSON operation streams (10,000 operations;
 for files and mixed stream chunks, exact string-valued CLI options,
 optimistic base-digest checks, stable-ID-preserving
 `set-edge` updates (including explicit handle removal), and registry-driven
-scoped `add-node` placement for iteration/loop children.
+scoped `add-node` placement for iteration/loop children, plus stable-ID-
+preserving `move-node` relocation between public top-level and container
+scopes.
 That stream is an authoring transport: Flow still publishes a portable,
 validated snapshot for the local file. For hosted collaboration, Cloud should
 persist the ordered operation journal and materialized snapshots in its own
