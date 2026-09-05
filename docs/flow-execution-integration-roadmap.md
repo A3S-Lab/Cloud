@@ -104,10 +104,11 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`1fb60efc525e5b319697e3e7304cba3defbac094` (durable per-attempt deadlines,
+`09dca19a0db643bd1502c07f0986fe3f83d6b1dd` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
-worker drain fairness budgets, plus versioned worker capability negotiation).
+worker drain fairness budgets, versioned worker capability negotiation, and
+bounded history export pages).
 The same revision must be recorded in the Cloud compatibility lock before a
 release bundle is published. Cloud integration code must
 consume the public `ScheduleActivity`, `ActivityInvocation`,
