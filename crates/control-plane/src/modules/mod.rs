@@ -3,6 +3,7 @@ pub mod applications;
 pub mod artifacts;
 pub mod assets;
 pub mod audit;
+pub mod automations;
 pub mod connectors;
 pub mod data;
 pub mod developer_workflows;
