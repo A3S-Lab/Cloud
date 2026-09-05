@@ -57,18 +57,6 @@ pub(crate) fn project_durable_cell_provider_workload(
     Ok(projection)
 }
 
-pub(crate) fn validate_durable_cell_provider_workload_binding(
-    binding: &DurableCellProviderBinding,
-    profile: &DurableCellServiceProfile,
-    revision: &WorkloadRevision,
-) -> Result<(), String> {
-    validate_durable_cell_provider_workload_projection(
-        binding,
-        profile,
-        &project_durable_cell_provider_workload(revision)?,
-    )
-}
-
 /// Validates the immutable Workloads projection after it has crossed the
 /// consumer-owned port. This keeps the Durable Cells domain policy independent
 /// of the Workloads aggregate while retaining the same exact projection

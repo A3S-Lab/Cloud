@@ -237,9 +237,11 @@ Current boundary debt:
   and Durable Cells Runtime receipt policy belongs to Durable Cells
   Application. Architecture tests reject either policy returning to
   Infrastructure or an Application-to-Infrastructure dependency;
-- remaining Durable Cells application and runtime paths still import Fleet and
-  Workloads internal owner types or repositories for the explicitly retained
-  deployment/runtime seams. The Durable Cells Domain now consumes identity-only
+- remaining Durable Cells application paths still import Fleet and selected
+  Workloads owner types for the explicitly retained writer-fence and provider
+  credential seams. Runtime profile policy itself now consumes only the
+  owner-neutral Workloads Runtime projection; the Workloads adapter loads the
+  exact revision and invokes the sole Runtime compiler. The Durable Cells Domain now consumes identity-only
   S0 recovery projections; complete Data recovery aggregates remain confined to
   the Storage anti-corruption adapter. Provider-workload validation and the
   writer-fence credential/profile checks now consume only owner-neutral
@@ -306,6 +308,14 @@ Current boundary debt:
 - Pinned provider-workload admission now uses an owner-neutral validation
   request on the same port; Workloads alone decodes the template and applies
   its Service/profile/credential shape rules before Durable Cells proceeds;
+- Bundle-publication replay now uses an owner-neutral template-validation
+  request on that port as well; the Workloads adapter returns only the bounded
+  artifact media type needed to compose the generic publication Task, so the
+  Durable Cells application does not decode or validate a Service template;
+- Stopped-current writer-fence admission now returns the exact opaque template
+  through the same Workloads projection and derives S0 credential references
+  through a consumer-owned port; the writer-fence application no longer
+  resolves or validates a Workloads `ServiceTemplate` directly.
 - ACL admission now seals the resolved Workloads Service template into opaque,
   digest-locked bytes. Deployment orchestration obtains only a bounded Secret-
   reference and artifact-digest projection through the Workloads port and no

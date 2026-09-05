@@ -809,7 +809,8 @@ fn durable_cells_storage_profile_crosses_one_consumer_owned_port() {
     let provider = production_source(&provider);
     assert!(publication.contains("Arc<dyn IDurableCellStoragePort>"));
     assert!(publication.contains(".project_provider_profile("));
-    assert!(publication.contains("validate_pinned_celld_service_template_payload_projection"));
+    assert!(publication.contains(".validate_provider_template("));
+    assert!(!publication.contains("validate_pinned_celld_service_template_payload_projection"));
     for forbidden in [
         "crate::modules::data",
         "ObjectNamespaceProviderProfile",
@@ -1060,7 +1061,9 @@ fn durable_cells_provider_workload_validation_uses_storage_projections() {
             "Durable Cells provider-workload policy lost neutral Storage contract {required}"
         );
     }
-    assert!(writer_fence.contains("project_publisher_storage_credentials"));
+    assert!(writer_fence.contains(".project_provider_credentials("));
+    assert!(writer_fence.contains(".validate_provider_workload("));
+    assert!(!writer_fence.contains("project_publisher_storage_credentials"));
     assert!(writer_fence.contains("project_provider_profile"));
     assert!(deployment.contains("DurableCellStorageProviderProfileRequest"));
     assert!(deployment.contains("project_provider_profile"));
@@ -1231,7 +1234,13 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     }
     assert!(writer_fence.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(writer_fence.contains(".load_writer_fence_admission("));
-    for forbidden in ["IWorkloadRepository", ".find_workload_control("] {
+    for forbidden in [
+        "IWorkloadRepository",
+        ".find_workload_control(",
+        "project_publisher_storage_credentials",
+        "validate_pinned_celld_provider_workload",
+        ".resolved_template()",
+    ] {
         assert!(
             !writer_fence.contains(forbidden),
             "Durable Cells writer fence bypassed its Workloads port with {forbidden}"
@@ -1256,6 +1265,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     }
     assert!(bundle_publication.contains("Arc<dyn IDurableCellWorkloadPort>"));
     assert!(bundle_publication.contains(".load_prestart_publication("));
+    assert!(bundle_publication.contains(".validate_provider_template("));
+    assert!(bundle_publication.contains("DurableCellWorkloadProviderTemplateValidationRequest"));
     for forbidden in [
         "IWorkloadRepository",
         ".find_deployment(",
@@ -1264,6 +1275,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         ".find_workload_replica(",
         "project_runtime_secrets",
         "WorkloadReplica::deterministic_id",
+        "validate_pinned_celld_service_template_payload_projection",
     ] {
         assert!(
             !bundle_publication.contains(forbidden),
@@ -1289,7 +1301,11 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("project_template("));
     assert!(port.contains("project_provider_workload"));
     assert!(port.contains("pub struct DurableCellWorkloadProviderValidationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderCredentialProjectionRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateValidationRequest"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderTemplateProjection"));
     assert!(port.contains("validate_provider_workload"));
+    assert!(port.contains("validate_provider_template"));
     assert!(port.contains("load_prestart_publication"));
     assert!(port.contains("load_writer_fence_admission"));
     assert!(port.contains("load_prior_writer_fence"));
@@ -1313,6 +1329,9 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "project_template(",
         "project_provider_workload",
         "validate_pinned_celld_provider_workload",
+        "validate_pinned_celld_service_template_payload_projection",
+        "project_provider_credentials",
+        "validate_provider_template",
         "DurableCellProjectionIdentity",
     ] {
         assert!(
@@ -1414,6 +1433,66 @@ fn durable_cells_deployment_uses_the_workloads_placement_compiler() {
         adapter.contains("WorkloadControlSpec::managed_replica_set_in_pool("),
         "the Workloads adapter must remain the placement compiler"
     );
+}
+
+#[test]
+fn durable_cells_runtime_projection_crosses_one_workloads_port() {
+    let runtime =
+        std::fs::read_to_string(module_root().join("durable_cells/application/runtime_profile.rs"))
+            .expect("read Durable Cells Runtime profile application");
+    let writer_fence =
+        std::fs::read_to_string(module_root().join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
+    let port =
+        std::fs::read_to_string(module_root().join("durable_cells/application/workload_port.rs"))
+            .expect("read Durable Cells Runtime Workloads port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workload_reconciliation.rs"),
+    )
+    .expect("read Durable Cells Runtime Workloads adapter");
+
+    let runtime = production_source(&runtime);
+    let writer_fence = production_source(&writer_fence);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+
+    for forbidden in [
+        "crate::modules::workloads",
+        "WorkloadRevision",
+        "DeploymentReplicaBinding",
+        "project_runtime_spec_with_digest",
+    ] {
+        assert!(
+            !runtime.contains(forbidden),
+            "Durable Cells Runtime profile bypassed the Workloads port with {forbidden}"
+        );
+    }
+    assert!(
+        writer_fence.contains(".load_runtime_projection("),
+        "Durable Cells writer fencing must obtain Runtime semantics through the Workloads port"
+    );
+    for required in [
+        "pub struct DurableCellWorkloadRuntimeProjectionRequest",
+        "pub struct DurableCellWorkloadRuntimeProjection",
+        "pub struct DurableCellWorkloadReplicaRuntimeBinding",
+        "load_runtime_projection",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells Runtime Workloads port lost {required}"
+        );
+    }
+    for required in [
+        "async fn load_runtime_projection",
+        "find_revision",
+        "project_runtime_spec_with_digest",
+        "DurableCellWorkloadRuntimeProjection::new",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Runtime Workloads adapter lost owner translation {required}"
+        );
+    }
 }
 
 #[test]

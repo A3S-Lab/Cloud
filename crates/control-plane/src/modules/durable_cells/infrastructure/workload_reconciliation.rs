@@ -1,14 +1,21 @@
+use crate::modules::durable_cells::application::DurableCellStorageCredentialRequest;
 use crate::modules::durable_cells::application::{
-    durable_cell_managed_owner_reference, validate_pinned_celld_provider_workload,
+    durable_cell_managed_owner_reference, project_publisher_storage_credentials,
+    validate_pinned_celld_provider_workload,
+    validate_pinned_celld_service_template_payload_projection,
 };
 use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
-    DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
+    DurableCellWorkloadPriorWriterFenceRequest,
+    DurableCellWorkloadProviderCredentialProjectionRequest,
+    DurableCellWorkloadProviderProjectionRequest, DurableCellWorkloadProviderTemplateProjection,
+    DurableCellWorkloadProviderTemplateValidationRequest,
     DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
-    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadRuntimeProjection,
+    DurableCellWorkloadRuntimeProjectionRequest, DurableCellWorkloadTemplate,
     DurableCellWorkloadTemplateProjection, DurableCellWorkloadWriterFenceProjection,
     DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
 };
@@ -23,7 +30,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, RepositoryError, ResourceName, SecretVersionReference, Sha256Digest,
 };
-use crate::modules::workloads::application::project_runtime_secrets;
+use crate::modules::workloads::application::{
+    project_runtime_secrets, project_runtime_spec_with_digest,
+};
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, IWorkloadRepository,
     IWorkloadWriterFenceRepository, ManagedOwnerKind, ManagedOwnerReference,
@@ -302,6 +311,36 @@ impl WorkloadsDurableCellWorkloadAdapter {
         {
             return Ok(None);
         }
+        let revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if revision.id != request.workload_revision_id
+            || revision.workload_id != request.workload_id
+            || revision.generation != request.workload_generation
+            || revision.external_build.is_some()
+            || !revision.skill_bindings().is_empty()
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell writer-fence request changed its Workloads revision".into(),
+            ));
+        }
+        let template = revision
+            .resolved_template()
+            .map_err(ApplicationError::Internal)?;
+        template.validate().map_err(ApplicationError::Internal)?;
+        let template_digest = Sha256Digest::parse(
+            template
+                .digest()
+                .map_err(ApplicationError::Internal)?
+                .as_str(),
+        )
+        .map_err(ApplicationError::Internal)?;
+        let template_bytes = serde_json::to_vec(template)
+            .map_err(|error| ApplicationError::Internal(error.to_string()))?;
+        let service_template = DurableCellWorkloadTemplate::new(template_bytes, template_digest)
+            .map_err(ApplicationError::Internal)?;
         let projection = DurableCellWorkloadWriterFenceProjection {
             workload_id: request.workload_id,
             workload_revision_id: request.workload_revision_id,
@@ -309,6 +348,7 @@ impl WorkloadsDurableCellWorkloadAdapter {
             replica_id: request.replica_id,
             replica_generation: request.replica_generation,
             replica_ordinal: request.replica_ordinal,
+            service_template,
         };
         projection
             .validate_against(request)
@@ -465,6 +505,78 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
             &request.publisher,
         )
         .map_err(ApplicationError::Invalid)
+    }
+
+    fn validate_provider_template(
+        &self,
+        request: &DurableCellWorkloadProviderTemplateValidationRequest,
+    ) -> ApplicationResult<DurableCellWorkloadProviderTemplateProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let media_type = validate_pinned_celld_service_template_payload_projection(
+            &request.provider_profile,
+            request.storage_namespace_id,
+            &request.service_profile,
+            &request.service_template,
+            &request.publisher,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        DurableCellWorkloadProviderTemplateProjection::new(media_type)
+            .map_err(ApplicationError::Invalid)
+    }
+
+    fn project_provider_credentials(
+        &self,
+        request: &DurableCellWorkloadProviderCredentialProjectionRequest,
+    ) -> ApplicationResult<DurableCellStorageCredentialRequest> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let template = decode_service_template(&request.service_template)?;
+        project_publisher_storage_credentials(&request.storage, &template, &request.publisher)
+            .map_err(ApplicationError::Invalid)
+    }
+
+    async fn load_runtime_projection(
+        &self,
+        request: &DurableCellWorkloadRuntimeProjectionRequest,
+    ) -> ApplicationResult<DurableCellWorkloadRuntimeProjection> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let revision = self
+            .workloads
+            .find_revision(request.organization_id, request.workload_revision_id)
+            .await
+            .map_err(ApplicationError::from)?;
+        if revision.id != request.workload_revision_id
+            || revision.workload_id != request.workload_id
+            || revision.generation != request.workload_generation
+        {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell Runtime request changed its Workloads revision identity".into(),
+            ));
+        }
+        let provider = project_durable_cell_provider_workload(&revision)
+            .map_err(ApplicationError::Internal)?;
+        if provider.service_template_digest != request.service_template_digest {
+            return Err(ApplicationError::Conflict(
+                "Durable Cell Runtime request changed its Workloads template".into(),
+            ));
+        }
+        let mut spec = project_runtime_spec_with_digest(
+            &revision,
+            Some(request.semantics_profile_digest.as_str()),
+        )
+        .map_err(ApplicationError::Internal)?;
+        if let (Some(unit_id), Some(generation)) =
+            (&request.runtime_unit_id, request.runtime_generation)
+        {
+            spec.unit_id.clone_from(unit_id);
+            spec.generation = generation;
+            spec.validate().map_err(ApplicationError::Internal)?;
+        }
+        let projection = DurableCellWorkloadRuntimeProjection::new(provider, spec)
+            .map_err(ApplicationError::Internal)?;
+        projection
+            .validate_against(request)
+            .map_err(ApplicationError::Internal)?;
+        Ok(projection)
     }
 
     async fn load_prestart_publication(

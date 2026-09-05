@@ -23,7 +23,8 @@ use crate::modules::durable_cells::infrastructure::{
     WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::durable_cells::{
-    DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicySpec,
+    project_durable_cell_runtime_spec, DurableCellStorageProviderProfileProjection,
+    DurableCellStorageRetentionPolicySpec, DurableCellWorkloadRuntimeProjectionRequest,
     IDurableCellOperationPort,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
@@ -299,6 +300,80 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     );
     assert_eq!(recovered.workload.deployment_id, projection.deployment_id);
     assert_eq!(recovered.workload.operation_id, projection.operation_id);
+    let runtime_request = DurableCellWorkloadRuntimeProjectionRequest::for_revision(
+        organization_id,
+        projection.workload_id,
+        projection.workload_revision_id,
+        recovered.correlation.provider.workload_generation,
+        recovered
+            .correlation
+            .provider
+            .service_template_digest
+            .clone(),
+        recovered
+            .correlation
+            .provider
+            .service_profile_digest
+            .clone(),
+    );
+    let runtime_projection = workload_port
+        .load_runtime_projection(&runtime_request)
+        .await
+        .expect("Workloads-owned Runtime projection");
+    runtime_projection
+        .validate_against(&runtime_request)
+        .expect("exact Runtime projection");
+    let runtime_spec = project_durable_cell_runtime_spec(
+        &recovered.correlation.provider,
+        &profile,
+        &runtime_projection,
+    )
+    .expect("Durable Cell Runtime admission");
+    assert_eq!(
+        runtime_spec.artifact.digest,
+        recovered
+            .correlation
+            .provider
+            .provider_artifact_digest
+            .as_str()
+    );
+    let replica_binding = workloads
+        .find_deployment_replica_binding(organization_id, projection.deployment_id)
+        .await
+        .expect("managed replica binding");
+    let replica_request = DurableCellWorkloadRuntimeProjectionRequest::for_replica(
+        organization_id,
+        projection.workload_id,
+        projection.workload_revision_id,
+        recovered.correlation.provider.workload_generation,
+        recovered
+            .correlation
+            .provider
+            .service_template_digest
+            .clone(),
+        recovered
+            .correlation
+            .provider
+            .service_profile_digest
+            .clone(),
+        replica_binding.runtime_unit_id.clone(),
+        replica_binding.runtime_generation,
+    );
+    let replica_projection = workload_port
+        .load_runtime_projection(&replica_request)
+        .await
+        .expect("Workloads-owned replica Runtime projection");
+    replica_projection
+        .validate_against(&replica_request)
+        .expect("exact replica Runtime projection");
+    assert_eq!(
+        replica_projection.spec.unit_id,
+        replica_binding.runtime_unit_id
+    );
+    assert_eq!(
+        replica_projection.spec.generation,
+        replica_binding.runtime_generation
+    );
     let control = workloads
         .find_workload_control(organization_id, projection.workload_id)
         .await

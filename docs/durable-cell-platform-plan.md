@@ -42,12 +42,28 @@ The pinned provider admission check follows that port as well, retaining
 Workloads ownership of Service/template and credential-shape validation while
 Durable Cells consumes only the resulting application error boundary.
 
+Publication recovery uses the same owner boundary: the opaque provider
+template is validated by Workloads and Durable Cells receives only its bounded
+artifact media type for the generic publication Task.
+
+The stopped-current writer-fence path receives that exact opaque template and
+its S0 credential projection from Workloads through the port, preserving one
+owner-side Service/Secret-binding translation site.
+
 The ACL admission adapter also seals the resolved Workloads Service template
 into opaque, digest-locked bytes before calling the deployment application.
 Exact Secret-version references and the resolved artifact digest are projected
 back through the Workloads port, so deployment admission can check Secrets
 scope, S0 credential inclusion, and replay integrity without importing or
 interpreting the Workloads Service model.
+
+Runtime receipt admission follows the same owner-port rule. The Workloads
+adapter loads the pinned revision and returns an immutable provider-plus-
+`RuntimeUnitSpec` projection, including a separate exact replica target view
+for writer-fence cleanup. Durable Cells validates only the generic Runtime
+Service shape, profile ports, digests, and Fleet receipt evidence; it does not
+compile a Workloads revision or import `WorkloadRevision`/`DeploymentReplicaBinding`
+into its Runtime policy.
 
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
