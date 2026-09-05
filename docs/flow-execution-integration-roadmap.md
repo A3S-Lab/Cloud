@@ -103,13 +103,20 @@ durability. Any new field must be versioned and added to the exact-revision
 compatibility fixture.
 
 The current Flow Activity contract is published by Flow `main` at revision
-`a70800cc3c9c5ae2c1b19a7e8b2b0404c09d726c` (fenced, idempotent unknown-outcome reconciliation).
+`8dfe9143a00d0f5fb5f41884e640b908e917e71d` (durable per-attempt deadlines,
+fenced and idempotent unknown-outcome reconciliation).
 The same revision must be recorded in the Cloud compatibility lock before a
 release bundle is published. Cloud integration code must
 consume the public `ScheduleActivity`, `ActivityInvocation`,
 `ActivitySnapshot`, `ActivityResolution`, `heartbeat_activity`, and
 `resolve_unknown_activity` APIs only; it must not import Flow internals or
 duplicate the Activity projection.
+
+When a Cloud operation supplies `timeout_ms`, Flow persists the value with the
+Activity definition and derives the attempt deadline from the durable
+`activity_started` timestamp. A timeout is an unknown provider outcome, not a
+successful cancellation or an implicit retry; Cloud must reconcile it using
+the recorded attempt and idempotency identities.
 
 ## 5. Non-duplication checklist
 
