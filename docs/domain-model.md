@@ -2125,8 +2125,14 @@ the exact revision, enforce scoped opaque-key uniqueness and generation-CAS
 lifecycle changes, and retain bounded delivery/replay receipts with redacted
 Audit and admitted Outbox projections. Signature verification and request-schema
 evaluation cross explicit infrastructure ports; no secret bytes enter the
-domain. This is not durable PostgreSQL persistence or public Gateway
-availability yet.
+domain. `AUT0.2-C3` adds the PostgreSQL owner for the same boundary: migration
+`183` stores the canonical revision ACL/digest and endpoint projection, one
+immutable first-delivery capture, and append-only receipt facts. Endpoint
+identity/revision fields are immutable, lifecycle changes are generation-fenced,
+and restore reparses the canonical contracts before admission. Shared Audit and
+Outbox writes remain in the admission transaction; Secret plaintext, transport,
+worker, and public Gateway authority do not cross this boundary. Live PostgreSQL
+recovery evidence is still a separate availability gate.
 - `ConnectorProfile` and `ConnectorRevision`
 - `ConnectorRevisionRevocation`
 - `ConnectorExecutionEvidence`

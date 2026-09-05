@@ -19,4 +19,6 @@ pub use domain::{
     IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
     IAutomationWebhookSignatureVerifier, TransitionAutomationWebhookEndpoint,
 };
-pub use infrastructure::InMemoryAutomationWebhookRepository;
+pub use infrastructure::{
+    InMemoryAutomationWebhookRepository, PostgresAutomationWebhookRepository,
+};
