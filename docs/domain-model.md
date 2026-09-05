@@ -2118,6 +2118,15 @@ policy-derived deduplication key, bounded input, and authorization snapshot.
 Audit and Outbox values retain only redacted identifiers and digests. No
 scheduler, webhook/event worker, receipt table, or target-owned run history is
 introduced by this foundation.
+
+The component-only `AUT0.2-C2` boundary adds the first Cloud admission owner:
+one application service and one atomic in-memory repository bind an endpoint to
+the exact revision, enforce scoped opaque-key uniqueness and generation-CAS
+lifecycle changes, and retain bounded delivery/replay receipts with redacted
+Audit and admitted Outbox projections. Signature verification and request-schema
+evaluation cross explicit infrastructure ports; no secret bytes enter the
+domain. This is not durable PostgreSQL persistence or public Gateway
+availability yet.
 - `ConnectorProfile` and `ConnectorRevision`
 - `ConnectorRevisionRevocation`
 - `ConnectorExecutionEvidence`

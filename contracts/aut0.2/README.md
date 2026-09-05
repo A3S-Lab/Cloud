@@ -18,5 +18,12 @@ Secret material, provider-specific source facts, HTTP listeners, Gateway
 routes, schema registries, persistence, and invocation workers remain owned by
 their respective runtime boundaries. The endpoint stores only the schema
 digest and the Secret identity/version needed for those boundaries to perform
-their checks. This slice therefore establishes the admission boundary and
-regression tests without claiming public webhook availability.
+their checks. `crates/control-plane/src/modules/automations` now composes that
+contract through an application-owned, atomic in-memory repository: endpoint
+creation pins the exact revision, lifecycle writes use generation CAS, and
+delivery writes atomically retain the bounded request, receipt, invocation
+handoff, redacted audit fact, and admitted Outbox identity. Signature
+verification and schema evaluation remain explicit ports, so the component
+cannot accidentally claim either check without an infrastructure adapter.
+This slice still has no PostgreSQL migration, HTTP listener, Gateway route,
+worker, or public webhook availability.
