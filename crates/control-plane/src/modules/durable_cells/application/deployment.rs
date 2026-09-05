@@ -1,7 +1,6 @@
 use super::node_pool_port::{DurableCellNodePoolSelectionRequest, IDurableCellNodePoolPort};
 #[cfg(test)]
 use super::provider_workload::compose_pinned_celld_service_process;
-use super::provider_workload::validate_pinned_celld_provider_workload;
 use super::resource_access::{application_not_found, environment, revision_not_found};
 use super::secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,
@@ -13,8 +12,9 @@ use super::storage_port::{
 use super::workload_port::{
     DurableCellWorkloadDeployment, DurableCellWorkloadDeploymentRequest,
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadProviderProjectionRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
@@ -146,6 +146,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                         Err(error) => return Ok(Err(error)),
                     };
                     if let Err(error) = admit_external_bindings(
+                        workload_port.as_ref(),
                         storage.as_ref(),
                         secret_bindings.as_ref(),
                         node_pool_port.as_ref(),
@@ -233,6 +234,7 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
                 return Ok(Err(error));
             }
             if let Err(error) = admit_external_bindings(
+                workload_port.as_ref(),
                 storage.as_ref(),
                 secret_bindings.as_ref(),
                 node_pool_port.as_ref(),
@@ -477,6 +479,7 @@ async fn load_current_record(
 }
 
 async fn admit_external_bindings(
+    workload_port: &dyn IDurableCellWorkloadPort,
     storage: &dyn IDurableCellStoragePort,
     secret_bindings: &dyn IDurableCellSecretBindingPort,
     node_pool_port: &dyn IDurableCellNodePoolPort,
@@ -498,14 +501,15 @@ async fn admit_external_bindings(
         let profile = storage.project_provider_profile(&profile_request).await?;
         let publisher = crate::modules::durable_cells::domain::DurableCellPublisherProfile::pinned_celld_v0_2_1()
             .map_err(ApplicationError::Invalid)?;
-        validate_pinned_celld_provider_workload(
-            &command.storage_credentials,
-            &profile,
-            &prepared.service_profile,
-            &command.workload_template,
-            &publisher,
-        )
-        .map_err(ApplicationError::Invalid)?;
+        workload_port.validate_provider_workload(
+            &DurableCellWorkloadProviderValidationRequest::new(
+                command.storage_credentials.clone(),
+                profile,
+                prepared.service_profile.clone(),
+                prepared.service_template.clone(),
+                publisher,
+            ),
+        )?;
     }
     let bindings = command
         .workload_template

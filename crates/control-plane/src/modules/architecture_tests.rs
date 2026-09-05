@@ -1217,6 +1217,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "DeploymentRequested",
         "WorkloadRevision::",
         "project_durable_cell_provider_workload",
+        "validate_pinned_celld_provider_workload",
     ] {
         assert!(
             !deployment.contains(forbidden),
@@ -1280,6 +1281,8 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
     assert!(port.contains("create_managed_deployment"));
     assert!(port.contains("resolve_revision_generation"));
     assert!(port.contains("project_provider_workload"));
+    assert!(port.contains("pub struct DurableCellWorkloadProviderValidationRequest"));
+    assert!(port.contains("validate_provider_workload"));
     assert!(port.contains("load_prestart_publication"));
     assert!(port.contains("load_writer_fence_admission"));
     assert!(port.contains("load_prior_writer_fence"));
@@ -1301,6 +1304,7 @@ fn durable_cells_workloads_cross_one_consumer_owned_port() {
         "ReconfigureReplicaSetWrite",
         "WorkloadRevision::create",
         "project_provider_workload",
+        "validate_pinned_celld_provider_workload",
         "DurableCellProjectionIdentity",
     ] {
         assert!(

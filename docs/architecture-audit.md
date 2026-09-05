@@ -303,6 +303,9 @@ Current boundary debt:
   through that same port. The Workloads adapter decodes the opaque template
   and constructs the owner revision, so the deployment application retains no
   Workloads revision aggregate or constructor;
+- Pinned provider-workload admission now uses an owner-neutral validation
+  request on the same port; Workloads alone decodes the template and applies
+  its Service/profile/credential shape rules before Durable Cells proceeds;
 - optional Fleet node-pool admission now crosses one
   `IDurableCellNodePoolPort` and one Fleet anti-corruption adapter; scheduling,
   capacity, and claim lifecycle remain Fleet-owned;

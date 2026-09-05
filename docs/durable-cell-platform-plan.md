@@ -38,6 +38,10 @@ application passes an opaque, digest-locked template to the Workloads port,
 and the adapter alone decodes it and constructs the Workloads revision before
 returning the bounded provider projection.
 
+The pinned provider admission check follows that port as well, retaining
+Workloads ownership of Service/template and credential-shape validation while
+Durable Cells consumes only the resulting application error boundary.
+
 This document owns the detailed `CELL0` delivery contract for a managed service
 similar in outcome to [Deno celld](https://github.com/denoland/celld). The root
 [ROADMAP](../ROADMAP.md) remains authoritative for portfolio ordering and public

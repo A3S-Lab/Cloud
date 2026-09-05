@@ -1,5 +1,9 @@
+use super::storage_port::{
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
+};
 use crate::modules::durable_cells::domain::{
     DurableCellProjectionIdentity, DurableCellProviderWorkloadProjection,
+    DurableCellPublisherProfile, DurableCellServiceProfile,
 };
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
@@ -793,6 +797,43 @@ impl DurableCellWorkloadProviderProjectionRequest {
     }
 }
 
+/// Exact owner-neutral input for validating the pinned provider Workload at
+/// the Workloads boundary. The adapter decodes the opaque template and keeps
+/// all Workloads model and provider-shape vocabulary on the owner side.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DurableCellWorkloadProviderValidationRequest {
+    pub credentials: DurableCellStorageCredentialRequest,
+    pub provider_profile: DurableCellStorageProviderProfileProjection,
+    pub service_profile: DurableCellServiceProfile,
+    pub service_template: DurableCellWorkloadTemplate,
+    pub publisher: DurableCellPublisherProfile,
+}
+
+impl DurableCellWorkloadProviderValidationRequest {
+    pub fn new(
+        credentials: DurableCellStorageCredentialRequest,
+        provider_profile: DurableCellStorageProviderProfileProjection,
+        service_profile: DurableCellServiceProfile,
+        service_template: DurableCellWorkloadTemplate,
+        publisher: DurableCellPublisherProfile,
+    ) -> Self {
+        Self {
+            credentials,
+            provider_profile,
+            service_profile,
+            service_template,
+            publisher,
+        }
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.credentials.validate()?;
+        self.provider_profile.validate()?;
+        self.publisher.validate()?;
+        Ok(())
+    }
+}
+
 impl DurableCellWorkloadRevisionGenerationRequest {
     pub fn new(
         organization_id: OrganizationId,
@@ -836,6 +877,11 @@ pub trait IDurableCellWorkloadPort: Send + Sync {
         &self,
         request: &DurableCellWorkloadProviderProjectionRequest,
     ) -> ApplicationResult<DurableCellProviderWorkloadProjection>;
+
+    fn validate_provider_workload(
+        &self,
+        request: &DurableCellWorkloadProviderValidationRequest,
+    ) -> ApplicationResult<()>;
 
     async fn load_prestart_publication(
         &self,

@@ -219,6 +219,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let missing_process_prepared =
         PreparedDeployment::new(&missing_storage_process).expect("neutral preparation");
     assert!(admit_external_bindings(
+        workload_port.as_ref(),
         storage_port.as_ref(),
         secret_binding_port.as_ref(),
         node_pool_port.as_ref(),
@@ -246,6 +247,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     )));
     assert_ne!(correlation_idempotency.scope, workload_idempotency.scope);
     admit_external_bindings(
+        workload_port.as_ref(),
         storage_port.as_ref(),
         secret_binding_port.as_ref(),
         node_pool_port.as_ref(),

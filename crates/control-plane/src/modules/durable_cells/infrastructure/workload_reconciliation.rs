@@ -1,13 +1,16 @@
-use crate::modules::durable_cells::application::durable_cell_managed_owner_reference;
+use crate::modules::durable_cells::application::{
+    durable_cell_managed_owner_reference, validate_pinned_celld_provider_workload,
+};
 use crate::modules::durable_cells::application::{
     project_durable_cell_provider_workload, DurableCellWorkloadDeployment,
     DurableCellWorkloadDeploymentRequest, DurableCellWorkloadDeploymentStatus,
     DurableCellWorkloadPlacementRequest, DurableCellWorkloadPrestartProjection,
     DurableCellWorkloadPrestartRequest, DurableCellWorkloadPriorWriterFenceProjection,
     DurableCellWorkloadPriorWriterFenceRequest, DurableCellWorkloadProviderProjectionRequest,
-    DurableCellWorkloadReconciliationRequest, DurableCellWorkloadRevisionGenerationRequest,
-    DurableCellWorkloadTemplate, DurableCellWorkloadWriterFenceProjection,
-    DurableCellWorkloadWriterFenceRequest, IDurableCellWorkloadPort,
+    DurableCellWorkloadProviderValidationRequest, DurableCellWorkloadReconciliationRequest,
+    DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
+    DurableCellWorkloadWriterFenceProjection, DurableCellWorkloadWriterFenceRequest,
+    IDurableCellWorkloadPort,
 };
 use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellProjectionIdentity,
@@ -418,6 +421,22 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
         )
         .map_err(ApplicationError::Invalid)?;
         project_durable_cell_provider_workload(&revision).map_err(ApplicationError::Invalid)
+    }
+
+    fn validate_provider_workload(
+        &self,
+        request: &DurableCellWorkloadProviderValidationRequest,
+    ) -> ApplicationResult<()> {
+        request.validate().map_err(ApplicationError::Invalid)?;
+        let template = decode_service_template(&request.service_template)?;
+        validate_pinned_celld_provider_workload(
+            &request.credentials,
+            &request.provider_profile,
+            &request.service_profile,
+            &template,
+            &request.publisher,
+        )
+        .map_err(ApplicationError::Invalid)
     }
 
     async fn load_prestart_publication(
