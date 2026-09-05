@@ -104,7 +104,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`329065555dd1fefcbbc5caebd2518592256ab933` (durable per-attempt deadlines,
+`f1a64ee71f9c005eac4313b480c47ecb69ca209b` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, and tip-validated
 disposable projection checkpoints).
 The same revision must be recorded in the Cloud compatibility lock before a
@@ -122,8 +122,9 @@ the recorded attempt and idempotency identities.
 
 Cloud visibility and operations may request a Flow projection checkpoint after
 an execution transition. The checkpoint is an acceleration cache only: Flow
-accepts it when `run_id`, `last_sequence`, and `last_event_id` match the history
-tip, and otherwise replays the authoritative event stream. Cloud must not copy
+accepts it when `run_id`, `last_sequence`, `last_event_id`, and the snapshot
+SHA-256 digest validate against the history tip, and otherwise replays the
+authoritative event stream (or only its indexed tail). Cloud must not copy
 or mutate checkpoint snapshots as a second execution history; its own
 tenant-authorized visibility projection remains rebuildable from Flow facts.
 
