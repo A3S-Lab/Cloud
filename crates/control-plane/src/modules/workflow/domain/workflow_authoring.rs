@@ -159,6 +159,39 @@ pub struct WorkflowAuthoringEntry {
 }
 
 impl WorkflowAuthoringEntry {
+    /// Rehydrates an entry from durable columns and verifies its operation
+    /// digest and bounds.
+    pub fn try_from_parts(
+        sequence: u64,
+        operation_id: impl Into<String>,
+        operation_digest: Sha256Digest,
+        base_snapshot_digest: Sha256Digest,
+        result_snapshot_digest: Sha256Digest,
+        operation_bytes: Vec<u8>,
+    ) -> Result<Self, WorkflowAuthoringError> {
+        let operation_id = operation_id.into();
+        let operation = WorkflowAuthoringOperation::try_new(
+            operation_id.clone(),
+            base_snapshot_digest.clone(),
+            operation_bytes.clone(),
+        )?;
+        if operation.operation_digest() != &operation_digest {
+            return Err(WorkflowAuthoringError::Invalid(
+                "journal operation digest does not match operation bytes".into(),
+            ));
+        }
+        let value = Self {
+            sequence,
+            operation_id,
+            operation_digest,
+            base_snapshot_digest,
+            result_snapshot_digest,
+            operation_bytes,
+        };
+        value.validate()?;
+        Ok(value)
+    }
+
     pub fn sequence(&self) -> u64 {
         self.sequence
     }

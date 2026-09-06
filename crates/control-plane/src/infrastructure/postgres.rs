@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 184;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "184";
+pub const CLOUD_MIGRATION_COUNT: i64 = 185;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "185";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1681,6 +1681,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/184_automation_schedule_state.sql"
             )),
         ),
+        Migration::new(
+            "185",
+            "Workflow hosted authoring journal",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/185_workflow_authoring_journal.sql"
+            )),
+        ),
     ]
 }
 
@@ -1691,6 +1699,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
 mod cloud_migration_manifest_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/workflow_authoring_journal_migration.rs"]
+mod workflow_authoring_journal_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/agent_release_manifest_migration.rs"]

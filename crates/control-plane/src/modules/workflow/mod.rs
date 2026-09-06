@@ -247,8 +247,8 @@ pub use infrastructure::persistence::{
     InMemoryOntologyRepository, InMemoryWorkflowAuthoringRepository,
     InMemoryWorkflowDefinitionRepository, InMemoryWorkflowGoalRepository,
     InMemoryWorkflowRunRepository, PostgresHumanTaskRepository, PostgresOntologyRepository,
-    PostgresWorkflowDefinitionRepository, PostgresWorkflowGoalRepository,
-    PostgresWorkflowRunRepository,
+    PostgresWorkflowAuthoringRepository, PostgresWorkflowDefinitionRepository,
+    PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository,
 };
 pub use infrastructure::{
     observe_flow_resume_receipt, FlowWorkflowRunCoordinator, FormsHumanTaskFormAdapter,

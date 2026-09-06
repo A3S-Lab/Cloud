@@ -101,9 +101,15 @@ Workflow access helper before Flow is invoked, Flow returns the canonical
 initial/result snapshot, and authorized retries are served from the journal
 without reapplying the operation. The application contract also rejects stale
 bases before spending Flow capacity and hides project-identity drift as
-not-found. The remaining CFLOW-0A work is transactional PostgreSQL
-persistence, snapshot projection, and authenticated SSE/WebSocket cursor
-delivery with reconnect/concurrency integration tests.
+not-found. Transactional PostgreSQL persistence is now implemented with a
+tenant/definition-scoped journal head, append-only entries, operation-id
+uniqueness, bounded opaque BYTEA payloads, row-lock/CAS sequencing, and
+fail-closed rehydration/cursor continuity checks. The remaining CFLOW-0A work
+is a bounded snapshot projection/compaction path, authenticated SSE/WebSocket
+cursor delivery, audit/outbox integration, and end-to-end
+reconnect/concurrency tests against a real serving schema. The PostgreSQL
+adapter is intentionally not a public API claim until those authorization,
+audit, and delivery gates are wired into the management composition.
 
 ## 4. Shared contract
 
