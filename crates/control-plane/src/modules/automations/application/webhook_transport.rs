@@ -84,11 +84,11 @@ impl AutomationWebhookReceiver {
         )
         .map_err(ApplicationError::Invalid)?;
 
-        // Inactive endpoints still receive an immutable lifecycle rejection
-        // receipt. Do not construct or validate an invocation first: doing so
-        // could turn a valid disable/revoke receipt into an authorization or
-        // timestamp error before the admission authority records it.
-        let invocation = if record.endpoint.state.is_accepting() {
+        // Authenticate and validate the payload before asking the authorization
+        // owner for a snapshot. Inactive endpoints still receive an immutable
+        // lifecycle rejection receipt without consulting either external gate.
+        let accepting = self.admission.preflight(&request).await?;
+        let invocation = if accepting {
             let authorization = self
                 .authorization
                 .resolve(&record.endpoint, &record.revision)

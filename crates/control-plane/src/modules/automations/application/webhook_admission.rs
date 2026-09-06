@@ -95,6 +95,36 @@ impl AutomationWebhookAdmissionService {
             .map_err(Into::into)
     }
 
+    /// Run the non-mutating authenticity and schema gate before an active
+    /// receiver asks the authorization owner for a snapshot. Lifecycle
+    /// rejection remains a durable admission concern, so inactive endpoints
+    /// return `false` without consulting either external verifier.
+    pub async fn preflight(&self, request: &AutomationWebhookRequestV1) -> ApplicationResult<bool> {
+        let record = self
+            .repository
+            .find_endpoint(request.endpoint_id)
+            .await
+            .map_err(ApplicationError::from)?
+            .ok_or_else(|| ApplicationError::NotFound("webhook endpoint not found".into()))?;
+
+        request
+            .validate_for_endpoint(&record.endpoint)
+            .map_err(ApplicationError::Invalid)?;
+        if !record.endpoint.state.is_accepting() {
+            return Ok(false);
+        }
+
+        self.signature_verifier
+            .verify(&record.endpoint, request)
+            .await
+            .map_err(ApplicationError::Invalid)?;
+        self.schema_validator
+            .validate(&record.endpoint, request)
+            .await
+            .map_err(ApplicationError::Invalid)?;
+        Ok(true)
+    }
+
     pub async fn admit(
         &self,
         command: AdmitAutomationWebhookDelivery,

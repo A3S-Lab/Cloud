@@ -473,6 +473,71 @@ async fn webhook_receiver_redacts_authorization_owner_failure_before_admission()
 }
 
 #[tokio::test]
+async fn webhook_receiver_preflights_authenticity_before_authorization_resolution() {
+    let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
+    let command = create_command(revision());
+    let created = AutomationWebhookAdmissionService::new(
+        repository.clone(),
+        Arc::new(RejectingPort),
+        Arc::new(AcceptAll),
+    )
+    .create_endpoint(command.clone())
+    .await
+    .expect("create endpoint");
+    let endpoint = created.endpoint;
+    let authorization_calls = Arc::new(AtomicUsize::new(0));
+    let admission = Arc::new(AutomationWebhookAdmissionService::new(
+        repository.clone(),
+        Arc::new(RejectingPort),
+        Arc::new(AcceptAll),
+    ));
+    let receiver = AutomationWebhookReceiver::new(
+        Arc::new(AutomationWebhookEndpointQueryService::new(
+            repository.clone(),
+        )),
+        admission,
+        Arc::new(CountingAuthorization {
+            calls: Arc::clone(&authorization_calls),
+        }),
+    );
+    let received_at = timestamp("2026-09-05T00:00:03.000Z");
+
+    let error = receiver
+        .receive(ReceiveAutomationWebhookDelivery {
+            scope: AutomationWebhookEndpointScope {
+                organization_id: endpoint.organization_id,
+                project_id: endpoint.project_id,
+                environment_id: endpoint.environment_id,
+            },
+            endpoint_key: endpoint.endpoint_key,
+            delivery_id: id(0x60d),
+            signature: AutomationWebhookSignatureV1 {
+                algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+                key_version: endpoint.signing_secret.version,
+                value: format!("hmac-sha256:{}", "a".repeat(64)),
+            },
+            content_type: "application/json".into(),
+            body: br#"{"release":"stable"}"#.to_vec(),
+            received_at,
+            invocation_id: id(0x60e),
+            requested_at: received_at,
+            correlation_id: id(0x60f),
+            causation_id: None,
+            receipt_id: id(0x610),
+            recorded_at: received_at,
+        })
+        .await
+        .expect_err("signature preflight failure");
+
+    assert!(matches!(
+        error,
+        ApplicationError::Invalid(message) if message.contains("signature")
+    ));
+    assert_eq!(authorization_calls.load(Ordering::SeqCst), 0);
+    assert!(repository.receipts().await.is_empty());
+}
+
+#[tokio::test]
 async fn admission_replays_once_and_conflicts_on_delivery_body_drift() {
     let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
     let service = service(repository.clone());
