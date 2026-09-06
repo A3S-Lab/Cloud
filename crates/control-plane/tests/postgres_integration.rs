@@ -39,12 +39,15 @@ use a3s_cloud_control_plane::modules::audit::{
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::automations::{
-    AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
-    AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
-    AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
-    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
-    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
-    IAutomationWebhookSignatureVerifier, PostgresAutomationWebhookRepository,
+    AdmitAutomationWebhookDelivery, AutomationScheduleState, AutomationScheduleStateKey,
+    AutomationWebhookAdmissionService, AutomationWebhookEndpointQueryService,
+    AutomationWebhookEndpointScope, AutomationWebhookInvocationFactory,
+    AutomationWebhookInvocationRequest, ChangeAutomationWebhookEndpoint,
+    CommitAutomationScheduleCursor, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationScheduleStateRepository, IAutomationWebhookRepository,
+    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
+    ReleaseAutomationScheduleLease, ReserveAutomationScheduleLease,
     ResolveAutomationWebhookEndpoint,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
@@ -65,7 +68,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::RouteId;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest, InstallationId,
     OperationId, OrganizationId, ProjectAttributionProfileId, ProjectId, RepositoryError,
-    ResourceName, ScopeContext,
+    ResourceName, ScopeContext, Sha256Digest,
 };
 use a3s_cloud_control_plane::modules::sources::domain::{
     GitReference, ISourceResolver, ResolvedSource, SourceProviderCredential, SourceResolutionError,
@@ -81,7 +84,7 @@ use a3s_orm::{
     sql_query, Database, Migration, Migrator, PostgresDialect, PostgresError, PostgresExecutor,
 };
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use serde_json::{json, Value};
 use std::panic::AssertUnwindSafe;
@@ -465,6 +468,146 @@ async fn exercise_automation_webhook_postgres(
         .await?
         .is_none());
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn automation_schedule_state_postgres_fences_and_recovers() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_automation_schedule_state_postgres)
+        .await
+        .expect("Automation schedule-state PostgreSQL recovery gate");
+}
+
+async fn exercise_automation_schedule_state_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000221")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000222")?;
+    let environment_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000223")?;
+    seed_automation_webhook_scope(&database, organization_id, project_id, environment_id).await?;
+
+    let key = AutomationScheduleStateKey::new(
+        OrganizationId::from_uuid(organization_id),
+        ProjectId::from_uuid(project_id),
+        EnvironmentId::from_uuid(environment_id),
+        Uuid::from_u128(0x018f0000000070008000000000000421),
+    );
+    let state = AutomationScheduleState::new(
+        key,
+        Uuid::from_u128(0x018f0000000070008000000000000422),
+        Sha256Digest::parse(format!("sha256:{}", "a".repeat(64)))?,
+        automation_timestamp(1_000),
+        automation_timestamp(900),
+    )?;
+    let repository = Arc::new(PostgresAutomationScheduleStateRepository::new(
+        executor.clone(),
+    ));
+    repository.create(state.clone()).await?;
+
+    let first_reservation = ReserveAutomationScheduleLease {
+        key,
+        owner_id: Uuid::from_u128(0x018f0000000070008000000000000423),
+        lease_id: Uuid::from_u128(0x018f0000000070008000000000000424),
+        reserved_at: automation_timestamp(1_001),
+        lease_expires_at: automation_timestamp(1_101),
+    };
+    let second_reservation = ReserveAutomationScheduleLease {
+        key,
+        owner_id: Uuid::from_u128(0x018f0000000070008000000000000425),
+        lease_id: Uuid::from_u128(0x018f0000000070008000000000000426),
+        reserved_at: automation_timestamp(1_001),
+        lease_expires_at: automation_timestamp(1_101),
+    };
+    let (first, second) = tokio::join!(
+        repository.reserve(first_reservation.clone()),
+        repository.reserve(second_reservation),
+    );
+    let reserved = match (first, second) {
+        (Ok(state), Err(_)) | (Err(_), Ok(state)) => state,
+        (first, second) => {
+            return Err(format!(
+                "exactly one schedule lease reservation must win: {first:?}; {second:?}"
+            )
+            .into())
+        }
+    };
+    assert_eq!(reserved.lease_generation(), 1);
+    let lease = reserved.lease().expect("reserved lease");
+    let commit = repository
+        .commit_cursor(CommitAutomationScheduleCursor {
+            key,
+            owner_id: lease.owner_id(),
+            lease_id: lease.lease_id(),
+            lease_generation: reserved.lease_generation(),
+            evaluated_through: automation_timestamp(1_050),
+            committed_at: automation_timestamp(1_060),
+        })
+        .await?;
+    assert_eq!(commit.cursor_at(), automation_timestamp(1_050));
+    assert!(commit.lease().is_none());
+
+    drop(repository);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered = PostgresAutomationScheduleStateRepository::new(recovered_executor.clone());
+    let recovered_state = recovered.find(key).await?.expect("state after reconnect");
+    assert_eq!(recovered_state.cursor_at(), automation_timestamp(1_050));
+    assert_eq!(recovered_state.lease_generation(), 1);
+    assert!(recovered_state.lease().is_none());
+
+    let reserved_again = recovered
+        .reserve(ReserveAutomationScheduleLease {
+            key,
+            owner_id: Uuid::from_u128(0x018f0000000070008000000000000427),
+            lease_id: Uuid::from_u128(0x018f0000000070008000000000000428),
+            reserved_at: automation_timestamp(1_061),
+            lease_expires_at: automation_timestamp(1_161),
+        })
+        .await?;
+    let lease_again = reserved_again.lease().expect("second lease");
+    let released = recovered
+        .release_lease(ReleaseAutomationScheduleLease {
+            key,
+            owner_id: lease_again.owner_id(),
+            lease_id: lease_again.lease_id(),
+            lease_generation: reserved_again.lease_generation(),
+            released_at: automation_timestamp(1_062),
+        })
+        .await?;
+    assert_eq!(released.lease_generation(), 2);
+    assert_eq!(released.cursor_at(), automation_timestamp(1_050));
+    assert!(released.lease().is_none());
+
+    drop(recovered);
+    drop(recovered_executor);
+    let final_executor = connect_postgres(&url, 8).await?;
+    let final_repository = PostgresAutomationScheduleStateRepository::new(final_executor);
+    let final_state = final_repository
+        .find(key)
+        .await?
+        .expect("released state after reconnect");
+    assert_eq!(final_state.lease_generation(), 2);
+    assert!(final_state.lease().is_none());
+    assert!(final_repository
+        .find(AutomationScheduleStateKey::new(
+            key.organization_id,
+            key.project_id,
+            key.environment_id,
+            Uuid::from_u128(0x018f0000000070008000000000000429),
+        ))
+        .await?
+        .is_none());
+    Ok(())
+}
+
+fn automation_timestamp(seconds: i64) -> DateTime<Utc> {
+    DateTime::from_timestamp(seconds, 0).expect("canonical timestamp")
 }
 
 async fn seed_automation_webhook_scope(
