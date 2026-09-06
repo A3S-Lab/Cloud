@@ -240,35 +240,55 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         request
             .validate_identity()
             .map_err(ApplicationError::Invalid)?;
-        let journal = self
-            .read_authorized_journal(request.key, &request.resource_access)
+        self.authorize(request.key, &request.resource_access)
             .await?;
         request
             .operation
             .validate()
             .map_err(map_authoring_input_error)?;
 
-        // Authorized retries are answered from the immutable journal entry.
-        // This keeps the common retry path independent of Flow latency while
-        // preserving domain idempotency semantics for a racing writer.
-        if let Some(replayed) = journal
-            .replay(&request.operation)
-            .map_err(map_authoring_input_error)?
+        // Authorized retries are answered from the immutable operation index.
+        // The bounded repository lookup keeps this hot path independent of
+        // total journal length and Flow latency.
+        if let Some(entry) = self
+            .journals
+            .find_operation(request.key, request.operation.operation_id())
+            .await?
         {
-            return Ok(replayed);
+            if entry.operation_digest() != request.operation.operation_digest() {
+                return Err(map_authoring_input_error(
+                    WorkflowAuthoringError::IdempotencyConflict {
+                        operation_id: request.operation.operation_id().to_owned(),
+                    },
+                ));
+            }
+            return Ok(WorkflowAuthoringAppend {
+                entry,
+                replayed: true,
+            });
         }
-        if request.operation.base_snapshot_digest() != journal.current_snapshot().snapshot_digest()
-        {
+
+        let current_snapshot = self
+            .journals
+            .current_snapshot(request.key)
+            .await?
+            .ok_or_else(|| ApplicationError::NotFound(AUTHORING_NOT_FOUND.into()))?;
+        current_snapshot.validate().map_err(|error| {
+            ApplicationError::Internal(format!(
+                "stored workflow authoring current snapshot is invalid: {error}"
+            ))
+        })?;
+        if request.operation.base_snapshot_digest() != current_snapshot.snapshot_digest() {
             return Err(ApplicationError::Conflict(format!(
                 "workflow authoring base digest mismatch: expected {}, received {}",
-                journal.current_snapshot().snapshot_digest(),
+                current_snapshot.snapshot_digest(),
                 request.operation.base_snapshot_digest()
             )));
         }
 
         let result_snapshot = self
             .flow
-            .apply_operation(journal.current_snapshot(), &request.operation)
+            .apply_operation(&current_snapshot, &request.operation)
             .await?;
         result_snapshot.validate().map_err(|error| {
             ApplicationError::Internal(format!(

@@ -1,8 +1,9 @@
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workflow::domain::{
     AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal, IWorkflowAuthoringRepository,
-    WorkflowAuthoringAppend, WorkflowAuthoringError, WorkflowAuthoringJournal,
-    WorkflowAuthoringJournalKey, WorkflowAuthoringPage,
+    WorkflowAuthoringAppend, WorkflowAuthoringEntry, WorkflowAuthoringError,
+    WorkflowAuthoringJournal, WorkflowAuthoringJournalKey, WorkflowAuthoringPage,
+    WorkflowAuthoringSnapshot,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;
@@ -52,6 +53,32 @@ impl IWorkflowAuthoringRepository for InMemoryWorkflowAuthoringRepository {
         journal
             .append(write.operation, write.result_snapshot)
             .map_err(map_error)
+    }
+
+    async fn current_snapshot(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+    ) -> Result<Option<WorkflowAuthoringSnapshot>, RepositoryError> {
+        Ok(self
+            .journals
+            .read()
+            .await
+            .get(&key)
+            .map(|journal| journal.current_snapshot().clone()))
+    }
+
+    async fn find_operation(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+        operation_id: &str,
+    ) -> Result<Option<WorkflowAuthoringEntry>, RepositoryError> {
+        Ok(self.journals.read().await.get(&key).and_then(|journal| {
+            journal
+                .entries()
+                .iter()
+                .find(|entry| entry.operation_id() == operation_id)
+                .cloned()
+        }))
     }
 
     async fn find(

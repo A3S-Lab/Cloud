@@ -281,6 +281,45 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
             .map_err(transaction_error)
     }
 
+    async fn current_snapshot(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+    ) -> Result<Option<WorkflowAuthoringSnapshot>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    Ok(load_head(transaction, key, false)
+                        .await?
+                        .map(|(_, snapshot)| snapshot))
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn find_operation(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+        operation_id: &str,
+    ) -> Result<Option<WorkflowAuthoringEntry>, RepositoryError> {
+        let operation_id = operation_id.to_owned();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    key.validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    let Some(row) =
+                        find_entry_by_operation_id(transaction, key, &operation_id).await?
+                    else {
+                        return Ok(None);
+                    };
+                    decode_entry(row).map(Some)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn find(
         &self,
         key: WorkflowAuthoringJournalKey,

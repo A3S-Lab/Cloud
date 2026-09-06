@@ -2,8 +2,8 @@ use crate::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, RepositoryError, WorkflowDefinitionId,
 };
 use crate::modules::workflow::domain::{
-    WorkflowAuthoringAppend, WorkflowAuthoringJournal, WorkflowAuthoringOperation,
-    WorkflowAuthoringPage, WorkflowAuthoringSnapshot,
+    WorkflowAuthoringAppend, WorkflowAuthoringEntry, WorkflowAuthoringJournal,
+    WorkflowAuthoringOperation, WorkflowAuthoringPage, WorkflowAuthoringSnapshot,
 };
 use async_trait::async_trait;
 
@@ -72,6 +72,42 @@ pub trait IWorkflowAuthoringRepository: Send + Sync {
         &self,
         write: AppendWorkflowAuthoringOperation,
     ) -> Result<WorkflowAuthoringAppend, RepositoryError>;
+
+    /// Reads only the materialized head needed for an append preflight.
+    ///
+    /// Implementations should answer this from the journal head row rather
+    /// than rehydrating every historical entry. The default keeps custom
+    /// adapters source-compatible while they migrate to the bounded query.
+    async fn current_snapshot(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+    ) -> Result<Option<WorkflowAuthoringSnapshot>, RepositoryError> {
+        Ok(self
+            .find(key)
+            .await?
+            .map(|journal| journal.current_snapshot().clone()))
+    }
+
+    /// Finds one immutable operation entry by its idempotency key.
+    ///
+    /// The returned entry is already validated by the repository adapter. A
+    /// missing entry is distinct from an idempotency conflict: callers compare
+    /// the stored digest with the incoming operation before deciding whether
+    /// to replay or reject it. The default implementation is intentionally a
+    /// compatibility fallback over [`Self::find`].
+    async fn find_operation(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+        operation_id: &str,
+    ) -> Result<Option<WorkflowAuthoringEntry>, RepositoryError> {
+        Ok(self.find(key).await?.and_then(|journal| {
+            journal
+                .entries()
+                .iter()
+                .find(|entry| entry.operation_id() == operation_id)
+                .cloned()
+        }))
+    }
 
     async fn find(
         &self,
