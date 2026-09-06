@@ -79,6 +79,26 @@ impl IAutomationWebhookRepository for InMemoryAutomationWebhookRepository {
         Ok(self.state.read().await.endpoints.get(&endpoint_id).cloned())
     }
 
+    async fn find_endpoint_by_key(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        environment_id: Uuid,
+        endpoint_key: &str,
+    ) -> Result<Option<AutomationWebhookEndpointRecord>, RepositoryError> {
+        let state = self.state.read().await;
+        let endpoint_id = state
+            .endpoint_keys
+            .get(&(
+                organization_id,
+                project_id,
+                environment_id,
+                endpoint_key.to_owned(),
+            ))
+            .copied();
+        Ok(endpoint_id.and_then(|endpoint_id| state.endpoints.get(&endpoint_id).cloned()))
+    }
+
     async fn transition_endpoint(
         &self,
         transition: TransitionAutomationWebhookEndpoint,

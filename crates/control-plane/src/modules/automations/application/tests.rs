@@ -199,6 +199,27 @@ async fn endpoint_registration_pins_revision_and_rejects_scope_key_collisions() 
         .expect("find endpoint")
         .expect("endpoint");
     assert_eq!(found, created);
+    let found_by_key = repository
+        .find_endpoint_by_key(
+            created.endpoint.organization_id,
+            created.endpoint.project_id,
+            created.endpoint.environment_id,
+            &created.endpoint.endpoint_key,
+        )
+        .await
+        .expect("find endpoint by key")
+        .expect("endpoint by key");
+    assert_eq!(found_by_key, created);
+    assert!(repository
+        .find_endpoint_by_key(
+            created.endpoint.organization_id,
+            created.endpoint.project_id,
+            Uuid::from_u128(created.endpoint.environment_id.as_u128() ^ 1),
+            &created.endpoint.endpoint_key,
+        )
+        .await
+        .expect("scoped lookup")
+        .is_none());
 
     let duplicate = CreateAutomationWebhookEndpoint {
         endpoint_id: id(0x104),

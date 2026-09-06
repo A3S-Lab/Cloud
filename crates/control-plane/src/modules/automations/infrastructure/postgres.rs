@@ -66,6 +66,38 @@ impl IAutomationWebhookRepository for PostgresAutomationWebhookRepository {
             .map_err(transaction_error)
     }
 
+    async fn find_endpoint_by_key(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        environment_id: Uuid,
+        endpoint_key: &str,
+    ) -> Result<Option<AutomationWebhookEndpointRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                let endpoint_key = endpoint_key.to_owned();
+                Box::pin(async move {
+                    fetch_optional::<EndpointRow, _>(
+                        transaction,
+                        sql_query::<EndpointRow>(SELECT_ENDPOINT)
+                            .append(" where organization_id = ")
+                            .bind(organization_id)
+                            .append(" and project_id = ")
+                            .bind(project_id)
+                            .append(" and environment_id = ")
+                            .bind(environment_id)
+                            .append(" and endpoint_key = ")
+                            .bind(endpoint_key),
+                    )
+                    .await?
+                    .map(decode_endpoint)
+                    .transpose()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
     async fn transition_endpoint(
         &self,
         transition: TransitionAutomationWebhookEndpoint,

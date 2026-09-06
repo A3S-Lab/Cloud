@@ -91,6 +91,19 @@ pub trait IAutomationWebhookRepository: Send + Sync {
         endpoint_id: Uuid,
     ) -> Result<Option<AutomationWebhookEndpointRecord>, RepositoryError>;
 
+    /// Resolve one opaque endpoint key within its complete tenant scope.
+    ///
+    /// Public transport may know the scope and route key without knowing the
+    /// internal endpoint UUID.  Implementations must not widen this lookup to
+    /// organization-only or global key matching.
+    async fn find_endpoint_by_key(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        environment_id: Uuid,
+        endpoint_key: &str,
+    ) -> Result<Option<AutomationWebhookEndpointRecord>, RepositoryError>;
+
     async fn transition_endpoint(
         &self,
         transition: TransitionAutomationWebhookEndpoint,
