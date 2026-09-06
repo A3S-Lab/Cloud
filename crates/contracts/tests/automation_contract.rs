@@ -4,9 +4,9 @@ use a3s_cloud_contracts::{
     AutomationDeduplicationPolicyV1, AutomationDeduplicationScopeV1, AutomationDefinitionSpecV1,
     AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationInvocationEnvelopeV1,
     AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationMisfireModeV1,
-    AutomationMisfirePolicyV1, AutomationOutboxMessageV1, AutomationRevisionV1,
-    AutomationScheduleTriggerV1, AutomationSubscriptionReferenceV1, AutomationTargetV1,
-    AutomationTriggerPolicyV1, AutomationWebhookAdmissionDecisionV1,
+    AutomationMisfirePolicyV1, AutomationNormalizedEventV1, AutomationOutboxMessageV1,
+    AutomationRevisionV1, AutomationScheduleTriggerV1, AutomationSubscriptionReferenceV1,
+    AutomationTargetV1, AutomationTriggerPolicyV1, AutomationWebhookAdmissionDecisionV1,
     AutomationWebhookDeliveryReceiptV1, AutomationWebhookEndpointStateV1,
     AutomationWebhookEndpointV1, AutomationWebhookRejectionReasonV1, AutomationWebhookRequestV1,
     AutomationWebhookSecretReferenceV1, AutomationWebhookSignatureAlgorithmV1,
@@ -357,6 +357,7 @@ fn automation_contracts_are_send_and_sync_and_have_acl_only_fixtures() {
     assert_send_sync::<AutomationDefinitionV1>();
     assert_send_sync::<AutomationRevisionV1>();
     assert_send_sync::<AutomationInvocationEnvelopeV1>();
+    assert_send_sync::<AutomationNormalizedEventV1>();
     assert_send_sync::<AutomationAuditRecordV1>();
     assert_send_sync::<AutomationOutboxMessageV1>();
 

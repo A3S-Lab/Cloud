@@ -2,6 +2,7 @@ mod codec;
 mod definition;
 mod events;
 mod invocation;
+mod normalized_event;
 mod validation;
 mod webhook;
 
@@ -27,6 +28,10 @@ pub use invocation::{
     AutomationInvocationInputV1, AutomationInvocationOriginV1,
     AUTOMATION_INVOCATION_ENVELOPE_MAX_BYTES, AUTOMATION_INVOCATION_INLINE_MAX_BYTES,
     AUTOMATION_INVOCATION_SCHEMA_V1,
+};
+pub use normalized_event::{
+    AutomationNormalizedEventV1, AUTOMATION_NORMALIZED_EVENT_MAX_BYTES,
+    AUTOMATION_NORMALIZED_EVENT_SCHEMA_V1,
 };
 pub use webhook::{
     AutomationWebhookAdmissionDecisionV1, AutomationWebhookDeliveryReceiptV1,
