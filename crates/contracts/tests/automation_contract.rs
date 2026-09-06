@@ -423,6 +423,29 @@ fn webhook_endpoint_pins_revision_and_has_monotonic_lifecycle_generation() {
 }
 
 #[test]
+fn webhook_endpoint_key_validation_is_bounded_and_path_safe() {
+    AutomationWebhookEndpointV1::validate_endpoint_key("release-hook-v1")
+        .expect("ordinary opaque key");
+
+    for invalid in [
+        "",
+        "release/hook",
+        "release\\hook",
+        "release\0hook",
+        "release\rhook",
+        "release\nhook",
+    ] {
+        assert!(
+            AutomationWebhookEndpointV1::validate_endpoint_key(invalid).is_err(),
+            "key should be rejected: {invalid:?}"
+        );
+    }
+
+    let oversized = "k".repeat(a3s_cloud_contracts::AUTOMATION_WEBHOOK_MAX_ENDPOINT_KEY_BYTES + 1);
+    assert!(AutomationWebhookEndpointV1::validate_endpoint_key(&oversized).is_err());
+}
+
+#[test]
 fn webhook_capture_is_bounded_canonical_and_endpoint_pinned() {
     let revision = AutomationRevisionV1::from_definition(id(0x930), 1, None, webhook_spec())
         .expect("webhook revision");

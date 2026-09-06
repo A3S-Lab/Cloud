@@ -14,6 +14,12 @@ binds an admitted or replayed delivery to the same endpoint generation,
 revision digest, body digest, and invocation identity. Rejection constructors
 make endpoint lifecycle reasons explicit.
 
+The endpoint key is a bounded opaque route value: it is non-empty, limited to
+the contract maximum, and rejects path separators and control characters.
+Application lookup validates that key before calling a repository and always
+requires the complete organization/project/environment scope, so malformed
+transport paths cannot widen or reach persistence lookup.
+
 Signature verification uses HMAC-SHA256 over the captured raw body and compares
 the canonical lowercase-hex `hmac-sha256:` fact in constant time. Secret
 material, provider-specific source facts, HTTP listeners, Gateway
