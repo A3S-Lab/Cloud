@@ -42,9 +42,10 @@ use a3s_cloud_control_plane::modules::automations::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
     AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
     AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
-    CreateAutomationWebhookEndpoint, IAutomationWebhookRepository,
-    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    PostgresAutomationWebhookRepository, ResolveAutomationWebhookEndpoint,
+    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier, PostgresAutomationWebhookRepository,
+    ResolveAutomationWebhookEndpoint,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     project_published_outbox_envelope, A3sEventPublisher, IOutboxRepository, OutboxMessage,
@@ -397,6 +398,41 @@ async fn exercise_automation_webhook_postgres(
         request.body_digest
     );
 
+    let changed_at = received_at + chrono::Duration::seconds(2);
+    let first_lifecycle = admission.clone();
+    let second_lifecycle = admission.clone();
+    let (first_transition, second_transition) = tokio::join!(
+        first_lifecycle.change_endpoint(ChangeAutomationWebhookEndpoint {
+            endpoint_id: endpoint.endpoint_id,
+            expected_generation: 1,
+            action: EndpointLifecycleAction::Disable,
+            changed_at,
+        }),
+        second_lifecycle.change_endpoint(ChangeAutomationWebhookEndpoint {
+            endpoint_id: endpoint.endpoint_id,
+            expected_generation: 1,
+            action: EndpointLifecycleAction::Disable,
+            changed_at,
+        }),
+    );
+    let transitions = [first_transition, second_transition];
+    assert_eq!(
+        transitions.iter().filter(|result| result.is_ok()).count(),
+        1,
+        "exactly one lifecycle writer may win the generation fence"
+    );
+    assert_eq!(
+        transitions
+            .iter()
+            .filter(|result| matches!(result, Err(error) if matches!(
+                error,
+                a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError::Conflict(_)
+            )))
+            .count(),
+        1,
+        "the stale lifecycle writer must receive a conflict"
+    );
+
     drop(query);
     drop(admission);
     drop(repository);
@@ -410,6 +446,10 @@ async fn exercise_automation_webhook_postgres(
         .await?
         .expect("endpoint after reconnect");
     assert_eq!(recovered_endpoint.endpoint, endpoint);
+    assert_eq!(
+        recovered_endpoint.endpoint.state,
+        a3s_cloud_contracts::AutomationWebhookEndpointStateV1::Disabled
+    );
     let recovered_delivery = recovered
         .find_delivery(endpoint.endpoint_id, request.delivery_id)
         .await?
