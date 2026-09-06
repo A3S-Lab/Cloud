@@ -1,8 +1,8 @@
 use super::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
     AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
-    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
-    ResolveAutomationWebhookEndpoint,
+    AutomationWebhookReceiver, ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint,
+    EndpointLifecycleAction, ReceiveAutomationWebhookDelivery, ResolveAutomationWebhookEndpoint,
 };
 use crate::modules::automations::domain::{
     AutomationWebhookEndpointRecord, AutomationWebhookInvocationFactory,
@@ -250,6 +250,116 @@ async fn endpoint_registration_pins_revision_and_rejects_scope_key_collisions() 
         service.create_endpoint(duplicate).await,
         Err(ApplicationError::Conflict(message)) if message.contains("key")
     ));
+}
+
+#[tokio::test]
+async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
+    let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
+    let admission = Arc::new(service(repository.clone()));
+    let command = create_command(revision());
+    let created = admission
+        .create_endpoint(command.clone())
+        .await
+        .expect("create endpoint");
+    let endpoint = created.endpoint.clone();
+    let receiver = AutomationWebhookReceiver::new(
+        Arc::new(AutomationWebhookEndpointQueryService::new(
+            repository.clone(),
+        )),
+        admission.clone(),
+    );
+    let scope = AutomationWebhookEndpointScope {
+        organization_id: endpoint.organization_id,
+        project_id: endpoint.project_id,
+        environment_id: endpoint.environment_id,
+    };
+    let received_at = timestamp("2026-09-05T00:00:03.000Z");
+    let authorization = AutomationInvocationAuthorizationV1 {
+        policy_digest: created
+            .revision
+            .spec()
+            .definition
+            .authorization
+            .policy_digest
+            .clone(),
+        grant_snapshot_digest: digest('b'),
+        principal_id: None,
+    };
+    let accepted = receiver
+        .receive(ReceiveAutomationWebhookDelivery {
+            scope,
+            endpoint_key: endpoint.endpoint_key.clone(),
+            delivery_id: id(0x601),
+            signature: AutomationWebhookSignatureV1 {
+                algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+                key_version: endpoint.signing_secret.version,
+                value: format!("hmac-sha256:{}", "a".repeat(64)),
+            },
+            content_type: "application/json".into(),
+            body: br#"{"release":"stable"}"#.to_vec(),
+            received_at,
+            invocation_id: id(0x602),
+            requested_at: received_at,
+            authorization: authorization.clone(),
+            correlation_id: id(0x603),
+            causation_id: None,
+            receipt_id: id(0x604),
+            recorded_at: received_at,
+        })
+        .await
+        .expect("accepted webhook");
+    assert!(!accepted.replayed);
+    assert_eq!(
+        accepted.delivery.receipt.decision,
+        a3s_cloud_contracts::AutomationWebhookAdmissionDecisionV1::Admitted
+    );
+    assert!(accepted.delivery.invocation.is_some());
+
+    admission
+        .change_endpoint(ChangeAutomationWebhookEndpoint {
+            endpoint_id: endpoint.endpoint_id,
+            expected_generation: 1,
+            action: EndpointLifecycleAction::Disable,
+            changed_at: received_at + chrono::Duration::seconds(1),
+        })
+        .await
+        .expect("disable endpoint");
+    let rejected = receiver
+        .receive(ReceiveAutomationWebhookDelivery {
+            scope,
+            endpoint_key: endpoint.endpoint_key,
+            delivery_id: id(0x605),
+            signature: AutomationWebhookSignatureV1 {
+                algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+                key_version: endpoint.signing_secret.version,
+                value: format!("hmac-sha256:{}", "a".repeat(64)),
+            },
+            content_type: "application/json".into(),
+            body: br#"{"release":"disabled"}"#.to_vec(),
+            received_at: received_at + chrono::Duration::seconds(2),
+            invocation_id: id(0x606),
+            requested_at: received_at,
+            authorization: AutomationInvocationAuthorizationV1 {
+                policy_digest: "not-a-digest".into(),
+                grant_snapshot_digest: "not-a-digest".into(),
+                principal_id: None,
+            },
+            correlation_id: id(0x607),
+            causation_id: None,
+            receipt_id: id(0x608),
+            recorded_at: received_at + chrono::Duration::seconds(2),
+        })
+        .await
+        .expect("disabled lifecycle receipt");
+    assert_eq!(
+        rejected.delivery.receipt.decision,
+        a3s_cloud_contracts::AutomationWebhookAdmissionDecisionV1::Rejected
+    );
+    assert_eq!(
+        rejected.delivery.receipt.rejection_reason,
+        Some(a3s_cloud_contracts::AutomationWebhookRejectionReasonV1::EndpointDisabled)
+    );
+    assert!(rejected.delivery.invocation.is_none());
 }
 
 #[tokio::test]

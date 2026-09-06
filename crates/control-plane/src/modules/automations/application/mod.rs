@@ -9,6 +9,7 @@ mod invocation_consumer;
 mod schedule_dispatch;
 mod schedule_worker;
 mod webhook_admission;
+mod webhook_transport;
 
 #[cfg(test)]
 mod tests;
@@ -44,3 +45,4 @@ pub use webhook_admission::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint,
 };
+pub use webhook_transport::{AutomationWebhookReceiver, ReceiveAutomationWebhookDelivery};

@@ -21,11 +21,12 @@ pub use application::{
     AutomationScheduleDispatchResult, AutomationScheduleDispatchService, AutomationScheduleWorker,
     AutomationScheduleWorkerConfig, AutomationScheduleWorkerReport,
     AutomationWebhookAdmissionService, AutomationWebhookEndpointQueryService,
-    AutomationWebhookEndpointScope, AutomationsDispatchServices, ChangeAutomationWebhookEndpoint,
-    CreateAutomationWebhookEndpoint, EndpointLifecycleAction, IAutomationEventCandidateProvider,
-    IAutomationInvocationAdmission, IAutomationInvocationHandler,
-    IAutomationNormalizedEventHandler, IAutomationScheduleCandidateProvider,
-    IAutomationScheduleDispatchService, ResolveAutomationWebhookEndpoint,
+    AutomationWebhookEndpointScope, AutomationWebhookReceiver, AutomationsDispatchServices,
+    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
+    IAutomationInvocationHandler, IAutomationNormalizedEventHandler,
+    IAutomationScheduleCandidateProvider, IAutomationScheduleDispatchService,
+    ReceiveAutomationWebhookDelivery, ResolveAutomationWebhookEndpoint,
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
