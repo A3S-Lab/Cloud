@@ -15,10 +15,12 @@ pub use application::{
     AdmitAutomationWebhookDelivery, AutomationEventInvocationCandidate,
     AutomationEventInvocationCandidateOwned, AutomationEventInvocationDispatchService,
     AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
-    AutomationInvocationAdmissionOutcome, AutomationWebhookAdmissionService,
-    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
-    IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
-    IAutomationNormalizedEventHandler, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    AutomationInvocationAdmissionOutcome, AutomationScheduleDispatchRequest,
+    AutomationScheduleDispatchResult, AutomationScheduleDispatchService,
+    AutomationWebhookAdmissionService, ChangeAutomationWebhookEndpoint,
+    CreateAutomationWebhookEndpoint, EndpointLifecycleAction, IAutomationEventCandidateProvider,
+    IAutomationInvocationAdmission, IAutomationNormalizedEventHandler,
+    IAutomationScheduleDispatchService, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -33,9 +35,9 @@ pub use domain::{
     CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator,
     IAutomationScheduleStateRepository, IAutomationWebhookRepository,
     IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
-    IAutomationWebhookSignatureVerifier, ReserveAutomationScheduleLease,
-    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
-    AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
+    IAutomationWebhookSignatureVerifier, ReleaseAutomationScheduleLease,
+    ReserveAutomationScheduleLease, TransitionAutomationWebhookEndpoint,
+    AUTOMATION_SCHEDULE_MAX_LEASE_MS, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     A3sEventAutomationNormalizedEventConsumer, AutomationEventConsumerAction,

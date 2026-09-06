@@ -30,7 +30,8 @@ pub use schedule_invocation::{
 };
 pub use schedule_state::{
     AutomationScheduleState, AutomationScheduleStateKey, CommitAutomationScheduleCursor,
-    IAutomationScheduleStateRepository, ReserveAutomationScheduleLease,
+    IAutomationScheduleStateRepository, ReleaseAutomationScheduleLease,
+    ReserveAutomationScheduleLease,
 };
 pub use services::{
     IAutomationEventFilterEvaluator, IAutomationWebhookSchemaRegistry,

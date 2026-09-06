@@ -1,6 +1,7 @@
 use crate::modules::automations::domain::{
     AutomationScheduleState, AutomationScheduleStateKey, CommitAutomationScheduleCursor,
-    IAutomationScheduleStateRepository, ReserveAutomationScheduleLease,
+    IAutomationScheduleStateRepository, ReleaseAutomationScheduleLease,
+    ReserveAutomationScheduleLease,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use async_trait::async_trait;
@@ -80,6 +81,23 @@ impl IAutomationScheduleStateRepository for InMemoryAutomationScheduleStateRepos
             request.lease_generation,
             request.evaluated_through,
             request.committed_at,
+        )?;
+        Ok(state.clone())
+    }
+
+    async fn release_lease(
+        &self,
+        request: ReleaseAutomationScheduleLease,
+    ) -> Result<AutomationScheduleState, RepositoryError> {
+        let mut states = self.states.write().await;
+        let state = states
+            .get_mut(&request.key)
+            .ok_or(RepositoryError::NotFound)?;
+        state.release_lease(
+            request.owner_id,
+            request.lease_id,
+            request.lease_generation,
+            request.released_at,
         )?;
         Ok(state.clone())
     }

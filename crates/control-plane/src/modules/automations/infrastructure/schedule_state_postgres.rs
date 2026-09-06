@@ -5,7 +5,7 @@ use crate::infrastructure::{
 use crate::modules::automations::domain::{
     AutomationScheduleLease, AutomationScheduleState, AutomationScheduleStateKey,
     CommitAutomationScheduleCursor, IAutomationScheduleStateRepository,
-    ReserveAutomationScheduleLease,
+    ReleaseAutomationScheduleLease, ReserveAutomationScheduleLease,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
@@ -101,6 +101,30 @@ impl IAutomationScheduleStateRepository for PostgresAutomationScheduleStateRepos
                         request.lease_generation,
                         request.evaluated_through,
                         request.committed_at,
+                    )?;
+                    persist_state(transaction, &state).await?;
+                    Ok(state)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn release_lease(
+        &self,
+        request: ReleaseAutomationScheduleLease,
+    ) -> Result<AutomationScheduleState, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let mut state = load_state(transaction, request.key, true)
+                        .await?
+                        .ok_or(RepositoryError::NotFound)?;
+                    state.release_lease(
+                        request.owner_id,
+                        request.lease_id,
+                        request.lease_generation,
+                        request.released_at,
                     )?;
                     persist_state(transaction, &state).await?;
                     Ok(state)

@@ -223,6 +223,41 @@ impl AutomationScheduleState {
         self.validate().map_err(RepositoryError::Storage)
     }
 
+    /// Release the exact active fence without advancing the cursor.
+    ///
+    /// A scheduler uses this path when a bounded evaluation finds no due
+    /// occurrence or when admission fails before cursor progress can be
+    /// committed. The cursor remains exclusive and the next owner may safely
+    /// retry the same window.
+    pub fn release_lease(
+        &mut self,
+        owner_id: Uuid,
+        lease_id: Uuid,
+        lease_generation: u64,
+        released_at: DateTime<Utc>,
+    ) -> Result<(), RepositoryError> {
+        if lease_generation != self.lease_generation {
+            return Err(RepositoryError::Conflict(
+                "Automation schedule lease generation is stale".into(),
+            ));
+        }
+        let released_at = canonical_timestamp(released_at);
+        if released_at < self.updated_at {
+            return Err(RepositoryError::Conflict(
+                "Automation schedule lease release is older than state progress".into(),
+            ));
+        }
+        let lease = self.lease.as_ref().ok_or_else(|| {
+            RepositoryError::Conflict("Automation schedule has no active lease".into())
+        })?;
+        lease
+            .authorize(owner_id, lease_id, released_at)
+            .map_err(RepositoryError::Conflict)?;
+        self.lease = None;
+        self.updated_at = released_at;
+        self.validate().map_err(RepositoryError::Storage)
+    }
+
     pub const fn key(&self) -> AutomationScheduleStateKey {
         self.key
     }
@@ -312,6 +347,20 @@ pub trait IAutomationScheduleStateRepository: Send + Sync {
         &self,
         request: CommitAutomationScheduleCursor,
     ) -> Result<AutomationScheduleState, RepositoryError>;
+
+    async fn release_lease(
+        &self,
+        request: ReleaseAutomationScheduleLease,
+    ) -> Result<AutomationScheduleState, RepositoryError>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseAutomationScheduleLease {
+    pub key: AutomationScheduleStateKey,
+    pub owner_id: Uuid,
+    pub lease_id: Uuid,
+    pub lease_generation: u64,
+    pub released_at: DateTime<Utc>,
 }
 
 #[cfg(test)]
@@ -400,6 +449,27 @@ mod tests {
                 timestamp(1_080),
                 timestamp(1_090),
             )
+            .is_err());
+    }
+
+    #[test]
+    fn releases_an_active_fence_without_advancing_the_cursor() {
+        let mut state = state();
+        state
+            .reserve_lease(
+                Uuid::from_u128(6),
+                Uuid::from_u128(7),
+                timestamp(1_001),
+                timestamp(1_101),
+            )
+            .expect("lease");
+        state
+            .release_lease(Uuid::from_u128(6), Uuid::from_u128(7), 1, timestamp(1_050))
+            .expect("release");
+        assert_eq!(state.cursor_at(), timestamp(1_000));
+        assert!(state.lease().is_none());
+        assert!(state
+            .release_lease(Uuid::from_u128(6), Uuid::from_u128(7), 1, timestamp(1_051),)
             .is_err());
     }
 }
