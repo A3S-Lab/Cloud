@@ -16,7 +16,7 @@ pub use ontology_repository::{
 };
 pub use workflow_authoring_repository::{
     AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal, IWorkflowAuthoringRepository,
-    WorkflowAuthoringJournalKey,
+    WorkflowAuthoringJournalKey, WorkflowAuthoringWriteContext,
 };
 pub(crate) use workflow_definition_repository::WorkflowDefinitionWriteReference;
 pub use workflow_definition_repository::{

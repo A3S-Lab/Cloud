@@ -1,13 +1,15 @@
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
-    require_one_row, transaction_error, PostgresPersistenceError,
+    require_one_row, store_audit, store_outbox, transaction_error, AuditWrite,
+    PostgresPersistenceError,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError, Sha256Digest};
 use crate::modules::workflow::domain::{
     AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal, IWorkflowAuthoringRepository,
     WorkflowAuthoringAppend, WorkflowAuthoringEntry, WorkflowAuthoringJournal,
-    WorkflowAuthoringJournalKey, WorkflowAuthoringPage, WorkflowAuthoringSnapshot,
-    WORKFLOW_AUTHORING_MAX_PAGE_SIZE,
+    WorkflowAuthoringJournalCreated, WorkflowAuthoringJournalKey,
+    WorkflowAuthoringOperationAppended, WorkflowAuthoringPage, WorkflowAuthoringSnapshot,
+    WorkflowAuthoringWriteContext, WORKFLOW_AUTHORING_MAX_PAGE_SIZE,
 };
 use a3s_orm::{
     sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
@@ -33,13 +35,11 @@ impl PostgresWorkflowAuthoringRepository {
     pub const fn new(executor: PostgresExecutor) -> Self {
         Self { executor }
     }
-}
 
-#[async_trait]
-impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
-    async fn create(
+    async fn create_impl(
         &self,
         write: CreateWorkflowAuthoringJournal,
+        context: Option<WorkflowAuthoringWriteContext>,
     ) -> Result<WorkflowAuthoringJournal, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
@@ -56,6 +56,11 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
                                 "initial workflow authoring snapshot is invalid: {error}"
                             ))
                         })?;
+                    if let Some(context) = context {
+                        context
+                            .validate()
+                            .map_err(PostgresPersistenceError::Invariant)?;
+                    }
                     let now = canonical_timestamp(Utc::now());
                     let rows = execute(
                         transaction,
@@ -81,36 +86,37 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
                     )
                     .await;
                     match rows {
-                        Ok(rows) => {
-                            require_one_row("Workflow authoring journal", rows)?;
-                            WorkflowAuthoringJournal::try_new(write.initial_snapshot).map_err(
-                                |error| {
-                                    PostgresPersistenceError::Invariant(format!(
-                                        "created workflow authoring journal is invalid: {error}"
-                                    ))
-                                },
-                            )
-                        }
+                        Ok(rows) => require_one_row("Workflow authoring journal", rows)?,
                         Err(error) if is_unique_violation(&error) => {
-                            Err(RepositoryError::Conflict(
+                            return Err(RepositoryError::Conflict(
                                 "Workflow authoring journal already exists".into(),
                             )
                             .into())
                         }
                         Err(error) if is_foreign_key_violation(&error) => {
-                            Err(RepositoryError::NotFound.into())
+                            return Err(RepositoryError::NotFound.into())
                         }
-                        Err(error) => Err(error),
+                        Err(error) => return Err(error),
                     }
+                    if let Some(context) = context {
+                        store_created_facts(transaction, write.key, &write.initial_snapshot, context, now)
+                            .await?;
+                    }
+                    WorkflowAuthoringJournal::try_new(write.initial_snapshot).map_err(|error| {
+                        PostgresPersistenceError::Invariant(format!(
+                            "created workflow authoring journal is invalid: {error}"
+                        ))
+                    })
                 })
             })
             .await
             .map_err(transaction_error)
     }
 
-    async fn append(
+    async fn append_impl(
         &self,
         write: AppendWorkflowAuthoringOperation,
+        context: Option<WorkflowAuthoringWriteContext>,
     ) -> Result<WorkflowAuthoringAppend, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
@@ -127,6 +133,11 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
                                 "workflow authoring operation is invalid: {error}"
                             ))
                         })?;
+                    if let Some(context) = context {
+                        context
+                            .validate()
+                            .map_err(PostgresPersistenceError::Invariant)?;
+                    }
                     let Some((head, current_snapshot)) =
                         load_head(transaction, write.key, true).await?
                     else {
@@ -271,6 +282,17 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
                     )
                     .await?;
                     require_one_row("Workflow authoring journal update", updated)?;
+                    if let Some(context) = context {
+                        store_appended_facts(
+                            transaction,
+                            write.key,
+                            &entry,
+                            next_sequence,
+                            context,
+                            now,
+                        )
+                        .await?;
+                    }
                     Ok(WorkflowAuthoringAppend {
                         entry,
                         replayed: false,
@@ -279,6 +301,39 @@ impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
             })
             .await
             .map_err(transaction_error)
+    }
+}
+
+#[async_trait]
+impl IWorkflowAuthoringRepository for PostgresWorkflowAuthoringRepository {
+    async fn create(
+        &self,
+        write: CreateWorkflowAuthoringJournal,
+    ) -> Result<WorkflowAuthoringJournal, RepositoryError> {
+        self.create_impl(write, None).await
+    }
+
+    async fn create_with_context(
+        &self,
+        write: CreateWorkflowAuthoringJournal,
+        context: WorkflowAuthoringWriteContext,
+    ) -> Result<WorkflowAuthoringJournal, RepositoryError> {
+        self.create_impl(write, Some(context)).await
+    }
+
+    async fn append(
+        &self,
+        write: AppendWorkflowAuthoringOperation,
+    ) -> Result<WorkflowAuthoringAppend, RepositoryError> {
+        self.append_impl(write, None).await
+    }
+
+    async fn append_with_context(
+        &self,
+        write: AppendWorkflowAuthoringOperation,
+        context: WorkflowAuthoringWriteContext,
+    ) -> Result<WorkflowAuthoringAppend, RepositoryError> {
+        self.append_impl(write, Some(context)).await
     }
 
     async fn current_snapshot(
@@ -591,6 +646,78 @@ async fn find_entry_by_operation_id(
             .bind(key.workflow_definition_id.as_uuid())
             .append(" and operation_id = ")
             .bind(operation_id),
+    )
+    .await
+}
+
+async fn store_created_facts(
+    transaction: &PostgresTransaction,
+    key: WorkflowAuthoringJournalKey,
+    snapshot: &WorkflowAuthoringSnapshot,
+    context: WorkflowAuthoringWriteContext,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<(), PostgresPersistenceError> {
+    let event =
+        WorkflowAuthoringJournalCreated::envelope(key, snapshot, context.request_id, occurred_at)?;
+    store_outbox(transaction, &event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: uuid::Uuid::now_v7(),
+            scope: AuditWrite::resource_scope(key.organization_id.as_uuid(), key.project_id, None),
+            actor_id: Some(context.actor_principal_id.as_uuid()),
+            action: "workflow.authoring.created",
+            aggregate_id: key.workflow_definition_id.as_uuid(),
+            occurred_at,
+            request_id: context.request_id,
+            details: serde_json::json!({
+                "projectId": key.project_id,
+                "workflowDefinitionId": key.workflow_definition_id,
+                "snapshotDigest": snapshot.snapshot_digest(),
+                "aggregateVersion": 1,
+            }),
+        },
+    )
+    .await
+}
+
+async fn store_appended_facts(
+    transaction: &PostgresTransaction,
+    key: WorkflowAuthoringJournalKey,
+    entry: &WorkflowAuthoringEntry,
+    aggregate_version: u64,
+    context: WorkflowAuthoringWriteContext,
+    occurred_at: chrono::DateTime<Utc>,
+) -> Result<(), PostgresPersistenceError> {
+    let event = WorkflowAuthoringOperationAppended::envelope(
+        key,
+        entry,
+        aggregate_version,
+        context.request_id,
+        occurred_at,
+    )?;
+    store_outbox(transaction, &event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: uuid::Uuid::now_v7(),
+            scope: AuditWrite::resource_scope(key.organization_id.as_uuid(), key.project_id, None),
+            actor_id: Some(context.actor_principal_id.as_uuid()),
+            action: "workflow.authoring.operation-appended",
+            aggregate_id: key.workflow_definition_id.as_uuid(),
+            occurred_at,
+            request_id: context.request_id,
+            details: serde_json::json!({
+                "projectId": key.project_id,
+                "workflowDefinitionId": key.workflow_definition_id,
+                "sequence": entry.sequence(),
+                "operationId": entry.operation_id(),
+                "operationDigest": entry.operation_digest(),
+                "baseSnapshotDigest": entry.base_snapshot_digest(),
+                "resultSnapshotDigest": entry.result_snapshot_digest(),
+                "aggregateVersion": aggregate_version,
+            }),
+        },
     )
     .await
 }

@@ -86,8 +86,9 @@ pub use entities::{
     WORKFLOW_STEP_RESULT_MAX_BYTES,
 };
 pub use events::{
-    HumanTaskStateChanged, OntologyRevisionPublished, WorkflowGoalCompiled,
-    WorkflowRevisionPublished, WorkflowRunCancellationRequested, WorkflowRunRequested,
+    HumanTaskStateChanged, OntologyRevisionPublished, WorkflowAuthoringJournalCreated,
+    WorkflowAuthoringOperationAppended, WorkflowGoalCompiled, WorkflowRevisionPublished,
+    WorkflowRunCancellationRequested, WorkflowRunRequested,
 };
 pub use flow_resume::{
     FlowResumeDisposition, FlowResumePayload, FlowResumeReceipt, FLOW_RESUME_PAYLOAD_API_VERSION,
@@ -105,8 +106,8 @@ pub use repositories::{
     DecideHumanTaskWrite, HumanTaskDecisionRecord, HumanTaskResumeDelivery, IHumanTaskRepository,
     IOntologyRepository, IWorkflowAuthoringRepository, IWorkflowDefinitionRepository,
     IWorkflowGoalRepository, IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite,
-    ReviseWorkflowDefinitionWrite, WorkflowAuthoringJournalKey, WorkflowDefinitionRecord,
-    WorkflowGoalRecord, WorkflowRunRecord,
+    ReviseWorkflowDefinitionWrite, WorkflowAuthoringJournalKey, WorkflowAuthoringWriteContext,
+    WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowRunRecord,
 };
 pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,

@@ -7,14 +7,17 @@
 use super::resource_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::domain::PrincipalId;
 use crate::modules::workflow::domain::{
     AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal, IWorkflowAuthoringRepository,
     IWorkflowDefinitionRepository, WorkflowAuthoringAppend, WorkflowAuthoringError,
     WorkflowAuthoringJournal, WorkflowAuthoringJournalKey, WorkflowAuthoringOperation,
-    WorkflowAuthoringPage, WorkflowAuthoringSnapshot, WORKFLOW_AUTHORING_MAX_PAGE_SIZE,
+    WorkflowAuthoringPage, WorkflowAuthoringSnapshot, WorkflowAuthoringWriteContext,
+    WORKFLOW_AUTHORING_MAX_PAGE_SIZE,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
+use uuid::Uuid;
 
 const AUTHORING_NOT_FOUND: &str = "Workflow authoring journal not found";
 
@@ -24,11 +27,20 @@ pub struct CreateWorkflowAuthoringJournalRequest {
     pub key: WorkflowAuthoringJournalKey,
     pub initial_snapshot: WorkflowAuthoringSnapshot,
     pub resource_access: ResourceAccessEvaluator,
+    /// Authenticated Cloud actor recorded in the shared audit trail.
+    pub actor_principal_id: PrincipalId,
+    /// Stable request/correlation identity for Outbox and audit records.
+    pub request_id: Uuid,
 }
 
 impl CreateWorkflowAuthoringJournalRequest {
     fn validate_identity(&self) -> Result<(), String> {
-        self.key.validate()
+        self.key.validate()?;
+        WorkflowAuthoringWriteContext::new(self.actor_principal_id, self.request_id).validate()
+    }
+
+    fn write_context(&self) -> WorkflowAuthoringWriteContext {
+        WorkflowAuthoringWriteContext::new(self.actor_principal_id, self.request_id)
     }
 }
 
@@ -42,11 +54,20 @@ pub struct AppendWorkflowAuthoringRequest {
     pub key: WorkflowAuthoringJournalKey,
     pub operation: WorkflowAuthoringOperation,
     pub resource_access: ResourceAccessEvaluator,
+    /// Authenticated Cloud actor recorded in the shared audit trail.
+    pub actor_principal_id: PrincipalId,
+    /// Stable request/correlation identity for Outbox and audit records.
+    pub request_id: Uuid,
 }
 
 impl AppendWorkflowAuthoringRequest {
     fn validate_identity(&self) -> Result<(), String> {
-        self.key.validate()
+        self.key.validate()?;
+        WorkflowAuthoringWriteContext::new(self.actor_principal_id, self.request_id).validate()
+    }
+
+    fn write_context(&self) -> WorkflowAuthoringWriteContext {
+        WorkflowAuthoringWriteContext::new(self.actor_principal_id, self.request_id)
     }
 }
 
@@ -220,10 +241,13 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         })?;
         let journal = self
             .journals
-            .create(CreateWorkflowAuthoringJournal {
-                key: request.key,
-                initial_snapshot,
-            })
+            .create_with_context(
+                CreateWorkflowAuthoringJournal {
+                    key: request.key,
+                    initial_snapshot,
+                },
+                request.write_context(),
+            )
             .await?;
         journal.validate().map_err(|error| {
             ApplicationError::Internal(format!(
@@ -295,13 +319,17 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
                 "Flow returned an invalid workflow authoring snapshot: {error}"
             ))
         })?;
+        let context = request.write_context();
         Ok(self
             .journals
-            .append(AppendWorkflowAuthoringOperation {
-                key: request.key,
-                operation: request.operation,
-                result_snapshot,
-            })
+            .append_with_context(
+                AppendWorkflowAuthoringOperation {
+                    key: request.key,
+                    operation: request.operation,
+                    result_snapshot,
+                },
+                context,
+            )
             .await?)
     }
 

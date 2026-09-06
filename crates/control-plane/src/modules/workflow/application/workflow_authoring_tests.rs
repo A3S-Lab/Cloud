@@ -7,8 +7,8 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
-    WorkflowDefinitionId, WorkflowRevisionId,
+    IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
     AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal,
@@ -26,6 +26,7 @@ use std::sync::{
     Arc,
 };
 use tokio::sync::Mutex;
+use uuid::Uuid;
 
 struct DefinitionRepository {
     definition: WorkflowDefinition,
@@ -266,6 +267,14 @@ fn operation(id: &str, base: &WorkflowAuthoringSnapshot) -> WorkflowAuthoringOpe
     .expect("operation")
 }
 
+fn actor() -> PrincipalId {
+    PrincipalId::new()
+}
+
+fn request_id() -> Uuid {
+    Uuid::now_v7()
+}
+
 #[tokio::test]
 async fn authoring_service_validates_once_and_replays_without_reapplying_flow() {
     let fixture = fixture(true);
@@ -275,6 +284,8 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("create journal");
@@ -285,6 +296,8 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
             key: fixture.key,
             operation: operation("op-1", &fixture.initial),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("append operation");
@@ -303,6 +316,8 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
             key: fixture.key,
             operation: operation("op-1", &fixture.initial),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("replay operation");
@@ -349,6 +364,8 @@ async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("create journal");
@@ -359,6 +376,8 @@ async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
             key: fixture.key,
             operation: operation("bounded", &fixture.initial),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("append operation");
@@ -393,6 +412,8 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
                     environment_id: crate::modules::shared_kernel::domain::EnvironmentId::new(),
                 },
             ]),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await;
     assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
@@ -404,6 +425,8 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await
         .expect("create journal");
@@ -414,6 +437,8 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
             key: fixture.key,
             operation: operation("stale", &stale_base),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await;
     assert!(matches!(stale, Err(ApplicationError::Conflict(_))));
@@ -429,6 +454,8 @@ async fn flow_rejection_is_not_written_and_page_limits_are_checked() {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
             resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: actor(),
+            request_id: request_id(),
         })
         .await;
     assert!(matches!(rejected, Err(ApplicationError::Invalid(_))));
@@ -443,6 +470,25 @@ async fn flow_rejection_is_not_written_and_page_limits_are_checked() {
         })
         .await;
     assert!(matches!(invalid_limit, Err(ApplicationError::Invalid(_))));
+}
+
+#[tokio::test]
+async fn invalid_audit_context_is_rejected_before_authorization_or_flow() {
+    let fixture = fixture(true);
+    let result = fixture
+        .service
+        .create_journal(CreateWorkflowAuthoringJournalRequest {
+            key: fixture.key,
+            initial_snapshot: fixture.initial,
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+            actor_principal_id: PrincipalId::from_uuid(Uuid::nil()),
+            request_id: Uuid::nil(),
+        })
+        .await;
+    assert!(
+        matches!(result, Err(ApplicationError::Invalid(message)) if message.contains("write context"))
+    );
+    assert_eq!(fixture.flow.validate_calls.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]

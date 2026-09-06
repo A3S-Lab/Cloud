@@ -106,10 +106,15 @@ tenant/definition-scoped journal head, append-only entries, operation-id
 uniqueness, bounded opaque BYTEA payloads, row-lock/CAS sequencing, and
 fail-closed rehydration/cursor continuity checks. The remaining CFLOW-0A work
 is a bounded snapshot projection/compaction path, authenticated SSE/WebSocket
-cursor delivery, audit/outbox integration, and end-to-end
-reconnect/concurrency tests against a real serving schema. The PostgreSQL
-adapter is intentionally not a public API claim until those authorization,
-audit, and delivery gates are wired into the management composition.
+cursor delivery, and end-to-end reconnect/concurrency tests against a real
+serving schema. Non-replayed PostgreSQL creates and appends now write the
+shared Outbox and audit facts in the same transaction as the journal mutation;
+their bounded event payloads carry identities and digests only, never DSL or
+snapshot bodies. The application write context binds each fact to the
+authenticated actor and request correlation ID, while compatibility adapters
+remain available for local tests until they implement the context-aware port.
+The PostgreSQL adapter is intentionally not a public API claim until the
+authorization and delivery gates are wired into the management composition.
 
 ## 4. Shared contract
 
