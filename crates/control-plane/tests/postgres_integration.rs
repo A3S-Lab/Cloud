@@ -2,7 +2,11 @@ use a3s_boot::{
     BootError, BootRequest, BootResponse, CqrsContext, HttpMethod, ModuleRef, QueryHandler,
     QueueOptions,
 };
-use a3s_cloud_contracts::DomainEventEnvelope;
+use a3s_cloud_contracts::{
+    AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationRevisionV1,
+    AutomationWebhookEndpointV1, AutomationWebhookRequestV1, AutomationWebhookSecretReferenceV1,
+    AutomationWebhookSignatureAlgorithmV1, AutomationWebhookSignatureV1, DomainEventEnvelope,
+};
 use a3s_cloud_control_plane::app::{
     build_application_with_source_resolver,
     build_application_with_source_resolver_and_oidc_provider,
@@ -33,6 +37,14 @@ use a3s_cloud_control_plane::modules::audit::{
     AuditRecordFilter, AuditRetentionPolicy, AuditRetentionWorker, ExportAuditManifest,
     ExportAuditManifestHandler, ExportAuditRecords, ExportAuditRecordsHandler, IAuditExportSigner,
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
+};
+use a3s_cloud_control_plane::modules::automations::{
+    AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
+    AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
+    AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
+    CreateAutomationWebhookEndpoint, IAutomationWebhookRepository,
+    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    PostgresAutomationWebhookRepository, ResolveAutomationWebhookEndpoint,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     project_published_outbox_envelope, A3sEventPublisher, IOutboxRepository, OutboxMessage,
@@ -223,6 +235,245 @@ async fn migrate_for_test(
 ) -> Result<PostgresMigrationReport, PostgresBootstrapError> {
     let serving_role = serving_role_for_url(url)?;
     migrate_postgres(url, max_connections, &serving_role).await
+}
+
+struct AcceptAutomationWebhookPorts;
+
+#[async_trait]
+impl IAutomationWebhookSignatureVerifier for AcceptAutomationWebhookPorts {
+    async fn verify(
+        &self,
+        _endpoint: &AutomationWebhookEndpointV1,
+        _request: &AutomationWebhookRequestV1,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl IAutomationWebhookSchemaValidator for AcceptAutomationWebhookPorts {
+    async fn validate(
+        &self,
+        _endpoint: &AutomationWebhookEndpointV1,
+        _request: &AutomationWebhookRequestV1,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+}
+
+const AUTOMATION_WEBHOOK_DEFINITION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/aut0.1/automation-definition-webhook.acl"
+));
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn automation_webhook_postgres_scope_replay_and_reconnect_are_durable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_automation_webhook_postgres)
+        .await
+        .expect("Automation webhook PostgreSQL recovery gate");
+}
+
+async fn exercise_automation_webhook_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000201")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
+    let environment_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000404")?;
+    seed_automation_webhook_scope(&database, organization_id, project_id, environment_id).await?;
+
+    let definition = AutomationDefinitionV1::parse_acl(AUTOMATION_WEBHOOK_DEFINITION)
+        .map_err(std::io::Error::other)?;
+    let revision = AutomationRevisionV1::from_definition(
+        Uuid::from_u128(0x018f0000000070008000000000000408),
+        1,
+        None,
+        definition.spec().clone(),
+    )
+    .map_err(std::io::Error::other)?;
+    let repository = Arc::new(PostgresAutomationWebhookRepository::new(executor.clone()));
+    let admission = AutomationWebhookAdmissionService::new(
+        repository.clone(),
+        Arc::new(AcceptAutomationWebhookPorts),
+        Arc::new(AcceptAutomationWebhookPorts),
+    );
+    let created = admission
+        .create_endpoint(CreateAutomationWebhookEndpoint {
+            endpoint_id: Uuid::from_u128(0x018f0000000070008000000000000409),
+            endpoint_key: "release-hook".into(),
+            signing_secret: AutomationWebhookSecretReferenceV1 {
+                secret_id: Uuid::from_u128(0x018f000000007000800000000000040a),
+                version: 4,
+            },
+            max_body_bytes: 4_096,
+            revision: revision.clone(),
+            created_at: Utc::now(),
+        })
+        .await?;
+    let scope = AutomationWebhookEndpointScope {
+        organization_id,
+        project_id,
+        environment_id,
+    };
+    let query = AutomationWebhookEndpointQueryService::new(repository.clone());
+    assert_eq!(
+        query
+            .resolve(ResolveAutomationWebhookEndpoint {
+                scope,
+                endpoint_key: "release-hook".into(),
+            })
+            .await?
+            .expect("scoped endpoint")
+            .endpoint,
+        created.endpoint
+    );
+
+    let endpoint = created.endpoint.clone();
+    let received_at = Utc::now();
+    let request = AutomationWebhookRequestV1::from_json(
+        &endpoint,
+        Uuid::from_u128(0x018f0000000070008000000000000410),
+        AutomationWebhookSignatureV1 {
+            algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+            key_version: endpoint.signing_secret.version,
+            value: format!("hmac-sha256:{}", "a".repeat(64)),
+        },
+        "application/json",
+        br#"{"release":"stable"}"#,
+        received_at,
+    )
+    .map_err(std::io::Error::other)?;
+    let invocation = AutomationWebhookInvocationFactory::build(AutomationWebhookInvocationRequest {
+        endpoint: &endpoint,
+        revision: &revision,
+        request: &request,
+        invocation_id: Uuid::from_u128(0x018f0000000070008000000000000411),
+        requested_at: received_at,
+        authorization: AutomationInvocationAuthorizationV1 {
+            policy_digest: revision
+                .spec()
+                .definition
+                .authorization
+                .policy_digest
+                .clone(),
+            grant_snapshot_digest: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+                .into(),
+            principal_id: None,
+        },
+        correlation_id: Uuid::from_u128(0x018f0000000070008000000000000412),
+        causation_id: None,
+    })
+    .map_err(std::io::Error::other)?;
+    let first = admission
+        .admit(AdmitAutomationWebhookDelivery {
+            request: request.clone(),
+            invocation: Some(invocation.clone()),
+            receipt_id: Uuid::from_u128(0x018f0000000070008000000000000413),
+            recorded_at: received_at,
+        })
+        .await?;
+    assert!(!first.replayed);
+
+    let replay = admission
+        .admit(AdmitAutomationWebhookDelivery {
+            request: request.clone(),
+            invocation: Some(invocation),
+            receipt_id: Uuid::from_u128(0x018f0000000070008000000000000414),
+            recorded_at: received_at + chrono::Duration::seconds(1),
+        })
+        .await?;
+    assert!(replay.replayed);
+    assert_eq!(
+        repository
+            .find_delivery(endpoint.endpoint_id, request.delivery_id)
+            .await?
+            .expect("durable delivery")
+            .request
+            .body_digest,
+        request.body_digest
+    );
+
+    drop(query);
+    drop(admission);
+    drop(repository);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered = PostgresAutomationWebhookRepository::new(recovered_executor);
+    let recovered_endpoint = recovered
+        .find_endpoint_by_key(organization_id, project_id, environment_id, "release-hook")
+        .await?
+        .expect("endpoint after reconnect");
+    assert_eq!(recovered_endpoint.endpoint, endpoint);
+    let recovered_delivery = recovered
+        .find_delivery(endpoint.endpoint_id, request.delivery_id)
+        .await?
+        .expect("delivery after reconnect");
+    assert_eq!(recovered_delivery.request.body_digest, request.body_digest);
+    assert!(recovered
+        .find_endpoint_by_key(
+            organization_id,
+            project_id,
+            Uuid::from_u128(environment_id.as_u128() ^ 1),
+            "release-hook",
+        )
+        .await?
+        .is_none());
+    Ok(())
+}
+
+async fn seed_automation_webhook_scope(
+    database: &Database<PostgresDialect, PostgresExecutor>,
+    organization_id: Uuid,
+    project_id: Uuid,
+    environment_id: Uuid,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let now = Utc::now();
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into organizations (id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", 'Automation integration organization', 'automation-integration-organization', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into projects (organization_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", 'Automation integration project', 'automation-integration-project', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    database
+        .execute(
+            sql_query::<()>(
+                "insert into environments (organization_id, project_id, id, name, name_key, aggregate_version, created_at) values (",
+            )
+            .bind(organization_id)
+            .append(", ")
+            .bind(project_id)
+            .append(", ")
+            .bind(environment_id)
+            .append(", 'Automation integration environment', 'automation-integration-environment', 1, ")
+            .bind(now)
+            .append(")"),
+        )
+        .await?;
+    Ok(())
 }
 
 #[path = "support/activation_retirement_crash.rs"]
