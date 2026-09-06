@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 183;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "183";
+pub const CLOUD_MIGRATION_COUNT: i64 = 184;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "184";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1673,6 +1673,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/183_automation_webhook_admission.sql"
             )),
         ),
+        Migration::new(
+            "184",
+            "Automation schedule cursor and lease state",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/184_automation_schedule_state.sql"
+            )),
+        ),
     ]
 }
 
@@ -1691,6 +1699,9 @@ mod agent_release_manifest_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/automation_webhook_migration.rs"]
 mod automation_webhook_migration_tests;
+
+#[path = "postgres_tests/automation_schedule_state_migration.rs"]
+mod automation_schedule_state_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/installation_scoped_facts_migration.rs"]

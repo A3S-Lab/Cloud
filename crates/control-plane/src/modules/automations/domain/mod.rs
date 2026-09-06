@@ -5,6 +5,7 @@ mod lease;
 mod misfire;
 mod repositories;
 mod schedule;
+mod schedule_state;
 mod services;
 
 pub use concurrency::{AutomationConcurrencyDecision, AutomationConcurrencyEvaluator};
@@ -20,4 +21,8 @@ pub use repositories::{
     IAutomationWebhookRepository, TransitionAutomationWebhookEndpoint,
 };
 pub use schedule::{AutomationScheduleCalculator, AUTOMATION_SCHEDULE_MAX_OCCURRENCES};
+pub use schedule_state::{
+    AutomationScheduleState, AutomationScheduleStateKey, CommitAutomationScheduleCursor,
+    IAutomationScheduleStateRepository, ReserveAutomationScheduleLease,
+};
 pub use services::{IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier};
