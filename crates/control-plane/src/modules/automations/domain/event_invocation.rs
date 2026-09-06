@@ -1,6 +1,6 @@
 use a3s_cloud_contracts::{
     AutomationInvocationAuthorizationV1, AutomationInvocationEnvelopeV1,
-    AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationRevisionV1,
+    AutomationInvocationOriginV1, AutomationNormalizedEventV1, AutomationRevisionV1,
     AutomationTriggerV1,
 };
 use chrono::{DateTime, Utc};
@@ -15,12 +15,8 @@ use uuid::Uuid;
 pub struct AutomationEventInvocationRequest<'a> {
     pub revision: &'a AutomationRevisionV1,
     pub invocation_id: Uuid,
-    pub event_id: Uuid,
-    pub event_key: String,
-    pub event_digest: String,
-    pub observed_at: DateTime<Utc>,
+    pub event: AutomationNormalizedEventV1,
     pub requested_at: DateTime<Utc>,
-    pub input: AutomationInvocationInputV1,
     pub authorization: AutomationInvocationAuthorizationV1,
     pub correlation_id: Uuid,
     pub causation_id: Option<Uuid>,
@@ -34,11 +30,12 @@ impl AutomationEventInvocationFactory {
         request: AutomationEventInvocationRequest<'_>,
     ) -> Result<AutomationInvocationEnvelopeV1, String> {
         request.revision.validate()?;
+        request.event.validate()?;
         let definition = &request.revision.spec().definition;
         let subscription = match &definition.trigger {
             AutomationTriggerV1::PluginEvent(trigger)
             | AutomationTriggerV1::SourceEvent(trigger) => {
-                if trigger.event_key != request.event_key {
+                if trigger.event_key != request.event.event_key {
                     return Err(
                         "Automation normalized event key does not match its trigger revision"
                             .into(),
@@ -52,16 +49,16 @@ impl AutomationEventInvocationFactory {
                 )
             }
         };
-        if request.observed_at > request.requested_at {
+        if request.event.observed_at > request.requested_at {
             return Err(
                 "Automation event invocation cannot be requested before event observation".into(),
             );
         }
         let origin = AutomationInvocationOriginV1::Event {
-            event_id: request.event_id,
-            event_key: request.event_key,
-            event_digest: request.event_digest,
-            observed_at: request.observed_at,
+            event_id: request.event.event_id,
+            event_key: request.event.event_key.clone(),
+            event_digest: request.event.event_digest.clone(),
+            observed_at: request.event.observed_at,
         };
         let deduplication_key = definition.policy.deduplication.render_key(
             definition.automation_id,
@@ -82,7 +79,7 @@ impl AutomationEventInvocationFactory {
             origin,
             subscription: Some(subscription),
             deduplication_key,
-            input: request.input,
+            input: request.event.input,
             authorization: request.authorization,
             requested_at: request.requested_at,
             correlation_id: request.correlation_id,
@@ -97,8 +94,9 @@ impl AutomationEventInvocationFactory {
 mod tests {
     use super::*;
     use a3s_cloud_contracts::{
-        AutomationDefinitionV1, AutomationEventTriggerV1, AutomationInvocationOriginV1,
-        AutomationRevisionV1, AutomationTriggerV1,
+        AutomationDefinitionV1, AutomationEventTriggerV1, AutomationInvocationInputV1,
+        AutomationInvocationOriginV1, AutomationNormalizedEventV1, AutomationRevisionV1,
+        AutomationTriggerV1,
     };
     use chrono::DateTime;
     use serde_json::json;
@@ -154,15 +152,17 @@ mod tests {
         AutomationEventInvocationRequest {
             revision,
             invocation_id: Uuid::from_u128(0x018f0000000070008000000000000412),
-            event_id: Uuid::from_u128(0x018f0000000070008000000000000413),
-            event_key,
-            event_digest: format!("sha256:{}", "a".repeat(64)),
-            observed_at: timestamp(1_767_229_200),
+            event: AutomationNormalizedEventV1::new(
+                Uuid::from_u128(0x018f0000000070008000000000000413),
+                event_key,
+                timestamp(1_767_229_200),
+                AutomationInvocationInputV1::inline_json(json!({
+                    "source": "normalized-event"
+                }))
+                .expect("input"),
+            )
+            .expect("event"),
             requested_at: timestamp(1_767_229_201),
-            input: AutomationInvocationInputV1::inline_json(json!({
-                "source": "normalized-event"
-            }))
-            .expect("input"),
             authorization: AutomationInvocationAuthorizationV1 {
                 policy_digest: revision
                     .spec()
@@ -212,7 +212,13 @@ mod tests {
     fn rejects_event_key_drift_non_event_revision_and_observation_reordering() {
         let revision = revision(false);
         let mut wrong_key = request(&revision);
-        wrong_key.event_key = "plugin.package.deleted".into();
+        wrong_key.event = AutomationNormalizedEventV1::new(
+            wrong_key.event.event_id,
+            "plugin.package.deleted",
+            wrong_key.event.observed_at,
+            wrong_key.event.input,
+        )
+        .expect("valid wrong-key event");
         assert!(AutomationEventInvocationFactory::build(wrong_key).is_err());
 
         let definition =
@@ -237,9 +243,10 @@ mod tests {
     fn rejects_event_identity_drift_during_envelope_validation() {
         let revision = revision(false);
         let mut value = request(&revision);
-        value.event_digest = format!("sha256:{}", "c".repeat(64));
+        value.event.event_digest = format!("sha256:{}", "c".repeat(64));
+        assert!(AutomationEventInvocationFactory::build(value).is_err());
         let envelope =
-            AutomationEventInvocationFactory::build(value).expect("different event fact");
+            AutomationEventInvocationFactory::build(request(&revision)).expect("envelope");
         let mut drifted = envelope;
         drifted.origin = AutomationInvocationOriginV1::Event {
             event_id: Uuid::from_u128(0x018f0000000070008000000000000418),
