@@ -42,11 +42,11 @@ pub use domain::{
     AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
     CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator, IAutomationInvocationReader,
     IAutomationInvocationRepository, IAutomationScheduleStateRepository,
-    IAutomationWebhookRepository, IAutomationWebhookSchemaRegistry,
-    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    ReleaseAutomationScheduleLease, ReserveAutomationScheduleLease,
-    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
-    AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
+    IAutomationWebhookAuthorizationSnapshotProvider, IAutomationWebhookRepository,
+    IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier, ReleaseAutomationScheduleLease,
+    ReserveAutomationScheduleLease, TransitionAutomationWebhookEndpoint,
+    AUTOMATION_SCHEDULE_MAX_LEASE_MS, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     A3sEventAutomationInvocationConsumer, A3sEventAutomationNormalizedEventConsumer,

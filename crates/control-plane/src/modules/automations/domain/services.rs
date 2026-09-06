@@ -1,6 +1,7 @@
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use a3s_cloud_contracts::{
-    AutomationNormalizedEventV1, AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
+    AutomationInvocationAuthorizationV1, AutomationNormalizedEventV1, AutomationRevisionV1,
+    AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
 };
 use async_trait::async_trait;
 use serde_json::Value;
@@ -35,6 +36,19 @@ pub trait IAutomationWebhookSchemaValidator: Send + Sync {
 #[async_trait]
 pub trait IAutomationWebhookSchemaRegistry: Send + Sync {
     async fn resolve(&self, digest: &Sha256Digest) -> Result<Option<Value>, String>;
+}
+
+/// The owner of Identity/authorization state resolves the immutable snapshot
+/// that may be handed to one webhook invocation. Transport adapters never
+/// supply this value because a digest-shaped grant fact is not proof of a
+/// current grant.
+#[async_trait]
+pub trait IAutomationWebhookAuthorizationSnapshotProvider: Send + Sync {
+    async fn resolve(
+        &self,
+        endpoint: &AutomationWebhookEndpointV1,
+        revision: &AutomationRevisionV1,
+    ) -> Result<AutomationInvocationAuthorizationV1, String>;
 }
 
 /// Automations evaluates a normalized event against the exact immutable filter

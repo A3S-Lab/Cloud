@@ -3,11 +3,11 @@ use super::endpoint_query::{
     ResolveAutomationWebhookEndpoint,
 };
 use super::webhook_admission::{AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService};
-use crate::modules::automations::domain::AutomationWebhookAdmission;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use a3s_cloud_contracts::{
-    AutomationInvocationAuthorizationV1, AutomationWebhookRequestV1, AutomationWebhookSignatureV1,
+use crate::modules::automations::domain::{
+    AutomationWebhookAdmission, IAutomationWebhookAuthorizationSnapshotProvider,
 };
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use a3s_cloud_contracts::{AutomationWebhookRequestV1, AutomationWebhookSignatureV1};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,8 +15,8 @@ use uuid::Uuid;
 /// Captured input supplied by an HTTP or Gateway adapter.
 ///
 /// The adapter is responsible only for extracting the opaque route key and
-/// transport headers. Authorization is supplied as an already resolved,
-/// digest-bound snapshot; this boundary never invents grants or principals.
+/// transport headers. Authorization is resolved by the injected owner port;
+/// this boundary never accepts caller-supplied grants or principals.
 #[derive(Debug, Clone)]
 pub struct ReceiveAutomationWebhookDelivery {
     pub scope: AutomationWebhookEndpointScope,
@@ -28,7 +28,6 @@ pub struct ReceiveAutomationWebhookDelivery {
     pub received_at: DateTime<Utc>,
     pub invocation_id: Uuid,
     pub requested_at: DateTime<Utc>,
-    pub authorization: AutomationInvocationAuthorizationV1,
     pub correlation_id: Uuid,
     pub causation_id: Option<Uuid>,
     pub receipt_id: Uuid,
@@ -46,16 +45,19 @@ pub struct ReceiveAutomationWebhookDelivery {
 pub struct AutomationWebhookReceiver {
     endpoint_query: Arc<AutomationWebhookEndpointQueryService>,
     admission: Arc<AutomationWebhookAdmissionService>,
+    authorization: Arc<dyn IAutomationWebhookAuthorizationSnapshotProvider>,
 }
 
 impl AutomationWebhookReceiver {
     pub fn new(
         endpoint_query: Arc<AutomationWebhookEndpointQueryService>,
         admission: Arc<AutomationWebhookAdmissionService>,
+        authorization: Arc<dyn IAutomationWebhookAuthorizationSnapshotProvider>,
     ) -> Self {
         Self {
             endpoint_query,
             admission,
+            authorization,
         }
     }
 
@@ -87,6 +89,15 @@ impl AutomationWebhookReceiver {
         // could turn a valid disable/revoke receipt into an authorization or
         // timestamp error before the admission authority records it.
         let invocation = if record.endpoint.state.is_accepting() {
+            let authorization = self
+                .authorization
+                .resolve(&record.endpoint, &record.revision)
+                .await
+                .map_err(|_| {
+                    ApplicationError::Forbidden(
+                        "Automation webhook authorization snapshot is unavailable".into(),
+                    )
+                })?;
             Some(
                 crate::modules::automations::domain::AutomationWebhookInvocationFactory::build(
                     crate::modules::automations::domain::AutomationWebhookInvocationRequest {
@@ -95,7 +106,7 @@ impl AutomationWebhookReceiver {
                         request: &request,
                         invocation_id: command.invocation_id,
                         requested_at: command.requested_at,
-                        authorization: command.authorization,
+                        authorization,
                         correlation_id: command.correlation_id,
                         causation_id: command.causation_id,
                     },

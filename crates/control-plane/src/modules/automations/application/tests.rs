@@ -6,8 +6,9 @@ use super::{
 };
 use crate::modules::automations::domain::{
     AutomationWebhookEndpointRecord, AutomationWebhookInvocationFactory,
-    AutomationWebhookInvocationRequest, IAutomationWebhookRepository,
-    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    AutomationWebhookInvocationRequest, IAutomationWebhookAuthorizationSnapshotProvider,
+    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier,
 };
 use crate::modules::automations::infrastructure::{
     DigestBoundJsonSchemaValidator, InMemoryAutomationWebhookRepository,
@@ -54,6 +55,26 @@ impl IAutomationWebhookSchemaValidator for AcceptAll {
         _request: &AutomationWebhookRequestV1,
     ) -> Result<(), String> {
         Ok(())
+    }
+}
+
+#[async_trait]
+impl IAutomationWebhookAuthorizationSnapshotProvider for AcceptAll {
+    async fn resolve(
+        &self,
+        _endpoint: &AutomationWebhookEndpointV1,
+        revision: &AutomationRevisionV1,
+    ) -> Result<AutomationInvocationAuthorizationV1, String> {
+        Ok(AutomationInvocationAuthorizationV1 {
+            policy_digest: revision
+                .spec()
+                .definition
+                .authorization
+                .policy_digest
+                .clone(),
+            grant_snapshot_digest: digest('b'),
+            principal_id: None,
+        })
     }
 }
 
@@ -280,6 +301,7 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
             repository.clone(),
         )),
         admission.clone(),
+        Arc::new(AcceptAll),
     );
     let scope = AutomationWebhookEndpointScope {
         organization_id: endpoint.organization_id,
@@ -287,17 +309,6 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
         environment_id: endpoint.environment_id,
     };
     let received_at = timestamp("2026-09-05T00:00:03.000Z");
-    let authorization = AutomationInvocationAuthorizationV1 {
-        policy_digest: created
-            .revision
-            .spec()
-            .definition
-            .authorization
-            .policy_digest
-            .clone(),
-        grant_snapshot_digest: digest('b'),
-        principal_id: None,
-    };
     let accepted = receiver
         .receive(ReceiveAutomationWebhookDelivery {
             scope,
@@ -313,7 +324,6 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
             received_at,
             invocation_id: id(0x602),
             requested_at: received_at,
-            authorization: authorization.clone(),
             correlation_id: id(0x603),
             causation_id: None,
             receipt_id: id(0x604),
@@ -352,11 +362,6 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
             received_at: received_at + chrono::Duration::seconds(2),
             invocation_id: id(0x606),
             requested_at: received_at,
-            authorization: AutomationInvocationAuthorizationV1 {
-                policy_digest: "not-a-digest".into(),
-                grant_snapshot_digest: "not-a-digest".into(),
-                principal_id: None,
-            },
             correlation_id: id(0x607),
             causation_id: None,
             receipt_id: id(0x608),
