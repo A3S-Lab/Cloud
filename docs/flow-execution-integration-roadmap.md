@@ -136,7 +136,7 @@ compatibility fixture.
 
 The current Flow Activity and projection-cache contract is published by Flow
 `main` at revision
-`118fd0e7a337f877bfbf1136ac54bae72f28fb43` (durable per-attempt deadlines,
+`e1c3e764b4da4f97d09da0231dd55c700d3b45e5` (durable per-attempt deadlines,
 fenced and idempotent unknown-outcome reconciliation, tip-validated
 disposable projection checkpoints, durable dead-letter redrive, and bounded
 worker drain fairness budgets, versioned worker capability negotiation, and
@@ -150,7 +150,9 @@ optimistic base-digest checks, stable-ID-preserving
 `set-edge` updates (including explicit handle removal), and registry-driven
 scoped `add-node` placement for iteration/loop children, plus stable-ID-
 preserving `move-node` relocation between public top-level and container
-scopes.
+scopes. The Rust authoring boundary additionally rejects duplicate JSON keys,
+enforces a 256-level nesting bound, and exposes an incremental
+`WorkflowAuthoringSession` for bounded operation streams.
 That stream is an authoring transport: Flow still publishes a portable,
 validated snapshot for the local file. For hosted collaboration, Cloud should
 persist the ordered operation journal and materialized snapshots in its own

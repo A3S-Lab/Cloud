@@ -169,7 +169,7 @@ dependencies = [
  "a3s-cloud-contracts",
  "a3s-cloud-node-agent",
  "a3s-event",
- "a3s-flow",
+ "a3s-flow 1.1.0 (git+https://github.com/A3S-Lab/Flow.git?rev=e1c3e764b4da4f97d09da0231dd55c700d3b45e5)",
  "a3s-form-core",
  "a3s-orm",
  "a3s-runtime",
@@ -267,7 +267,7 @@ source = "git+https://github.com/A3S-Lab/Code.git?rev=36db7f8bcdf9e04fd8cf77e66e
 dependencies = [
  "a3s-acl 0.3.0",
  "a3s-common",
- "a3s-flow",
+ "a3s-flow 1.1.0 (git+https://github.com/A3S-Lab/Flow.git?rev=2948ad51a1395177764766c3ddf7e44338f9e374)",
  "a3s-lane",
  "a3s-memory",
  "a3s-sandbox",
@@ -359,13 +359,32 @@ dependencies = [
 [[package]]
 name = "a3s-flow"
 version = "1.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a15142002539afe73b8bbbc8ecd88b7c960ebe8695ad5cf967a1b6b71ab2e0fa"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=2948ad51a1395177764766c3ddf7e44338f9e374#2948ad51a1395177764766c3ddf7e44338f9e374"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml_ng",
+ "sha2 0.10.9",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "a3s-flow"
+version = "1.1.0"
+source = "git+https://github.com/A3S-Lab/Flow.git?rev=e1c3e764b4da4f97d09da0231dd55c700d3b45e5#e1c3e764b4da4f97d09da0231dd55c700d3b45e5"
 dependencies = [
  "a3s-boot",
  "a3s-orm",
  "async-trait",
  "chrono",
+ "futures-util",
+ "ryu-js",
  "semver",
  "serde",
  "serde_json",
@@ -4277,7 +4296,7 @@ version = "5.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "51e219e79014df21a225b1860a479e2dcd7cbd9130f4defd4bd0e191ea31d67d"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.21.7",
  "chrono",
  "getrandom 0.2.17",
  "http 1.5.0",
@@ -7555,7 +7574,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.48.0",
 ]
 
 [[package]]

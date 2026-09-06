@@ -252,11 +252,11 @@ pub use infrastructure::persistence::{
     PostgresWorkflowGoalRepository, PostgresWorkflowRunRepository,
 };
 pub use infrastructure::{
-    observe_flow_resume_receipt, FlowWorkflowRunCoordinator, FormsHumanTaskFormAdapter,
-    HumanTaskCancellationFailure, HumanTaskCoordinationFailure, HumanTaskCoordinationReport,
-    HumanTaskCoordinator, HumanTaskExpiryFailure, HumanTaskResumeFailure, HumanTaskResumeReport,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, WorkflowRunDiagnosticsReader,
-    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunVariableReader,
-    WORKFLOW_RUN_STEP_NAME,
+    observe_flow_resume_receipt, FlowWorkflowAuthoringAdapter, FlowWorkflowRunCoordinator,
+    FormsHumanTaskFormAdapter, HumanTaskCancellationFailure, HumanTaskCoordinationFailure,
+    HumanTaskCoordinationReport, HumanTaskCoordinator, HumanTaskExpiryFailure,
+    HumanTaskResumeFailure, HumanTaskResumeReport, HumanTaskResumeWorker,
+    HumanTaskResumeWorkerConfig, WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime,
+    WorkflowRunHistoryReader, WorkflowRunVariableReader, WORKFLOW_RUN_STEP_NAME,
 };
 pub use presentation::WorkflowModule;
