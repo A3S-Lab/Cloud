@@ -3,7 +3,8 @@ use a3s_boot::{
     QueueOptions,
 };
 use a3s_cloud_contracts::{
-    AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationRevisionV1,
+    AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationInvocationEnvelopeV1,
+    AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationRevisionV1,
     AutomationWebhookEndpointV1, AutomationWebhookRequestV1, AutomationWebhookSecretReferenceV1,
     AutomationWebhookSignatureAlgorithmV1, AutomationWebhookSignatureV1, DomainEventEnvelope,
 };
@@ -44,11 +45,12 @@ use a3s_cloud_control_plane::modules::automations::{
     AutomationWebhookEndpointScope, AutomationWebhookInvocationFactory,
     AutomationWebhookInvocationRequest, ChangeAutomationWebhookEndpoint,
     CommitAutomationScheduleCursor, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationInvocationReader, IAutomationInvocationRepository,
     IAutomationScheduleStateRepository, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
-    ReleaseAutomationScheduleLease, ReserveAutomationScheduleLease,
-    ResolveAutomationWebhookEndpoint,
+    PostgresAutomationInvocationRepository, PostgresAutomationScheduleStateRepository,
+    PostgresAutomationWebhookRepository, ReleaseAutomationScheduleLease,
+    ReserveAutomationScheduleLease, ResolveAutomationWebhookEndpoint,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     project_published_outbox_envelope, A3sEventPublisher, IOutboxRepository, OutboxMessage,
@@ -268,6 +270,10 @@ impl IAutomationWebhookSchemaValidator for AcceptAutomationWebhookPorts {
 const AUTOMATION_WEBHOOK_DEFINITION: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/aut0.1/automation-definition-webhook.acl"
+));
+const AUTOMATION_SCHEDULE_DEFINITION: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/aut0.1/automation-definition-schedule.acl"
 ));
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -601,6 +607,121 @@ async fn exercise_automation_schedule_state_postgres(
             key.environment_id,
             Uuid::from_u128(0x018f0000000070008000000000000429),
         ))
+        .await?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn automation_invocation_postgres_replay_and_reconnect_are_durable() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_automation_invocation_postgres)
+        .await
+        .expect("Automation invocation PostgreSQL admission gate");
+}
+
+async fn exercise_automation_invocation_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000201")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
+    let environment_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000304")?;
+    seed_automation_webhook_scope(&database, organization_id, project_id, environment_id).await?;
+
+    let definition = AutomationDefinitionV1::parse_acl(AUTOMATION_SCHEDULE_DEFINITION)
+        .map_err(std::io::Error::other)?;
+    let revision = AutomationRevisionV1::from_definition(
+        Uuid::from_u128(0x018f0000000070008000000000000431),
+        1,
+        None,
+        definition.spec().clone(),
+    )
+    .map_err(std::io::Error::other)?;
+    let requested_at = automation_timestamp(2_000);
+    let origin = AutomationInvocationOriginV1::DueTime {
+        scheduled_at: requested_at,
+    };
+    let deduplication_key = revision.spec().definition.policy.deduplication.render_key(
+        revision.spec().definition.automation_id,
+        revision.spec().revision_id,
+        &origin,
+        None,
+    )?;
+    let envelope = AutomationInvocationEnvelopeV1 {
+        schema: AutomationInvocationEnvelopeV1::SCHEMA.into(),
+        invocation_id: Uuid::from_u128(0x018f0000000070008000000000000432),
+        automation_id: revision.spec().definition.automation_id,
+        automation_revision_id: revision.spec().revision_id,
+        automation_revision_digest: revision.digest().into(),
+        organization_id,
+        project_id,
+        environment_id,
+        target: revision.spec().definition.target.clone(),
+        origin,
+        subscription: None,
+        deduplication_key,
+        input: AutomationInvocationInputV1::inline_json(json!({"release": "stable"}))?,
+        authorization: AutomationInvocationAuthorizationV1 {
+            policy_digest: revision
+                .spec()
+                .definition
+                .authorization
+                .policy_digest
+                .clone(),
+            grant_snapshot_digest: format!("sha256:{}", "b".repeat(64)),
+            principal_id: None,
+        },
+        requested_at,
+        correlation_id: Uuid::from_u128(0x018f0000000070008000000000000433),
+        causation_id: None,
+    };
+    envelope
+        .validate_for_revision(&revision)
+        .map_err(std::io::Error::other)?;
+
+    let repository = Arc::new(PostgresAutomationInvocationRepository::new(
+        executor.clone(),
+    ));
+    let first = repository.admit(envelope.clone()).await?;
+    assert!(!first.replayed);
+    let replay = repository.admit(envelope.clone()).await?;
+    assert!(replay.replayed);
+    assert_eq!(replay.invocation, first.invocation);
+
+    let mut identity_drift = envelope.clone();
+    identity_drift.correlation_id = Uuid::from_u128(0x018f0000000070008000000000000434);
+    assert!(matches!(
+        repository.admit(identity_drift).await,
+        Err(RepositoryError::Conflict(message)) if message.contains("identity")
+    ));
+
+    let mut deduplication_drift = envelope.clone();
+    deduplication_drift.invocation_id = Uuid::from_u128(0x018f0000000070008000000000000435);
+    assert!(matches!(
+        repository.admit(deduplication_drift).await,
+        Err(RepositoryError::Conflict(message)) if message.contains("deduplication")
+    ));
+
+    drop(repository);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered = PostgresAutomationInvocationRepository::new(recovered_executor);
+    let record = recovered
+        .find(organization_id, envelope.invocation_id)
+        .await?
+        .expect("invocation after reconnect");
+    assert_eq!(record, first.invocation);
+    assert!(recovered
+        .find(
+            Uuid::from_u128(organization_id.as_u128() ^ 1),
+            envelope.invocation_id,
+        )
         .await?
         .is_none());
     Ok(())
