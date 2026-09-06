@@ -23,14 +23,15 @@ pub use domain::{
     AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
     AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
     CommitAutomationScheduleCursor, IAutomationScheduleStateRepository,
-    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
-    IAutomationWebhookSignatureVerifier, ReserveAutomationScheduleLease,
-    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
-    AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
+    IAutomationWebhookRepository, IAutomationWebhookSchemaRegistry,
+    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    ReserveAutomationScheduleLease, TransitionAutomationWebhookEndpoint,
+    AUTOMATION_SCHEDULE_MAX_LEASE_MS, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
     InMemoryAutomationScheduleStateRepository, InMemoryAutomationWebhookRepository,
-    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
+    InMemoryAutomationWebhookSchemaRegistry, PostgresAutomationScheduleStateRepository,
+    PostgresAutomationWebhookRepository, RegistryBackedAutomationWebhookSchemaValidator,
     AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
