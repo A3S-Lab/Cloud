@@ -16,8 +16,9 @@ pub use application::{
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
 };
 pub use domain::{
-    AutomationConcurrencyDecision, AutomationConcurrencyEvaluator, AutomationScheduleCalculator,
-    AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
+    AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
+    AutomationEventInvocationFactory, AutomationEventInvocationRequest,
+    AutomationScheduleCalculator, AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
     AutomationScheduleDueSelection, AutomationScheduleInvocationFactory,
     AutomationScheduleInvocationRequest, AutomationScheduleLease,
     AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,

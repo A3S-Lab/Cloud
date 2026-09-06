@@ -1,6 +1,7 @@
 mod concurrency;
 mod due;
 mod entities;
+mod event_invocation;
 mod lease;
 mod misfire;
 mod repositories;
@@ -12,6 +13,7 @@ mod services;
 pub use concurrency::{AutomationConcurrencyDecision, AutomationConcurrencyEvaluator};
 pub use due::{AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator};
 pub use entities::{AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord};
+pub use event_invocation::{AutomationEventInvocationFactory, AutomationEventInvocationRequest};
 pub use lease::{
     AutomationScheduleLease, AutomationScheduleLeaseEvaluationRequest,
     AutomationScheduleLeaseEvaluator, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
