@@ -13,10 +13,12 @@ pub mod presentation;
 
 pub use application::{
     AdmitAutomationWebhookDelivery, AutomationEventInvocationCandidate,
+    AutomationEventInvocationCandidateOwned, AutomationEventInvocationDispatchService,
     AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
-    AutomationWebhookAdmissionService, ChangeAutomationWebhookEndpoint,
-    CreateAutomationWebhookEndpoint, EndpointLifecycleAction, IAutomationNormalizedEventHandler,
-    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    AutomationInvocationAdmissionOutcome, AutomationWebhookAdmissionService,
+    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
+    IAutomationNormalizedEventHandler, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
