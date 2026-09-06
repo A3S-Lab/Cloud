@@ -17,10 +17,13 @@ pub use application::{
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator, AutomationScheduleCalculator,
     AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
-    AutomationScheduleDueSelection, AutomationScheduleMisfireEvaluator, AutomationWebhookAdmission,
+    AutomationScheduleDueSelection, AutomationScheduleLease,
+    AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,
+    AutomationScheduleMisfireEvaluator, AutomationWebhookAdmission,
     AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
+    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
+    AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
