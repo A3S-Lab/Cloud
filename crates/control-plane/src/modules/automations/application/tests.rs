@@ -1,6 +1,8 @@
 use super::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
+    AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    ResolveAutomationWebhookEndpoint,
 };
 use crate::modules::automations::domain::{
     AutomationWebhookEndpointRecord, AutomationWebhookInvocationFactory,
@@ -199,27 +201,46 @@ async fn endpoint_registration_pins_revision_and_rejects_scope_key_collisions() 
         .expect("find endpoint")
         .expect("endpoint");
     assert_eq!(found, created);
-    let found_by_key = repository
-        .find_endpoint_by_key(
-            created.endpoint.organization_id,
-            created.endpoint.project_id,
-            created.endpoint.environment_id,
-            &created.endpoint.endpoint_key,
-        )
+    let query_service = AutomationWebhookEndpointQueryService::new(repository.clone());
+    let found_by_key = query_service
+        .resolve(ResolveAutomationWebhookEndpoint {
+            scope: AutomationWebhookEndpointScope {
+                organization_id: created.endpoint.organization_id,
+                project_id: created.endpoint.project_id,
+                environment_id: created.endpoint.environment_id,
+            },
+            endpoint_key: created.endpoint.endpoint_key.clone(),
+        })
         .await
         .expect("find endpoint by key")
         .expect("endpoint by key");
     assert_eq!(found_by_key, created);
-    assert!(repository
-        .find_endpoint_by_key(
-            created.endpoint.organization_id,
-            created.endpoint.project_id,
-            Uuid::from_u128(created.endpoint.environment_id.as_u128() ^ 1),
-            &created.endpoint.endpoint_key,
-        )
+    assert!(query_service
+        .resolve(ResolveAutomationWebhookEndpoint {
+            scope: AutomationWebhookEndpointScope {
+                organization_id: created.endpoint.organization_id,
+                project_id: created.endpoint.project_id,
+                environment_id: Uuid::from_u128(created.endpoint.environment_id.as_u128() ^ 1,),
+            },
+            endpoint_key: created.endpoint.endpoint_key.clone(),
+        })
         .await
         .expect("scoped lookup")
         .is_none());
+
+    assert!(matches!(
+        query_service
+            .resolve(ResolveAutomationWebhookEndpoint {
+                scope: AutomationWebhookEndpointScope {
+                    organization_id: Uuid::nil(),
+                    project_id: created.endpoint.project_id,
+                    environment_id: created.endpoint.environment_id,
+                },
+                endpoint_key: created.endpoint.endpoint_key.clone(),
+            })
+            .await,
+        Err(ApplicationError::Invalid(message)) if message.contains("must not be nil")
+    ));
 
     let duplicate = CreateAutomationWebhookEndpoint {
         endpoint_id: id(0x104),

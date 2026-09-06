@@ -1,4 +1,5 @@
 mod composition;
+mod endpoint_query;
 mod event_consumer;
 mod event_dispatch;
 mod event_fanout;
@@ -14,6 +15,10 @@ mod tests;
 
 pub use crate::modules::automations::domain::EndpointLifecycleAction;
 pub use composition::AutomationsDispatchServices;
+pub use endpoint_query::{
+    AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
+    ResolveAutomationWebhookEndpoint,
+};
 pub use event_consumer::IAutomationNormalizedEventHandler;
 pub use event_dispatch::{
     AutomationEventInvocationCandidateOwned, AutomationEventInvocationDispatchService,
