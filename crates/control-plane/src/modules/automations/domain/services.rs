@@ -1,5 +1,7 @@
+use crate::modules::shared_kernel::domain::Sha256Digest;
 use a3s_cloud_contracts::{AutomationWebhookEndpointV1, AutomationWebhookRequestV1};
 use async_trait::async_trait;
+use serde_json::Value;
 
 /// Infrastructure resolves the exact Secret version and verifies the
 /// normalized signature fact.  The domain never receives key material.
@@ -23,4 +25,12 @@ pub trait IAutomationWebhookSchemaValidator: Send + Sync {
         endpoint: &AutomationWebhookEndpointV1,
         request: &AutomationWebhookRequestV1,
     ) -> Result<(), String>;
+}
+
+/// The owning schema authority selects one immutable document by its exact
+/// digest. Automations never chooses a fallback, resolves a URL, or persists a
+/// second schema registry.
+#[async_trait]
+pub trait IAutomationWebhookSchemaRegistry: Send + Sync {
+    async fn resolve(&self, digest: &Sha256Digest) -> Result<Option<Value>, String>;
 }

@@ -25,4 +25,7 @@ pub use schedule_state::{
     AutomationScheduleState, AutomationScheduleStateKey, CommitAutomationScheduleCursor,
     IAutomationScheduleStateRepository, ReserveAutomationScheduleLease,
 };
-pub use services::{IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier};
+pub use services::{
+    IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier,
+};
