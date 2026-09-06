@@ -246,7 +246,7 @@ mod tests {
         IAutomationInvocationRepository,
     };
     use crate::modules::automations::infrastructure::InMemoryAutomationInvocationRepository;
-    use crate::modules::shared_kernel::application::ApplicationResult;
+    use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
     use a3s_cloud_contracts::{
         AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationInvocationInputV1,
         AutomationRevisionV1,
@@ -273,6 +273,17 @@ mod tests {
         async fn handle(&self, _invocation: AutomationInvocationRecord) -> ApplicationResult<()> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Ok(())
+        }
+    }
+
+    struct FailingHandler;
+
+    #[async_trait]
+    impl IAutomationInvocationHandler for FailingHandler {
+        async fn handle(&self, _invocation: AutomationInvocationRecord) -> ApplicationResult<()> {
+            Err(ApplicationError::Unavailable(
+                "target owner is unavailable".into(),
+            ))
         }
     }
 
@@ -450,5 +461,61 @@ mod tests {
         );
         assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
         assert_eq!(handler.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn digest_drift_is_acknowledged_without_target_execution() {
+        let repository = Arc::new(InMemoryAutomationInvocationRepository::new());
+        let invocation = envelope();
+        repository.admit(invocation.clone()).await.expect("admit");
+        let mut message = repository
+            .outbox_messages()
+            .await
+            .pop()
+            .expect("outbox message");
+        message.payload_digest = format!("sha256:{}", "d".repeat(64));
+        let handler = Arc::new(RecordingHandler {
+            calls: AtomicUsize::new(0),
+        });
+        let consumer = consumer(Arc::clone(&repository), Arc::clone(&handler));
+        let acknowledgements = Arc::new(AtomicUsize::new(0));
+        let action = consumer
+            .process_pending(pending(received(&message), Arc::clone(&acknowledgements)))
+            .await
+            .expect("process");
+        assert_eq!(action, AutomationInvocationConsumerAction::Acknowledged);
+        assert_eq!(acknowledgements.load(Ordering::SeqCst), 1);
+        assert_eq!(handler.calls.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn target_owner_failure_is_left_for_provider_redelivery() {
+        let repository = Arc::new(InMemoryAutomationInvocationRepository::new());
+        let invocation = envelope();
+        repository.admit(invocation.clone()).await.expect("admit");
+        let message = repository
+            .outbox_messages()
+            .await
+            .pop()
+            .expect("outbox message");
+        let reader: Arc<dyn IAutomationInvocationReader> = repository;
+        let consumer = A3sEventAutomationInvocationConsumer::new(
+            Arc::new(EventBus::new(MemoryProvider::default())),
+            SUBJECT,
+            SOURCE,
+            reader,
+            Arc::new(FailingHandler),
+        )
+        .expect("consumer");
+        let acknowledgements = Arc::new(AtomicUsize::new(0));
+        let action = consumer
+            .process_pending(pending(received(&message), Arc::clone(&acknowledgements)))
+            .await
+            .expect("process");
+        assert_eq!(
+            action,
+            AutomationInvocationConsumerAction::DeferredToEventProvider
+        );
+        assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
     }
 }
