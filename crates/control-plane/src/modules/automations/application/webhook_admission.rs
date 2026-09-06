@@ -128,6 +128,12 @@ impl AutomationWebhookAdmissionService {
                 .map_err(Into::into);
         }
 
+        if command.invocation.is_none() {
+            return Err(ApplicationError::Invalid(
+                "an active Automation webhook delivery requires an invocation envelope".into(),
+            ));
+        }
+
         self.signature_verifier
             .verify(&record.endpoint, &command.request)
             .await

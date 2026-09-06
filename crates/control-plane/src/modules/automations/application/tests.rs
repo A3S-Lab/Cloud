@@ -428,6 +428,52 @@ async fn verifier_and_schema_ports_are_required_before_persistence() {
 }
 
 #[tokio::test]
+async fn active_admission_rejects_missing_invocation_before_external_validation() {
+    let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
+    let command = create_command(revision());
+    let endpoint = endpoint_from(&command);
+    let created = service(repository.clone())
+        .create_endpoint(command)
+        .await
+        .expect("create endpoint");
+    let (request, _) = request_and_invocation(
+        &endpoint,
+        &created.revision,
+        id(0x621),
+        br#"{"release":"stable"}"#,
+        timestamp("2026-09-05T00:00:01.000Z"),
+    );
+    let rejecting = AutomationWebhookAdmissionService::new(
+        repository.clone(),
+        Arc::new(RejectingPort),
+        Arc::new(RejectingPort),
+    );
+
+    let result = rejecting
+        .admit(AdmitAutomationWebhookDelivery {
+            request,
+            invocation: None,
+            receipt_id: id(0x622),
+            recorded_at: timestamp("2026-09-05T00:00:02.000Z"),
+        })
+        .await;
+
+    assert!(matches!(
+        result,
+        Err(ApplicationError::Invalid(message))
+            if message == "an active Automation webhook delivery requires an invocation envelope"
+    ));
+    assert!(repository
+        .find_delivery(endpoint.endpoint_id, id(0x621))
+        .await
+        .expect("delivery lookup")
+        .is_none());
+    assert!(repository.receipts().await.is_empty());
+    assert!(repository.audit_records().await.is_empty());
+    assert!(repository.outbox_messages().await.is_empty());
+}
+
+#[tokio::test]
 async fn digest_bound_schema_rejection_prevents_delivery_persistence() {
     let schema = json!({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
