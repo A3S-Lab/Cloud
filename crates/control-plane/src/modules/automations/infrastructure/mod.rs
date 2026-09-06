@@ -1,5 +1,6 @@
 mod event_consumer;
 mod in_memory;
+mod invocation_consumer;
 mod invocation_in_memory;
 mod invocation_postgres;
 mod postgres;
@@ -14,6 +15,10 @@ pub use event_consumer::{
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID,
 };
 pub use in_memory::InMemoryAutomationWebhookRepository;
+pub use invocation_consumer::{
+    A3sEventAutomationInvocationConsumer, AutomationInvocationConsumerAction,
+    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
+};
 pub use invocation_in_memory::InMemoryAutomationInvocationRepository;
 pub use invocation_postgres::PostgresAutomationInvocationRepository;
 pub use postgres::PostgresAutomationWebhookRepository;

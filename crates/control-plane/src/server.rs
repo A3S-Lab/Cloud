@@ -3,7 +3,8 @@ use crate::modules::agents::{AgentExecutionCheckpointObjectReconciler, AgentExec
 use crate::modules::artifacts::application::BuildRunReconciler;
 use crate::modules::audit::AuditRetentionWorker;
 use crate::modules::automations::{
-    A3sEventAutomationNormalizedEventConsumer, AutomationScheduleWorker,
+    A3sEventAutomationInvocationConsumer, A3sEventAutomationNormalizedEventConsumer,
+    AutomationScheduleWorker,
 };
 use crate::modules::edge::{
     GatewayCertificateReconciler, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
@@ -71,6 +72,7 @@ struct WorkerProcesses {
     log_compaction_worker: LogCompactionWorker,
     automation_schedule_worker: Option<AutomationScheduleWorker>,
     automation_event_consumer: Option<A3sEventAutomationNormalizedEventConsumer>,
+    automation_invocation_consumer: Option<A3sEventAutomationInvocationConsumer>,
     outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
     recipient_contact_verification_consumer: Option<A3sEventRecipientContactVerificationConsumer>,
 }
@@ -112,6 +114,7 @@ impl ControlPlaneWorkers {
         log_compaction_worker: LogCompactionWorker,
         automation_schedule_worker: Option<AutomationScheduleWorker>,
         automation_event_consumer: Option<A3sEventAutomationNormalizedEventConsumer>,
+        automation_invocation_consumer: Option<A3sEventAutomationInvocationConsumer>,
         outbound_notification_consumer: Option<A3sEventOutboundNotificationConsumer>,
         recipient_contact_verification_consumer: Option<
             A3sEventRecipientContactVerificationConsumer,
@@ -146,6 +149,7 @@ impl ControlPlaneWorkers {
                 log_compaction_worker,
                 automation_schedule_worker,
                 automation_event_consumer,
+                automation_invocation_consumer,
                 outbound_notification_consumer,
                 recipient_contact_verification_consumer,
             }),
@@ -307,6 +311,7 @@ impl ControlPlane {
                 log_compaction_worker,
                 automation_schedule_worker,
                 automation_event_consumer,
+                automation_invocation_consumer,
                 outbound_notification_consumer,
                 recipient_contact_verification_consumer,
             } = worker_processes;
@@ -474,6 +479,14 @@ impl ControlPlane {
                 spawn_fallible_worker(
                     &mut workers,
                     "Automation normalized-event consumer",
+                    shutdown_receiver.clone(),
+                    move |shutdown| consumer.run(shutdown),
+                );
+            }
+            if let Some(consumer) = automation_invocation_consumer {
+                spawn_fallible_worker(
+                    &mut workers,
+                    "Automation invocation consumer",
                     shutdown_receiver.clone(),
                     move |shutdown| consumer.run(shutdown),
                 );

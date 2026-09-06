@@ -66,6 +66,19 @@ pub trait IAutomationInvocationRepository: Send + Sync {
     ) -> Result<AutomationInvocationAdmission, RepositoryError>;
 }
 
+/// Read-only recovery port for consumers of the committed invocation Outbox.
+/// The lookup is scoped by Organization and exact invocation identity so a
+/// published digest can be checked against the durable envelope before any
+/// target owner receives it.
+#[async_trait]
+pub trait IAutomationInvocationReader: Send + Sync {
+    async fn find(
+        &self,
+        organization_id: Uuid,
+        invocation_id: Uuid,
+    ) -> Result<Option<AutomationInvocationRecord>, RepositoryError>;
+}
+
 #[async_trait]
 pub trait IAutomationWebhookRepository: Send + Sync {
     async fn create_endpoint(

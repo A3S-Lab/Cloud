@@ -3,7 +3,8 @@ use crate::infrastructure::{
     transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::automations::domain::{
-    AutomationInvocationAdmission, AutomationInvocationRecord, IAutomationInvocationRepository,
+    AutomationInvocationAdmission, AutomationInvocationRecord, IAutomationInvocationReader,
+    IAutomationInvocationRepository,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, RepositoryError};
 use a3s_cloud_contracts::{
@@ -45,6 +46,34 @@ impl IAutomationInvocationRepository for PostgresAutomationInvocationRepository 
             .transaction(move |transaction| {
                 Box::pin(async move {
                     admit_invocation_in_transaction(transaction, envelope, true).await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+}
+
+#[async_trait]
+impl IAutomationInvocationReader for PostgresAutomationInvocationRepository {
+    async fn find(
+        &self,
+        organization_id: Uuid,
+        invocation_id: Uuid,
+    ) -> Result<Option<AutomationInvocationRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    fetch_optional::<InvocationRow, _>(
+                        transaction,
+                        sql_query::<InvocationRow>(SELECT_INVOCATION)
+                            .append(" where organization_id = ")
+                            .bind(organization_id)
+                            .append(" and invocation_id = ")
+                            .bind(invocation_id),
+                    )
+                    .await?
+                    .map(decode_invocation)
+                    .transpose()
                 })
             })
             .await

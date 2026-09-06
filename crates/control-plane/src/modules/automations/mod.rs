@@ -23,8 +23,9 @@ pub use application::{
     AutomationWebhookAdmissionService, AutomationsDispatchServices,
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
     IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
-    IAutomationNormalizedEventHandler, IAutomationScheduleCandidateProvider,
-    IAutomationScheduleDispatchService, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    IAutomationInvocationHandler, IAutomationNormalizedEventHandler,
+    IAutomationScheduleCandidateProvider, IAutomationScheduleDispatchService,
+    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -37,7 +38,7 @@ pub use domain::{
     AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
     AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
     AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
-    CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator,
+    CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator, IAutomationInvocationReader,
     IAutomationInvocationRepository, IAutomationScheduleStateRepository,
     IAutomationWebhookRepository, IAutomationWebhookSchemaRegistry,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
@@ -46,11 +47,13 @@ pub use domain::{
     AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
-    A3sEventAutomationNormalizedEventConsumer, AutomationEventConsumerAction,
+    A3sEventAutomationInvocationConsumer, A3sEventAutomationNormalizedEventConsumer,
+    AutomationEventConsumerAction, AutomationInvocationConsumerAction,
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
     InMemoryAutomationInvocationRepository, InMemoryAutomationScheduleStateRepository,
     InMemoryAutomationWebhookRepository, InMemoryAutomationWebhookSchemaRegistry,
     PostgresAutomationInvocationRepository, PostgresAutomationScheduleStateRepository,
     PostgresAutomationWebhookRepository, RegistryBackedAutomationWebhookSchemaValidator,
+    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };

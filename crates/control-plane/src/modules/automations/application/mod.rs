@@ -4,6 +4,7 @@ mod event_dispatch;
 mod event_fanout;
 mod event_invocation;
 mod invocation_admission;
+mod invocation_consumer;
 mod schedule_dispatch;
 mod schedule_worker;
 mod webhook_admission;
@@ -25,6 +26,7 @@ pub use event_fanout::{
 };
 pub use event_invocation::AutomationEventInvocationEvaluationService;
 pub use invocation_admission::AutomationInvocationAdmissionService;
+pub use invocation_consumer::IAutomationInvocationHandler;
 pub use schedule_dispatch::{
     AutomationScheduleDispatchRequest, AutomationScheduleDispatchResult,
     AutomationScheduleDispatchService, IAutomationScheduleDispatchService,

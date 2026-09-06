@@ -1,5 +1,6 @@
 use crate::modules::automations::domain::{
-    AutomationInvocationAdmission, AutomationInvocationRecord, IAutomationInvocationRepository,
+    AutomationInvocationAdmission, AutomationInvocationRecord, IAutomationInvocationReader,
+    IAutomationInvocationRepository,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_cloud_contracts::{
@@ -114,6 +115,23 @@ impl IAutomationInvocationRepository for InMemoryAutomationInvocationRepository 
             invocation: record,
             replayed: false,
         })
+    }
+}
+
+#[async_trait]
+impl IAutomationInvocationReader for InMemoryAutomationInvocationRepository {
+    async fn find(
+        &self,
+        organization_id: Uuid,
+        invocation_id: Uuid,
+    ) -> Result<Option<AutomationInvocationRecord>, RepositoryError> {
+        Ok(self
+            .state
+            .read()
+            .await
+            .by_invocation
+            .get(&(organization_id, invocation_id))
+            .cloned())
     }
 }
 
