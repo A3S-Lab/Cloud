@@ -1,3 +1,4 @@
+mod event_consumer;
 mod event_fanout;
 mod event_invocation;
 mod webhook_admission;
@@ -6,6 +7,7 @@ mod webhook_admission;
 mod tests;
 
 pub use crate::modules::automations::domain::EndpointLifecycleAction;
+pub use event_consumer::IAutomationNormalizedEventHandler;
 pub use event_fanout::{
     AutomationEventInvocationCandidate, AutomationEventInvocationFanoutService,
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,

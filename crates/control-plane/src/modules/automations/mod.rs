@@ -15,7 +15,7 @@ pub use application::{
     AdmitAutomationWebhookDelivery, AutomationEventInvocationCandidate,
     AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
     AutomationWebhookAdmissionService, ChangeAutomationWebhookEndpoint,
-    CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    CreateAutomationWebhookEndpoint, EndpointLifecycleAction, IAutomationNormalizedEventHandler,
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
@@ -35,9 +35,10 @@ pub use domain::{
     AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
+    A3sEventAutomationNormalizedEventConsumer, AutomationEventConsumerAction,
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
     InMemoryAutomationScheduleStateRepository, InMemoryAutomationWebhookRepository,
     InMemoryAutomationWebhookSchemaRegistry, PostgresAutomationScheduleStateRepository,
     PostgresAutomationWebhookRepository, RegistryBackedAutomationWebhookSchemaValidator,
-    AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
+    AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
