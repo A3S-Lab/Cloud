@@ -11,9 +11,12 @@ use crate::modules::shared_kernel::domain::{
     WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::{
-    CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, ReviseWorkflowDefinitionWrite,
-    WorkflowAuthoringOperation, WorkflowAuthoringSnapshot, WorkflowDefinition,
-    WorkflowDefinitionRecord, WorkflowRevision,
+    AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal,
+    CreateWorkflowDefinitionWrite, IWorkflowAuthoringRepository, IWorkflowDefinitionRepository,
+    ReviseWorkflowDefinitionWrite, WorkflowAuthoringAppend, WorkflowAuthoringEntry,
+    WorkflowAuthoringJournal, WorkflowAuthoringJournalKey, WorkflowAuthoringOperation,
+    WorkflowAuthoringPage, WorkflowAuthoringSnapshot, WorkflowDefinition, WorkflowDefinitionRecord,
+    WorkflowRevision,
 };
 use crate::modules::workflow::InMemoryWorkflowAuthoringRepository;
 use async_trait::async_trait;
@@ -148,6 +151,16 @@ struct Fixture {
 }
 
 fn fixture(allow_snapshots: bool) -> Fixture {
+    fixture_with_repository(
+        allow_snapshots,
+        Arc::new(InMemoryWorkflowAuthoringRepository::new()),
+    )
+}
+
+fn fixture_with_repository(
+    allow_snapshots: bool,
+    journals: Arc<dyn IWorkflowAuthoringRepository>,
+) -> Fixture {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let definition = WorkflowDefinition::create(
@@ -171,7 +184,7 @@ fn fixture(allow_snapshots: bool) -> Fixture {
     let flow = Arc::new(RecordingFlow::new(allow_snapshots, snapshot(b"next")));
     let service = WorkflowAuthoringApplicationService::new(
         Arc::new(DefinitionRepository { definition }),
-        Arc::new(InMemoryWorkflowAuthoringRepository::new()),
+        journals,
         Arc::clone(&flow) as Arc<dyn IWorkflowAuthoringFlowPort>,
     );
     Fixture {
@@ -179,6 +192,64 @@ fn fixture(allow_snapshots: bool) -> Fixture {
         flow,
         key,
         initial,
+    }
+}
+
+/// Guard the application append path against accidentally reintroducing an
+/// unbounded full-journal read. The optimized head/index methods remain
+/// available to the service, while explicit `get_journal` is intentionally
+/// rejected by this test adapter.
+struct NoFullJournalReadRepository {
+    inner: InMemoryWorkflowAuthoringRepository,
+}
+
+#[async_trait]
+impl IWorkflowAuthoringRepository for NoFullJournalReadRepository {
+    async fn create(
+        &self,
+        write: CreateWorkflowAuthoringJournal,
+    ) -> Result<WorkflowAuthoringJournal, RepositoryError> {
+        self.inner.create(write).await
+    }
+
+    async fn append(
+        &self,
+        write: AppendWorkflowAuthoringOperation,
+    ) -> Result<WorkflowAuthoringAppend, RepositoryError> {
+        self.inner.append(write).await
+    }
+
+    async fn current_snapshot(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+    ) -> Result<Option<WorkflowAuthoringSnapshot>, RepositoryError> {
+        self.inner.current_snapshot(key).await
+    }
+
+    async fn find_operation(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+        operation_id: &str,
+    ) -> Result<Option<WorkflowAuthoringEntry>, RepositoryError> {
+        self.inner.find_operation(key, operation_id).await
+    }
+
+    async fn find(
+        &self,
+        _key: WorkflowAuthoringJournalKey,
+    ) -> Result<Option<WorkflowAuthoringJournal>, RepositoryError> {
+        Err(RepositoryError::Storage(
+            "full workflow authoring journal reads are disabled on the append path".into(),
+        ))
+    }
+
+    async fn page(
+        &self,
+        key: WorkflowAuthoringJournalKey,
+        after_sequence: Option<u64>,
+        limit: usize,
+    ) -> Result<Option<WorkflowAuthoringPage>, RepositoryError> {
+        self.inner.page(key, after_sequence, limit).await
     }
 }
 
@@ -262,6 +333,50 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
         .expect("page operations");
     assert_eq!(page.entries, vec![first.entry]);
     assert_eq!(page.next_cursor, None);
+}
+
+#[tokio::test]
+async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
+    let fixture = fixture_with_repository(
+        true,
+        Arc::new(NoFullJournalReadRepository {
+            inner: InMemoryWorkflowAuthoringRepository::new(),
+        }),
+    );
+    fixture
+        .service
+        .create_journal(CreateWorkflowAuthoringJournalRequest {
+            key: fixture.key,
+            initial_snapshot: fixture.initial.clone(),
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+        })
+        .await
+        .expect("create journal");
+
+    let appended = fixture
+        .service
+        .append_operation(AppendWorkflowAuthoringRequest {
+            key: fixture.key,
+            operation: operation("bounded", &fixture.initial),
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+        })
+        .await
+        .expect("append operation");
+    assert!(!appended.replayed);
+    assert_eq!(appended.entry.sequence(), 1);
+
+    let full_read = fixture
+        .service
+        .get_journal(GetWorkflowAuthoringJournalRequest {
+            key: fixture.key,
+            resource_access: ResourceAccessEvaluator::organization_wide(),
+        })
+        .await;
+    assert!(matches!(
+        full_read,
+        Err(ApplicationError::Internal(message))
+            if message.contains("full workflow authoring journal reads")
+    ));
 }
 
 #[tokio::test]
