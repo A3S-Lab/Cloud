@@ -1779,6 +1779,7 @@ async fn build_api_worker_application(
             log_retention_worker,
             log_compaction_worker,
             None,
+            None,
             outbound_notification_consumer,
             recipient_contact_verification_consumer,
         ))
