@@ -1,5 +1,6 @@
 mod human_task_repository;
 mod ontology_repository;
+mod workflow_authoring_repository;
 mod workflow_definition_repository;
 mod workflow_goal_repository;
 mod workflow_run_repository;
@@ -12,6 +13,10 @@ pub(crate) use human_task_repository::{HumanTaskDecisionWriteReference, HumanTas
 pub(crate) use ontology_repository::OntologyWriteReference;
 pub use ontology_repository::{
     CreateOntologyWrite, IOntologyRepository, OntologyRecord, ReviseOntologyWrite,
+};
+pub use workflow_authoring_repository::{
+    AppendWorkflowAuthoringOperation, CreateWorkflowAuthoringJournal, IWorkflowAuthoringRepository,
+    WorkflowAuthoringJournalKey,
 };
 pub(crate) use workflow_definition_repository::WorkflowDefinitionWriteReference;
 pub use workflow_definition_repository::{

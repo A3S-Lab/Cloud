@@ -93,7 +93,9 @@ operation/snapshot model, deterministic SHA-256 identities, contiguous
 monotonic sequences, idempotent operation-id replay, base-snapshot CAS
 conflicts, rehydration validation, and exclusive cursor pages. It intentionally
 does not parse or apply Flow DSL bytes and it is not an execution-history
-store. The remaining CFLOW-0A work is the tenant-authorized application port,
+store. The repository port and concurrency-safe in-memory reference adapter are
+also in place, proving the CAS/idempotency behavior under competing writers.
+The remaining CFLOW-0A work is tenant-authorized application orchestration,
 transactional PostgreSQL persistence, snapshot projection, and authenticated
 SSE/WebSocket cursor delivery with reconnect/concurrency integration tests.
 

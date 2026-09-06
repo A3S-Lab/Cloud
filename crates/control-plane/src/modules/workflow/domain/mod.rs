@@ -99,12 +99,14 @@ pub use ontology_contract::{
     ONTOLOGY_SCHEMA,
 };
 pub use repositories::{
-    CancelWorkflowRunWrite, ChangeHumanTaskWrite, CreateHumanTaskWrite, CreateOntologyWrite,
+    AppendWorkflowAuthoringOperation, CancelWorkflowRunWrite, ChangeHumanTaskWrite,
+    CreateHumanTaskWrite, CreateOntologyWrite, CreateWorkflowAuthoringJournal,
     CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite, CreateWorkflowRunWrite,
     DecideHumanTaskWrite, HumanTaskDecisionRecord, HumanTaskResumeDelivery, IHumanTaskRepository,
-    IOntologyRepository, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
-    IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite, ReviseWorkflowDefinitionWrite,
-    WorkflowDefinitionRecord, WorkflowGoalRecord, WorkflowRunRecord,
+    IOntologyRepository, IWorkflowAuthoringRepository, IWorkflowDefinitionRepository,
+    IWorkflowGoalRepository, IWorkflowRunRepository, OntologyRecord, ReviseOntologyWrite,
+    ReviseWorkflowDefinitionWrite, WorkflowAuthoringJournalKey, WorkflowDefinitionRecord,
+    WorkflowGoalRecord, WorkflowRunRecord,
 };
 pub use services::{
     diff_ontology_contracts, expected_human_task_expiry, resolve_migration_policy,
