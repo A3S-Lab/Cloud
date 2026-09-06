@@ -1,9 +1,10 @@
 //! Automations owns new-invocation admission state.
 //!
-//! This module currently exposes the AUT0.2 component boundary only.  It does
-//! not register an HTTP listener, Gateway route, worker, or public management
-//! surface.  Those integrations must consume the application ports below
-//! rather than copying webhook or invocation state into another context.
+//! This module exposes the AUT0.2 admission and AUT0.3-C6 schedule-state
+//! component boundaries. It does not register an HTTP listener, Gateway route,
+//! scheduler, worker, or public management surface. Those integrations must
+//! consume the application ports below rather than copying webhook, invocation,
+//! cursor, or lease state into another context.
 
 pub mod application;
 pub mod domain;
@@ -19,14 +20,17 @@ pub use domain::{
     AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
     AutomationScheduleDueSelection, AutomationScheduleLease,
     AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,
-    AutomationScheduleMisfireEvaluator, AutomationWebhookAdmission,
-    AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
-    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+    AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
+    AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
+    CommitAutomationScheduleCursor, IAutomationScheduleStateRepository,
+    IAutomationWebhookRepository, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier, ReserveAutomationScheduleLease,
     TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
     AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,
-    InMemoryAutomationWebhookRepository, PostgresAutomationWebhookRepository,
+    InMemoryAutomationScheduleStateRepository, InMemoryAutomationWebhookRepository,
+    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
     AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
