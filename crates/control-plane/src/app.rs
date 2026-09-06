@@ -84,8 +84,9 @@ use crate::modules::data::{
 };
 use crate::modules::developer_workflows::{
     AcceptBuildPlanHandler, AcceptPullRequestPreviewPolicyHandler, AcceptWorkloadProfileHandler,
-    ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector, BuildPlanDetectionService,
-    BuildPlanQueryService, CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
+    ArtifactsWorkloadBuildOutcomeAdapter, AssetAclBuildPlanDetector,
+    AutomationsScheduledTaskProfileAdapter, BuildPlanDetectionService, BuildPlanQueryService,
+    CompileAcceptedWorkloadProfileHandler, DetectBuildPlanProposalsHandler,
     DeveloperWorkflowsModule, DockerfileBuildPlanDetector, ExecutionsScheduledTaskProfileAdapter,
     GetAcceptedBuildPlanHandler, GetAcceptedPullRequestPreviewPolicyRevisionHandler,
     GetAcceptedWorkloadProfileRevisionHandler,
@@ -2388,6 +2389,7 @@ fn build_management_application_with_health(
         )),
         Arc::new(WorkloadsServiceProfileAdapter::new()),
         Arc::new(ExecutionsScheduledTaskProfileAdapter::new()),
+        Arc::new(AutomationsScheduledTaskProfileAdapter::new()),
     ));
     let compile_developer_workload_profiles = CompileAcceptedWorkloadProfileHandler::new(
         developer_workflow_build_plans,

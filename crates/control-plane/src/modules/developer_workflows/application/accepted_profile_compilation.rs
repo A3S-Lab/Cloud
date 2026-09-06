@@ -141,7 +141,14 @@ impl QueryHandler<CompileAcceptedWorkloadProfile> for CompileAcceptedWorkloadPro
             })?;
 
             let compiled = match compiler
-                .compile(&build_plan, &revision.contract, query.build_run_id)
+                .compile_for_revision(
+                    &build_plan,
+                    &revision.contract,
+                    query.build_run_id,
+                    revision.profile_id,
+                    revision.id,
+                    revision.revision_number,
+                )
                 .await
             {
                 Ok(value) => value,
@@ -216,15 +223,27 @@ fn validate_compiled_binding(
             value.source_revision_id,
             &value.profile_digest,
         ),
-        CompiledWorkloadProfile::ScheduledTask(value) => (
-            value.organization_id,
-            value.project_id,
-            value.environment_id,
-            value.build_plan_id,
-            value.build_run_id,
-            value.source_revision_id,
-            &value.profile_digest,
-        ),
+        CompiledWorkloadProfile::ScheduledTask(value) => {
+            value
+                .automation
+                .validate_for(
+                    revision.profile_id,
+                    revision.id,
+                    revision.contract.digest(),
+                )
+                .map_err(|error| BootError::Internal(format!(
+                    "compiled scheduled Task Automation binding changed the accepted revision: {error}"
+                )))?;
+            (
+                value.organization_id,
+                value.project_id,
+                value.environment_id,
+                value.build_plan_id,
+                value.build_run_id,
+                value.source_revision_id,
+                &value.profile_digest,
+            )
+        }
     };
     if binding.0 != query.organization_id
         || binding.1 != query.project_id

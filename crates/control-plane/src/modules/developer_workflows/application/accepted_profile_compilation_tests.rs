@@ -11,8 +11,9 @@ use crate::modules::developer_workflows::domain::{
     IWorkloadProfileRepository, WorkloadProfileContract, WorkloadProfileRevisionAccepted,
 };
 use crate::modules::developer_workflows::infrastructure::{
-    ArtifactsWorkloadBuildOutcomeAdapter, ExecutionsScheduledTaskProfileAdapter,
-    InMemoryBuildPlanRepository, InMemoryWorkloadProfileRepository, WorkloadsServiceProfileAdapter,
+    ArtifactsWorkloadBuildOutcomeAdapter, AutomationsScheduledTaskProfileAdapter,
+    ExecutionsScheduledTaskProfileAdapter, InMemoryBuildPlanRepository,
+    InMemoryWorkloadProfileRepository, WorkloadsServiceProfileAdapter,
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
@@ -137,6 +138,7 @@ async fn fixture() -> CompilationFixture {
         )),
         Arc::new(WorkloadsServiceProfileAdapter::new()),
         Arc::new(ExecutionsScheduledTaskProfileAdapter::new()),
+        Arc::new(AutomationsScheduledTaskProfileAdapter::new()),
     ));
     let query = CompileAcceptedWorkloadProfile {
         organization_id: build_plan.organization_id,

@@ -1,9 +1,11 @@
 use super::VerifiedOciArtifact;
+use crate::modules::developer_workflows::domain::ScheduledTaskSchedule;
 use crate::modules::developer_workflows::domain::{WorkloadProfileKind, WorkloadProfileSpec};
 use crate::modules::shared_kernel::domain::{
     BuildPlanId, BuildRunId, EnvironmentId, OrganizationId, ProjectId, RepositoryError,
-    Sha256Digest, SourceRevisionId,
+    Sha256Digest, SourceRevisionId, WorkloadProfileId, WorkloadProfileRevisionId,
 };
+use a3s_cloud_contracts::AutomationTaskTargetV1;
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -74,6 +76,62 @@ impl ScheduledTaskProfileAdmissionRequest {
     }
 }
 
+/// Exact target binding handed from P0 to the Automations owner.
+///
+/// The binding carries only the immutable Task revision identity and the
+/// schedule policy. Automations remains responsible for constructing and
+/// persisting its own revision, cursor, lease, and invocation state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomationScheduleTargetBinding {
+    pub target: AutomationTaskTargetV1,
+    pub schedule: ScheduledTaskSchedule,
+}
+
+impl AutomationScheduleTargetBinding {
+    pub fn validate_for(
+        &self,
+        profile_id: WorkloadProfileId,
+        revision_id: WorkloadProfileRevisionId,
+        revision_digest: &Sha256Digest,
+    ) -> Result<(), String> {
+        self.schedule.validate()?;
+        if self.target.task_profile_id != profile_id.as_uuid()
+            || self.target.task_revision_id != revision_id.as_uuid()
+            || self.target.revision_digest != revision_digest.as_str()
+        {
+            return Err(
+                "Automation schedule target binding changed its exact Task revision".into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomationScheduleProfileAdmissionRequest {
+    pub context: WorkloadProfileTargetContext,
+    pub profile_id: WorkloadProfileId,
+    pub profile_revision_id: WorkloadProfileRevisionId,
+    pub profile: WorkloadProfileSpec,
+}
+
+impl AutomationScheduleProfileAdmissionRequest {
+    pub fn validate(&self) -> Result<(), String> {
+        self.context.validate()?;
+        self.profile.validate()?;
+        if self.profile_id.as_uuid().is_nil() || self.profile_revision_id.as_uuid().is_nil() {
+            return Err("Automation schedule Task identity is invalid".into());
+        }
+        if self.profile.kind != WorkloadProfileKind::ScheduledTask {
+            return Err("Automation schedule admission requires a scheduled profile".into());
+        }
+        if self.profile.schedule.is_none() {
+            return Err("Automation schedule admission requires a schedule".into());
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WorkloadProfileAdmissionTarget {
     Service,
@@ -135,4 +193,14 @@ pub trait IScheduledTaskProfileAdmissionPort: Send + Sync {
         &self,
         request: ScheduledTaskProfileAdmissionRequest,
     ) -> Result<WorkloadProfileAdmissionReceipt, RepositoryError>;
+}
+
+/// Consumer-owned port into Automations. It returns only exact Task target
+/// evidence; it does not create an Automation revision or schedule state.
+#[async_trait]
+pub trait IAutomationScheduleProfileAdmissionPort: Send + Sync {
+    async fn admit_automation_schedule_profile(
+        &self,
+        request: AutomationScheduleProfileAdmissionRequest,
+    ) -> Result<AutomationScheduleTargetBinding, RepositoryError>;
 }

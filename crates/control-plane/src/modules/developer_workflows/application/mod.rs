@@ -71,9 +71,11 @@ pub use source_layout_acquisition::{
 };
 pub use source_revision::{BuildPlanSourceRevisionEvidence, IBuildPlanSourceRevisionPort};
 pub use target_admission::{
-    IScheduledTaskProfileAdmissionPort, IServiceProfileAdmissionPort,
-    ScheduledTaskProfileAdmissionRequest, ServiceProfileAdmissionRequest,
-    WorkloadProfileAdmissionReceipt, WorkloadProfileAdmissionTarget, WorkloadProfileTargetContext,
+    AutomationScheduleProfileAdmissionRequest, AutomationScheduleTargetBinding,
+    IAutomationScheduleProfileAdmissionPort, IScheduledTaskProfileAdmissionPort,
+    IServiceProfileAdmissionPort, ScheduledTaskProfileAdmissionRequest,
+    ServiceProfileAdmissionRequest, WorkloadProfileAdmissionReceipt,
+    WorkloadProfileAdmissionTarget, WorkloadProfileTargetContext,
 };
 pub use workload_profile_acceptance::{
     AcceptWorkloadProfile, AcceptWorkloadProfileHandler, AcceptWorkloadProfileResult,

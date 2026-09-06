@@ -5504,7 +5504,7 @@ Follow the detailed gates in
    adapter plus C12 management interface, and component-only
    `APP0.2-C9/C10/C11/C13/C14/C15`,
    and land `K0.1` and `AUT0.1` plus the component-only `AUT0.2-C1/C2/C3/C4/C5/C6`
-   and `AUT0.3-C1/C2/C3/C4/C5/C6/C7` calendar, misfire, concurrency, due-window, lease, durable cursor/lease, and deterministic due-time invocation-envelope boundaries
+   and `AUT0.3-C1/C2/C3/C4/C5/C6/C7/C8/C9` calendar, misfire, concurrency, due-window, lease, durable cursor/lease, deterministic due-time invocation-envelope, bounded dispatch, and P0 Task-target adaptation boundaries
    contract/admission/PostgreSQL/Secret-verification boundary slices with no
    temporary provider clients;
 4. complete the `I0.2`, required `I0.6` rerank/media, `A0.5`, `A1.4`, selected
@@ -5519,8 +5519,11 @@ Follow the detailed gates in
 7. close composite `APP0.6` only when its interface contracts, machine-checked
    parity manifest, and all golden scenarios pass.
 
-P0 may still detect a `scheduled_task` profile, but it submits the resulting
-exact Task target to Automations. Flow timers advance existing runs and cannot
+P0 may still detect a `scheduled_task` profile, but it emits the resulting exact
+Task profile/revision target, immutable profile digest, and schedule policy to
+Automations through one anti-corruption binding. Automations owns the eventual
+invocation authority; this slice adds no Automation persistence, timer, queue,
+or second scheduler. Flow timers advance existing runs and cannot
 be reused as an invocation scheduler. Sources authenticates and normalizes
 provider events; Automations filters and targets them. Knowledge Pipelines bind
 Workflow revisions and cannot create an ingestion queue or DAG runtime.

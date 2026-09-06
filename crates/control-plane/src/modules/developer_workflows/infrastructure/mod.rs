@@ -1,4 +1,5 @@
 mod asset_acl_detector;
+mod automations_schedule_profile;
 mod build_outcome;
 mod dockerfile_detector;
 mod environment_access;
@@ -19,6 +20,7 @@ mod environment_access_tests;
 mod persistence;
 
 pub use asset_acl_detector::AssetAclBuildPlanDetector;
+pub use automations_schedule_profile::AutomationsScheduledTaskProfileAdapter;
 pub use build_outcome::ArtifactsWorkloadBuildOutcomeAdapter;
 pub use dockerfile_detector::DockerfileBuildPlanDetector;
 pub use environment_access::ProjectsDeveloperWorkflowEnvironmentAdapter;

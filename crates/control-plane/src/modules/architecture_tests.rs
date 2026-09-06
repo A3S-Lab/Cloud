@@ -8391,6 +8391,8 @@ fn public_outer_layer_facade_debt_can_only_shrink() {
         r#"
 agents -> infrastructure
 agents -> presentation
+automations -> infrastructure
+automations -> presentation
 applications -> infrastructure
 applications -> presentation
 artifacts -> infrastructure

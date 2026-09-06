@@ -4,13 +4,14 @@ use crate::modules::artifacts::domain::test_support::{
 };
 use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::developer_workflows::domain::{
-    AcceptedBuildPlan, AcceptedBuildPlanContract, BuildPlanDetectorKind, BuildPlanProposal,
-    BuildPlanProposalSpec, ScheduledTaskCatchUpPolicy, ScheduledTaskHistoryPolicy,
-    ScheduledTaskRetryPolicy, ScheduledTaskSchedule, SourceLayoutIdentity, WorkloadHttpHealthCheck,
-    WorkloadProcess, WorkloadProfileContract, WorkloadProfileKind, WorkloadProfileResources,
-    WorkloadProfileSpec, WorkloadSecretBinding, WorkloadSecretTarget, WorkloadServicePort,
-    BUILD_PLAN_DETECTOR_REVISION,
+    AcceptedBuildPlan, AcceptedBuildPlanContract, AcceptedWorkloadProfileRevision,
+    BuildPlanDetectorKind, BuildPlanProposal, BuildPlanProposalSpec, ScheduledTaskCatchUpPolicy,
+    ScheduledTaskHistoryPolicy, ScheduledTaskRetryPolicy, ScheduledTaskSchedule,
+    SourceLayoutIdentity, WorkloadHttpHealthCheck, WorkloadProcess, WorkloadProfileContract,
+    WorkloadProfileKind, WorkloadProfileResources, WorkloadProfileSpec, WorkloadSecretBinding,
+    WorkloadSecretTarget, WorkloadServicePort, BUILD_PLAN_DETECTOR_REVISION,
 };
+use crate::modules::developer_workflows::infrastructure::AutomationsScheduledTaskProfileAdapter;
 use crate::modules::executions::domain::{
     Execution, ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionTemplate,
 };
@@ -137,6 +138,20 @@ async fn scheduled_profile_compiles_to_networkless_existing_execution_task_rail(
         panic!("scheduled profile must compile to an Execution Task");
     };
     assert_eq!(compiled.schedule, schedule());
+    let profile_id = AcceptedWorkloadProfileRevision::profile_id_for(
+        build_plan.organization_id,
+        build_plan.project_id,
+        build_plan.environment_id,
+        &profile,
+    )
+    .expect("scheduled profile identity");
+    let revision_id = AcceptedWorkloadProfileRevision::revision_id_for(profile_id, 1, &profile)
+        .expect("scheduled profile revision identity");
+    compiled
+        .automation
+        .validate_for(profile_id, revision_id, profile.digest())
+        .expect("exact Automations Task binding");
+    assert_eq!(compiled.automation.schedule, schedule());
     let template = compiler.scheduled_task.take_template();
     assert_eq!(template.resources.timeout_ms, 60_000);
     assert_eq!(
@@ -262,6 +277,7 @@ async fn compilation_rejects_an_owner_receipt_from_another_artifact_binding() {
         }),
         Arc::new(DriftingServiceAdmissionPort),
         Arc::new(FakeScheduledTaskAdmissionPort::default()),
+        Arc::new(AutomationsScheduledTaskProfileAdapter::new()),
     );
 
     assert!(compiler
@@ -408,6 +424,7 @@ fn compiler(outcome: Option<VerifiedWorkloadBuildOutcome>) -> CompilerFixture {
             Arc::new(FakeBuildOutcomePort { outcome }),
             service.clone(),
             scheduled_task.clone(),
+            Arc::new(AutomationsScheduledTaskProfileAdapter::new()),
         ),
         service,
         scheduled_task,
