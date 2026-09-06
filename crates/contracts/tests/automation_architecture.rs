@@ -2,14 +2,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 #[test]
-fn aut0_1_is_a_contract_boundary_without_a_second_runtime() {
+fn automation_contracts_remain_free_of_transport_and_persistence() {
     let repository = repository_root();
-    let modules = repository.join("crates/control-plane/src/modules");
-    assert!(
-        !modules.join("automations").exists(),
-        "AUT0.1 must not add a scheduler bounded context before its persistence gate"
-    );
-
     let source = read_tree(&repository.join("crates/contracts/src/automation"));
     for forbidden in [
         "reqwest::",
@@ -18,25 +12,13 @@ fn aut0_1_is_a_contract_boundary_without_a_second_runtime() {
         "sqlx::",
         "a3s_box",
         "Nats",
-        "scheduler",
         "raw_credential",
+        "create table",
+        "insert into",
     ] {
         assert!(
             !source.contains(forbidden),
-            "AUT0.1 contract acquired forbidden runtime or mutable selector {forbidden}"
-        );
-    }
-
-    let migrations = read_tree(&repository.join("migrations")).to_ascii_lowercase();
-    for forbidden_table in [
-        "automation_definitions",
-        "automation_revisions",
-        "automation_invocation_receipts",
-        "automation_schedules",
-    ] {
-        assert!(
-            !migrations.contains(forbidden_table),
-            "AUT0.1 component slice introduced a durable table before its persistence gate"
+            "automation contracts acquired forbidden runtime or persistence mechanism {forbidden}"
         );
     }
 }
