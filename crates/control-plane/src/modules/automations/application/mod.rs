@@ -2,6 +2,7 @@ mod event_consumer;
 mod event_dispatch;
 mod event_fanout;
 mod event_invocation;
+mod invocation_admission;
 mod schedule_dispatch;
 mod webhook_admission;
 
@@ -20,6 +21,7 @@ pub use event_fanout::{
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use event_invocation::AutomationEventInvocationEvaluationService;
+pub use invocation_admission::AutomationInvocationAdmissionService;
 pub use schedule_dispatch::{
     AutomationScheduleDispatchRequest, AutomationScheduleDispatchResult,
     AutomationScheduleDispatchService, IAutomationScheduleDispatchService,

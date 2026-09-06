@@ -1,5 +1,7 @@
 mod event_consumer;
 mod in_memory;
+mod invocation_in_memory;
+mod invocation_postgres;
 mod postgres;
 mod schedule_state_in_memory;
 mod schedule_state_postgres;
@@ -12,6 +14,8 @@ pub use event_consumer::{
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID,
 };
 pub use in_memory::InMemoryAutomationWebhookRepository;
+pub use invocation_in_memory::InMemoryAutomationInvocationRepository;
+pub use invocation_postgres::PostgresAutomationInvocationRepository;
 pub use postgres::PostgresAutomationWebhookRepository;
 pub use schedule_state_in_memory::InMemoryAutomationScheduleStateRepository;
 pub use schedule_state_postgres::PostgresAutomationScheduleStateRepository;

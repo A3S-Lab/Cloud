@@ -34,6 +34,38 @@ pub struct AutomationWebhookAdmission {
     pub replayed: bool,
 }
 
+/// One exact invocation envelope admitted by Automations.
+///
+/// The canonical digest is retained beside the envelope so a replay cannot
+/// replace an invocation with different immutable evidence.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomationInvocationRecord {
+    pub envelope: AutomationInvocationEnvelopeV1,
+    pub digest: String,
+}
+
+impl AutomationInvocationRecord {
+    pub fn new(envelope: AutomationInvocationEnvelopeV1) -> Result<Self, String> {
+        envelope.validate()?;
+        let digest = envelope.digest()?;
+        Ok(Self { envelope, digest })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AutomationInvocationAdmission {
+    pub invocation: AutomationInvocationRecord,
+    pub replayed: bool,
+}
+
+#[async_trait]
+pub trait IAutomationInvocationRepository: Send + Sync {
+    async fn admit(
+        &self,
+        envelope: AutomationInvocationEnvelopeV1,
+    ) -> Result<AutomationInvocationAdmission, RepositoryError>;
+}
+
 #[async_trait]
 pub trait IAutomationWebhookRepository: Send + Sync {
     async fn create_endpoint(

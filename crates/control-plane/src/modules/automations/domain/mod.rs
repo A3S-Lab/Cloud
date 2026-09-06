@@ -21,7 +21,8 @@ pub use lease::{
 };
 pub use misfire::{AutomationScheduleDueSelection, AutomationScheduleMisfireEvaluator};
 pub use repositories::{
-    AdmitAutomationWebhookDeliveryWrite, AutomationWebhookAdmission, EndpointLifecycleAction,
+    AdmitAutomationWebhookDeliveryWrite, AutomationInvocationAdmission, AutomationInvocationRecord,
+    AutomationWebhookAdmission, EndpointLifecycleAction, IAutomationInvocationRepository,
     IAutomationWebhookRepository, TransitionAutomationWebhookEndpoint,
 };
 pub use schedule::{AutomationScheduleCalculator, AUTOMATION_SCHEDULE_MAX_OCCURRENCES};
