@@ -2,9 +2,10 @@
 //!
 //! This module exposes the AUT0.2 admission and AUT0.3 schedule/invocation
 //! component boundaries. It does not register an HTTP listener, Gateway route,
-//! scheduler, worker, or public management surface. Those integrations must
-//! consume the application ports below rather than copying webhook, invocation,
-//! cursor, or lease state into another context.
+//! production candidate provider, or public management surface. The schedule
+//! worker is an injectable timer boundary only; process registration and owner
+//! composition must consume these ports rather than copying webhook,
+//! invocation, cursor, or lease state into another context.
 
 pub mod application;
 pub mod domain;
@@ -16,12 +17,14 @@ pub use application::{
     AutomationEventInvocationCandidateOwned, AutomationEventInvocationDispatchService,
     AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
     AutomationInvocationAdmissionOutcome, AutomationInvocationAdmissionService,
-    AutomationScheduleDispatchRequest, AutomationScheduleDispatchResult,
-    AutomationScheduleDispatchService, AutomationWebhookAdmissionService,
-    AutomationsDispatchServices, ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint,
-    EndpointLifecycleAction, IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
-    IAutomationNormalizedEventHandler, IAutomationScheduleDispatchService,
-    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    AutomationScheduleCandidate, AutomationScheduleDispatchRequest,
+    AutomationScheduleDispatchResult, AutomationScheduleDispatchService, AutomationScheduleWorker,
+    AutomationScheduleWorkerConfig, AutomationScheduleWorkerReport,
+    AutomationWebhookAdmissionService, AutomationsDispatchServices,
+    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
+    IAutomationNormalizedEventHandler, IAutomationScheduleCandidateProvider,
+    IAutomationScheduleDispatchService, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,

@@ -5,6 +5,7 @@ mod event_fanout;
 mod event_invocation;
 mod invocation_admission;
 mod schedule_dispatch;
+mod schedule_worker;
 mod webhook_admission;
 
 #[cfg(test)]
@@ -27,6 +28,10 @@ pub use invocation_admission::AutomationInvocationAdmissionService;
 pub use schedule_dispatch::{
     AutomationScheduleDispatchRequest, AutomationScheduleDispatchResult,
     AutomationScheduleDispatchService, IAutomationScheduleDispatchService,
+};
+pub use schedule_worker::{
+    AutomationScheduleCandidate, AutomationScheduleWorker, AutomationScheduleWorkerConfig,
+    AutomationScheduleWorkerReport, IAutomationScheduleCandidateProvider,
 };
 pub use webhook_admission::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
