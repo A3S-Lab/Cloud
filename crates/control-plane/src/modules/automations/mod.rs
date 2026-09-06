@@ -1,6 +1,6 @@
 //! Automations owns new-invocation admission state.
 //!
-//! This module exposes the AUT0.2 admission and AUT0.3-C6 schedule-state
+//! This module exposes the AUT0.2 admission and AUT0.3 schedule/invocation
 //! component boundaries. It does not register an HTTP listener, Gateway route,
 //! scheduler, worker, or public management surface. Those integrations must
 //! consume the application ports below rather than copying webhook, invocation,
@@ -18,7 +18,8 @@ pub use application::{
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator, AutomationScheduleCalculator,
     AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator,
-    AutomationScheduleDueSelection, AutomationScheduleLease,
+    AutomationScheduleDueSelection, AutomationScheduleInvocationFactory,
+    AutomationScheduleInvocationRequest, AutomationScheduleLease,
     AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,
     AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
     AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
