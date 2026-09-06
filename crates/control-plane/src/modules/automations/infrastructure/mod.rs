@@ -1,3 +1,4 @@
+mod event_consumer;
 mod in_memory;
 mod postgres;
 mod schedule_state_in_memory;
@@ -6,6 +7,10 @@ mod schema;
 mod schema_registry;
 mod signature;
 
+pub use event_consumer::{
+    A3sEventAutomationNormalizedEventConsumer, AutomationEventConsumerAction,
+    AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID,
+};
 pub use in_memory::InMemoryAutomationWebhookRepository;
 pub use postgres::PostgresAutomationWebhookRepository;
 pub use schedule_state_in_memory::InMemoryAutomationScheduleStateRepository;
