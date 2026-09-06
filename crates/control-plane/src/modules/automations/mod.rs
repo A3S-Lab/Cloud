@@ -12,9 +12,11 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    AdmitAutomationWebhookDelivery, AutomationEventInvocationEvaluationService,
+    AdmitAutomationWebhookDelivery, AutomationEventInvocationCandidate,
+    AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
     AutomationWebhookAdmissionService, ChangeAutomationWebhookEndpoint,
     CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
