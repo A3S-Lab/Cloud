@@ -25,7 +25,10 @@ use a3s_cloud_contracts::{
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde_json::json;
-use std::sync::Arc;
+use std::sync::{
+    atomic::{AtomicUsize, Ordering},
+    Arc,
+};
 use uuid::Uuid;
 
 const WEBHOOK_DEFINITION: &str = include_str!(concat!(
@@ -75,6 +78,35 @@ impl IAutomationWebhookAuthorizationSnapshotProvider for AcceptAll {
             grant_snapshot_digest: digest('b'),
             principal_id: None,
         })
+    }
+}
+
+struct CountingAuthorization {
+    calls: Arc<AtomicUsize>,
+}
+
+#[async_trait]
+impl IAutomationWebhookAuthorizationSnapshotProvider for CountingAuthorization {
+    async fn resolve(
+        &self,
+        _endpoint: &AutomationWebhookEndpointV1,
+        revision: &AutomationRevisionV1,
+    ) -> Result<AutomationInvocationAuthorizationV1, String> {
+        self.calls.fetch_add(1, Ordering::SeqCst);
+        AcceptAll.resolve(_endpoint, revision).await
+    }
+}
+
+struct RejectingAuthorization;
+
+#[async_trait]
+impl IAutomationWebhookAuthorizationSnapshotProvider for RejectingAuthorization {
+    async fn resolve(
+        &self,
+        _endpoint: &AutomationWebhookEndpointV1,
+        _revision: &AutomationRevisionV1,
+    ) -> Result<AutomationInvocationAuthorizationV1, String> {
+        Err("authorization owner unavailable".into())
     }
 }
 
@@ -296,12 +328,15 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
         .await
         .expect("create endpoint");
     let endpoint = created.endpoint.clone();
+    let authorization_calls = Arc::new(AtomicUsize::new(0));
     let receiver = AutomationWebhookReceiver::new(
         Arc::new(AutomationWebhookEndpointQueryService::new(
             repository.clone(),
         )),
         admission.clone(),
-        Arc::new(AcceptAll),
+        Arc::new(CountingAuthorization {
+            calls: Arc::clone(&authorization_calls),
+        }),
     );
     let scope = AutomationWebhookEndpointScope {
         organization_id: endpoint.organization_id,
@@ -337,6 +372,7 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
         a3s_cloud_contracts::AutomationWebhookAdmissionDecisionV1::Admitted
     );
     assert!(accepted.delivery.invocation.is_some());
+    assert_eq!(authorization_calls.load(Ordering::SeqCst), 1);
 
     admission
         .change_endpoint(ChangeAutomationWebhookEndpoint {
@@ -378,6 +414,62 @@ async fn webhook_receiver_composes_scoped_capture_and_lifecycle_admission() {
         Some(a3s_cloud_contracts::AutomationWebhookRejectionReasonV1::EndpointDisabled)
     );
     assert!(rejected.delivery.invocation.is_none());
+    assert_eq!(authorization_calls.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn webhook_receiver_redacts_authorization_owner_failure_before_admission() {
+    let repository = Arc::new(InMemoryAutomationWebhookRepository::new());
+    let admission = Arc::new(service(repository.clone()));
+    let command = create_command(revision());
+    let created = admission
+        .create_endpoint(command.clone())
+        .await
+        .expect("create endpoint");
+    let endpoint = created.endpoint;
+    let received_at = timestamp("2026-09-05T00:00:03.000Z");
+    let receiver = AutomationWebhookReceiver::new(
+        Arc::new(AutomationWebhookEndpointQueryService::new(
+            repository.clone(),
+        )),
+        admission,
+        Arc::new(RejectingAuthorization),
+    );
+
+    let error = receiver
+        .receive(ReceiveAutomationWebhookDelivery {
+            scope: AutomationWebhookEndpointScope {
+                organization_id: endpoint.organization_id,
+                project_id: endpoint.project_id,
+                environment_id: endpoint.environment_id,
+            },
+            endpoint_key: endpoint.endpoint_key,
+            delivery_id: id(0x609),
+            signature: AutomationWebhookSignatureV1 {
+                algorithm: AutomationWebhookSignatureAlgorithmV1::HmacSha256,
+                key_version: endpoint.signing_secret.version,
+                value: format!("hmac-sha256:{}", "a".repeat(64)),
+            },
+            content_type: "application/json".into(),
+            body: br#"{"release":"stable"}"#.to_vec(),
+            received_at,
+            invocation_id: id(0x60a),
+            requested_at: received_at,
+            correlation_id: id(0x60b),
+            causation_id: None,
+            receipt_id: id(0x60c),
+            recorded_at: received_at,
+        })
+        .await
+        .expect_err("authorization owner failure");
+
+    assert!(matches!(
+        error,
+        ApplicationError::Forbidden(message)
+            if message == "Automation webhook authorization snapshot is unavailable"
+    ));
+    assert!(repository.receipts().await.is_empty());
+    assert!(repository.outbox_messages().await.is_empty());
 }
 
 #[tokio::test]
