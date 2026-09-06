@@ -1,3 +1,4 @@
+mod composition;
 mod event_consumer;
 mod event_dispatch;
 mod event_fanout;
@@ -10,6 +11,7 @@ mod webhook_admission;
 mod tests;
 
 pub use crate::modules::automations::domain::EndpointLifecycleAction;
+pub use composition::AutomationsDispatchServices;
 pub use event_consumer::IAutomationNormalizedEventHandler;
 pub use event_dispatch::{
     AutomationEventInvocationCandidateOwned, AutomationEventInvocationDispatchService,

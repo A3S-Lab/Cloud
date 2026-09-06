@@ -18,8 +18,8 @@ pub use application::{
     AutomationInvocationAdmissionOutcome, AutomationInvocationAdmissionService,
     AutomationScheduleDispatchRequest, AutomationScheduleDispatchResult,
     AutomationScheduleDispatchService, AutomationWebhookAdmissionService,
-    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
-    IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
+    AutomationsDispatchServices, ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint,
+    EndpointLifecycleAction, IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
     IAutomationNormalizedEventHandler, IAutomationScheduleDispatchService,
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
