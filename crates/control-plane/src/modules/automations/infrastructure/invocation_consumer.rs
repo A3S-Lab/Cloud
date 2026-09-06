@@ -81,6 +81,9 @@ impl A3sEventAutomationInvocationConsumer {
     }
 
     pub async fn run(self, mut shutdown: watch::Receiver<bool>) -> a3s_event::Result<()> {
+        if *shutdown.borrow() {
+            return Ok(());
+        }
         self.bus
             .update_subscription(SubscriptionFilter {
                 subscriber_id: AUTOMATION_INVOCATION_SUBSCRIBER_ID.into(),
@@ -554,5 +557,25 @@ mod tests {
             AutomationInvocationConsumerAction::DeferredToEventProvider
         );
         assert_eq!(acknowledgements.load(Ordering::SeqCst), 0);
+    }
+
+    #[tokio::test]
+    async fn run_exits_before_binding_when_shutdown_is_already_requested() {
+        let repository = Arc::new(InMemoryAutomationInvocationRepository::new());
+        let handler: Arc<dyn IAutomationInvocationHandler> = Arc::new(RecordingHandler {
+            calls: AtomicUsize::new(0),
+        });
+        let consumer = A3sEventAutomationInvocationConsumer::canonical(
+            Arc::new(EventBus::new(MemoryProvider::default())),
+            repository,
+            handler,
+        )
+        .expect("canonical consumer");
+        let (_sender, shutdown) = watch::channel(true);
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), consumer.run(shutdown))
+            .await
+            .expect("consumer should stop promptly")
+            .expect("consumer shutdown");
     }
 }

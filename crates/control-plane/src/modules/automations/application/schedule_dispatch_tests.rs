@@ -153,13 +153,15 @@ async fn admits_exact_latest_occurrence_and_commits_the_cursor() {
         result.evaluated_through,
         Some(timestamp("2026-01-04T01:00:00Z"))
     );
-    let envelopes = admission.envelopes.lock().expect("envelopes");
-    assert_eq!(envelopes.len(), 1);
-    assert!(matches!(
-        envelopes[0].origin,
-        AutomationInvocationOriginV1::DueTime { scheduled_at }
-            if scheduled_at == timestamp("2026-01-04T01:00:00Z")
-    ));
+    {
+        let envelopes = admission.envelopes.lock().expect("envelopes");
+        assert_eq!(envelopes.len(), 1);
+        assert!(matches!(
+            envelopes[0].origin,
+            AutomationInvocationOriginV1::DueTime { scheduled_at }
+                if scheduled_at == timestamp("2026-01-04T01:00:00Z")
+        ));
+    }
     let state = states
         .find(key(&revision))
         .await

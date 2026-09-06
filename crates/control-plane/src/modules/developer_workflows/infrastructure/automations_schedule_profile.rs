@@ -87,7 +87,10 @@ mod tests {
                 &request.context.profile_digest,
             )
             .expect("exact binding");
-        assert_eq!(binding.schedule, request.profile.schedule.clone().unwrap());
+        assert_eq!(
+            binding.schedule,
+            request.profile.schedule.clone().expect("request schedule")
+        );
         assert_eq!(binding.target.task_profile_id, request.profile_id.as_uuid());
         assert_eq!(
             binding.target.task_revision_id,
