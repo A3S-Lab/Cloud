@@ -12,8 +12,11 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
-    ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    AdmitAutomationWebhookDelivery, AutomationEventInvocationCandidate,
+    AutomationEventInvocationEvaluationService, AutomationEventInvocationFanoutService,
+    AutomationWebhookAdmissionService, ChangeAutomationWebhookEndpoint,
+    CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -24,11 +27,12 @@ pub use domain::{
     AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,
     AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
     AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
-    CommitAutomationScheduleCursor, IAutomationScheduleStateRepository,
-    IAutomationWebhookRepository, IAutomationWebhookSchemaRegistry,
-    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    ReserveAutomationScheduleLease, TransitionAutomationWebhookEndpoint,
-    AUTOMATION_SCHEDULE_MAX_LEASE_MS, AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
+    CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator,
+    IAutomationScheduleStateRepository, IAutomationWebhookRepository,
+    IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
+    IAutomationWebhookSignatureVerifier, ReserveAutomationScheduleLease,
+    TransitionAutomationWebhookEndpoint, AUTOMATION_SCHEDULE_MAX_LEASE_MS,
+    AUTOMATION_SCHEDULE_MAX_OCCURRENCES,
 };
 pub use infrastructure::{
     DigestBoundJsonSchemaValidator, HmacSha256AutomationWebhookSignatureVerifier,

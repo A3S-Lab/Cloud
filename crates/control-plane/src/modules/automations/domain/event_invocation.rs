@@ -9,9 +9,10 @@ use uuid::Uuid;
 /// Inputs for constructing one deterministic invocation from an already
 /// normalized plugin or Source event.
 ///
-/// Event normalization and filtering remain owned by the subscription/source
-/// authority. This factory only binds the normalized identity to one exact
-/// Automation revision; it does not consume, persist, enqueue, or execute it.
+/// Event normalization remains owned by the subscription/source authority;
+/// Automations owns filter evaluation. This factory only binds the normalized
+/// identity to one exact Automation revision; it does not consume, persist,
+/// enqueue, or execute it.
 pub struct AutomationEventInvocationRequest<'a> {
     pub revision: &'a AutomationRevisionV1,
     pub invocation_id: Uuid,
