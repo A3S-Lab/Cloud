@@ -32,6 +32,6 @@ pub use schedule_state::{
     IAutomationScheduleStateRepository, ReserveAutomationScheduleLease,
 };
 pub use services::{
-    IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
-    IAutomationWebhookSignatureVerifier,
+    IAutomationEventFilterEvaluator, IAutomationWebhookSchemaRegistry,
+    IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
 };

@@ -1,5 +1,7 @@
 use crate::modules::shared_kernel::domain::Sha256Digest;
-use a3s_cloud_contracts::{AutomationWebhookEndpointV1, AutomationWebhookRequestV1};
+use a3s_cloud_contracts::{
+    AutomationNormalizedEventV1, AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
+};
 use async_trait::async_trait;
 use serde_json::Value;
 
@@ -33,4 +35,17 @@ pub trait IAutomationWebhookSchemaValidator: Send + Sync {
 #[async_trait]
 pub trait IAutomationWebhookSchemaRegistry: Send + Sync {
     async fn resolve(&self, digest: &Sha256Digest) -> Result<Option<Value>, String>;
+}
+
+/// Automations evaluates a normalized event against the exact immutable filter
+/// selected by a revision. The adapter must not fall back to a latest filter,
+/// provider state, or another digest. Filter storage and publication remain
+/// owned by the relevant policy authority.
+#[async_trait]
+pub trait IAutomationEventFilterEvaluator: Send + Sync {
+    async fn matches(
+        &self,
+        filter_digest: &Sha256Digest,
+        event: &AutomationNormalizedEventV1,
+    ) -> Result<bool, String>;
 }
