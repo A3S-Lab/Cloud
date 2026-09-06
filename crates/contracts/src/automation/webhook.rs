@@ -18,6 +18,7 @@ use uuid::Uuid;
 pub const AUTOMATION_WEBHOOK_ENDPOINT_SCHEMA_V1: &str = "cloud.automation.webhook.endpoint.v1";
 pub const AUTOMATION_WEBHOOK_REQUEST_SCHEMA_V1: &str = "cloud.automation.webhook.request.v1";
 pub const AUTOMATION_WEBHOOK_RECEIPT_SCHEMA_V1: &str = "cloud.automation.webhook.receipt.v1";
+pub const AUTOMATION_WEBHOOK_EVENT_KEY: &str = "automation.webhook.received";
 pub const AUTOMATION_WEBHOOK_MAX_ENDPOINT_KEY_BYTES: usize = 128;
 pub const AUTOMATION_WEBHOOK_MAX_BODY_BYTES: u64 = 1024 * 1024;
 pub const AUTOMATION_WEBHOOK_MAX_CAPTURE_BASE64_BYTES: usize = 4 * 1024 * 1024;
@@ -502,7 +503,7 @@ impl AutomationWebhookDeliveryReceiptV1 {
             || !matches!(
                 &invocation.origin,
                 AutomationInvocationOriginV1::Event { event_key, event_digest, .. }
-                    if event_key == "automation.webhook.received" && event_digest == &request.body_digest
+                    if event_key == AUTOMATION_WEBHOOK_EVENT_KEY && event_digest == &request.body_digest
             )
         {
             return Err("Automation webhook invocation is not bound to the delivery".into());

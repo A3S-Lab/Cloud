@@ -3,7 +3,8 @@ use super::{
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
 };
 use crate::modules::automations::domain::{
-    AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
+    AutomationWebhookEndpointRecord, AutomationWebhookInvocationFactory,
+    AutomationWebhookInvocationRequest, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
 };
 use crate::modules::automations::infrastructure::{
@@ -14,10 +15,9 @@ use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{canonical_json_bounded, sha256_digest};
 use a3s_cloud_contracts::{
     AutomationDefinitionV1, AutomationInvocationAuthorizationV1, AutomationInvocationEnvelopeV1,
-    AutomationInvocationInputV1, AutomationInvocationOriginV1, AutomationRevisionV1,
-    AutomationTriggerV1, AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
-    AutomationWebhookSecretReferenceV1, AutomationWebhookSignatureAlgorithmV1,
-    AutomationWebhookSignatureV1, AUTOMATION_INVOCATION_SCHEMA_V1,
+    AutomationRevisionV1, AutomationTriggerV1, AutomationWebhookEndpointV1,
+    AutomationWebhookRequestV1, AutomationWebhookSecretReferenceV1,
+    AutomationWebhookSignatureAlgorithmV1, AutomationWebhookSignatureV1,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -156,61 +156,27 @@ fn request_and_invocation(
         received_at,
     )
     .expect("request");
-    let origin = AutomationInvocationOriginV1::Event {
-        event_id: delivery_id,
-        event_key: "automation.webhook.received".into(),
-        event_digest: request.body_digest.clone(),
-        observed_at: received_at,
-    };
-    let subscription = revision
-        .spec()
-        .definition
-        .trigger
-        .subscription()
-        .expect("webhook subscription");
-    let deduplication_key = revision
-        .spec()
-        .definition
-        .policy
-        .deduplication
-        .render_key(
-            revision.spec().definition.automation_id,
-            revision.spec().revision_id,
-            &origin,
-            Some(subscription.subscription_id),
-        )
-        .expect("deduplication key");
-    let invocation = AutomationInvocationEnvelopeV1 {
-        schema: AUTOMATION_INVOCATION_SCHEMA_V1.into(),
-        invocation_id: Uuid::from_u128(id(0x200).as_u128() ^ delivery_id.as_u128()),
-        automation_id: revision.spec().definition.automation_id,
-        automation_revision_id: revision.spec().revision_id,
-        automation_revision_digest: revision.digest().into(),
-        organization_id: revision.spec().definition.organization_id,
-        project_id: revision.spec().definition.project_id,
-        environment_id: revision.spec().definition.environment_id,
-        target: revision.spec().definition.target.clone(),
-        origin,
-        subscription: Some(subscription.clone()),
-        deduplication_key,
-        input: AutomationInvocationInputV1::inline_json(
-            serde_json::from_slice(body).expect("JSON body"),
-        )
-        .expect("input"),
-        authorization: AutomationInvocationAuthorizationV1 {
-            policy_digest: revision
-                .spec()
-                .definition
-                .authorization
-                .policy_digest
-                .clone(),
-            grant_snapshot_digest: digest('b'),
-            principal_id: None,
-        },
-        requested_at: received_at,
-        correlation_id: Uuid::from_u128(id(0x300).as_u128() ^ delivery_id.as_u128()),
-        causation_id: None,
-    };
+    let invocation =
+        AutomationWebhookInvocationFactory::build(AutomationWebhookInvocationRequest {
+            endpoint,
+            revision,
+            request: &request,
+            invocation_id: Uuid::from_u128(id(0x200).as_u128() ^ delivery_id.as_u128()),
+            authorization: AutomationInvocationAuthorizationV1 {
+                policy_digest: revision
+                    .spec()
+                    .definition
+                    .authorization
+                    .policy_digest
+                    .clone(),
+                grant_snapshot_digest: digest('b'),
+                principal_id: None,
+            },
+            requested_at: received_at,
+            correlation_id: Uuid::from_u128(id(0x300).as_u128() ^ delivery_id.as_u128()),
+            causation_id: None,
+        })
+        .expect("webhook invocation");
     (request, invocation)
 }
 

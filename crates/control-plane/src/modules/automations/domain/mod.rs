@@ -9,6 +9,7 @@ mod schedule;
 mod schedule_invocation;
 mod schedule_state;
 mod services;
+mod webhook_invocation;
 
 pub use concurrency::{AutomationConcurrencyDecision, AutomationConcurrencyEvaluator};
 pub use due::{AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator};
@@ -34,4 +35,7 @@ pub use schedule_state::{
 pub use services::{
     IAutomationEventFilterEvaluator, IAutomationWebhookSchemaRegistry,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
+};
+pub use webhook_invocation::{
+    AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
 };

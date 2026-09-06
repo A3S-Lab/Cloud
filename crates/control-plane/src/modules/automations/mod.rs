@@ -29,6 +29,7 @@ pub use domain::{
     AutomationScheduleLeaseEvaluationRequest, AutomationScheduleLeaseEvaluator,
     AutomationScheduleMisfireEvaluator, AutomationScheduleState, AutomationScheduleStateKey,
     AutomationWebhookAdmission, AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord,
+    AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
     CommitAutomationScheduleCursor, IAutomationEventFilterEvaluator,
     IAutomationScheduleStateRepository, IAutomationWebhookRepository,
     IAutomationWebhookSchemaRegistry, IAutomationWebhookSchemaValidator,
