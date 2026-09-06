@@ -1,18 +1,18 @@
+use super::invocation_postgres::admit_invocation_in_transaction;
 use crate::infrastructure::{
     execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    store_audit, store_outbox, transaction_error, AuditWrite, PostgresPersistenceError,
+    transaction_error, PostgresPersistenceError,
 };
 use crate::modules::automations::domain::{
     AdmitAutomationWebhookDeliveryWrite, AutomationWebhookAdmission,
     AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord, EndpointLifecycleAction,
     IAutomationWebhookRepository, TransitionAutomationWebhookEndpoint,
 };
-use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, RepositoryError};
+use crate::modules::shared_kernel::domain::RepositoryError;
 use a3s_cloud_contracts::{
-    AutomationAuditActionV1, AutomationAuditRecordV1, AutomationOutboxMessageV1,
     AutomationWebhookAdmissionDecisionV1, AutomationWebhookDeliveryReceiptV1,
     AutomationWebhookEndpointStateV1, AutomationWebhookRejectionReasonV1,
-    AutomationWebhookRequestV1, CloudScopeRef, DomainEventEnvelope,
+    AutomationWebhookRequestV1,
 };
 use a3s_orm::{
     sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
@@ -320,8 +320,10 @@ async fn admit_delivery(
             &endpoint.revision,
         )
         .map_err(PostgresPersistenceError::Invariant)?;
+        if let Some(invocation) = &delivery.invocation {
+            admit_invocation_in_transaction(transaction, invocation.clone(), false).await?;
+        }
         insert_receipt(transaction, &delivery, endpoint.endpoint.organization_id).await?;
-        persist_side_effects(transaction, &delivery, replayed).await?;
         return Ok(AutomationWebhookAdmission { delivery, replayed });
     }
 
@@ -376,9 +378,11 @@ async fn admit_delivery(
         &endpoint.revision,
     )
     .map_err(PostgresPersistenceError::Invariant)?;
+    if let Some(invocation) = &delivery.invocation {
+        admit_invocation_in_transaction(transaction, invocation.clone(), true).await?;
+    }
     insert_delivery(transaction, &delivery, endpoint.endpoint.organization_id).await?;
     insert_receipt(transaction, &delivery, endpoint.endpoint.organization_id).await?;
-    persist_side_effects(transaction, &delivery, false).await?;
     Ok(AutomationWebhookAdmission {
         delivery,
         replayed: false,
@@ -466,92 +470,6 @@ async fn insert_receipt(
         ),
         Err(error) => Err(error),
     }
-}
-
-async fn persist_side_effects(
-    transaction: &PostgresTransaction,
-    delivery: &AutomationWebhookDeliveryRecord,
-    replayed: bool,
-) -> Result<(), PostgresPersistenceError> {
-    let Some(invocation) = &delivery.invocation else {
-        return Ok(());
-    };
-    let action = if replayed {
-        AutomationAuditActionV1::InvocationReplayed
-    } else {
-        AutomationAuditActionV1::InvocationAdmitted
-    };
-    let audit = AutomationAuditRecordV1::for_invocation(
-        invocation,
-        action,
-        Uuid::now_v7(),
-        delivery.receipt.recorded_at,
-    )
-    .map_err(PostgresPersistenceError::Invariant)?;
-    store_audit(
-        transaction,
-        &AuditWrite {
-            audit_id: audit.audit_id,
-            scope: AuditWrite::resource_scope(
-                audit.organization_id,
-                ProjectId::from_uuid(audit.project_id),
-                Some(EnvironmentId::from_uuid(audit.environment_id)),
-            ),
-            actor_id: audit.actor_id,
-            action: if replayed {
-                "automation.webhook.invocation.replayed"
-            } else {
-                "automation.webhook.invocation.admitted"
-            },
-            aggregate_id: audit.automation_id,
-            occurred_at: audit.occurred_at,
-            request_id: audit.correlation_id,
-            details: serde_json::json!({
-                "schema": audit.schema,
-                "endpointId": delivery.receipt.endpoint_id,
-                "deliveryId": delivery.receipt.delivery_id,
-                "automationId": audit.automation_id,
-                "revisionId": audit.revision_id,
-                "invocationId": invocation.invocation_id,
-                "bodyDigest": delivery.receipt.body_digest,
-                "decision": receipt_decision(delivery.receipt.decision),
-            }),
-        },
-    )
-    .await?;
-
-    if !replayed && delivery.receipt.decision == AutomationWebhookAdmissionDecisionV1::Admitted {
-        let outbox = AutomationOutboxMessageV1::for_invocation(
-            invocation,
-            Uuid::now_v7(),
-            Some(delivery.request.delivery_id),
-            delivery.receipt.recorded_at,
-        )
-        .map_err(PostgresPersistenceError::Invariant)?;
-        store_outbox(transaction, &outbox_event(&outbox)?).await?;
-    }
-    Ok(())
-}
-
-fn outbox_event(
-    message: &AutomationOutboxMessageV1,
-) -> Result<DomainEventEnvelope, PostgresPersistenceError> {
-    Ok(DomainEventEnvelope {
-        event_id: message.message_id,
-        event_key: message.event_key().into(),
-        schema_version: message.event_version,
-        scope: CloudScopeRef::Environment {
-            organization_id: message.organization_id,
-            project_id: message.project_id,
-            environment_id: message.environment_id,
-        },
-        aggregate_id: message.automation_id,
-        aggregate_version: 1,
-        occurred_at: message.occurred_at,
-        correlation_id: message.correlation_id,
-        causation_id: message.causation_id,
-        payload: serde_json::to_value(message)?,
-    })
 }
 
 struct EndpointRow {
@@ -735,4 +653,13 @@ fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> 
             .ok_or(DecodeError::MissingColumn { index })?,
         index,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn webhook_admission_uses_the_canonical_invocation_transaction() {
+        let source = include_str!("postgres.rs");
+        assert!(source.matches("admit_invocation_in_transaction").count() >= 2);
+    }
 }

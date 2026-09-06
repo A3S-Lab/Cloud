@@ -43,16 +43,19 @@ impl IAutomationInvocationRepository for PostgresAutomationInvocationRepository 
     ) -> Result<AutomationInvocationAdmission, RepositoryError> {
         self.executor
             .transaction(move |transaction| {
-                Box::pin(async move { admit_invocation(transaction, envelope).await })
+                Box::pin(async move {
+                    admit_invocation_in_transaction(transaction, envelope, true).await
+                })
             })
             .await
             .map_err(transaction_error)
     }
 }
 
-async fn admit_invocation(
+pub(super) async fn admit_invocation_in_transaction(
     transaction: &PostgresTransaction,
     envelope: AutomationInvocationEnvelopeV1,
+    emit_outbox: bool,
 ) -> Result<AutomationInvocationAdmission, PostgresPersistenceError> {
     let record = AutomationInvocationRecord::new(envelope)
         .map_err(|error| PostgresPersistenceError::Repository(RepositoryError::Conflict(error)))?;
@@ -71,7 +74,7 @@ async fn admit_invocation(
 
     if let Some(existing) = existing {
         if existing == record {
-            persist_side_effects(transaction, &record, true).await?;
+            persist_side_effects(transaction, &record, true, emit_outbox).await?;
             return Ok(AutomationInvocationAdmission {
                 invocation: existing,
                 replayed: true,
@@ -127,7 +130,7 @@ async fn admit_invocation(
         .transpose()?;
         if let Some(existing) = concurrent {
             if existing == record {
-                persist_side_effects(transaction, &record, true).await?;
+                persist_side_effects(transaction, &record, true, emit_outbox).await?;
                 return Ok(AutomationInvocationAdmission {
                     invocation: existing,
                     replayed: true,
@@ -146,7 +149,7 @@ async fn admit_invocation(
             ),
         ));
     }
-    persist_side_effects(transaction, &record, false).await?;
+    persist_side_effects(transaction, &record, false, emit_outbox).await?;
     Ok(AutomationInvocationAdmission {
         invocation: record,
         replayed: false,
@@ -200,6 +203,7 @@ async fn persist_side_effects(
     transaction: &PostgresTransaction,
     record: &AutomationInvocationRecord,
     replayed: bool,
+    emit_outbox: bool,
 ) -> Result<(), PostgresPersistenceError> {
     let envelope = &record.envelope;
     let action = if replayed {
@@ -245,7 +249,7 @@ async fn persist_side_effects(
     )
     .await?;
 
-    if !replayed {
+    if !replayed && emit_outbox {
         let outbox = AutomationOutboxMessageV1::for_invocation(
             envelope,
             Uuid::now_v7(),
