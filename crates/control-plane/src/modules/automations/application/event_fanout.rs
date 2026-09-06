@@ -52,6 +52,12 @@ impl AutomationEventInvocationFanoutService {
             )));
         }
         event.validate().map_err(ApplicationError::Invalid)?;
+        for candidate in &candidates {
+            candidate
+                .revision
+                .validate()
+                .map_err(ApplicationError::Invalid)?;
+        }
 
         candidates.sort_unstable_by(|left, right| {
             left.revision
@@ -245,6 +251,25 @@ mod tests {
         assert_eq!(
             bound_error,
             ApplicationError::Invalid("Automation event fan-out exceeds 1024 candidates".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_a_request_timestamp_before_event_observation() {
+        let revision = revision(0x018f000000007000800000000000043b, None);
+        let error = service(true)
+            .evaluate(
+                &event(),
+                timestamp(1_767_229_199),
+                vec![candidate(&revision, 0x018f000000007000800000000000043c)],
+            )
+            .await
+            .expect_err("request timestamp ordering");
+        assert_eq!(
+            error,
+            ApplicationError::Invalid(
+                "Automation event invocation cannot be requested before event observation".into()
+            )
         );
     }
 }
