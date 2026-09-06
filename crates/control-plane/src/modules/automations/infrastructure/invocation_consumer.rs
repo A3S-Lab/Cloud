@@ -13,6 +13,9 @@ use tokio::sync::watch;
 use uuid::Uuid;
 
 pub const AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY: &str = "automation.invocation.admitted";
+pub const AUTOMATION_INVOCATION_ADMITTED_SUBJECT: &str =
+    "events.cloud.automation.invocation.admitted";
+pub const AUTOMATION_INVOCATION_ADMITTED_SOURCE: &str = "a3s-cloud";
 pub const AUTOMATION_INVOCATION_SUBSCRIBER_ID: &str = "a3s-cloud-automations-invocation-v1";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,6 +39,23 @@ pub struct A3sEventAutomationInvocationConsumer {
 }
 
 impl A3sEventAutomationInvocationConsumer {
+    /// Build the production channel binding for Automations' own admitted
+    /// invocation Outbox fact. Owner composition should use this constructor
+    /// so subject/source identity cannot drift from the publisher contract.
+    pub fn canonical(
+        bus: Arc<EventBus>,
+        invocations: Arc<dyn IAutomationInvocationReader>,
+        handler: Arc<dyn IAutomationInvocationHandler>,
+    ) -> Result<Self, String> {
+        Self::new(
+            bus,
+            AUTOMATION_INVOCATION_ADMITTED_SUBJECT,
+            AUTOMATION_INVOCATION_ADMITTED_SOURCE,
+            invocations,
+            handler,
+        )
+    }
+
     pub fn new(
         bus: Arc<EventBus>,
         subject: impl Into<String>,
@@ -257,8 +277,8 @@ mod tests {
     use serde_json::json;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    const SUBJECT: &str = "events.cloud.automation.invocation.admitted";
-    const SOURCE: &str = "a3s-cloud";
+    const SUBJECT: &str = AUTOMATION_INVOCATION_ADMITTED_SUBJECT;
+    const SOURCE: &str = AUTOMATION_INVOCATION_ADMITTED_SOURCE;
     const SCHEDULE_DEFINITION: &str = include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/../../contracts/aut0.1/automation-definition-schedule.acl"
@@ -297,6 +317,23 @@ mod tests {
             definition.spec().clone(),
         )
         .expect("revision")
+    }
+
+    #[test]
+    fn canonical_constructor_binds_the_published_invocation_channel() {
+        let reader: Arc<dyn IAutomationInvocationReader> =
+            Arc::new(InMemoryAutomationInvocationRepository::new());
+        let handler: Arc<dyn IAutomationInvocationHandler> = Arc::new(RecordingHandler {
+            calls: AtomicUsize::new(0),
+        });
+        let consumer = A3sEventAutomationInvocationConsumer::canonical(
+            Arc::new(EventBus::new(MemoryProvider::default())),
+            reader,
+            handler,
+        )
+        .expect("canonical consumer");
+        assert_eq!(consumer.subject, SUBJECT);
+        assert_eq!(consumer.source, SOURCE);
     }
 
     fn envelope() -> a3s_cloud_contracts::AutomationInvocationEnvelopeV1 {

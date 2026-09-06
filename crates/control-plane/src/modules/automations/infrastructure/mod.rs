@@ -17,7 +17,8 @@ pub use event_consumer::{
 pub use in_memory::InMemoryAutomationWebhookRepository;
 pub use invocation_consumer::{
     A3sEventAutomationInvocationConsumer, AutomationInvocationConsumerAction,
-    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
+    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_ADMITTED_SOURCE,
+    AUTOMATION_INVOCATION_ADMITTED_SUBJECT, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
 };
 pub use invocation_in_memory::InMemoryAutomationInvocationRepository;
 pub use invocation_postgres::PostgresAutomationInvocationRepository;

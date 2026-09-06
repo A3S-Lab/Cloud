@@ -54,6 +54,7 @@ pub use infrastructure::{
     InMemoryAutomationWebhookRepository, InMemoryAutomationWebhookSchemaRegistry,
     PostgresAutomationInvocationRepository, PostgresAutomationScheduleStateRepository,
     PostgresAutomationWebhookRepository, RegistryBackedAutomationWebhookSchemaValidator,
-    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
+    AUTOMATION_INVOCATION_ADMITTED_EVENT_KEY, AUTOMATION_INVOCATION_ADMITTED_SOURCE,
+    AUTOMATION_INVOCATION_ADMITTED_SUBJECT, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
