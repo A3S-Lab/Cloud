@@ -13,6 +13,7 @@ mod workflow_agent_hook;
 mod workflow_application_answer_hook;
 mod workflow_application_frame_authority;
 mod workflow_application_variable_hook;
+mod workflow_authoring;
 mod workflow_composite_execution;
 mod workflow_composite_frame;
 mod workflow_composite_region_result;
@@ -157,6 +158,13 @@ pub use workflow_application_variable_hook::{
     WORKFLOW_APPLICATION_VARIABLE_WRITE_FAILURE_RESUME_SCHEMA,
     WORKFLOW_APPLICATION_VARIABLE_WRITE_HOOK_SCHEMA,
     WORKFLOW_APPLICATION_VARIABLE_WRITE_RESUME_SCHEMA,
+};
+pub use workflow_authoring::{
+    WorkflowAuthoringAppend, WorkflowAuthoringEntry, WorkflowAuthoringError,
+    WorkflowAuthoringJournal, WorkflowAuthoringOperation, WorkflowAuthoringPage,
+    WorkflowAuthoringSnapshot, WORKFLOW_AUTHORING_MAX_OPERATION_ID_BYTES,
+    WORKFLOW_AUTHORING_MAX_PAGE_SIZE, WORKFLOW_AUTHORING_OPERATION_MAX_BYTES,
+    WORKFLOW_AUTHORING_SNAPSHOT_MAX_BYTES,
 };
 pub use workflow_composite_execution::{
     WorkflowCompositeChildReferenceMetadata, WorkflowCompositeHookMetadata,

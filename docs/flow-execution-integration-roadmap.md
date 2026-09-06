@@ -85,6 +85,18 @@ The slices are dependency-ordered. They are gates, not calendar promises.
 | `CFLOW-6` Recovery and regional operation | Compose backup/restore, retention, disaster recovery, multi-replica reconciliation, regional routing, and incident runbooks | `FLOW-R3`, `FLOW-R6`, `S0`, `H0` | Database, queue, Flow worker, provider, and region failures meet declared RTO/RPO; no acknowledged operation is lost |
 | `CFLOW-7` Public platform release | Publish REST/OpenAPI, TypeScript client, CLI, Management MCP, UI, usage, SLO dashboards, and support runbooks over the same contracts | All preceding slices | A clean tenant-scoped environment can create, run, inspect, pause, recover, upgrade, and remove a Workflow without direct database access |
 
+### CFLOW-0A implementation status
+
+The first domain-contract slice is now implemented in the Cloud Workflow
+bounded context as `WorkflowAuthoringJournal`. It provides a bounded opaque
+operation/snapshot model, deterministic SHA-256 identities, contiguous
+monotonic sequences, idempotent operation-id replay, base-snapshot CAS
+conflicts, rehydration validation, and exclusive cursor pages. It intentionally
+does not parse or apply Flow DSL bytes and it is not an execution-history
+store. The remaining CFLOW-0A work is the tenant-authorized application port,
+transactional PostgreSQL persistence, snapshot projection, and authenticated
+SSE/WebSocket cursor delivery with reconnect/concurrency integration tests.
+
 ## 4. Shared contract
 
 Cloud and Flow exchange one bounded execution identity:
