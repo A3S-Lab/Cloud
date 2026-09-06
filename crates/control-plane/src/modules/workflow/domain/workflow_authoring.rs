@@ -264,6 +264,32 @@ impl WorkflowAuthoringJournal {
         &self.entries
     }
 
+    /// Returns the durable result for an operation that was already appended.
+    ///
+    /// This is intentionally separate from [`Self::append`]. Application
+    /// services can answer an authorized retry from the materialized journal
+    /// without invoking Flow again; a racing writer is still reconciled by the
+    /// CAS/idempotency checks in `append`.
+    pub fn replay(
+        &self,
+        operation: &WorkflowAuthoringOperation,
+    ) -> Result<Option<WorkflowAuthoringAppend>, WorkflowAuthoringError> {
+        operation.validate()?;
+        let Some(index) = self.operation_index.get(operation.operation_id()) else {
+            return Ok(None);
+        };
+        let existing = &self.entries[*index];
+        if existing.operation_digest() != operation.operation_digest() {
+            return Err(WorkflowAuthoringError::IdempotencyConflict {
+                operation_id: operation.operation_id().to_owned(),
+            });
+        }
+        Ok(Some(WorkflowAuthoringAppend {
+            entry: existing.clone(),
+            replayed: true,
+        }))
+    }
+
     /// Rehydrates a journal from durable snapshots and entries.
     ///
     /// The persistence adapter must load the initial and current materialized
@@ -310,18 +336,8 @@ impl WorkflowAuthoringJournal {
         operation: WorkflowAuthoringOperation,
         result_snapshot: WorkflowAuthoringSnapshot,
     ) -> Result<WorkflowAuthoringAppend, WorkflowAuthoringError> {
-        operation.validate()?;
-        if let Some(index) = self.operation_index.get(operation.operation_id()) {
-            let existing = &self.entries[*index];
-            if existing.operation_digest() != operation.operation_digest() {
-                return Err(WorkflowAuthoringError::IdempotencyConflict {
-                    operation_id: operation.operation_id().to_owned(),
-                });
-            }
-            return Ok(WorkflowAuthoringAppend {
-                entry: existing.clone(),
-                replayed: true,
-            });
+        if let Some(replay) = self.replay(&operation)? {
+            return Ok(replay);
         }
 
         result_snapshot.validate()?;

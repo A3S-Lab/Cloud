@@ -27,6 +27,18 @@ impl WorkflowAuthoringJournalKey {
             workflow_definition_id,
         }
     }
+
+    /// Validates the tenant and aggregate identity before it crosses an
+    /// application or persistence boundary.
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.project_id.as_uuid().is_nil()
+            || self.workflow_definition_id.as_uuid().is_nil()
+        {
+            return Err("workflow authoring journal identity is invalid".into());
+        }
+        Ok(())
+    }
 }
 
 /// Input for creating the first materialized snapshot of a hosted journal.

@@ -5,6 +5,9 @@ pub(crate) mod human_task_access;
 mod human_task_form_port;
 pub mod queries;
 pub(crate) mod resource_access;
+mod workflow_authoring;
+#[cfg(test)]
+mod workflow_authoring_tests;
 mod workflow_composite_execution_port;
 #[cfg(test)]
 mod workflow_composite_execution_port_tests;
@@ -15,6 +18,11 @@ mod workflow_run_reconciler;
 
 pub use human_task_form_port::{
     HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority, IHumanTaskFormPort,
+};
+pub use workflow_authoring::{
+    AppendWorkflowAuthoringRequest, CreateWorkflowAuthoringJournalRequest,
+    GetWorkflowAuthoringJournalRequest, IWorkflowAuthoringApplicationPort,
+    IWorkflowAuthoringFlowPort, PageWorkflowAuthoringRequest, WorkflowAuthoringApplicationService,
 };
 pub use workflow_composite_execution_port::{
     IWorkflowCompositeExecutionPort, WorkflowCompositeExecutionApplicationService,

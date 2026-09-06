@@ -75,9 +75,12 @@ pub use application::queries::wait_workflow_run::{
     WaitWorkflowRun, WaitWorkflowRunHandler, WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
 };
 pub use application::{
-    HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority, HumanTaskMutationResult,
-    IHumanTaskFormPort, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
-    OntologyMutationResult, WorkflowCompositeExecutionApplicationService,
+    AppendWorkflowAuthoringRequest, CreateWorkflowAuthoringJournalRequest,
+    GetWorkflowAuthoringJournalRequest, HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority,
+    HumanTaskMutationResult, IHumanTaskFormPort, IWorkflowAuthoringApplicationPort,
+    IWorkflowAuthoringFlowPort, IWorkflowCompositeExecutionPort,
+    IWorkflowDefinitionPublicationPort, OntologyMutationResult, PageWorkflowAuthoringRequest,
+    WorkflowAuthoringApplicationService, WorkflowCompositeExecutionApplicationService,
     WorkflowCompositeExecutionRequest, WorkflowDefinitionMutationResult,
     WorkflowDefinitionPublicationProvenance, WorkflowDefinitionPublicationRequest,
     WorkflowDefinitionPublicationService, WorkflowGoalMutationResult, WorkflowPayloadAcl,

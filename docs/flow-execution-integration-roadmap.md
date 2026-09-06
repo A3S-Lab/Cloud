@@ -95,9 +95,15 @@ conflicts, rehydration validation, and exclusive cursor pages. It intentionally
 does not parse or apply Flow DSL bytes and it is not an execution-history
 store. The repository port and concurrency-safe in-memory reference adapter are
 also in place, proving the CAS/idempotency behavior under competing writers.
-The remaining CFLOW-0A work is tenant-authorized application orchestration,
-transactional PostgreSQL persistence, snapshot projection, and authenticated
-SSE/WebSocket cursor delivery with reconnect/concurrency integration tests.
+Tenant-authorized application orchestration is now implemented behind
+`IWorkflowAuthoringApplicationPort`: identity is resolved through the existing
+Workflow access helper before Flow is invoked, Flow returns the canonical
+initial/result snapshot, and authorized retries are served from the journal
+without reapplying the operation. The application contract also rejects stale
+bases before spending Flow capacity and hides project-identity drift as
+not-found. The remaining CFLOW-0A work is transactional PostgreSQL
+persistence, snapshot projection, and authenticated SSE/WebSocket cursor
+delivery with reconnect/concurrency integration tests.
 
 ## 4. Shared contract
 
