@@ -136,6 +136,13 @@ pub struct AutomationWebhookEndpointV1 {
 impl AutomationWebhookEndpointV1 {
     pub const SCHEMA: &'static str = AUTOMATION_WEBHOOK_ENDPOINT_SCHEMA_V1;
 
+    /// Validate the opaque route key before a transport adapter reaches a
+    /// repository. Keys are deliberately bounded and path-safe; they never
+    /// carry a secret or an internal endpoint identifier.
+    pub fn validate_endpoint_key(value: &str) -> Result<(), String> {
+        validate_endpoint_key(value)
+    }
+
     pub fn for_revision(
         endpoint_id: Uuid,
         endpoint_key: impl Into<String>,
@@ -181,7 +188,7 @@ impl AutomationWebhookEndpointV1 {
             ));
         }
         validate_uuid("Automation webhook endpoint ID", self.endpoint_id)?;
-        validate_endpoint_key(&self.endpoint_key)?;
+        Self::validate_endpoint_key(&self.endpoint_key)?;
         validate_uuid(
             "Automation webhook endpoint Automation ID",
             self.automation_id,

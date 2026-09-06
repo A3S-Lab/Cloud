@@ -2,6 +2,7 @@ use crate::modules::automations::domain::{
     AutomationWebhookEndpointRecord, IAutomationWebhookRepository,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use a3s_cloud_contracts::AutomationWebhookEndpointV1;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -54,6 +55,8 @@ impl AutomationWebhookEndpointQueryService {
         query: ResolveAutomationWebhookEndpoint,
     ) -> ApplicationResult<Option<AutomationWebhookEndpointRecord>> {
         let scope = query.scope.validate()?;
+        AutomationWebhookEndpointV1::validate_endpoint_key(&query.endpoint_key)
+            .map_err(ApplicationError::Invalid)?;
         let record = self
             .repository
             .find_endpoint_by_key(

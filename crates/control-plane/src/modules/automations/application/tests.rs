@@ -241,6 +241,19 @@ async fn endpoint_registration_pins_revision_and_rejects_scope_key_collisions() 
             .await,
         Err(ApplicationError::Invalid(message)) if message.contains("must not be nil")
     ));
+    assert!(matches!(
+        query_service
+            .resolve(ResolveAutomationWebhookEndpoint {
+                scope: AutomationWebhookEndpointScope {
+                    organization_id: created.endpoint.organization_id,
+                    project_id: created.endpoint.project_id,
+                    environment_id: created.endpoint.environment_id,
+                },
+                endpoint_key: "invalid/key".into(),
+            })
+            .await,
+        Err(ApplicationError::Invalid(message)) if message.contains("bounded opaque key")
+    ));
 
     let duplicate = CreateAutomationWebhookEndpoint {
         endpoint_id: id(0x104),
