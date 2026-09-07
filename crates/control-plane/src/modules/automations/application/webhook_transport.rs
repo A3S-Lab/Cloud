@@ -7,8 +7,8 @@ use crate::modules::automations::domain::{
     AutomationWebhookAdmission, IAutomationWebhookAuthorizationSnapshotProvider,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use a3s_cloud_contracts::{AutomationWebhookRequestV1, AutomationWebhookSignatureV1};
 use a3s_boot::{Command, CommandHandler, CqrsContext};
+use a3s_cloud_contracts::{AutomationWebhookRequestV1, AutomationWebhookSignatureV1};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -58,10 +58,8 @@ impl CommandHandler<ReceiveAutomationWebhookDelivery> for ReceiveAutomationWebho
         &self,
         command: ReceiveAutomationWebhookDelivery,
         _context: CqrsContext,
-    ) -> a3s_boot::BoxFuture<
-        'static,
-        a3s_boot::Result<ApplicationResult<AutomationWebhookAdmission>>,
-    > {
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<AutomationWebhookAdmission>>>
+    {
         let receiver = Arc::clone(&self.receiver);
         Box::pin(async move { Ok(receiver.receive(command).await) })
     }

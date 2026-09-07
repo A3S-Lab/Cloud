@@ -49,5 +49,5 @@ pub use webhook_admission::{
     AdmitAutomationWebhookDelivery, AutomationWebhookAdmissionService,
     ChangeAutomationWebhookEndpoint, CreateAutomationWebhookEndpoint,
 };
-pub use webhook_transport::{AutomationWebhookReceiver, ReceiveAutomationWebhookDelivery};
 pub use webhook_transport::ReceiveAutomationWebhookDeliveryHandler;
+pub use webhook_transport::{AutomationWebhookReceiver, ReceiveAutomationWebhookDelivery};

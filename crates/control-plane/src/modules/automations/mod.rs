@@ -27,9 +27,8 @@ pub use application::{
     IAutomationInvocationAdmission, IAutomationInvocationHandler,
     IAutomationNormalizedEventHandler, IAutomationScheduleCandidateProvider,
     IAutomationScheduleDispatchService, ReceiveAutomationWebhookDelivery,
-    ReceiveAutomationWebhookDeliveryHandler,
-    RepositoryAutomationScheduleCandidateProvider, ResolveAutomationWebhookEndpoint,
-    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    ReceiveAutomationWebhookDeliveryHandler, RepositoryAutomationScheduleCandidateProvider,
+    ResolveAutomationWebhookEndpoint, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AppendAutomationRevision, AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -65,4 +64,4 @@ pub use infrastructure::{
     AUTOMATION_INVOCATION_ADMITTED_SUBJECT, AUTOMATION_INVOCATION_SUBSCRIBER_ID,
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
-pub use presentation::AutomationWebhookTransportRequest;
+pub use presentation::{automation_webhooks_controller, AutomationWebhookTransportRequest};
