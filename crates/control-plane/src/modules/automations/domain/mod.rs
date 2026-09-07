@@ -1,3 +1,4 @@
+mod automation;
 mod concurrency;
 mod due;
 mod entities;
@@ -11,6 +12,10 @@ mod schedule_state;
 mod services;
 mod webhook_invocation;
 
+pub use automation::{
+    AppendAutomationRevision, AutomationDefinitionRecord, CreateAutomationDefinition,
+    IAutomationDefinitionRepository,
+};
 pub use concurrency::{AutomationConcurrencyDecision, AutomationConcurrencyEvaluator};
 pub use due::{AutomationScheduleDueEvaluation, AutomationScheduleDueEvaluator};
 pub use entities::{AutomationWebhookDeliveryRecord, AutomationWebhookEndpointRecord};

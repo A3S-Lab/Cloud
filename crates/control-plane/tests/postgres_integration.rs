@@ -40,17 +40,19 @@ use a3s_cloud_control_plane::modules::audit::{
     IAuditRecordRepository, PostgresAuditRecordRepository, VerifiedAuditExportSignature,
 };
 use a3s_cloud_control_plane::modules::automations::{
-    AdmitAutomationWebhookDelivery, AutomationScheduleState, AutomationScheduleStateKey,
-    AutomationWebhookAdmissionService, AutomationWebhookEndpointQueryService,
-    AutomationWebhookEndpointScope, AutomationWebhookInvocationFactory,
-    AutomationWebhookInvocationRequest, ChangeAutomationWebhookEndpoint,
-    CommitAutomationScheduleCursor, CreateAutomationWebhookEndpoint, EndpointLifecycleAction,
+    AdmitAutomationWebhookDelivery, AppendAutomationRevision, AutomationScheduleState,
+    AutomationScheduleStateKey, AutomationWebhookAdmissionService,
+    AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
+    AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
+    ChangeAutomationWebhookEndpoint, CommitAutomationScheduleCursor, CreateAutomationDefinition,
+    CreateAutomationWebhookEndpoint, EndpointLifecycleAction, IAutomationDefinitionRepository,
     IAutomationInvocationReader, IAutomationInvocationRepository,
     IAutomationScheduleStateRepository, IAutomationWebhookRepository,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
-    PostgresAutomationInvocationRepository, PostgresAutomationScheduleStateRepository,
-    PostgresAutomationWebhookRepository, ReleaseAutomationScheduleLease,
-    ReserveAutomationScheduleLease, ResolveAutomationWebhookEndpoint,
+    PostgresAutomationDefinitionRepository, PostgresAutomationInvocationRepository,
+    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
+    ReleaseAutomationScheduleLease, ReserveAutomationScheduleLease,
+    ResolveAutomationWebhookEndpoint,
 };
 use a3s_cloud_control_plane::modules::integration_events::{
     project_published_outbox_envelope, A3sEventPublisher, IOutboxRepository, OutboxMessage,
@@ -470,6 +472,116 @@ async fn exercise_automation_webhook_postgres(
             project_id,
             Uuid::from_u128(environment_id.as_u128() ^ 1),
             "release-hook",
+        )
+        .await?
+        .is_none());
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn automation_definition_postgres_reconnects_and_fences_revision_head() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_automation_definition_postgres)
+        .await
+        .expect("Automation definition PostgreSQL recovery gate");
+}
+
+async fn exercise_automation_definition_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000201")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
+    let environment_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000304")?;
+    seed_automation_webhook_scope(&database, organization_id, project_id, environment_id).await?;
+
+    let definition = AutomationDefinitionV1::parse_acl(AUTOMATION_SCHEDULE_DEFINITION)
+        .map_err(std::io::Error::other)?;
+    let revision = AutomationRevisionV1::from_definition(
+        Uuid::from_u128(0x018f0000000070008000000000000441),
+        1,
+        None,
+        definition.spec().clone(),
+    )
+    .map_err(std::io::Error::other)?;
+    let definition = AutomationDefinitionV1::from_spec(revision.spec().definition.clone())
+        .map_err(std::io::Error::other)?;
+    let repository = Arc::new(PostgresAutomationDefinitionRepository::new(
+        executor.clone(),
+    ));
+    let created = repository
+        .create(CreateAutomationDefinition {
+            definition,
+            revision: revision.clone(),
+            created_at: automation_timestamp(1_000),
+        })
+        .await?;
+
+    let mut successor_spec = revision.spec().definition.clone();
+    successor_spec.name = "daily-report-v2".into();
+    let successor = AutomationRevisionV1::from_definition(
+        Uuid::from_u128(0x018f0000000070008000000000000442),
+        2,
+        Some(&revision),
+        successor_spec,
+    )
+    .map_err(std::io::Error::other)?;
+    let append = AppendAutomationRevision {
+        organization_id,
+        automation_id: created.definition.spec().automation_id,
+        expected_revision_digest: revision.digest().into(),
+        revision: successor.clone(),
+        updated_at: automation_timestamp(1_001),
+    };
+    let (first, second) = tokio::join!(
+        repository.append_revision(append.clone()),
+        repository.append_revision(append),
+    );
+    let updated = match (first, second) {
+        (Ok(updated), Err(RepositoryError::Conflict(message)))
+        | (Err(RepositoryError::Conflict(message)), Ok(updated)) => {
+            assert!(message.contains("stale"), "unexpected CAS error: {message}");
+            updated
+        }
+        (first, second) => {
+            return Err(format!(
+                "exactly one definition head append must win: {first:?}; {second:?}"
+            )
+            .into())
+        }
+    };
+    assert_eq!(updated.revision, successor);
+    assert_eq!(updated.revision.spec().revision_number, 2);
+
+    drop(repository);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered = PostgresAutomationDefinitionRepository::new(recovered_executor);
+    let recovered_head = recovered
+        .find(organization_id, updated.definition.spec().automation_id)
+        .await?
+        .expect("definition head after reconnect");
+    assert_eq!(recovered_head.revision, successor);
+    assert_eq!(
+        recovered
+            .find_revision(
+                organization_id,
+                updated.definition.spec().automation_id,
+                revision.spec().revision_id,
+            )
+            .await?
+            .expect("historical revision after reconnect"),
+        revision
+    );
+    assert!(recovered
+        .find(
+            Uuid::from_u128(organization_id.as_u128() ^ 1),
+            updated.definition.spec().automation_id,
         )
         .await?
         .is_none());

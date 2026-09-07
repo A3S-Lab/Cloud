@@ -1,3 +1,5 @@
+mod automation_in_memory;
+mod automation_postgres;
 mod event_consumer;
 mod in_memory;
 mod invocation_consumer;
@@ -10,6 +12,8 @@ mod schema;
 mod schema_registry;
 mod signature;
 
+pub use automation_in_memory::InMemoryAutomationDefinitionRepository;
+pub use automation_postgres::PostgresAutomationDefinitionRepository;
 pub use event_consumer::{
     A3sEventAutomationNormalizedEventConsumer, AutomationEventConsumerAction,
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID,
