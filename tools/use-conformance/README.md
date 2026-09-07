@@ -142,6 +142,18 @@ bash tools/use-conformance/run_u0_3_exit_audit.sh /absolute/evidence/directory
 See `live-host-certification.example.txt` for the required
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` marker line and operator checklist.
 
+Operator live-host evidence collector (writes validated cert + optional
+sidecars + checklist; never emits `A3S_CLOUD_U0_3_EXIT_CERTIFIED`):
+
+```bash
+bash tools/use-conformance/collect_live_host_evidence.sh \
+  --host HOST --assignment ID --package ID --plan-digest DIGEST \
+  [--evidence-dir DIR]
+# Then:
+# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION=<cert> \
+#   bash tools/use-conformance/run_u0_3_exit_audit.sh <evidence>
+```
+
 CI fail-closed harness (validator self-check + light exit-audit without live
 host; never claims product `A3S_CLOUD_U0_3_EXIT_CERTIFIED`):
 

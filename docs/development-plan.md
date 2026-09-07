@@ -5033,7 +5033,7 @@ and Node Agent enablement journal evidence, then fail-closes with
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` (live Cloud↔host without dual-version Use
 embed). CI fail-closed harness `run_u0_3_exit_audit_ci.sh` certifies validator
 self-checks and light exit-audit fail-closed behavior without claiming product
-exit; live host remains required for `A3S_CLOUD_U0_3_EXIT_CERTIFIED`.
+exit; live host remains required for `A3S_CLOUD_U0_3_EXIT_CERTIFIED`. Operator collector `collect_live_host_evidence.sh` assembles validated live-host evidence and never emits product `EXIT_CERTIFIED`.
 
 ## 13. Milestone A1: heterogeneous Agent execution
 

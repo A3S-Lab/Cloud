@@ -80,4 +80,38 @@ forbid_exit_certified "$evidence_directory"
 forbid_exit_certified "$evidence_directory/exit-audit.out"
 forbid_exit_certified "$evidence_directory/exit-audit.err"
 
+echo "===== collector: PLACEHOLDER args must FAIL ====="
+set +e
+bash "$tools/collect_live_host_evidence.sh" \
+  --host PLACEHOLDER_HOST --assignment a1 --package p1 --plan-digest d1 \
+  --evidence-dir "$evidence_directory/collector-placeholder" \
+  >"$evidence_directory/collector-placeholder.out" 2>"$evidence_directory/collector-placeholder.err"
+placeholder_status=$?
+set -e
+if ((placeholder_status == 0)); then
+  printf '%s\n' "expected collector to refuse PLACEHOLDER_*, got exit 0" >&2
+  exit 1
+fi
+forbid_exit_certified "$evidence_directory/collector-placeholder.out"
+forbid_exit_certified "$evidence_directory/collector-placeholder.err"
+
+echo "===== collector: good args must PASS validator ====="
+collector_evidence="$evidence_directory/collector-good"
+bash "$tools/collect_live_host_evidence.sh" \
+  --host ci-host-1 --assignment assign-1 --package pkg-1 --plan-digest digest-1 \
+  --operation-id op-1 --evidence-dir "$collector_evidence" \
+  >"$evidence_directory/collector-good.out" 2>"$evidence_directory/collector-good.err"
+bash "$tools/validate_live_host_certification.sh" \
+  "$collector_evidence/live-host-certification.txt" "$revision"
+[[ -f $collector_evidence/checklist.txt ]]
+[[ -f $collector_evidence/operation-id ]]
+forbid_exit_certified "$collector_evidence"
+forbid_exit_certified "$evidence_directory/collector-good.out"
+forbid_exit_certified "$evidence_directory/collector-good.err"
+if grep -Fq 'A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$evidence_directory/collector-good.out" \
+  || grep -Fq 'A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$evidence_directory/collector-good.err"; then
+  printf '%s\n' "collector output must not mention EXIT_CERTIFIED" >&2
+  exit 1
+fi
+
 printf '%s\n' "A3S_CLOUD_U0_3_EXIT_AUDIT_CI_CERTIFIED revision=$revision light=1"

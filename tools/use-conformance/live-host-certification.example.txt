@@ -1,6 +1,10 @@
 # Example operator certification for U0.3 live Cloud↔host exit evidence.
-# Replace PLACEHOLDER fields with real digests/hosts, then point
-# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at a copy of this file.
+# Prefer the operator collector instead of hand-editing this example:
+#   bash tools/use-conformance/collect_live_host_evidence.sh \
+#     --host HOST --assignment ID --package ID --plan-digest DIGEST \
+#     [--evidence-dir DIR]
+# Then point A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at the collector's
+# live-host-certification.txt (never at this PLACEHOLDER example).
 #
 # IMPORTANT: This example itself must NOT unlock the exit gate. Validation
 # rejects any PLACEHOLDER_* field value. Pointing
