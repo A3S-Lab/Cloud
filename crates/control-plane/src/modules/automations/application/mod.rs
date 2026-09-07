@@ -1,4 +1,5 @@
 mod composition;
+mod definition_catalog;
 mod endpoint_query;
 mod event_consumer;
 mod event_dispatch;
@@ -17,6 +18,7 @@ mod tests;
 
 pub use crate::modules::automations::domain::EndpointLifecycleAction;
 pub use composition::AutomationsDispatchServices;
+pub use definition_catalog::AutomationDefinitionCatalogService;
 pub use endpoint_query::{
     AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
     ResolveAutomationWebhookEndpoint,
