@@ -1,7 +1,7 @@
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use a3s_cloud_contracts::{
-    AutomationInvocationAuthorizationV1, AutomationNormalizedEventV1, AutomationRevisionV1,
-    AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
+    AutomationInvocationAuthorizationV1, AutomationInvocationInputV1, AutomationNormalizedEventV1,
+    AutomationRevisionV1, AutomationWebhookEndpointV1, AutomationWebhookRequestV1,
 };
 use async_trait::async_trait;
 use serde_json::Value;
@@ -49,6 +49,28 @@ pub trait IAutomationWebhookAuthorizationSnapshotProvider: Send + Sync {
         endpoint: &AutomationWebhookEndpointV1,
         revision: &AutomationRevisionV1,
     ) -> Result<AutomationInvocationAuthorizationV1, String>;
+}
+
+/// The owner of schedule-target input resolves the exact immutable input for
+/// one current Automation revision. A missing input means the target is not
+/// ready for scheduling; it is not permission to manufacture a default.
+#[async_trait]
+pub trait IAutomationScheduleInputProvider: Send + Sync {
+    async fn resolve(
+        &self,
+        revision: &AutomationRevisionV1,
+    ) -> Result<Option<AutomationInvocationInputV1>, String>;
+}
+
+/// The owner of Identity/authorization state resolves a current immutable
+/// snapshot for one schedule revision. `None` is a fail-closed authorization
+/// result and must not be converted into an invocation candidate.
+#[async_trait]
+pub trait IAutomationScheduleAuthorizationSnapshotProvider: Send + Sync {
+    async fn resolve(
+        &self,
+        revision: &AutomationRevisionV1,
+    ) -> Result<Option<AutomationInvocationAuthorizationV1>, String>;
 }
 
 /// Automations evaluates a normalized event against the exact immutable filter

@@ -26,8 +26,8 @@ pub use application::{
     IAutomationEventCandidateProvider, IAutomationInvocationAdmission,
     IAutomationInvocationHandler, IAutomationNormalizedEventHandler,
     IAutomationScheduleCandidateProvider, IAutomationScheduleDispatchService,
-    ReceiveAutomationWebhookDelivery, ResolveAutomationWebhookEndpoint,
-    AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    ReceiveAutomationWebhookDelivery, RepositoryAutomationScheduleCandidateProvider,
+    ResolveAutomationWebhookEndpoint, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };
 pub use domain::{
     AppendAutomationRevision, AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -42,6 +42,7 @@ pub use domain::{
     AutomationWebhookInvocationFactory, AutomationWebhookInvocationRequest,
     CommitAutomationScheduleCursor, CreateAutomationDefinition, IAutomationDefinitionRepository,
     IAutomationEventFilterEvaluator, IAutomationInvocationReader, IAutomationInvocationRepository,
+    IAutomationScheduleAuthorizationSnapshotProvider, IAutomationScheduleInputProvider,
     IAutomationScheduleStateRepository, IAutomationWebhookAuthorizationSnapshotProvider,
     IAutomationWebhookRepository, IAutomationWebhookSchemaRegistry,
     IAutomationWebhookSchemaValidator, IAutomationWebhookSignatureVerifier,
