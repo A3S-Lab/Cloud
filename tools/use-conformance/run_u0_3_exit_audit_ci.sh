@@ -114,4 +114,16 @@ if grep -Fq 'A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$evidence_directory/collector-good.
   exit 1
 fi
 
+echo "===== live-host prep must bootstrap serving role + migration URL ====="
+prep="$tools/run_u0_3_live_host_prep.sh"
+grep -Fq 'ensure_postgres_roles' "$prep"
+grep -Fq 'a3s_cloud_serving' "$prep"
+grep -Fq 'A3S_CLOUD_POSTGRES_MIGRATION_URL' "$prep"
+grep -Fq 'A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$prep"
+# Prep documents EXIT_CERTIFIED only as something it never claims.
+if grep -E 'claim[s]? A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$prep" | grep -vq 'NEVER\|Does not\|does NOT\|never'; then
+  printf '%s\n' "prep script must not claim product EXIT_CERTIFIED" >&2
+  exit 1
+fi
+
 printf '%s\n' "A3S_CLOUD_U0_3_EXIT_AUDIT_CI_CERTIFIED revision=$revision light=1"

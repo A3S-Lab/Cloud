@@ -144,11 +144,16 @@ See `live-host-certification.example.txt` for the required
 
 Operator live-host dependency prep (starts/checks Postgres+NATS+registry via
 `a3s-box compose` on `deploy/dev/compose.acl`, or a docker fallback that can
-reuse `a3s-u03-pg`; builds control-plane; prints `run_cloud.sh` / Linux
-node-agent next steps). Never claims `A3S_CLOUD_U0_3_EXIT_CERTIFIED`:
+reuse `a3s-u03-pg`; bootstraps the ACL `a3s_cloud` migration role and
+`a3s_cloud_serving` serving role; builds control-plane; prints
+`A3S_CLOUD_POSTGRES_MIGRATION_URL` / `A3S_CLOUD_POSTGRES_URL` plus
+`run_cloud.sh` / Linux node-agent next steps). Never claims
+`A3S_CLOUD_U0_3_EXIT_CERTIFIED`:
 
 ```bash
 bash tools/use-conformance/run_u0_3_live_host_prep.sh
+# If Docker Hub pulls for NATS/registry fail:
+# A3S_CLOUD_U0_3_PREP_ALLOW_PARTIAL=true bash tools/use-conformance/run_u0_3_live_host_prep.sh
 ```
 
 Operator live-host evidence collector (writes validated cert + optional
