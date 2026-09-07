@@ -1,5 +1,14 @@
 //! Versioned distributed-inference observation contracts.
 
+mod usage;
+
+pub use usage::{
+    InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1, InferenceUsageRecordV1,
+    INFERENCE_USAGE_BATCH_SCHEMA_V1, INFERENCE_USAGE_MAX_BATCH_BYTES,
+    INFERENCE_USAGE_MAX_EVENT_BYTES, INFERENCE_USAGE_MAX_RECEIPT_BYTES,
+    INFERENCE_USAGE_MAX_RECORDS, INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
+};
+
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
