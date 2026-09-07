@@ -248,15 +248,22 @@ use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
     OperationsModule, ReconcileOperationsHandler,
 };
-use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
+use crate::modules::plugins::domain::repositories::{
+    IPluginAssignmentRepository, IPluginPlanProjectionRepository, IPluginRegistryRepository,
+};
 use crate::modules::plugins::domain::services::{
-    IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, IPluginTrustRootStore,
+    IPluginPolicyStore, IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer,
+    IPluginTrustRootStore,
 };
 use crate::modules::plugins::{
-    A3sUsePluginRegistryCatalog, EnrollPluginRegistryHandler, GetPluginRegistryHandler,
+    A3sUsePluginRegistryCatalog, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistryHandler,
+    GetPluginAssignmentHandler, GetPluginPlanProjectionHandler, GetPluginRegistryHandler,
     IdentityPluginRegistryEnrollmentAuthorizerAdapter, InspectCachedPluginCatalogHandler,
-    InspectPluginCatalogHandler, ListPluginRegistriesHandler, PluginTrustRootObjectStore,
-    PluginsModule, SearchCachedPluginCatalogHandler, SearchPluginCatalogHandler,
+    InspectPluginCatalogHandler, ListPluginAssignmentsHandler, ListPluginRegistriesHandler,
+    PluginAssignmentFlowConfig, PluginAssignmentFlowConfigOptions, PluginAssignmentFlowRuntime,
+    PluginAssignmentFlowRuntimeDependencies, PluginAssignmentReconciler, PluginPolicyObjectStore,
+    PluginTrustRootObjectStore, PluginsModule, RecordPluginPlanProjectionHandler,
+    SearchCachedPluginCatalogHandler, SearchPluginCatalogHandler, SetPluginAssignmentHandler,
 };
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
@@ -653,6 +660,8 @@ async fn build_api_worker_application(
     let outbound_notification_deliveries = adapters.notifications.outbound_deliveries;
     let outbound_notification_smtp_attempts = adapters.notifications.outbound_smtp_attempts;
     let plugin_registries = adapters.plugins.registries;
+    let plugin_assignments = adapters.plugins.assignments;
+    let plugin_plan_projections = adapters.plugins.plan_projections;
     let plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer> = Arc::new(
         IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(active_human_memberships),
     );
@@ -1165,6 +1174,54 @@ async fn build_api_worker_application(
                 Arc::clone(&key_encryption),
             ))
             .map_err(ControlPlaneStartupError::ObjectNamespaceRecovery)?;
+        let plugin_trust_roots_for_flow: Arc<dyn IPluginTrustRootStore> = Arc::new(
+            PluginTrustRootObjectStore::from_client(
+                object_storage
+                    .subnamespace("plugin-trust-roots")
+                    .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+                MAX_BOOTSTRAP_ROOT_BYTES,
+            )
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+        );
+        let plugin_policies_for_flow: Arc<dyn IPluginPolicyStore> = Arc::new(
+            PluginPolicyObjectStore::from_client(
+                object_storage
+                    .subnamespace("plugin-policies")
+                    .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+                MAX_BOOTSTRAP_ROOT_BYTES,
+            )
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+        );
+        let plugin_metadata_root_for_flow = std::path::absolute(
+            std::path::Path::new(&config.security.state_dir).join("use-plugin-registry-metadata"),
+        )
+        .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?;
+        let plugin_catalog_for_flow: Arc<dyn IPluginRegistryCatalog> = Arc::new(
+            A3sUsePluginRegistryCatalog::new(
+                Arc::clone(&plugin_trust_roots_for_flow),
+                plugin_metadata_root_for_flow,
+            )
+            .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
+        );
+        let plugin_assignment_runtime = PluginAssignmentFlowRuntime::new(
+            PluginAssignmentFlowRuntimeDependencies {
+                assignments: Arc::clone(&plugin_assignments),
+                registries: Arc::clone(&plugin_registries),
+                nodes: Arc::clone(&nodes),
+                node_control: Arc::clone(&node_control),
+                trust_roots: plugin_trust_roots_for_flow,
+                policies: plugin_policies_for_flow,
+                artifacts: Arc::clone(&node_artifacts),
+                catalog: plugin_catalog_for_flow,
+                projections: Arc::clone(&plugin_plan_projections),
+            },
+            PluginAssignmentFlowConfig::new(PluginAssignmentFlowConfigOptions {
+                observation_poll_ms: 1_000,
+                command_ttl_ms: 900_000,
+                convergence_timeout_ms: 86_400_000,
+            })
+            .map_err(ControlPlaneStartupError::Plugins)?,
+        );
         let workflow_connector_responses: Arc<dyn IConnectorResponseObjectPort> =
             connector_execution.as_ref().cloned().ok_or_else(|| {
                 ControlPlaneStartupError::Connector(
@@ -1180,6 +1237,7 @@ async fn build_api_worker_application(
                 workflow_connector_responses,
             )),
             Arc::new(object_namespace_recovery_runtime),
+            Arc::new(plugin_assignment_runtime),
         )?;
         Some(
             crate::infrastructure::connect_flow(
@@ -1626,6 +1684,13 @@ async fn build_api_worker_application(
             100,
         )
         .map_err(ControlPlaneStartupError::AgentExecution)?;
+        let plugin_assignment_reconciler = PluginAssignmentReconciler::with_schedule(
+            Arc::clone(&plugin_assignments),
+            Arc::clone(&operation_repository),
+            Duration::from_millis(config.executions.reconcile_interval_ms),
+            100,
+        )
+        .map_err(ControlPlaneStartupError::Plugins)?;
         let agent_checkpoint_object_reconciler =
             if config.objects.provider == ObjectStorageProviderKind::S3 {
                 Some(
@@ -1768,6 +1833,7 @@ async fn build_api_worker_application(
             build_run_reconciler,
             execution_reconciler,
             agent_execution_reconciler,
+            plugin_assignment_reconciler,
             agent_checkpoint_object_reconciler,
             workflow_run_reconciler,
             human_task_coordinator,
@@ -1916,6 +1982,8 @@ async fn build_api_worker_application(
                 durable_cell_deployments,
                 oci_artifacts: durable_cell_artifacts,
                 plugin_registries,
+                plugin_assignments,
+                plugin_plan_projections,
                 plugin_enrollment_authorizer,
                 assets,
                 workloads,
@@ -2160,6 +2228,8 @@ struct ManagementApplicationDependencies {
     durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     oci_artifacts: Arc<dyn IOciArtifactResolver>,
     plugin_registries: Arc<dyn IPluginRegistryRepository>,
+    plugin_assignments: Arc<dyn IPluginAssignmentRepository>,
+    plugin_plan_projections: Arc<dyn IPluginPlanProjectionRepository>,
     plugin_enrollment_authorizer: Arc<dyn IPluginRegistryEnrollmentAuthorizer>,
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -2256,6 +2326,8 @@ fn build_management_application_with_health(
         durable_cell_deployments,
         oci_artifacts,
         plugin_registries,
+        plugin_assignments,
+        plugin_plan_projections,
         plugin_enrollment_authorizer,
         assets,
         workloads,
@@ -3565,6 +3637,18 @@ fn build_management_application_with_health(
                         Arc::clone(&plugin_registries),
                     ),
                 )
+                .command_handler::<crate::modules::plugins::SetPluginAssignment, _>(
+                    SetPluginAssignmentHandler::new(Arc::clone(&plugin_assignments)),
+                )
+                .command_handler::<crate::modules::plugins::RecordPluginPlanProjection, _>(
+                    RecordPluginPlanProjectionHandler::new(
+                        Arc::clone(&plugin_assignments),
+                        Arc::clone(&plugin_plan_projections),
+                    ),
+                )
+                .command_handler::<crate::modules::plugins::ConfirmPluginPlanProjection, _>(
+                    ConfirmPluginPlanProjectionHandler::new(Arc::clone(&plugin_plan_projections)),
+                )
                 .query_handler::<crate::modules::identity::ListOrganizations, _>(
                     ListOrganizationsHandler::new(
                         Arc::clone(&identity_bootstrap),
@@ -4159,6 +4243,15 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::plugins::GetPluginRegistry, _>(
                     GetPluginRegistryHandler::new(Arc::clone(&plugin_registries)),
+                )
+                .query_handler::<crate::modules::plugins::ListPluginAssignments, _>(
+                    ListPluginAssignmentsHandler::new(Arc::clone(&plugin_assignments)),
+                )
+                .query_handler::<crate::modules::plugins::GetPluginAssignment, _>(
+                    GetPluginAssignmentHandler::new(Arc::clone(&plugin_assignments)),
+                )
+                .query_handler::<crate::modules::plugins::GetPluginPlanProjection, _>(
+                    GetPluginPlanProjectionHandler::new(plugin_plan_projections),
                 )
                 .query_handler::<crate::modules::plugins::SearchPluginCatalog, _>(
                     SearchPluginCatalogHandler::new(

@@ -231,7 +231,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `CD0` — Runtime CI/CD | One Delivery Pipelines authority and Flow history for exact input locking, build-once artifacts, target conformance, product Release admission, Environment promotion, observation and rollback across Agent, Workflow, Function, Cell, Inference, Web and Cloud system services | Planned; existing BuildPlan, BuildRun, Release, Workload and rollout foundations are inputs, not end-to-end pipeline availability |
 | `C0` — Control surfaces | REST/CLI/management MCP parity, external identity federation, SCIM, grants, search, collaboration, security investigation, notifications, audit/SIEM export, session policy, and bounded exec/terminal | In progress; enterprise `C0.5` planned |
 | `A0` — Release catalog | Agent and MCP release publication, Agent deployment, and Skill binding through the common source and artifact paths | In progress |
-| `U0` — A3S Use Registry and plugin assignments | Trusted signed Use Registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; unavailable |
+| `U0` — A3S Use Registry and plugin assignments | Trusted signed Use Registry enrollment, exact workspace package assignments, reviewed package/enablement planning, digest-only apply, observations, and recovery through the shared A3S Use Plugin Manager | In progress; `U0.1`/`U0.2` verified, `U0.3` foundation certified, product exit still open |
 | `MCP0` — Hosted MCP services | Modern stateless MCP release admission, Runtime Service hosting, Cloud orchestration, Gateway protocol enforcement, and joint recovery evidence | In progress; unavailable |
 | `FN0` — Function as a Service | Immutable Function profiles, finite Runtime Tasks, low-latency stateless Runtime Services, external FaaS Connectors, Agent Tool and Workflow-node composition, and scale-to-zero gates | In progress; unavailable. Component-only `FN0.1` freezes the canonical ACL profile, three-mode owner matrix, shared invocation authority, bounds/errors, fixtures, and non-duplication tests; owner composition and all availability evidence remain open |
 | `WEB0` — Static Web delivery | React/Vue and other static builds through Runtime Task/Box, immutable S3 release manifests, Application UI bindings, and read-only Gateway object targets | Planned; Gateway static-object target is not implemented |
@@ -2393,15 +2393,15 @@ lifecycle application service.
 
 | Sub-gate | State | Outcome | Dependency |
 | --- | --- | --- | --- |
-| `U0.1` | Verified | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud and the root compatibility lock pin `a3s-use-core` 0.2.2 and `a3s-use-extension` 0.3.0 at `7f731948` plus every consumed host schema; complete shared-manager composition remains a `U0.3` mutation gate |
+| `U0.1` | Verified | Pin exact Cloud/Use compatibility revisions, consume the canonical package/surface/plan/confirmation/receipt/observation and protocol-level-4 `PluginHostManager` contracts, and add one Node Agent adapter plus versioned Fleet payloads | Cloud and the root compatibility lock pin `a3s-use-core` 0.2.4 and `a3s-use-extension` 0.3.3 at `4c698b1f` plus every consumed host schema; full `a3s-use` host embed waits on Flow/Runtime pin alignment |
 | `U0.2` | Verified | Human-enrolled TUF registry references plus bounded signed catalog search/inspect through A3S Use, with authorized global Search and REST/client/CLI/Management MCP read parity and no package download | Completed A3S Use M1/M4 contracts and Cloud `C0.1`/`C0.2` |
-| `U0.3` | Planned | One exact TUF package assignment to one explicit host/workspace, canonical plan review, `allow` or trusted-user `ask` confirmation, apply, enable/disable, uninstall, observation, and restart recovery for the upstream safe non-executable slice | A3S Use M2 parent-saga completion, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
+| `U0.3` | In progress | Foundation certified via `run_u0_3_foundation_gate.sh` (mutation/node-agent/fixtures/scope-isolation; CI job `U0.3 assignment foundation`). Product-exit audit `run_u0_3_exit_audit.sh` fail-closes with `A3S_CLOUD_U0_3_EXIT_BLOCKED` until operator-owned live Cloud↔host certification is supplied | A3S Use M2 recovery evidence at the pinned revision, Cloud `C0.3`, and Fleet replay; OKF waits for Use M0K-C-B |
 | `U0.4` | Planned | Permission-bearing Tool Task, private Tool Service, standard MCP, Secret-reference, UI, and OKF host adapters with no provider fallback or Cloud-local surface lifecycle | A3S Use M5/M6 plus the named Runtime/Box, Workloads/Fleet, Edge/Gateway, Secrets, and Knowledge gates |
 | `U0.5` | Planned | Independent multi-host assignment operations, node loss/replacement, mixed versions, supply-chain rotation/revocation, backup/restore, limits, and production operations without a group rollout aggregate | `U0.4`, A3S Use M7, `H0.3` through `H0.5` as applicable |
 
-The current Cloud/Use lock pins `a3s-use-core` 0.2.2 and
-`a3s-use-extension` 0.3.0 to upstream revision
-`7f7319486b75b09f53496ac5b6884872f7242b5b`. Core owns the canonical
+The current Cloud/Use lock pins `a3s-use-core` 0.2.4 and
+`a3s-use-extension` 0.3.3 to upstream revision
+`4c698b1f145a55e9bca88e5c1f5aea2bf294a669`. Core owns the canonical
 protocol-level-4 `PluginHostManager`, managed-scope fence, package lock,
 selected-surface evidence, and reviewed enablement-plan contracts; Extension
 owns Registry/TUF verification and the bounded catalog query types. Five

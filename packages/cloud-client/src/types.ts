@@ -77,6 +77,17 @@ export interface EnvironmentMutationResult extends Environment {
 }
 
 export type PluginRegistryState = 'active' | 'disabled';
+export type PluginDesiredState = 'enabled' | 'installed-disabled' | 'absent';
+
+/**
+ * Canonical JSON owned and versioned by A3S Use. Cloud transports these values
+ * without maintaining a second catalog field model.
+ */
+export type A3sUseJsonObject = Readonly<Record<string, unknown>>;
+export type PluginCatalogSearchRequest = A3sUseJsonObject;
+export type PluginCatalogInspectRequest = A3sUseJsonObject;
+export type PluginCatalogPage = A3sUseJsonObject;
+export type PluginCatalogInspection = A3sUseJsonObject;
 
 export interface PluginRegistry {
   organizationId: string;
@@ -92,15 +103,75 @@ export interface PluginRegistry {
   updatedAt: string;
 }
 
+export interface PluginAssignment {
+  organizationId: string;
+  projectId: string;
+  environmentId: string;
+  id: string;
+  registryId: string;
+  targetHostId: string;
+  workspaceScope: A3sUseJsonObject;
+  packageId: string;
+  catalogRecordDigest: string;
+  version: string;
+  packageDigest: string;
+  manifestDigest: string;
+  selectedSurfaces: A3sUseJsonObject[];
+  policyDigest: string;
+  desiredState: PluginDesiredState;
+  assignmentGeneration: number;
+  aggregateVersion: number;
+  currentOperationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PluginAssignmentMutationResult {
+  assignment: PluginAssignment;
+  replayed: boolean;
+}
+
+export interface PluginPlanProjection {
+  organizationId: string;
+  id: string;
+  assignmentId: string;
+  operationId: string;
+  assignmentGeneration: number;
+  useOperationId: string;
+  planSchema: string;
+  planDigest: string;
+  expiresAt: string;
+  action: string;
+  rootPackageId: string;
+  rootPackageDigest: string | null;
+  rootManifestDigest: string | null;
+  authorityDecision: string;
+  authorityPolicyDigest: string;
+  impactDigest: string;
+  permissionEvidenceDigest: string;
+  providerEvidenceDigest: string;
+  confirmationDigest: string | null;
+  terminalReason: string | null;
+  awaitsConfirmation: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type ConfirmPluginPlanProjectionInput = {
+  confirmation: A3sUseJsonObject;
+};
+
 /**
- * Canonical JSON owned and versioned by A3S Use. Cloud transports these values
- * without maintaining a second catalog field model.
+ * Exact catalog selection and managed scope owned by A3S Use JSON contracts.
  */
-export type A3sUseJsonObject = Readonly<Record<string, unknown>>;
-export type PluginCatalogSearchRequest = A3sUseJsonObject;
-export type PluginCatalogInspectRequest = A3sUseJsonObject;
-export type PluginCatalogPage = A3sUseJsonObject;
-export type PluginCatalogInspection = A3sUseJsonObject;
+export type SetPluginAssignmentInput = {
+  registryId: string;
+  targetHostId: string;
+  workspaceScope: A3sUseJsonObject;
+  selection: A3sUseJsonObject;
+  policyDigest: string;
+  desiredState: PluginDesiredState;
+};
 
 export type AssetKind = 'agent' | 'mcp' | 'skill';
 export type AssetState = 'active' | 'archived';

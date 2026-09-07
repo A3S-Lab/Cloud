@@ -124,6 +124,9 @@ impl NodeCommand {
                 | NodeCommandResult::PluginHostApplied { .. }
                 | NodeCommandResult::PluginHostEnablementPlanned { .. }
                 | NodeCommandResult::PluginHostObserved { .. } => {}
+                NodeCommandResult::PluginHostTrustAuthorized { authorized } => {
+                    authorized.authorized_at = canonical_timestamp(authorized.authorized_at);
+                }
             }
         }
         acknowledgement

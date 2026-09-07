@@ -27,8 +27,8 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(179);
-  expect(READ_ONLY_TOOLS).toHaveLength(103);
+  expect(ADMIN_TOOLS).toHaveLength(184);
+  expect(READ_ONLY_TOOLS).toHaveLength(106);
   for (const tool of [
     'a3s_cloud_platform_role_policy_current_get',
     'a3s_cloud_platform_role_policy_revisions_get',
@@ -79,6 +79,27 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_pull_request_preview_policies_accept')).toEqual([
     'a3s_cloud_pull_request_preview_policies_accept',
   ]);
+  for (const tool of [
+    'a3s_cloud_plugin_registries_list',
+    'a3s_cloud_plugin_registries_get',
+    'a3s_cloud_plugin_assignments_list',
+    'a3s_cloud_plugin_assignments_get',
+    'a3s_cloud_plugin_plan_projections_get',
+    'a3s_cloud_plugin_catalog_search',
+    'a3s_cloud_plugin_catalog_search_cached',
+    'a3s_cloud_plugin_catalog_inspect',
+    'a3s_cloud_plugin_catalog_inspect_cached',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+    expect(READ_ONLY_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+  }
+  for (const tool of [
+    'a3s_cloud_plugin_assignments_set',
+    'a3s_cloud_plugin_plan_projections_confirm',
+  ] as const) {
+    expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
+    expect(READ_ONLY_TOOLS).not.toContain(tool);
+  }
   for (const tool of [
     'a3s_cloud_github_installation_repositories_list',
     'a3s_cloud_github_repository_references_list',

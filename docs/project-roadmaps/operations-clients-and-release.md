@@ -81,7 +81,7 @@ GUI is a renderer, not a Cloud Dashboard or domain authority.
 ## A3S WebView
 
 **Mission:** provide bounded native WebView windows for Code-hosted RemoteUI,
-local reports, and Agent Island experiences.
+and local reports.
 
 | Order | Planned outcome | Exit evidence |
 | --- | --- | --- |

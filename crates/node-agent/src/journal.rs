@@ -626,6 +626,7 @@ fn state_mutation_digest(
         // contain several distinct Plugin Host commands without creating a
         // second lifecycle projection in the Node Agent.
         NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+        | NodeCommandPayload::PluginHostAuthorizeTrust { .. }
         | NodeCommandPayload::PluginHostPlan { .. }
         | NodeCommandPayload::PluginHostApply { .. }
         | NodeCommandPayload::PluginHostPlanEnablement { .. }
@@ -690,6 +691,7 @@ impl ResourceClaimJournalProjection {
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
             | NodeCommandPayload::GatewaySnapshotObserve { .. }
             | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+            | NodeCommandPayload::PluginHostAuthorizeTrust { .. }
             | NodeCommandPayload::PluginHostPlan { .. }
             | NodeCommandPayload::PluginHostApply { .. }
             | NodeCommandPayload::PluginHostPlanEnablement { .. }

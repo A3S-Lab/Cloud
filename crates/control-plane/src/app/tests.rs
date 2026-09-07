@@ -55,7 +55,8 @@ use crate::modules::plugins::domain::services::{
     IPluginRegistryCatalog, PluginRegistryCatalogError,
 };
 use crate::modules::plugins::{
-    IdentityPluginRegistryEnrollmentAuthorizerAdapter, InMemoryPluginRegistryRepository,
+    IdentityPluginRegistryEnrollmentAuthorizerAdapter, InMemoryPluginAssignmentRepository,
+    InMemoryPluginPlanProjectionRepository, InMemoryPluginRegistryRepository,
     PluginTrustRootObjectStore,
 };
 use crate::modules::projects::InMemoryProjectsRepository;
@@ -2203,6 +2204,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ),
             oci_artifacts: Arc::new(TestOciArtifactResolver),
             plugin_registries: Arc::new(InMemoryPluginRegistryRepository::new()),
+            plugin_assignments: Arc::new(InMemoryPluginAssignmentRepository::new()),
+            plugin_plan_projections: Arc::new(InMemoryPluginPlanProjectionRepository::new()),
             plugin_enrollment_authorizer: Arc::new(
                 IdentityPluginRegistryEnrollmentAuthorizerAdapter::new(Arc::new(
                     TestActiveHumanMembershipQuery,

@@ -67,7 +67,9 @@ use super::ontology::{
     OntologyRevisionArguments, ReviseOntologyArguments,
 };
 use super::plugins::{
-    PluginCatalogInspectArguments, PluginCatalogSearchArguments, PluginRegistryArguments,
+    ConfirmPluginPlanProjectionArguments, ListPluginAssignmentsArguments,
+    PluginAssignmentArguments, PluginCatalogInspectArguments, PluginCatalogSearchArguments,
+    PluginPlanProjectionArguments, PluginRegistryArguments, SetPluginAssignmentArguments,
 };
 use super::privileged_management::{
     AcceptPlatformRolePolicyArguments, AcceptTrustDomainRevisionArguments,
@@ -1501,6 +1503,35 @@ pub async fn execute(
         ManagementTool::PluginRegistriesGet => {
             let arguments = arguments::parse::<PluginRegistryArguments>(arguments).ok()?;
             plugins::get_registry(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginAssignmentsList => {
+            let arguments = arguments::parse::<ListPluginAssignmentsArguments>(arguments).ok()?;
+            plugins::list_assignments(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginAssignmentsGet => {
+            let arguments = arguments::parse::<PluginAssignmentArguments>(arguments).ok()?;
+            plugins::get_assignment(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginAssignmentsSet => {
+            let arguments = arguments::parse::<SetPluginAssignmentArguments>(arguments).ok()?;
+            plugins::set_assignment(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PluginPlanProjectionsGet => {
+            let arguments = arguments::parse::<PluginPlanProjectionArguments>(arguments).ok()?;
+            plugins::get_plan_projection(query_bus, organization_id, arguments, request_id).await
+        }
+        ManagementTool::PluginPlanProjectionsConfirm => {
+            let arguments =
+                arguments::parse::<ConfirmPluginPlanProjectionArguments>(arguments).ok()?;
+            plugins::confirm_plan_projection(command_bus, organization_id, arguments, request_id)
+                .await
         }
         ManagementTool::PluginCatalogSearch => {
             let arguments = arguments::parse::<PluginCatalogSearchArguments>(arguments).ok()?;

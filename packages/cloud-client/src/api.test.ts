@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.82.1');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.84.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -482,6 +482,132 @@ describe('CloudApi', () => {
         body: JSON.stringify(inspect),
         contentType: 'application/json',
         idempotencyKey: undefined,
+      },
+    ]);
+  });
+
+  it('lists, gets, and sets environment-scoped plugin assignments through PUT/GET paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const input = {
+      registryId: '019c0000-0000-7000-8000-000000000002',
+      targetHostId: '019c0000-0000-7000-8000-000000000003',
+      workspaceScope: { schema: 'a3s.use.plugin-managed-scope.v2', hostId: 'host:node-01' },
+      selection: {
+        packageId: 'a3s/registry-selftest',
+        catalogRecordDigest: `sha256:${'a'.repeat(64)}`,
+        version: '0.1.0',
+        packageDigest: `sha256:${'b'.repeat(64)}`,
+        manifestDigest: `sha256:${'c'.repeat(64)}`,
+        selectedSurfaces: [{ kind: 'skill', id: 'selftest' }],
+      },
+      policyDigest: `sha256:${'e'.repeat(64)}`,
+      desiredState: 'enabled' as const,
+    };
+
+    await api.listPluginAssignments('organization / one', 'project / one', 'environment / one');
+    await api.getPluginAssignment(
+      'organization / one',
+      'project / one',
+      'environment / one',
+      'assignment / one'
+    );
+    await api.setPluginAssignment(
+      'organization / one',
+      'project / one',
+      'environment / one',
+      input,
+      'assign:1'
+    );
+
+    expect(
+      calls.map(([inputPath, init]) => ({
+        input: inputPath,
+        method: init?.method,
+        body: init?.body,
+        contentType: (init?.headers as Partial<Record<string, string>> | undefined)?.['Content-Type'],
+        idempotencyKey: (init?.headers as Partial<Record<string, string>> | undefined)?.[
+          'Idempotency-Key'
+        ],
+      }))
+    ).toEqual([
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/environments/environment%20%2F%20one/plugin-assignments',
+        method: 'GET',
+        body: undefined,
+        contentType: undefined,
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/environments/environment%20%2F%20one/plugin-assignments/assignment%20%2F%20one',
+        method: 'GET',
+        body: undefined,
+        contentType: undefined,
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/environments/environment%20%2F%20one/plugin-assignments',
+        method: 'PUT',
+        body: JSON.stringify(input),
+        contentType: 'application/json',
+        idempotencyKey: 'assign:1',
+      },
+    ]);
+  });
+
+  it('encodes plugin plan projection get and confirm paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const confirmation = {
+      schema: 'a3s.use.plugin-operation-confirmation.v1',
+      operationId: 'install:acme-research:0001',
+      planDigest: `sha256:${'a'.repeat(64)}`,
+      confirmedBy: 'user',
+      confirmedAtMs: 1,
+    };
+
+    await api.getPluginPlanProjection('organization / one', 'projection / one');
+    await api.confirmPluginPlanProjection(
+      'organization / one',
+      'projection / one',
+      { confirmation },
+      'confirm:1'
+    );
+
+    expect(
+      calls.map(([inputPath, init]) => ({
+        input: inputPath,
+        method: init?.method,
+        body: init?.body,
+        idempotencyKey: (init?.headers as Partial<Record<string, string>> | undefined)?.[
+          'Idempotency-Key'
+        ],
+      }))
+    ).toEqual([
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-plan-projections/projection%20%2F%20one',
+        method: 'GET',
+        body: undefined,
+        idempotencyKey: undefined,
+      },
+      {
+        input:
+          '/api/v1/organizations/organization%20%2F%20one/plugin-plan-projections/projection%20%2F%20one/confirmation',
+        method: 'PUT',
+        body: JSON.stringify({ confirmation }),
+        idempotencyKey: 'confirm:1',
       },
     ]);
   });

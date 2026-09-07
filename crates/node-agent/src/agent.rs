@@ -593,6 +593,7 @@ fn completion_observation(acknowledgement: &NodeCommandAck) -> Option<RuntimeObs
             | NodeCommandResult::AgentProviderCommandAccepted { .. }
             | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostTrustAuthorized { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
             | NodeCommandResult::PluginHostEnablementPlanned { .. }
@@ -629,6 +630,7 @@ fn completion_gateway_ack(acknowledgement: &NodeCommandAck) -> Option<&NodeGatew
             | NodeCommandResult::AgentProviderCommandAccepted { .. }
             | NodeCommandResult::CodeAgentCommandAccepted { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostTrustAuthorized { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
             | NodeCommandResult::PluginHostEnablementPlanned { .. }

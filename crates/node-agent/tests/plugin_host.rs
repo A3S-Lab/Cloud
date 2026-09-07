@@ -84,6 +84,10 @@ struct ManagerCalls {
 struct RecordingPluginHostManager {
     capabilities: PluginHostCapabilities,
     calls: ManagerCalls,
+    last_surfaces: std::sync::Mutex<Vec<PluginSurfaceRef>>,
+    last_action: std::sync::Mutex<Option<PluginOperationAction>>,
+    last_desired: std::sync::Mutex<PluginDesiredState>,
+    last_observed: std::sync::Mutex<PluginObservedState>,
 }
 
 impl RecordingPluginHostManager {
@@ -91,6 +95,47 @@ impl RecordingPluginHostManager {
         Self {
             capabilities: plugin_capabilities(),
             calls: ManagerCalls::default(),
+            last_surfaces: std::sync::Mutex::new(vec![skill_surface()]),
+            last_action: std::sync::Mutex::new(None),
+            last_desired: std::sync::Mutex::new(PluginDesiredState::Enabled),
+            last_observed: std::sync::Mutex::new(PluginObservedState::Ready),
+        }
+    }
+
+    fn remember_surfaces(&self, surfaces: &[PluginSurfaceRef]) {
+        *self
+            .last_surfaces
+            .lock()
+            .expect("selected surfaces lock") = surfaces.to_vec();
+    }
+
+    fn remember_lifecycle(
+        &self,
+        action: PluginOperationAction,
+        desired: PluginDesiredState,
+        observed: PluginObservedState,
+    ) {
+        *self.last_action.lock().expect("action lock") = Some(action);
+        *self.last_desired.lock().expect("desired lock") = desired;
+        *self.last_observed.lock().expect("observed lock") = observed;
+    }
+
+    fn recalled_state(&self, package_generation: u64) -> PluginHostPackageState {
+        let surfaces = self
+            .last_surfaces
+            .lock()
+            .expect("selected surfaces lock")
+            .clone();
+        let desired = *self.last_desired.lock().expect("desired lock");
+        let observed = *self.last_observed.lock().expect("observed lock");
+        match (desired, observed) {
+            (PluginDesiredState::Absent, PluginObservedState::Removed) => removed_state(),
+            _ => {
+                let mut state = installed_state(package_generation, surfaces);
+                state.desired = desired;
+                state.observed = observed;
+                state
+            }
         }
     }
 }
@@ -104,44 +149,120 @@ impl PluginHostManager for RecordingPluginHostManager {
 
     async fn plan(&self, request: PluginHostPlanRequest) -> UseResult<PluginHostPlanResult> {
         self.calls.plan.fetch_add(1, Ordering::SeqCst);
-        let candidate = request.candidate.as_ref().ok_or_else(|| {
-            UseError::new(
-                "use.plugin.test_candidate_missing",
-                "The test manager requires an install candidate.",
-            )
-        })?;
-        let transition =
-            candidate.install_transition(PlanPackageRole::Root, &request.selected_surfaces)?;
-        let draft = PluginOperationPlanDraft::new(
-            PluginOperationAction::Install,
-            request.package_id.as_str(),
-            request.package_id.component_id(),
-            vec![transition],
-            Vec::new(),
-            vec![PlannedWorkspaceImpact {
-                scope_id: request.scope.scope_id.clone(),
-                grant_before_digest: None,
-                grant_after_digest: Some(DIGEST_B.into()),
-                enabled_before: false,
-                enabled_after: true,
-            }],
-            PlannedOperationImpact {
-                download_bytes: candidate.record.archive.length,
-                installed_bytes_after: candidate.record.package.expanded_bytes,
-                reclaimed_bytes: 0,
-                drain_required: false,
-                retained_data: false,
-                okf_changes: Vec::new(),
-            },
-            PlannedStateEvidence {
-                state_revision: 3,
-                capability_generation: 12,
-                receipt_digest: None,
-            },
-        )?;
+        *self.last_action.lock().expect("action lock") = Some(request.action);
         let created_at_ms = now_ms();
+        let (draft, desired, observed) = match request.action {
+            PluginOperationAction::Install => {
+                let candidate = request.candidate.as_ref().ok_or_else(|| {
+                    UseError::new(
+                        "use.plugin.test_candidate_missing",
+                        "The test manager requires an install candidate.",
+                    )
+                })?;
+                let selected_surfaces = if request.selected_surfaces.is_empty() {
+                    vec![skill_surface()]
+                } else {
+                    request.selected_surfaces.clone()
+                };
+                let transition = candidate
+                    .install_transition(PlanPackageRole::Root, &selected_surfaces)?;
+                self.remember_surfaces(&selected_surfaces);
+                (
+                    PluginOperationPlanDraft::new(
+                        PluginOperationAction::Install,
+                        request.package_id.as_str(),
+                        request.package_id.component_id(),
+                        vec![transition],
+                        Vec::new(),
+                        vec![PlannedWorkspaceImpact {
+                            scope_id: request.scope.scope_id.clone(),
+                            grant_before_digest: None,
+                            grant_after_digest: Some(DIGEST_B.into()),
+                            enabled_before: false,
+                            enabled_after: true,
+                        }],
+                        PlannedOperationImpact {
+                            download_bytes: candidate.record.archive.length,
+                            installed_bytes_after: candidate.record.package.expanded_bytes,
+                            reclaimed_bytes: 0,
+                            drain_required: false,
+                            retained_data: false,
+                            okf_changes: Vec::new(),
+                        },
+                        PlannedStateEvidence {
+                            state_revision: 3,
+                            capability_generation: 12,
+                            receipt_digest: None,
+                        },
+                    )?,
+                    PluginDesiredState::Enabled,
+                    PluginObservedState::Ready,
+                )
+            }
+            PluginOperationAction::Uninstall => {
+                if request.candidate.is_some() || !request.selected_surfaces.is_empty() {
+                    return Err(UseError::new(
+                        "use.plugin.test_uninstall_shape",
+                        "Uninstall must omit candidate and selected surfaces.",
+                    ));
+                }
+                let evidence = candidate();
+                let surfaces = vec![skill_surface()];
+                let transition =
+                    evidence.remove_transition(PlanPackageRole::Root, &surfaces)?;
+                self.remember_surfaces(&[]);
+                (
+                    PluginOperationPlanDraft::new(
+                        PluginOperationAction::Uninstall,
+                        request.package_id.as_str(),
+                        request.package_id.component_id(),
+                        vec![transition],
+                        Vec::new(),
+                        vec![PlannedWorkspaceImpact {
+                            scope_id: request.scope.scope_id.clone(),
+                            grant_before_digest: Some(DIGEST_A.into()),
+                            grant_after_digest: None,
+                            enabled_before: true,
+                            enabled_after: false,
+                        }],
+                        PlannedOperationImpact {
+                            download_bytes: 0,
+                            installed_bytes_after: 0,
+                            reclaimed_bytes: evidence.record.package.expanded_bytes,
+                            drain_required: false,
+                            retained_data: true,
+                            okf_changes: Vec::new(),
+                        },
+                        PlannedStateEvidence {
+                            state_revision: 3,
+                            capability_generation: 12,
+                            receipt_digest: Some(DIGEST_C.into()),
+                        },
+                    )?,
+                    PluginDesiredState::Absent,
+                    PluginObservedState::Removed,
+                )
+            }
+            PluginOperationAction::Upgrade => {
+                return Err(UseError::new(
+                    "use.plugin.upgrade_lock_required",
+                    "Upgrade package locks are owned by A3S Use; Cloud Node Agent only journals the exact Upgrade plan request.",
+                ));
+            }
+            PluginOperationAction::Enable | PluginOperationAction::Disable => {
+                return Err(UseError::new(
+                    "use.plugin.test_enablement_port",
+                    "Enable/disable must use the enablement plan port.",
+                ));
+            }
+        };
+        self.remember_lifecycle(request.action, desired, observed);
         let plan = draft.bind(PluginOperationPlanBinding {
-            operation_id: "use-operation:plan:0001".into(),
+            operation_id: match request.action {
+                PluginOperationAction::Install => "use-operation:plan:install".into(),
+                PluginOperationAction::Uninstall => "use-operation:plan:uninstall".into(),
+                other => format!("use-operation:plan:{other:?}"),
+            },
             created_at_ms,
             expires_at_ms: created_at_ms + 10 * 60 * 1_000,
             scope: PlanScope {
@@ -180,7 +301,7 @@ impl PluginHostManager for RecordingPluginHostManager {
             plan_digest: request.plan_digest,
             completed_at_ms: now_ms(),
             operation_result_digest: DIGEST_A.into(),
-            state: installed_state(13),
+            state: self.recalled_state(13),
             replayed: false,
         })
     }
@@ -190,7 +311,7 @@ impl PluginHostManager for RecordingPluginHostManager {
         request: PluginHostEnablementPlanRequest,
     ) -> UseResult<PluginHostEnablementPlanResult> {
         self.calls.enablement_plan.fetch_add(1, Ordering::SeqCst);
-        let state = installed_state(request.expected_package_generation);
+        let state = self.recalled_state(request.expected_package_generation);
         let planned_at_ms = now_ms();
         if request.enabled {
             return Ok(PluginHostEnablementPlanResult {
@@ -290,7 +411,7 @@ impl PluginHostManager for RecordingPluginHostManager {
             package_id: request.package_id,
             observed_at_ms: now_ms(),
             status: PluginHostObservationStatus::Available {
-                state: installed_state(13),
+                state: self.recalled_state(13),
             },
         })
     }
@@ -336,7 +457,86 @@ fn candidate() -> VerifiedPluginCatalogRecord {
     .expect("verified catalog record")
 }
 
-fn installed_state(package_generation: u64) -> PluginHostPackageState {
+fn skill_only_candidate() -> VerifiedPluginCatalogRecord {
+    let mut record = PluginCatalogRecord::from_json(CATALOG).expect("catalog fixture");
+    record.surfaces.retain(|surface| surface.kind == PluginSurfaceKind::Skill);
+    for surface in &mut record.surfaces {
+        surface.requires.clear();
+        surface.okf_bundle = None;
+    }
+    record.permission_ceiling.surfaces.clear();
+    record.permission_ceiling_digest = record
+        .permission_ceiling
+        .descriptor_digest()
+        .expect("permission ceiling digest");
+    record.validate().expect("skill-only catalog");
+    let catalog_record_digest = record.descriptor_digest().expect("catalog digest");
+    VerifiedPluginCatalogRecord::new(
+        record,
+        VerifiedCatalogProvenance {
+            registry_name: "official".into(),
+            registry_url: "https://plugins.a3s.dev/catalog".into(),
+            root_sha256: DIGEST_D.into(),
+            root_version: 7,
+            timestamp_version: 42,
+            snapshot_version: 41,
+            targets_version: 39,
+            catalog_record_digest,
+        },
+    )
+    .expect("verified skill-only catalog record")
+}
+
+fn ui_only_candidate() -> VerifiedPluginCatalogRecord {
+    let mut record = PluginCatalogRecord::from_json(CATALOG).expect("catalog fixture");
+    record.surfaces.retain(|surface| surface.kind == PluginSurfaceKind::Skill);
+    for surface in &mut record.surfaces {
+        surface.kind = PluginSurfaceKind::Ui;
+        surface.id = "console".into();
+        surface.requires.clear();
+        surface.okf_bundle = None;
+    }
+    record.permission_ceiling.surfaces.clear();
+    record.permission_ceiling_digest = record
+        .permission_ceiling
+        .descriptor_digest()
+        .expect("permission ceiling digest");
+    record.validate().expect("ui-only catalog");
+    let catalog_record_digest = record.descriptor_digest().expect("catalog digest");
+    VerifiedPluginCatalogRecord::new(
+        record,
+        VerifiedCatalogProvenance {
+            registry_name: "official".into(),
+            registry_url: "https://plugins.a3s.dev/catalog".into(),
+            root_sha256: DIGEST_D.into(),
+            root_version: 7,
+            timestamp_version: 42,
+            snapshot_version: 41,
+            targets_version: 39,
+            catalog_record_digest,
+        },
+    )
+    .expect("verified ui-only catalog record")
+}
+
+fn skill_surface() -> PluginSurfaceRef {
+    PluginSurfaceRef {
+        kind: PluginSurfaceKind::Skill,
+        id: "research".into(),
+    }
+}
+
+fn ui_surface() -> PluginSurfaceRef {
+    PluginSurfaceRef {
+        kind: PluginSurfaceKind::Ui,
+        id: "console".into(),
+    }
+}
+
+fn installed_state(
+    package_generation: u64,
+    selected_surfaces: Vec<PluginSurfaceRef>,
+) -> PluginHostPackageState {
     PluginHostPackageState {
         version: Some("1.0.0".into()),
         package_generation: Some(package_generation),
@@ -347,10 +547,22 @@ fn installed_state(package_generation: u64) -> PluginHostPackageState {
         capability_revision: DIGEST_D.into(),
         desired: PluginDesiredState::Enabled,
         observed: PluginObservedState::Ready,
-        selected_surfaces: vec![PluginSurfaceRef {
-            kind: PluginSurfaceKind::Skill,
-            id: "research".into(),
-        }],
+        selected_surfaces,
+    }
+}
+
+fn removed_state() -> PluginHostPackageState {
+    PluginHostPackageState {
+        version: None,
+        package_generation: None,
+        package_digest: None,
+        manifest_digest: None,
+        receipt_digest: None,
+        capability_generation: 15,
+        capability_revision: DIGEST_D.into(),
+        desired: PluginDesiredState::Absent,
+        observed: PluginObservedState::Removed,
+        selected_surfaces: Vec::new(),
     }
 }
 
@@ -569,11 +781,11 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
         ))
         .await
         .expect("apply command");
-    assert!(matches!(
-        apply_ack.outcome,
+    match &apply_ack.outcome {
         NodeCommandOutcome::Succeeded { result }
-            if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { .. })
-    ));
+            if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { .. }) => {}
+        other => panic!("apply command must succeed: {other:?}"),
+    }
 
     let enablement_request = PluginHostEnablementPlanRequest {
         schema: PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA.into(),
@@ -656,4 +868,392 @@ async fn same_generation_plugin_stages_dispatch_through_only_the_shared_manager_
     assert_eq!(manager.calls.apply.load(Ordering::SeqCst), 1);
     assert_eq!(manager.calls.enablement_plan.load(Ordering::SeqCst), 1);
     assert_eq!(manager.calls.observe.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn skill_only_plan_apply_observe_converges_through_shared_manager_port() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let assignment_id = Uuid::now_v7();
+    let manager = Arc::new(RecordingPluginHostManager::new());
+    let executor = executor(directory.path(), node_id, Some(manager.clone()));
+    let capabilities_digest = capabilities_digest();
+    let selected_surfaces = vec![skill_surface()];
+
+    let plan_request = PluginHostPlanRequest {
+        schema: PLUGIN_HOST_PLAN_REQUEST_SCHEMA.into(),
+        request_id: "request:plan:skill".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        action: PluginOperationAction::Install,
+        package_id: package_id(),
+        candidate: Some(skill_only_candidate()),
+        package_lock: None,
+        selected_surfaces: selected_surfaces.clone(),
+    };
+    let plan_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            1,
+            NodeCommandPayload::PluginHostPlan {
+                request: Box::new(plan_request),
+            },
+        ))
+        .await
+        .expect("skill plan command");
+    let NodeCommandOutcome::Succeeded { result } = plan_ack.outcome else {
+        panic!("skill plan must succeed");
+    };
+    let NodeCommandResult::PluginHostPlanned { plan, .. } = result.as_ref() else {
+        panic!("skill plan result");
+    };
+    assert_eq!(plan.plan.plan.action, PluginOperationAction::Install);
+
+    let apply_request = PluginHostApplyRequest {
+        schema: PLUGIN_HOST_APPLY_REQUEST_SCHEMA.into(),
+        request_id: "request:apply:skill".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        package_id: package_id(),
+        operation_id: plan.plan.plan.operation_id.clone(),
+        plan_digest: plan.plan.plan_digest.clone(),
+        confirmation: None,
+    };
+    let apply_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            2,
+            NodeCommandPayload::PluginHostApply {
+                request: Box::new(apply_request),
+            },
+        ))
+        .await
+        .expect("skill apply command");
+    assert!(matches!(
+        apply_ack.outcome,
+        NodeCommandOutcome::Succeeded { result }
+            if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { applied, .. }
+                if applied.state.selected_surfaces == selected_surfaces
+                    && applied.state.desired == PluginDesiredState::Enabled
+                    && applied.state.observed == PluginObservedState::Ready)
+    ));
+
+    let observation_request = PluginHostObservationRequest {
+        schema: PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA.into(),
+        request_id: "request:observe:skill".into(),
+        assignment_generation: 1,
+        capabilities_digest,
+        scope: managed_scope(),
+        package_id: package_id(),
+    };
+    let observation_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            3,
+            NodeCommandPayload::PluginHostObserve {
+                request: Box::new(observation_request),
+            },
+        ))
+        .await
+        .expect("skill observation command");
+    let NodeCommandOutcome::Succeeded { result } = observation_ack.outcome else {
+        panic!("skill observation must succeed");
+    };
+    let NodeCommandResult::PluginHostObserved { observation, .. } = result.as_ref() else {
+        panic!("skill observation result");
+    };
+    let PluginHostObservationStatus::Available { state } = &observation.status else {
+        panic!("skill observation must be available");
+    };
+    assert_eq!(state.selected_surfaces, selected_surfaces);
+    assert_eq!(state.desired, PluginDesiredState::Enabled);
+    assert_eq!(state.observed, PluginObservedState::Ready);
+    assert_eq!(manager.calls.plan.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.apply.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.observe.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn ui_only_plan_apply_observe_converges_through_shared_manager_port() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let assignment_id = Uuid::now_v7();
+    let manager = Arc::new(RecordingPluginHostManager::new());
+    let executor = executor(directory.path(), node_id, Some(manager.clone()));
+    let capabilities_digest = capabilities_digest();
+    let selected_surfaces = vec![ui_surface()];
+
+    let plan_request = PluginHostPlanRequest {
+        schema: PLUGIN_HOST_PLAN_REQUEST_SCHEMA.into(),
+        request_id: "request:plan:ui".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        action: PluginOperationAction::Install,
+        package_id: package_id(),
+        candidate: Some(ui_only_candidate()),
+        package_lock: None,
+        selected_surfaces: selected_surfaces.clone(),
+    };
+    let plan_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            1,
+            NodeCommandPayload::PluginHostPlan {
+                request: Box::new(plan_request),
+            },
+        ))
+        .await
+        .expect("ui plan command");
+    let NodeCommandOutcome::Succeeded { result } = plan_ack.outcome else {
+        panic!("ui plan must succeed");
+    };
+    let NodeCommandResult::PluginHostPlanned { plan, .. } = result.as_ref() else {
+        panic!("ui plan result");
+    };
+    assert_eq!(plan.plan.plan.action, PluginOperationAction::Install);
+
+    let apply_request = PluginHostApplyRequest {
+        schema: PLUGIN_HOST_APPLY_REQUEST_SCHEMA.into(),
+        request_id: "request:apply:ui".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        package_id: package_id(),
+        operation_id: plan.plan.plan.operation_id.clone(),
+        plan_digest: plan.plan.plan_digest.clone(),
+        confirmation: None,
+    };
+    let apply_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            2,
+            NodeCommandPayload::PluginHostApply {
+                request: Box::new(apply_request),
+            },
+        ))
+        .await
+        .expect("ui apply command");
+    assert!(matches!(
+        apply_ack.outcome,
+        NodeCommandOutcome::Succeeded { result }
+            if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { applied, .. }
+                if applied.state.selected_surfaces == selected_surfaces
+                    && applied.state.desired == PluginDesiredState::Enabled
+                    && applied.state.observed == PluginObservedState::Ready)
+    ));
+
+    let observation_request = PluginHostObservationRequest {
+        schema: PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA.into(),
+        request_id: "request:observe:ui".into(),
+        assignment_generation: 1,
+        capabilities_digest,
+        scope: managed_scope(),
+        package_id: package_id(),
+    };
+    let observation_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            3,
+            NodeCommandPayload::PluginHostObserve {
+                request: Box::new(observation_request),
+            },
+        ))
+        .await
+        .expect("ui observation command");
+    let NodeCommandOutcome::Succeeded { result } = observation_ack.outcome else {
+        panic!("ui observation must succeed");
+    };
+    let NodeCommandResult::PluginHostObserved { observation, .. } = result.as_ref() else {
+        panic!("ui observation result");
+    };
+    let PluginHostObservationStatus::Available { state } = &observation.status else {
+        panic!("ui observation must be available");
+    };
+    assert_eq!(state.selected_surfaces, selected_surfaces);
+    assert_eq!(state.desired, PluginDesiredState::Enabled);
+    assert_eq!(state.observed, PluginObservedState::Ready);
+    assert_eq!(manager.calls.plan.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.apply.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.observe.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn uninstall_plan_apply_observe_converges_through_shared_manager_port() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let assignment_id = Uuid::now_v7();
+    let manager = Arc::new(RecordingPluginHostManager::new());
+    let executor = executor(directory.path(), node_id, Some(manager.clone()));
+    let capabilities_digest = capabilities_digest();
+
+    let plan_request = PluginHostPlanRequest {
+        schema: PLUGIN_HOST_PLAN_REQUEST_SCHEMA.into(),
+        request_id: "request:plan:uninstall".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        action: PluginOperationAction::Uninstall,
+        package_id: package_id(),
+        candidate: None,
+        package_lock: None,
+        selected_surfaces: Vec::new(),
+    };
+    let plan_command = envelope(
+        node_id,
+        assignment_id,
+        1,
+        NodeCommandPayload::PluginHostPlan {
+            request: Box::new(plan_request),
+        },
+    );
+    let plan_ack = executor
+        .execute(plan_command.clone())
+        .await
+        .expect("uninstall plan command");
+    let NodeCommandOutcome::Succeeded { result } = &plan_ack.outcome else {
+        panic!("uninstall plan must succeed");
+    };
+    let NodeCommandResult::PluginHostPlanned { plan, .. } = result.as_ref() else {
+        panic!("uninstall plan result");
+    };
+    assert_eq!(plan.plan.plan.action, PluginOperationAction::Uninstall);
+
+    let mut redelivered = plan_command;
+    redelivered.lease_id = Uuid::now_v7();
+    let replayed = executor
+        .execute(redelivered)
+        .await
+        .expect("uninstall plan replay");
+    assert_eq!(replayed.outcome, plan_ack.outcome);
+    assert_eq!(manager.calls.plan.load(Ordering::SeqCst), 1);
+
+    let apply_request = PluginHostApplyRequest {
+        schema: PLUGIN_HOST_APPLY_REQUEST_SCHEMA.into(),
+        request_id: "request:apply:uninstall".into(),
+        assignment_generation: 1,
+        capabilities_digest: capabilities_digest.clone(),
+        scope: managed_scope(),
+        package_id: package_id(),
+        operation_id: plan.plan.plan.operation_id.clone(),
+        plan_digest: plan.plan.plan_digest.clone(),
+        confirmation: None,
+    };
+    let apply_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            2,
+            NodeCommandPayload::PluginHostApply {
+                request: Box::new(apply_request),
+            },
+        ))
+        .await
+        .expect("uninstall apply command");
+    assert!(matches!(
+        apply_ack.outcome,
+        NodeCommandOutcome::Succeeded { result }
+            if matches!(result.as_ref(), NodeCommandResult::PluginHostApplied { applied, .. }
+                if applied.state.desired == PluginDesiredState::Absent
+                    && applied.state.observed == PluginObservedState::Removed
+                    && applied.state.selected_surfaces.is_empty())
+    ));
+
+    let observation_ack = executor
+        .execute(envelope(
+            node_id,
+            assignment_id,
+            3,
+            NodeCommandPayload::PluginHostObserve {
+                request: Box::new(PluginHostObservationRequest {
+                    schema: PLUGIN_HOST_OBSERVATION_REQUEST_SCHEMA.into(),
+                    request_id: "request:observe:uninstall".into(),
+                    assignment_generation: 1,
+                    capabilities_digest,
+                    scope: managed_scope(),
+                    package_id: package_id(),
+                }),
+            },
+        ))
+        .await
+        .expect("uninstall observation");
+    let NodeCommandOutcome::Succeeded { result } = observation_ack.outcome else {
+        panic!("uninstall observation must succeed");
+    };
+    let NodeCommandResult::PluginHostObserved { observation, .. } = result.as_ref() else {
+        panic!("uninstall observation result");
+    };
+    let PluginHostObservationStatus::Available { state } = &observation.status else {
+        panic!("uninstall observation must be available");
+    };
+    assert_eq!(state.desired, PluginDesiredState::Absent);
+    assert_eq!(state.observed, PluginObservedState::Removed);
+    assert!(state.selected_surfaces.is_empty());
+    assert_eq!(manager.calls.apply.load(Ordering::SeqCst), 1);
+    assert_eq!(manager.calls.observe.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn upgrade_plan_request_journals_exact_action_without_second_channel() {
+    let directory = tempfile::tempdir().expect("journal directory");
+    let node_id = Uuid::now_v7();
+    let assignment_id = Uuid::now_v7();
+    let manager = Arc::new(RecordingPluginHostManager::new());
+    let executor = executor(directory.path(), node_id, Some(manager.clone()));
+    let capabilities_digest = capabilities_digest();
+
+    let plan_request = PluginHostPlanRequest {
+        schema: PLUGIN_HOST_PLAN_REQUEST_SCHEMA.into(),
+        request_id: "request:plan:upgrade".into(),
+        assignment_generation: 1,
+        capabilities_digest,
+        scope: managed_scope(),
+        action: PluginOperationAction::Upgrade,
+        package_id: package_id(),
+        candidate: Some(skill_only_candidate()),
+        package_lock: None,
+        selected_surfaces: vec![skill_surface()],
+    };
+    let command = envelope(
+        node_id,
+        assignment_id,
+        1,
+        NodeCommandPayload::PluginHostPlan {
+            request: Box::new(plan_request),
+        },
+    );
+    let acknowledgement = executor
+        .execute(command.clone())
+        .await
+        .expect("upgrade plan command");
+    let failure = match &acknowledgement.outcome {
+        NodeCommandOutcome::Failed { failure } | NodeCommandOutcome::Rejected { failure } => {
+            failure
+        }
+        other => panic!("upgrade without Use package locks must fail closed: {other:?}"),
+    };
+    assert!(
+        failure.code.contains("upgrade") || failure.message.to_lowercase().contains("upgrade"),
+        "unexpected failure: {} / {}",
+        failure.code,
+        failure.message
+    );
+    assert_eq!(
+        *manager.last_action.lock().expect("action"),
+        Some(PluginOperationAction::Upgrade)
+    );
+
+    let mut redelivered = command;
+    redelivered.lease_id = Uuid::now_v7();
+    let replayed = executor.execute(redelivered).await.expect("upgrade replay");
+    assert_eq!(replayed.outcome, acknowledgement.outcome);
+    assert_eq!(manager.calls.plan.load(Ordering::SeqCst), 1);
 }

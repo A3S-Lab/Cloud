@@ -59,6 +59,9 @@ impl NodeArtifactAuthorizer {
             NodeCommandPayload::BoxBuildStart { request: build } => {
                 box_build_download_authorized(build, request, &artifact)
             }
+            NodeCommandPayload::PluginHostAuthorizeTrust { request: authorize } => {
+                authorize.artifact_for_mount(&request.mount_name) == Some(&artifact)
+            }
             _ => false,
         };
         if !authorized {
@@ -145,6 +148,9 @@ fn artifact_binding_digest(payload: &NodeCommandPayload) -> Result<Option<String
         NodeCommandPayload::RuntimeApply { request, .. } => request.spec.digest().map(Some),
         NodeCommandPayload::BoxBuildStart { request }
         | NodeCommandPayload::BoxBuildInspect { request } => request.binding_digest().map(Some),
+        NodeCommandPayload::PluginHostAuthorizeTrust { request } => {
+            request.binding_digest().map(Some)
+        }
         NodeCommandPayload::ResourceClaimPrepare { .. }
         | NodeCommandPayload::RuntimeInspect { .. }
         | NodeCommandPayload::RuntimeStop { .. }
@@ -202,7 +208,8 @@ mod tests {
     use super::*;
     use a3s_cloud_contracts::{
         artifact_uri, NodeBoxBuildCacheInput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
-        NodeBoxBuildPlan, NodeBoxBuildPlatform,
+        NodeBoxBuildPlan, NodeBoxBuildPlatform, NodePluginHostAuthorizeTrustRequest,
+        PLUGIN_POLICY_ACL_MEDIA_TYPE, PLUGIN_TRUST_ROOT_MEDIA_TYPE,
     };
     use sha2::{Digest, Sha256};
 
@@ -384,5 +391,57 @@ mod tests {
             artifact_binding_digest(&cancel).expect("cancel binding"),
             None
         );
+    }
+
+    #[test]
+    fn authorize_trust_binding_digest_authorizes_exact_mounts() {
+        let trust = ArtifactRef {
+            uri: artifact_uri(&digest('a')).expect("trust URI"),
+            digest: digest('a'),
+            media_type: PLUGIN_TRUST_ROOT_MEDIA_TYPE.into(),
+        };
+        let policy = ArtifactRef {
+            uri: artifact_uri(&digest('b')).expect("policy URI"),
+            digest: digest('b'),
+            media_type: PLUGIN_POLICY_ACL_MEDIA_TYPE.into(),
+        };
+        let authorize = NodePluginHostAuthorizeTrustRequest::new(4, trust.clone(), policy.clone())
+            .expect("authorize-trust request");
+        let binding = authorize.binding_digest().expect("binding digest");
+        let payload = NodeCommandPayload::PluginHostAuthorizeTrust {
+            request: Box::new(authorize.clone()),
+        };
+        assert_eq!(
+            artifact_binding_digest(&payload).expect("authorize-trust binding"),
+            Some(binding.clone())
+        );
+
+        let node_id = uuid::Uuid::now_v7();
+        let command_id = uuid::Uuid::now_v7();
+        let trust_download = NodeArtifactDownloadRequest::new(
+            node_id,
+            command_id,
+            &binding,
+            NodePluginHostAuthorizeTrustRequest::TRUST_ROOT_MOUNT,
+            &trust,
+        )
+        .expect("trust download");
+        let policy_download = NodeArtifactDownloadRequest::new(
+            node_id,
+            command_id,
+            &binding,
+            NodePluginHostAuthorizeTrustRequest::POLICY_ACL_MOUNT,
+            &policy,
+        )
+        .expect("policy download");
+        assert_eq!(
+            authorize.artifact_for_mount(&trust_download.mount_name),
+            Some(&trust)
+        );
+        assert_eq!(
+            authorize.artifact_for_mount(&policy_download.mount_name),
+            Some(&policy)
+        );
+        assert!(authorize.artifact_for_mount("build-source").is_none());
     }
 }

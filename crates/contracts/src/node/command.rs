@@ -23,7 +23,8 @@ use super::{
     NodeBoxBuildInspection, NodeBoxBuildRemoveResult, NodeBoxBuildRequest, NodeBoxBuildStartResult,
     NodeCodeAgentRuntimeBindingV1, NodeDurableCellOperatorBindingV1,
     NodeDurableCellOperatorObservationV1, NodeGatewayAck, NodeGatewaySnapshotObservation,
-    NodePluginHostCapabilitiesRequest, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodePluginHostAuthorizeTrustRequest, NodePluginHostCapabilitiesRequest,
+    NodePluginHostTrustAuthorized, NodeResourceClaimBinding, NodeResourceClaimPrepare,
     NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
     NODE_AGENT_PROVIDER_COMMAND_SCHEMA_V1, NODE_CODE_AGENT_COMMAND_SCHEMA_V1,
     NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1,
@@ -86,6 +87,9 @@ pub enum NodeCommandPayload {
     PluginHostCapabilitiesInspect {
         request: NodePluginHostCapabilitiesRequest,
     },
+    PluginHostAuthorizeTrust {
+        request: Box<NodePluginHostAuthorizeTrustRequest>,
+    },
     PluginHostPlan {
         request: Box<PluginHostPlanRequest>,
     },
@@ -131,6 +135,7 @@ impl NodeCommandPayload {
             Self::GatewaySnapshotInstall { .. } => "gateway_snapshot_install",
             Self::GatewaySnapshotObserve { .. } => "gateway_snapshot_observe",
             Self::PluginHostCapabilitiesInspect { .. } => "plugin_host_capabilities_inspect",
+            Self::PluginHostAuthorizeTrust { .. } => "plugin_host_authorize_trust",
             Self::PluginHostPlan { .. } => "plugin_host_plan",
             Self::PluginHostApply { .. } => "plugin_host_apply",
             Self::PluginHostPlanEnablement { .. } => "plugin_host_plan_enablement",
@@ -163,6 +168,7 @@ impl NodeCommandPayload {
             Self::GatewaySnapshotInstall { .. } => GatewaySnapshot::SCHEMA,
             Self::GatewaySnapshotObserve { .. } => GatewaySnapshotObservationRequest::SCHEMA,
             Self::PluginHostCapabilitiesInspect { .. } => NodePluginHostCapabilitiesRequest::SCHEMA,
+            Self::PluginHostAuthorizeTrust { .. } => NodePluginHostAuthorizeTrustRequest::SCHEMA,
             Self::PluginHostPlan { .. } => PLUGIN_HOST_PLAN_REQUEST_SCHEMA,
             Self::PluginHostApply { .. } => PLUGIN_HOST_APPLY_REQUEST_SCHEMA,
             Self::PluginHostPlanEnablement { .. } => PLUGIN_HOST_ENABLEMENT_PLAN_REQUEST_SCHEMA,
@@ -187,6 +193,7 @@ impl NodeCommandPayload {
             Self::GatewaySnapshotInstall { snapshot } => snapshot.revision,
             Self::GatewaySnapshotObserve { request } => request.revision,
             Self::PluginHostCapabilitiesInspect { request } => request.generation,
+            Self::PluginHostAuthorizeTrust { request } => request.generation,
             Self::PluginHostPlan { request } => request.assignment_generation,
             Self::PluginHostApply { request } => request.assignment_generation,
             Self::PluginHostPlanEnablement { request } => request.assignment_generation,
@@ -229,6 +236,7 @@ impl NodeCommandPayload {
             Self::GatewaySnapshotInstall { snapshot } => snapshot.validate(),
             Self::GatewaySnapshotObserve { request } => request.validate(),
             Self::PluginHostCapabilitiesInspect { request } => request.validate(),
+            Self::PluginHostAuthorizeTrust { request } => request.validate(),
             Self::PluginHostPlan { request } => request.validate().map_err(|error| {
                 format!("invalid A3S Use Plugin Host plan request ({})", error.code)
             }),
@@ -397,6 +405,7 @@ impl NodeCommandEnvelope {
             | NodeCommandPayload::GatewaySnapshotInstall { .. }
             | NodeCommandPayload::GatewaySnapshotObserve { .. }
             | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+            | NodeCommandPayload::PluginHostAuthorizeTrust { .. }
             | NodeCommandPayload::PluginHostPlan { .. }
             | NodeCommandPayload::PluginHostApply { .. }
             | NodeCommandPayload::PluginHostPlanEnablement { .. }
@@ -472,6 +481,9 @@ pub enum NodeCommandResult {
     PluginHostCapabilitiesInspected {
         capabilities: PluginHostCapabilities,
     },
+    PluginHostTrustAuthorized {
+        authorized: NodePluginHostTrustAuthorized,
+    },
     PluginHostPlanned {
         capabilities: PluginHostCapabilities,
         plan: Box<PluginHostPlanResult>,
@@ -514,6 +526,7 @@ impl NodeCommandResult {
             Self::PluginHostCapabilitiesInspected { capabilities } => capabilities
                 .validate()
                 .map_err(|error| format!("invalid Plugin Host capabilities ({})", error.code)),
+            Self::PluginHostTrustAuthorized { authorized } => authorized.validate(),
             Self::PluginHostPlanned { capabilities, plan } => {
                 capabilities.validate().map_err(|error| {
                     format!("invalid Plugin Host capabilities ({})", error.code)
@@ -660,6 +673,10 @@ impl NodeCommandResult {
             ) => capabilities
                 .validate()
                 .map_err(|error| format!("invalid Plugin Host capabilities ({})", error.code)),
+            (
+                NodeCommandPayload::PluginHostAuthorizeTrust { request },
+                Self::PluginHostTrustAuthorized { authorized },
+            ) => authorized.validate_for(request),
             (
                 NodeCommandPayload::PluginHostPlan { request },
                 Self::PluginHostPlanned { capabilities, plan },
@@ -901,7 +918,8 @@ impl NodeCommandAck {
                 | NodeCommandResult::BoxBuildRemoved { .. }
                 | NodeCommandResult::GatewaySnapshotInstalled { .. }
                 | NodeCommandResult::GatewaySnapshotObserved { .. }
-                | NodeCommandResult::PluginHostCapabilitiesInspected { .. } => None,
+                | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+                | NodeCommandResult::PluginHostTrustAuthorized { .. } => None,
             };
             if result_evidence.is_some_and(|(at, replayed)| {
                 (!replayed && at < command.issued_at) || at > self.completed_at
@@ -924,6 +942,7 @@ impl NodeCommandAck {
                     | NodeCommandPayload::BoxBuildCancel { .. }
                     | NodeCommandPayload::BoxBuildRemove { .. }
                     | NodeCommandPayload::PluginHostCapabilitiesInspect { .. }
+                    | NodeCommandPayload::PluginHostAuthorizeTrust { .. }
                     | NodeCommandPayload::PluginHostPlan { .. }
                     | NodeCommandPayload::PluginHostApply { .. }
                     | NodeCommandPayload::PluginHostPlanEnablement { .. }

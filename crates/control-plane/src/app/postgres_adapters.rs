@@ -65,7 +65,12 @@ use crate::modules::notifications::{
 };
 use crate::modules::operations::{IOperationRepository, PostgresOperationRepository};
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
-use crate::modules::plugins::PostgresPluginRegistryRepository;
+use crate::modules::plugins::domain::repositories::IPluginAssignmentRepository;
+use crate::modules::plugins::domain::repositories::IPluginPlanProjectionRepository;
+use crate::modules::plugins::{
+    PostgresPluginAssignmentRepository, PostgresPluginPlanProjectionRepository,
+    PostgresPluginRegistryRepository,
+};
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::PostgresProjectsRepository;
 use crate::modules::search::{search_persistence_adapter, ISearchRepository};
@@ -481,12 +486,16 @@ impl NotificationPostgresAdapters {
 
 pub(super) struct PluginPostgresAdapters {
     pub(super) registries: Arc<dyn IPluginRegistryRepository>,
+    pub(super) assignments: Arc<dyn IPluginAssignmentRepository>,
+    pub(super) plan_projections: Arc<dyn IPluginPlanProjectionRepository>,
 }
 
 impl PluginPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         Self {
-            registries: Arc::new(PostgresPluginRegistryRepository::new(executor)),
+            registries: Arc::new(PostgresPluginRegistryRepository::new(executor.clone())),
+            assignments: Arc::new(PostgresPluginAssignmentRepository::new(executor.clone())),
+            plan_projections: Arc::new(PostgresPluginPlanProjectionRepository::new(executor)),
         }
     }
 }

@@ -102,6 +102,7 @@ fn router() -> FlowRuntimeRouter {
         Arc::new(StubRuntime("agent_execution")),
         Arc::new(StubRuntime("workflow_run")),
         Arc::new(StubRuntime("object_namespace_recovery")),
+        Arc::new(StubRuntime("plugin_assignment")),
     ))
     .expect("production Flow runtime registry must be valid")
 }
@@ -149,6 +150,7 @@ async fn runtime_router_preserves_all_production_workflow_identities() -> Result
             "2",
             "object_namespace_recovery",
         ),
+        ("cloud.plugin-assignment", "1", "plugin_assignment"),
     ] {
         assert_eq!(
             router().run_workflow(workflow(name, version)).await?,
@@ -290,6 +292,12 @@ async fn runtime_router_routes_every_registered_step_to_its_exact_owner() -> Res
         &router,
         crate::modules::data::object_namespace_recovery_flow_step_names(),
         "object_namespace_recovery",
+    )
+    .await?;
+    assert_routes(
+        &router,
+        crate::modules::plugins::infrastructure::plugin_assignment_flow_step_names(),
+        "plugin_assignment",
     )
     .await?;
     Ok(())

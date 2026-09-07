@@ -303,7 +303,12 @@ import type {
   PluginCatalogInspectRequest,
   PluginCatalogPage,
   PluginCatalogSearchRequest,
+  PluginAssignment,
+  PluginAssignmentMutationResult,
+  PluginPlanProjection,
   PluginRegistry,
+  ConfirmPluginPlanProjectionInput,
+  SetPluginAssignmentInput,
   Project,
   ProjectAttributionMutationResult,
   ProjectAttributionProfile,
@@ -411,7 +416,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.82.1';
+export const CLOUD_API_CONTRACT_VERSION = '1.84.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -2053,6 +2058,82 @@ export class CloudApi {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}` +
         `/plugin-registries/${encodeURIComponent(registryId)}`,
+      signal
+    );
+  }
+
+  listPluginAssignments(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    signal?: AbortSignal
+  ): Promise<PluginAssignment[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/plugin-assignments`,
+      signal
+    );
+  }
+
+  getPluginAssignment(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    assignmentId: string,
+    signal?: AbortSignal
+  ): Promise<PluginAssignment> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}` +
+        `/plugin-assignments/${encodeURIComponent(assignmentId)}`,
+      signal
+    );
+  }
+
+  setPluginAssignment(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: SetPluginAssignmentInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PluginAssignmentMutationResult> {
+    return this.putJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/projects/${encodeURIComponent(projectId)}` +
+        `/environments/${encodeURIComponent(environmentId)}/plugin-assignments`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  getPluginPlanProjection(
+    organizationId: string,
+    projectionId: string,
+    signal?: AbortSignal
+  ): Promise<PluginPlanProjection> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-plan-projections/${encodeURIComponent(projectionId)}`,
+      signal
+    );
+  }
+
+  confirmPluginPlanProjection(
+    organizationId: string,
+    projectionId: string,
+    input: ConfirmPluginPlanProjectionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PluginPlanProjection> {
+    return this.putJson(
+      `/organizations/${encodeURIComponent(organizationId)}` +
+        `/plugin-plan-projections/${encodeURIComponent(projectionId)}/confirmation`,
+      idempotencyKey,
+      input,
       signal
     );
   }
@@ -4727,6 +4808,20 @@ export class CloudApi {
     });
   }
 
+  private putJson<T>(
+    path: string,
+    idempotencyKey: string,
+    body: unknown,
+    signal?: AbortSignal
+  ): Promise<T> {
+    return this.request('PUT', path, {
+      body: JSON.stringify(body),
+      contentType: 'application/json',
+      idempotencyKey,
+      signal,
+    });
+  }
+
   private postQueryJson<T>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
     return this.request('POST', path, {
       body: JSON.stringify(body),
@@ -4782,7 +4877,7 @@ export class CloudApi {
   }
 
   private async request<T>(
-    method: 'DELETE' | 'GET' | 'POST',
+    method: 'DELETE' | 'GET' | 'POST' | 'PUT',
     path: string,
     options: {
       body?: string;

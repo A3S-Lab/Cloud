@@ -155,8 +155,9 @@ pub use node::{
     NodeGatewaySnapshotObservation, NodeHeartbeat, NodeHeartbeatV2, NodeInventoryReference,
     NodeLogChunkBatch, NodeLogChunkReceipt, NodeLogChunkReport, NodeLogGapReport,
     NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
-    NodeObservationReceipt, NodePluginHostCapabilitiesRequest, NodeProtocolContractSet,
-    NodeProtocolError, NodeProtocolErrorCode, NodeResourceClaimBinding, NodeResourceClaimPrepare,
+    NodeObservationReceipt,     NodePluginHostAuthorizeTrustRequest, NodePluginHostCapabilitiesRequest,
+    NodePluginHostTrustAuthorized, NodeProtocolContractSet, NodeProtocolError,
+    NodeProtocolErrorCode, NodeResourceClaimBinding, NodeResourceClaimPrepare,
     NodeResourceClaimPrepared, NodeResourceClaimRelease, NodeResourceClaimReleased,
     NodeResourceInventory, NodeResourceInventoryReceipt, NodeResourceSlot,
     NodeSecretMaterialRequest, NodeSecretMaterialResponse, NodeSessionHello, NodeSessionSelection,
@@ -164,8 +165,8 @@ pub use node::{
     DURABLE_CELL_BUNDLE_MEDIA_TYPE, MAX_BOX_ARTIFACT_BYTES, NODE_AGENT_PROVIDER_COMMAND_SCHEMA_V1,
     NODE_CODE_AGENT_COMMAND_SCHEMA_V1, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
     NODE_DURABLE_CELL_OPERATOR_OBSERVE_SCHEMA_V1, OCI_IMAGE_INDEX_MEDIA_TYPE,
-    OCI_IMAGE_MANIFEST_MEDIA_TYPE, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,
-    RUNTIME_RESOURCE_CLAIM_ID_KEY, SKILL_BUNDLE_MEDIA_TYPE,
+    OCI_IMAGE_MANIFEST_MEDIA_TYPE, PLUGIN_POLICY_ACL_MEDIA_TYPE, PLUGIN_TRUST_ROOT_MEDIA_TYPE,
+    RUNTIME_RESOURCE_BINDING_DIGEST_KEY, RUNTIME_RESOURCE_CLAIM_ID_KEY, SKILL_BUNDLE_MEDIA_TYPE,
 };
 pub use registry_credential::RegistryCredentialMaterial;
 pub use resource::{

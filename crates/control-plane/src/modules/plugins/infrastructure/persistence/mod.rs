@@ -1,5 +1,13 @@
 mod in_memory;
+mod plugin_assignment_in_memory;
+mod plugin_assignment_postgres;
+mod plugin_plan_projection_in_memory;
+mod plugin_plan_projection_postgres;
 mod postgres;
 
 pub use in_memory::InMemoryPluginRegistryRepository;
+pub use plugin_assignment_in_memory::InMemoryPluginAssignmentRepository;
+pub use plugin_assignment_postgres::PostgresPluginAssignmentRepository;
+pub use plugin_plan_projection_in_memory::InMemoryPluginPlanProjectionRepository;
+pub use plugin_plan_projection_postgres::PostgresPluginPlanProjectionRepository;
 pub use postgres::PostgresPluginRegistryRepository;

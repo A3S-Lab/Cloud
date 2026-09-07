@@ -326,6 +326,11 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_search` | Query | None |
 | `a3s_cloud_plugin_registries_list` | Query | None |
 | `a3s_cloud_plugin_registries_get` | Query | None |
+| `a3s_cloud_plugin_assignments_list` | Query | None |
+| `a3s_cloud_plugin_assignments_get` | Query | None |
+| `a3s_cloud_plugin_assignments_set` | Command | `plugin:write` (administrator catalog only) |
+| `a3s_cloud_plugin_plan_projections_get` | Query | None |
+| `a3s_cloud_plugin_plan_projections_confirm` | Command | `plugin:write` (administrator catalog only) |
 | `a3s_cloud_plugin_catalog_search` | Query | None |
 | `a3s_cloud_plugin_catalog_search_cached` | Query | None |
 | `a3s_cloud_plugin_catalog_inspect` | Query | None |

@@ -113,6 +113,12 @@ pub(crate) fn organization_tenant_cloud_read_controller(
     organization_tenant_scoped_controller(controller, ApiTokenScope::CLOUD_READ)
 }
 
+pub(crate) fn organization_tenant_plugin_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::PLUGIN_WRITE)
+}
+
 /// Marks a route whose project ownership can only be resolved by its owning
 /// application handler after loading the indirect resource identifier.
 pub(crate) fn with_deferred_project_scope(route: RouteDefinition) -> Result<RouteDefinition> {

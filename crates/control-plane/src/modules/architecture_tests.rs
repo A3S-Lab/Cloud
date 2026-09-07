@@ -7955,6 +7955,83 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
 }
 
 #[test]
+fn plugins_u0_assignment_surface_owns_no_second_use_platform() {
+    // U0.3 exit gate: Cloud must not grow a Plugin Installer, TUF verifier,
+    // catalog contract, operation-plan generator, permission evaluator,
+    // Workspace Grant store, Runtime Binding store, capability registry,
+    // surface reconciler, plugin scheduler, or a3s-use host embed.
+    const FORBIDDEN: &[&str] = &[
+        "tough::",
+        "TufRepository",
+        "PluginInstaller",
+        "plugin_installer",
+        "CapabilityRegistry",
+        "WorkspaceGrantStore",
+        "RuntimeBindingStore",
+        "plugin_scheduler",
+        "PluginScheduler",
+        "a3s_use::",
+        "CognitivePackageHostManager",
+        "PermissionEvaluator",
+        "SurfaceReconciler",
+    ];
+
+    let mut actual = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("plugins") {
+            return;
+        }
+        let production = production_source(source);
+        for forbidden in FORBIDDEN {
+            if production.contains(forbidden) {
+                actual.insert(format!("{} -> {forbidden}", display(relative)));
+            }
+        }
+    });
+
+    assert!(
+        actual.is_empty(),
+        "Plugins acquired a second Use platform mechanism:\n{}",
+        actual.into_iter().collect::<Vec<_>>().join("\n")
+    );
+
+    let cloud_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates")
+        .parent()
+        .expect("cloud root");
+    let workspace = std::fs::read_to_string(cloud_root.join("Cargo.toml"))
+        .expect("read Cloud workspace Cargo.toml");
+    let has_use_core = workspace.contains("a3s-use-core");
+    let has_use_extension = workspace.contains("a3s-use-extension");
+    let has_full_use = workspace.lines().any(|line| {
+        let trimmed = line.trim_start();
+        trimmed.starts_with("a3s-use ") || trimmed.starts_with("a3s-use=")
+    });
+    assert!(has_use_core && has_use_extension, "Cloud must pin a3s-use-core and a3s-use-extension");
+    assert!(
+        !has_full_use,
+        "Cloud must not embed the a3s-use package until Flow/Runtime pins align"
+    );
+
+    let node_agent = std::fs::read_to_string(cloud_root.join("crates/node-agent/Cargo.toml"))
+        .expect("read node-agent Cargo.toml");
+    assert!(
+        node_agent.contains("a3s-use-core.workspace")
+            && node_agent.contains("a3s-use-extension.workspace"),
+        "Node Agent must consume only Use core/extension contracts"
+    );
+    assert!(
+        !node_agent.lines().any(|line| {
+            let trimmed = line.trim_start();
+            trimmed.starts_with("a3s-use.workspace") || trimmed.starts_with("a3s-use =")
+        }),
+        "Node Agent must not depend on the full a3s-use crate"
+    );
+
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))

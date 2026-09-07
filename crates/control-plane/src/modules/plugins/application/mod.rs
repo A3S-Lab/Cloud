@@ -1,10 +1,23 @@
 pub mod commands;
 pub mod queries;
 
-pub use commands::{EnrollPluginRegistry, EnrollPluginRegistryHandler, EnrollPluginRegistryResult};
+mod plugin_assignment_reconciler;
+
+pub use commands::{
+    ConfirmPluginPlanProjection, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistry,
+    EnrollPluginRegistryHandler, EnrollPluginRegistryResult, RecordPluginPlanProjection,
+    RecordPluginPlanProjectionHandler, SetPluginAssignment, SetPluginAssignmentHandler,
+    SetPluginAssignmentResult,
+};
+pub use plugin_assignment_reconciler::{
+    PluginAssignmentReconcileReport, PluginAssignmentReconciler, PLUGIN_ASSIGNMENT_WORKFLOW_NAME,
+    PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
+};
 pub use queries::{
-    GetPluginRegistry, GetPluginRegistryHandler, InspectCachedPluginCatalog,
-    InspectCachedPluginCatalogHandler, InspectPluginCatalog, InspectPluginCatalogHandler,
+    GetPluginAssignment, GetPluginAssignmentHandler, GetPluginPlanProjection,
+    GetPluginPlanProjectionHandler, GetPluginRegistry, GetPluginRegistryHandler,
+    InspectCachedPluginCatalog, InspectCachedPluginCatalogHandler, InspectPluginCatalog,
+    InspectPluginCatalogHandler, ListPluginAssignments, ListPluginAssignmentsHandler,
     ListPluginRegistries, ListPluginRegistriesHandler, SearchCachedPluginCatalog,
     SearchCachedPluginCatalogHandler, SearchPluginCatalog, SearchPluginCatalogHandler,
 };

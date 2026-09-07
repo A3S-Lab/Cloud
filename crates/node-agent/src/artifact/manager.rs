@@ -2,13 +2,13 @@ use super::{LocalArtifactReader, NodeArtifactCache, NodeArtifactError, NodeArtif
 use crate::ArtifactConfig;
 use a3s_cloud_contracts::{
     NodeArtifactDownloadRequest, NodeArtifactUploadRequest, NodeCommandEnvelope,
-    NodeCommandPayload, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
+    NodeCommandPayload, NodePluginHostAuthorizeTrustRequest, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 #[cfg(target_os = "linux")]
 use a3s_cloud_contracts::{NodeBoxBuildPlan, NodeBoxBuildRequest};
 use a3s_runtime::contract::{
-    RuntimeMount, RuntimeMountSource, RuntimeObservation, RuntimeOutputArtifact, RuntimeOutputSpec,
-    RuntimeUnitSpec, RuntimeUnitState,
+    ArtifactRef, RuntimeMount, RuntimeMountSource, RuntimeObservation, RuntimeOutputArtifact,
+    RuntimeOutputSpec, RuntimeUnitSpec, RuntimeUnitState,
 };
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -48,35 +48,120 @@ impl NodeArtifactManager {
                 "artifact command belongs to a different node".into(),
             ));
         }
-        let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
-            return Ok(());
-        };
-        let spec_digest = request.spec.digest().map_err(NodeArtifactError::Invalid)?;
-        for output in &request.spec.outputs {
-            validate_output_spec(output)?;
-        }
-        for mount in &request.spec.mounts {
-            let RuntimeMountSource::Artifact { artifact } = &mount.source else {
-                continue;
-            };
-            if !mount.read_only {
-                return Err(NodeArtifactError::Invalid(
-                    "artifact mounts must be read-only".into(),
-                ));
+        match &command.payload {
+            NodeCommandPayload::RuntimeApply { request, .. } => {
+                let spec_digest = request.spec.digest().map_err(NodeArtifactError::Invalid)?;
+                for output in &request.spec.outputs {
+                    validate_output_spec(output)?;
+                }
+                for mount in &request.spec.mounts {
+                    let RuntimeMountSource::Artifact { artifact } = &mount.source else {
+                        continue;
+                    };
+                    if !mount.read_only {
+                        return Err(NodeArtifactError::Invalid(
+                            "artifact mounts must be read-only".into(),
+                        ));
+                    }
+                    let transfer = NodeArtifactDownloadRequest::new(
+                        self.node_id,
+                        command.command_id,
+                        spec_digest.clone(),
+                        mount.name.clone(),
+                        artifact,
+                    )
+                    .map_err(NodeArtifactError::Invalid)?;
+                    self.cache
+                        .materialize(self.transport.as_ref(), &transfer)
+                        .await?;
+                }
+                Ok(())
             }
-            let transfer = NodeArtifactDownloadRequest::new(
-                self.node_id,
-                command.command_id,
-                spec_digest.clone(),
-                mount.name.clone(),
-                artifact,
-            )
-            .map_err(NodeArtifactError::Invalid)?;
-            self.cache
-                .materialize(self.transport.as_ref(), &transfer)
-                .await?;
+            NodeCommandPayload::PluginHostAuthorizeTrust { request } => {
+                self.materialize_authorize_trust(command, request.as_ref())
+                    .await
+                    .map(|_| ())
+            }
+            _ => Ok(()),
         }
-        Ok(())
+    }
+
+    /// Download command-bound trust-root and policy ACL blobs for authorize-trust.
+    pub async fn materialize_authorize_trust(
+        &self,
+        command: &NodeCommandEnvelope,
+        request: &NodePluginHostAuthorizeTrustRequest,
+    ) -> Result<(Vec<u8>, Vec<u8>), NodeArtifactError> {
+        command.validate().map_err(NodeArtifactError::Invalid)?;
+        request.validate().map_err(NodeArtifactError::Invalid)?;
+        if command.node_id != self.node_id {
+            return Err(NodeArtifactError::Invalid(
+                "artifact command belongs to a different node".into(),
+            ));
+        }
+        let NodeCommandPayload::PluginHostAuthorizeTrust {
+            request: expected,
+        } = &command.payload
+        else {
+            return Err(NodeArtifactError::Invalid(
+                "authorize-trust Artifact materialize requires PluginHostAuthorizeTrust".into(),
+            ));
+        };
+        if expected.as_ref() != request {
+            return Err(NodeArtifactError::Invalid(
+                "authorize-trust request does not match the command payload".into(),
+            ));
+        }
+        let binding_digest = request
+            .binding_digest()
+            .map_err(NodeArtifactError::Invalid)?;
+        let trust_root = self
+            .download_opaque_blob(
+                command.command_id,
+                &binding_digest,
+                NodePluginHostAuthorizeTrustRequest::TRUST_ROOT_MOUNT,
+                &request.trust_root,
+            )
+            .await?;
+        let policy_acl = self
+            .download_opaque_blob(
+                command.command_id,
+                &binding_digest,
+                NodePluginHostAuthorizeTrustRequest::POLICY_ACL_MOUNT,
+                &request.policy_acl,
+            )
+            .await?;
+        Ok((trust_root, policy_acl))
+    }
+
+    async fn download_opaque_blob(
+        &self,
+        command_id: Uuid,
+        binding_digest: &str,
+        mount_name: &str,
+        artifact: &ArtifactRef,
+    ) -> Result<Vec<u8>, NodeArtifactError> {
+        let transfer = NodeArtifactDownloadRequest::new(
+            self.node_id,
+            command_id,
+            binding_digest,
+            mount_name,
+            artifact,
+        )
+        .map_err(NodeArtifactError::Invalid)?;
+        let (path, size_bytes) = self
+            .cache
+            .materialize_blob(self.transport.as_ref(), &transfer)
+            .await?;
+        let bytes = tokio::fs::read(&path).await.map_err(|error| {
+            NodeArtifactError::Storage(format!("could not read opaque Artifact blob: {error}"))
+        })?;
+        if bytes.len() as u64 != size_bytes {
+            return Err(NodeArtifactError::Integrity(
+                "opaque Artifact blob size drifted after admission".into(),
+            ));
+        }
+        Ok(bytes)
     }
 
     pub async fn publish_command_outputs(

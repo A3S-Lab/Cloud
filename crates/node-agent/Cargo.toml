@@ -11,6 +11,7 @@ a3s-acl.workspace = true
 a3s-cloud-contracts = { path = "../contracts" }
 a3s-runtime.workspace = true
 a3s-use-core.workspace = true
+a3s-use-extension.workspace = true
 async-trait.workspace = true
 chrono.workspace = true
 fs2.workspace = true

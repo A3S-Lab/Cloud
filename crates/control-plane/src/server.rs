@@ -11,6 +11,7 @@ use crate::modules::edge::{
     GatewayRolloutRollbackReconciler, McpCredentialDeliveryReceiptSweeper,
     McpGatewayDesiredStateReconciler, McpGatewaySnapshotReconciler,
 };
+use crate::modules::plugins::PluginAssignmentReconciler;
 use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{
     LogCompactionWorker, LogRetentionWorker, NodeAvailabilityReconciler, NodeControlServer,
@@ -48,6 +49,7 @@ struct WorkerProcesses {
     build_run_reconciler: BuildRunReconciler,
     execution_reconciler: ExecutionReconciler,
     agent_execution_reconciler: AgentExecutionReconciler,
+    plugin_assignment_reconciler: PluginAssignmentReconciler,
     agent_checkpoint_object_reconciler: Option<AgentExecutionCheckpointObjectReconciler>,
     workflow_run_reconciler: WorkflowRunReconciler,
     human_task_coordinator: HumanTaskCoordinator,
@@ -90,6 +92,7 @@ impl ControlPlaneWorkers {
         build_run_reconciler: BuildRunReconciler,
         execution_reconciler: ExecutionReconciler,
         agent_execution_reconciler: AgentExecutionReconciler,
+        plugin_assignment_reconciler: PluginAssignmentReconciler,
         agent_checkpoint_object_reconciler: Option<AgentExecutionCheckpointObjectReconciler>,
         workflow_run_reconciler: WorkflowRunReconciler,
         human_task_coordinator: HumanTaskCoordinator,
@@ -125,6 +128,7 @@ impl ControlPlaneWorkers {
                 build_run_reconciler,
                 execution_reconciler,
                 agent_execution_reconciler,
+                plugin_assignment_reconciler,
                 agent_checkpoint_object_reconciler,
                 workflow_run_reconciler,
                 human_task_coordinator,
@@ -287,6 +291,7 @@ impl ControlPlane {
                 build_run_reconciler,
                 execution_reconciler,
                 agent_execution_reconciler,
+                plugin_assignment_reconciler,
                 agent_checkpoint_object_reconciler,
                 workflow_run_reconciler,
                 human_task_coordinator,
@@ -332,6 +337,12 @@ impl ControlPlane {
                 "Agent execution reconciler",
                 shutdown_receiver.clone(),
                 move |shutdown| agent_execution_reconciler.run(shutdown),
+            );
+            spawn_worker(
+                &mut workers,
+                "plugin assignment reconciler",
+                shutdown_receiver.clone(),
+                move |shutdown| plugin_assignment_reconciler.run(shutdown),
             );
             if let Some(agent_checkpoint_object_reconciler) = agent_checkpoint_object_reconciler {
                 spawn_worker(

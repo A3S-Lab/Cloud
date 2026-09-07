@@ -455,6 +455,29 @@ impl CommandExecutor {
                 let capabilities = plugin_host::inspect(self.plugin_host()?).await?;
                 Ok(NodeCommandResult::PluginHostCapabilitiesInspected { capabilities })
             }
+            NodeCommandPayload::PluginHostAuthorizeTrust { request } => {
+                let Some(artifacts) = &self.artifacts else {
+                    return Err(DispatchError::PluginHost(UseError::new(
+                        "use.plugin.host_authorize_trust_artifacts_unavailable",
+                        "Plugin Host authorize-trust requires the node Artifact manager.",
+                    )));
+                };
+                let (trust_root_bytes, policy_acl_bytes) = artifacts
+                    .materialize_authorize_trust(envelope, request.as_ref())
+                    .await?;
+                let authorized = plugin_host::authorize_trust(
+                    request.as_ref(),
+                    &trust_root_bytes,
+                    &policy_acl_bytes,
+                )
+                .map_err(|error| {
+                    DispatchError::PluginHost(UseError::new(
+                        "use.plugin.host_authorize_trust_invalid",
+                        error,
+                    ))
+                })?;
+                Ok(NodeCommandResult::PluginHostTrustAuthorized { authorized })
+            }
             NodeCommandPayload::PluginHostPlan { request } => {
                 let (capabilities, plan) = plugin_host::plan(self.plugin_host()?, request).await?;
                 Ok(NodeCommandResult::PluginHostPlanned {
@@ -557,6 +580,7 @@ fn completion_timestamp(
             | NodeCommandResult::BoxBuildCancelled { .. }
             | NodeCommandResult::BoxBuildRemoved { .. }
             | NodeCommandResult::PluginHostCapabilitiesInspected { .. }
+            | NodeCommandResult::PluginHostTrustAuthorized { .. }
             | NodeCommandResult::PluginHostPlanned { .. }
             | NodeCommandResult::PluginHostApplied { .. }
             | NodeCommandResult::PluginHostEnablementPlanned { .. }

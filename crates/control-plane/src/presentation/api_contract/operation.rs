@@ -1517,7 +1517,10 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("notification-outbound-subscriptions")
     {
         "Notifications"
-    } else if path.contains("plugin-registries") {
+    } else if path.contains("plugin-registries")
+        || path.contains("plugin-assignments")
+        || path.contains("plugin-plan-projections")
+    {
         "Plugins"
     } else if path.contains("search") {
         "Search"

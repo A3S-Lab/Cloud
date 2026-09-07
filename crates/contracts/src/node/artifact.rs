@@ -7,6 +7,8 @@ use super::{validate_lower_sha256, validate_single_line, validate_uuid};
 pub const NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE: &str = "application/vnd.a3s.directory.v1+tar";
 pub const SKILL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.skill.bundle.v1+tar";
 pub const DURABLE_CELL_BUNDLE_MEDIA_TYPE: &str = "application/vnd.a3s.durable-cell.bundle.v1+tar";
+pub const PLUGIN_TRUST_ROOT_MEDIA_TYPE: &str = "application/vnd.a3s.plugin.trust-root.v1+json";
+pub const PLUGIN_POLICY_ACL_MEDIA_TYPE: &str = "application/vnd.a3s.plugin.policy.v1+acl";
 const ARTIFACT_URI_PREFIX: &str = "a3s-cloud-artifact://sha256/";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -204,6 +206,8 @@ fn validate_supported_media_type(value: &str) -> Result<(), String> {
         NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE
             | SKILL_BUNDLE_MEDIA_TYPE
             | DURABLE_CELL_BUNDLE_MEDIA_TYPE
+            | PLUGIN_TRUST_ROOT_MEDIA_TYPE
+            | PLUGIN_POLICY_ACL_MEDIA_TYPE
     ) {
         return Err("node artifact transport does not support this media type".into());
     }

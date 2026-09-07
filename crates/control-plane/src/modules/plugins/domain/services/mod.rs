@@ -1,7 +1,9 @@
+mod plugin_policy_store;
 mod plugin_registry_catalog;
 mod plugin_registry_enrollment_authorizer;
 mod plugin_trust_root_store;
 
+pub use plugin_policy_store::{IPluginPolicyStore, PluginPolicyStoreError, PluginPolicyWrite};
 pub use plugin_registry_catalog::{IPluginRegistryCatalog, PluginRegistryCatalogError};
 pub use plugin_registry_enrollment_authorizer::{
     IPluginRegistryEnrollmentAuthorizer, PluginRegistryEnrollmentAuthorization,

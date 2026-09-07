@@ -254,6 +254,11 @@ pub const USER_FILES_TOMBSTONE: &str = "a3s_cloud_user_files_tombstone";
 pub const USER_FILE_QUOTA_GET: &str = "a3s_cloud_user_file_quota_get";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
+pub const PLUGIN_ASSIGNMENTS_GET: &str = "a3s_cloud_plugin_assignments_get";
+pub const PLUGIN_ASSIGNMENTS_LIST: &str = "a3s_cloud_plugin_assignments_list";
+pub const PLUGIN_ASSIGNMENTS_SET: &str = "a3s_cloud_plugin_assignments_set";
+pub const PLUGIN_PLAN_PROJECTIONS_GET: &str = "a3s_cloud_plugin_plan_projections_get";
+pub const PLUGIN_PLAN_PROJECTIONS_CONFIRM: &str = "a3s_cloud_plugin_plan_projections_confirm";
 pub const PLUGIN_CATALOG_INSPECT: &str = "a3s_cloud_plugin_catalog_inspect";
 pub const PLUGIN_CATALOG_INSPECT_CACHED: &str = "a3s_cloud_plugin_catalog_inspect_cached";
 pub const PLUGIN_CATALOG_SEARCH: &str = "a3s_cloud_plugin_catalog_search";
@@ -394,6 +399,11 @@ pub enum ManagementTool {
     UserFileQuotaGet,
     PluginRegistriesList,
     PluginRegistriesGet,
+    PluginAssignmentsList,
+    PluginAssignmentsGet,
+    PluginAssignmentsSet,
+    PluginPlanProjectionsGet,
+    PluginPlanProjectionsConfirm,
     PluginCatalogSearch,
     PluginCatalogSearchCached,
     PluginCatalogInspect,
@@ -463,7 +473,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 179] = [
+    const ALL: [Self; 184] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -592,6 +602,11 @@ impl ManagementTool {
         Self::UserFileQuotaGet,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
+        Self::PluginAssignmentsList,
+        Self::PluginAssignmentsGet,
+        Self::PluginAssignmentsSet,
+        Self::PluginPlanProjectionsGet,
+        Self::PluginPlanProjectionsConfirm,
         Self::PluginCatalogSearch,
         Self::PluginCatalogSearchCached,
         Self::PluginCatalogInspect,
@@ -800,6 +815,11 @@ impl ManagementTool {
             Self::UserFileQuotaGet => USER_FILE_QUOTA_GET,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
+            Self::PluginAssignmentsList => PLUGIN_ASSIGNMENTS_LIST,
+            Self::PluginAssignmentsGet => PLUGIN_ASSIGNMENTS_GET,
+            Self::PluginAssignmentsSet => PLUGIN_ASSIGNMENTS_SET,
+            Self::PluginPlanProjectionsGet => PLUGIN_PLAN_PROJECTIONS_GET,
+            Self::PluginPlanProjectionsConfirm => PLUGIN_PLAN_PROJECTIONS_CONFIRM,
             Self::PluginCatalogSearch => PLUGIN_CATALOG_SEARCH,
             Self::PluginCatalogSearchCached => PLUGIN_CATALOG_SEARCH_CACHED,
             Self::PluginCatalogInspect => PLUGIN_CATALOG_INSPECT,
@@ -935,6 +955,9 @@ impl ManagementTool {
                 Some(ApiTokenScope::SOURCE_WRITE)
             }
             Self::UserFilesReserve | Self::UserFilesTombstone => Some(ApiTokenScope::FILE_WRITE),
+            Self::PluginAssignmentsSet | Self::PluginPlanProjectionsConfirm => {
+                Some(ApiTokenScope::PLUGIN_WRITE)
+            }
             Self::MyMembershipInvitationsList
             | Self::PlatformRolePolicyCurrentGet
             | Self::PlatformRolePolicyRevisionsGet
@@ -1029,6 +1052,9 @@ impl ManagementTool {
             | Self::Search
             | Self::PluginRegistriesList
             | Self::PluginRegistriesGet
+            | Self::PluginAssignmentsList
+            | Self::PluginAssignmentsGet
+            | Self::PluginPlanProjectionsGet
             | Self::PluginCatalogSearch
             | Self::PluginCatalogSearchCached
             | Self::PluginCatalogInspect
@@ -1154,7 +1180,10 @@ impl ManagementTool {
             | Self::PullRequestPreviewPolicyRevisionsList
             | Self::PullRequestPreviewPolicyRevisionsGet
             | Self::PullRequestPreviewsGet
-            | Self::BuildRunsList => Some(ManagementResourceBinding::EnvironmentArguments),
+            | Self::BuildRunsList
+            | Self::PluginAssignmentsList
+            | Self::PluginAssignmentsGet
+            | Self::PluginAssignmentsSet => Some(ManagementResourceBinding::EnvironmentArguments),
             Self::WorkloadsGet
             | Self::FormsGet
             | Self::ApplicationsGet
@@ -2035,6 +2064,36 @@ impl ManagementTool {
                 uuid_id_schema("registryId"),
                 true,
             ),
+            Self::PluginAssignmentsList => (
+                "List plugin assignments",
+                "List desired A3S Use package assignments in one tenant-authorized environment.",
+                environment_scope_schema(),
+                true,
+            ),
+            Self::PluginAssignmentsGet => (
+                "Get plugin assignment",
+                "Get one desired A3S Use package assignment in one tenant-authorized environment.",
+                plugin_assignment_schema(),
+                true,
+            ),
+            Self::PluginAssignmentsSet => (
+                "Set plugin assignment",
+                "Create or revise one desired A3S Use package assignment with exact catalog selection, policy digest, and explicit idempotency.",
+                set_plugin_assignment_schema(),
+                false,
+            ),
+            Self::PluginPlanProjectionsGet => (
+                "Get plugin plan projection",
+                "Get one bounded digest-only A3S Use operation plan review projection.",
+                uuid_id_schema("projectionId"),
+                true,
+            ),
+            Self::PluginPlanProjectionsConfirm => (
+                "Confirm plugin plan projection",
+                "Confirm one ask-authority A3S Use operation plan projection with the exact confirmation contract and explicit idempotency.",
+                confirm_plugin_plan_projection_schema(),
+                false,
+            ),
             Self::PluginCatalogSearch => (
                 "Search plugin catalog",
                 "Refresh and search one signed A3S Use catalog without downloading package bytes.",
@@ -2657,6 +2716,64 @@ fn plugin_catalog_inspection_schema() -> Value {
     required.insert(0, json!("host"));
     required.insert(0, json!("registryId"));
     schema
+}
+
+fn plugin_assignment_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "assignmentId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "assignmentId"],
+        "additionalProperties": false
+    })
+}
+
+fn set_plugin_assignment_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "registryId": {"type": "string", "format": "uuid"},
+            "targetHostId": {"type": "string", "format": "uuid"},
+            "workspaceScope": {"type": "object", "additionalProperties": true},
+            "selection": {"type": "object", "additionalProperties": true},
+            "policyDigest": {"type": "string", "minLength": 71, "maxLength": 71},
+            "desiredState": {
+                "type": "string",
+                "enum": ["enabled", "installed-disabled", "absent"]
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "registryId",
+            "targetHostId",
+            "workspaceScope",
+            "selection",
+            "policyDigest",
+            "desiredState",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn confirm_plugin_plan_projection_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectionId": {"type": "string", "format": "uuid"},
+            "confirmation": {"type": "object", "additionalProperties": true},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectionId", "confirmation", "idempotencyKey"],
+        "additionalProperties": false
+    })
 }
 
 fn project_id_schema() -> Value {
@@ -4650,6 +4767,7 @@ mod tests {
             .with_scope(ApiTokenScope::EXECUTION_WRITE)
             .with_scope(ApiTokenScope::CONNECTOR_WRITE)
             .with_scope(ApiTokenScope::APPLICATION_WRITE)
+            .with_scope(ApiTokenScope::PLUGIN_WRITE)
             .with_scope(ApiTokenScope::CLOUD_READ)
             .with_claim("organization_role", "restricted")
             .expect("role")

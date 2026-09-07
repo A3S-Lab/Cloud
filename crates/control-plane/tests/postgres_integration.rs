@@ -974,6 +974,8 @@ mod outbound_smtp_support;
 mod platform_rbac_support;
 #[path = "support/plugins.rs"]
 mod plugins_support;
+#[path = "support/plugin_assignments.rs"]
+mod plugin_assignments_support;
 #[path = "support/postgres_fixture.rs"]
 mod postgres_fixture;
 #[path = "support/privileged_authorization_decisions.rs"]
@@ -1728,6 +1730,19 @@ async fn postgres_plugin_registry_is_atomic_tenant_scoped_and_searchable() {
     )
     .await
     .expect("PostgreSQL Plugin Registry persistence gate");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn postgres_plugin_assignments_are_atomic_tenant_scoped_and_confirmed() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        plugin_assignments_support::exercise_plugin_assignment_persistence,
+    )
+    .await
+    .expect("PostgreSQL Plugin Assignment persistence gate");
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -5621,6 +5636,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
              drop table if exists node_enrollment_reservations cascade;
              drop table if exists nodes cascade;
              drop table if exists enrollment_tokens cascade;
+             drop table if exists plugin_plan_projections cascade;
+             drop table if exists plugin_assignments cascade;
              drop table if exists plugin_registries cascade;
              drop table if exists organization_memberships cascade;
              drop table if exists api_tokens cascade;
@@ -5697,6 +5714,8 @@ async fn exercise_postgres_foundation(url: String) -> Result<(), Box<dyn std::er
         "human_tasks",
         "ontologies",
         "ontology_revisions",
+        "plugin_assignments",
+        "plugin_plan_projections",
         "plugin_registries",
         "workflow_decisions",
         "workflow_human_task_inbox",

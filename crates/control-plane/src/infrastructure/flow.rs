@@ -19,7 +19,7 @@ pub(crate) const BOOT_SCHEMA: &str = "a3s_boot";
 const FLOW_QUEUE: &str = "cloud-operations";
 const FLOW_TASK_RETRIES: u32 = 3;
 const QUEUE_DRAIN_POLL_INTERVAL: Duration = Duration::from_millis(5);
-pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@27";
+pub(crate) const CURRENT_CLOUD_FLOW_RUNTIME_BUILD_ID: &str = "a3s-cloud-workflows@29";
 pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] = &[
     "a3s-cloud-workflows@1",
     "a3s-cloud-workflows@2",
@@ -47,6 +47,8 @@ pub(crate) const REPLAY_COMPATIBLE_CLOUD_FLOW_RUNTIME_BUILD_IDS: &[&str] = &[
     "a3s-cloud-workflows@24",
     "a3s-cloud-workflows@25",
     "a3s-cloud-workflows@26",
+    "a3s-cloud-workflows@27",
+    "a3s-cloud-workflows@28",
 ];
 
 #[derive(Debug, thiserror::Error)]
@@ -220,6 +222,7 @@ impl FlowRuntimeRouter {
         agent_executions: Arc<crate::modules::agents::infrastructure::AgentExecutionFlowRuntime>,
         workflow_runs: Arc<crate::modules::workflow::infrastructure::WorkflowRunFlowRuntime>,
         object_namespace_recovery: Arc<crate::modules::data::ObjectNamespaceRecoveryFlowRuntime>,
+        plugin_assignments: Arc<crate::modules::plugins::PluginAssignmentFlowRuntime>,
     ) -> Result<Self, FlowInfrastructureError> {
         Self::from_registrations(production_runtime_registrations(
             deployments,
@@ -228,6 +231,7 @@ impl FlowRuntimeRouter {
             agent_executions,
             workflow_runs,
             object_namespace_recovery,
+            plugin_assignments,
         ))
         .map_err(Into::into)
     }
@@ -319,6 +323,7 @@ fn production_runtime_registrations(
     agent_executions: Arc<dyn FlowRuntime>,
     workflow_runs: Arc<dyn FlowRuntime>,
     object_namespace_recovery: Arc<dyn FlowRuntime>,
+    plugin_assignments: Arc<dyn FlowRuntime>,
 ) -> Vec<FlowRuntimeRegistration> {
     use crate::modules::agents::infrastructure::{
         agent_execution_flow_step_names, agent_execution_flow_workflow_identities,
@@ -332,6 +337,9 @@ fn production_runtime_registrations(
     };
     use crate::modules::executions::infrastructure::{
         execution_flow_step_names, execution_flow_workflow_identities,
+    };
+    use crate::modules::plugins::infrastructure::{
+        plugin_assignment_flow_step_names, plugin_assignment_flow_workflow_identities,
     };
     use crate::modules::workflow::infrastructure::{
         workflow_run_flow_step_names, workflow_run_flow_workflow_identities,
@@ -376,6 +384,12 @@ fn production_runtime_registrations(
             object_namespace_recovery,
             object_namespace_recovery_flow_workflow_identities(),
             object_namespace_recovery_flow_step_names(),
+        ),
+        FlowRuntimeRegistration::new(
+            "plugins.assignment",
+            plugin_assignments,
+            plugin_assignment_flow_workflow_identities(),
+            plugin_assignment_flow_step_names(),
         ),
     ]
 }

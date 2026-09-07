@@ -1,24 +1,40 @@
 use super::{
-    EnrollPluginRegistry, EnrollPluginRegistryHandler, GetPluginRegistry, GetPluginRegistryHandler,
-    InspectCachedPluginCatalog, InspectCachedPluginCatalogHandler, InspectPluginCatalog,
-    InspectPluginCatalogHandler, ListPluginRegistries, ListPluginRegistriesHandler,
+    ConfirmPluginPlanProjection, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistry,
+    EnrollPluginRegistryHandler, GetPluginAssignment, GetPluginAssignmentHandler,
+    GetPluginPlanProjection, GetPluginPlanProjectionHandler, GetPluginRegistry,
+    GetPluginRegistryHandler, InspectCachedPluginCatalog, InspectCachedPluginCatalogHandler,
+    InspectPluginCatalog, InspectPluginCatalogHandler, ListPluginAssignments,
+    ListPluginAssignmentsHandler, ListPluginRegistries, ListPluginRegistriesHandler,
+    PluginAssignmentReconciler, RecordPluginPlanProjection, RecordPluginPlanProjectionHandler,
     SearchCachedPluginCatalog, SearchCachedPluginCatalogHandler, SearchPluginCatalog,
-    SearchPluginCatalogHandler,
+    SearchPluginCatalogHandler, SetPluginAssignment, SetPluginAssignmentHandler,
+    PLUGIN_ASSIGNMENT_WORKFLOW_NAME, PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
 };
 use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
+use crate::modules::plugins::domain::repositories::IPluginAssignmentRepository;
 use crate::modules::plugins::domain::services::{
     IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, IPluginTrustRootStore,
     PluginRegistryCatalogError, PluginRegistryEnrollmentAuthorization,
     PluginRegistryEnrollmentAuthorizationError, PluginTrustRootStoreError, PluginTrustRootWrite,
 };
 use crate::modules::plugins::domain::value_objects::PluginTrustRoot;
+use crate::modules::plugins::domain::value_objects::PluginCatalogSelection;
 use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
-use crate::modules::plugins::{InMemoryPluginRegistryRepository, PluginTrustRootObjectStore};
+use crate::modules::plugins::{
+    InMemoryPluginAssignmentRepository, InMemoryPluginPlanProjectionRepository,
+    InMemoryPluginRegistryRepository, PluginTrustRootObjectStore,
+};
 use crate::modules::shared_kernel::application::ApplicationError;
-use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, Sha256Digest};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, NodeId, OperationId, OrganizationId, PluginPlanProjectionId, PluginRegistryId,
+    PrincipalId, ProjectId, Sha256Digest,
+};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_use_core::PluginReleaseChannel;
+use a3s_use_core::{
+    PlanScopeKind, PluginDesiredState, PluginManagedScope, PluginPackageId, PluginReleaseChannel,
+    PluginSurfaceKind, PluginSurfaceRef, PLUGIN_MANAGED_SCOPE_SCHEMA_V2,
+};
 use a3s_use_extension::{
     inspect_bootstrap_root, PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage,
     PluginCatalogSearch, PluginCatalogSnapshot, PluginCatalogSnapshotSource,
@@ -615,3 +631,498 @@ async fn catalog_queries_preserve_use_types_online_and_cached_with_tenant_fence(
     assert_eq!(catalog.inspect_calls.load(Ordering::SeqCst), 1);
     assert_eq!(catalog.cached_inspect_calls.load(Ordering::SeqCst), 1);
 }
+
+fn digest(byte: char) -> Sha256Digest {
+    Sha256Digest::parse(format!("sha256:{}", byte.to_string().repeat(64))).expect("digest")
+}
+
+fn assignment_scope() -> PluginManagedScope {
+    PluginManagedScope {
+        schema: PLUGIN_MANAGED_SCOPE_SCHEMA_V2.into(),
+        host_id: "host:node-01".into(),
+        scope_kind: PlanScopeKind::Workspace,
+        scope_id: "workspace:research".into(),
+        authority_id: "cloud:organization-01".into(),
+        fence_generation: 7,
+        fence_digest: digest('d').as_str().into(),
+    }
+}
+
+fn assignment_selection(version: &str) -> PluginCatalogSelection {
+    PluginCatalogSelection {
+        package_id: PluginPackageId::parse("a3s/registry-selftest").expect("package"),
+        catalog_record_digest: digest('a'),
+        version: version.into(),
+        package_digest: digest('b'),
+        manifest_digest: digest('c'),
+        selected_surfaces: vec![PluginSurfaceRef {
+            kind: PluginSurfaceKind::Skill,
+            id: "selftest".into(),
+        }],
+    }
+}
+
+fn set_assignment_command(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    registry_id: PluginRegistryId,
+    host_id: NodeId,
+    selection: PluginCatalogSelection,
+    desired_state: PluginDesiredState,
+    actor_id: PrincipalId,
+    idempotency_key: &str,
+) -> SetPluginAssignment {
+    SetPluginAssignment {
+        organization_id,
+        project_id,
+        environment_id,
+        registry_id,
+        target_host_id: host_id,
+        workspace_scope: assignment_scope(),
+        selection,
+        policy_digest: digest('e'),
+        desired_state,
+        actor_id,
+        idempotency_key: idempotency_key.into(),
+        request_id: Uuid::now_v7(),
+        requested_at: Utc::now(),
+    }
+}
+
+#[tokio::test]
+async fn set_plugin_assignment_creates_replays_and_revises_desired_state() {
+    let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
+    let handler = SetPluginAssignmentHandler::new(assignments.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let registry_id = PluginRegistryId::new();
+    let host_id = NodeId::new();
+    let actor_id = PrincipalId::new();
+
+    let created = handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("create dispatch")
+        .expect("create");
+    assert!(!created.replayed);
+    assert_eq!(created.assignment.assignment_generation, 1);
+    assert_eq!(created.assignment.desired_state, PluginDesiredState::Enabled);
+
+    let replayed = handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("replay dispatch")
+        .expect("replay");
+    assert!(replayed.replayed);
+    assert_eq!(replayed.assignment.id, created.assignment.id);
+
+    let revised = handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.2.0"),
+                PluginDesiredState::InstalledDisabled,
+                actor_id,
+                "assign-2",
+            ),
+            context(),
+        )
+        .await
+        .expect("revise dispatch")
+        .expect("revise");
+    assert!(!revised.replayed);
+    assert_eq!(revised.assignment.id, created.assignment.id);
+    assert_eq!(revised.assignment.assignment_generation, 2);
+    assert_eq!(
+        revised.assignment.desired_state,
+        PluginDesiredState::InstalledDisabled
+    );
+    assert_eq!(revised.assignment.selection.version, "0.2.0");
+    assert_eq!(
+        assignments
+            .list_for_environment(organization_id, environment_id)
+            .await
+            .expect("list")
+            .len(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn list_and_get_plugin_assignment_queries_return_environment_scoped_rows() {
+    let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
+    let set_handler = SetPluginAssignmentHandler::new(assignments.clone());
+    let list_handler = ListPluginAssignmentsHandler::new(assignments.clone());
+    let get_handler = GetPluginAssignmentHandler::new(assignments.clone());
+    let organization_id = OrganizationId::new();
+    let other_environment_id = EnvironmentId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let registry_id = PluginRegistryId::new();
+    let host_id = NodeId::new();
+    let other_host_id = NodeId::new();
+    let actor_id = PrincipalId::new();
+
+    let created = set_handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-query-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("create dispatch")
+        .expect("create");
+
+    set_handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                other_environment_id,
+                registry_id,
+                other_host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Absent,
+                actor_id,
+                "assign-query-other",
+            ),
+            context(),
+        )
+        .await
+        .expect("other create dispatch")
+        .expect("other create");
+
+    let listed = list_handler
+        .execute(
+            ListPluginAssignments {
+                organization_id,
+                environment_id,
+            },
+            context(),
+        )
+        .await
+        .expect("list dispatch")
+        .expect("list");
+    assert_eq!(listed.len(), 1);
+    assert_eq!(listed[0].id, created.assignment.id);
+    assert_eq!(listed[0].environment_id, environment_id);
+
+    let fetched = get_handler
+        .execute(
+            GetPluginAssignment {
+                organization_id,
+                assignment_id: created.assignment.id,
+            },
+            context(),
+        )
+        .await
+        .expect("get dispatch")
+        .expect("get");
+    assert_eq!(fetched.id, created.assignment.id);
+    assert_eq!(fetched.desired_state, PluginDesiredState::Enabled);
+
+    let missing = get_handler
+        .execute(
+            GetPluginAssignment {
+                organization_id,
+                assignment_id: crate::modules::shared_kernel::domain::PluginAssignmentId::new(),
+            },
+            context(),
+        )
+        .await
+        .expect("missing dispatch")
+        .expect_err("missing");
+    assert!(matches!(missing, ApplicationError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn record_get_and_confirm_plugin_plan_projection() {
+    use a3s_use_core::{PluginOperationConfirmation, PluginOperationPlan, PluginOperationPlanEnvelope};
+    use chrono::TimeZone;
+
+    const INSTALL_PLAN: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/plugins/operation-plan-install-v4.json"
+    ));
+    const CONFIRMATION: &[u8] = include_bytes!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/fixtures/plugins/operation-confirmation-v1.json"
+    ));
+
+    let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
+    let projections = Arc::new(InMemoryPluginPlanProjectionRepository::new());
+    let set_handler = SetPluginAssignmentHandler::new(assignments.clone());
+    let record_handler =
+        RecordPluginPlanProjectionHandler::new(assignments.clone(), projections.clone());
+    let get_handler = GetPluginPlanProjectionHandler::new(projections.clone());
+    let confirm_handler = ConfirmPluginPlanProjectionHandler::new(projections.clone());
+
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let registry_id = PluginRegistryId::new();
+    let host_id = NodeId::new();
+    let actor_id = PrincipalId::new();
+    let created = set_handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("2.0.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-plan-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("assign dispatch")
+        .expect("assign");
+
+    let plan = PluginOperationPlan::from_json(INSTALL_PLAN).expect("plan");
+    let envelope = PluginOperationPlanEnvelope::new(plan).expect("envelope");
+    let projection_id = PluginPlanProjectionId::new();
+    let operation_id = OperationId::from_uuid(Uuid::now_v7());
+    let recorded_at = Utc.timestamp_millis_opt(1_785_360_000_000).unwrap();
+    let recorded = record_handler
+        .execute(
+            RecordPluginPlanProjection {
+                organization_id,
+                projection_id,
+                assignment_id: created.assignment.id,
+                operation_id,
+                envelope: envelope.clone(),
+                recorded_at,
+            },
+            context(),
+        )
+        .await
+        .expect("record dispatch")
+        .expect("record");
+    assert_eq!(recorded.id, projection_id);
+    assert_eq!(recorded.plan_digest.as_str(), envelope.plan_digest);
+    assert!(recorded.awaits_confirmation());
+
+    let fetched = get_handler
+        .execute(
+            GetPluginPlanProjection {
+                organization_id,
+                projection_id,
+            },
+            context(),
+        )
+        .await
+        .expect("get dispatch")
+        .expect("get");
+    assert_eq!(fetched.id, recorded.id);
+
+    let confirmation =
+        PluginOperationConfirmation::from_json(CONFIRMATION).expect("confirmation");
+    let confirmed_at = Utc.timestamp_millis_opt(1_785_360_200_000).unwrap();
+    let confirmed = confirm_handler
+        .execute(
+            ConfirmPluginPlanProjection {
+                organization_id,
+                projection_id,
+                confirmation,
+                confirmed_at,
+            },
+            context(),
+        )
+        .await
+        .expect("confirm dispatch")
+        .expect("confirm");
+    assert!(confirmed.confirmation_digest.is_some());
+    assert!(!confirmed.awaits_confirmation());
+}
+
+#[tokio::test]
+async fn reconciler_enqueues_the_versioned_plugin_assignment_workflow_once() {
+    use crate::modules::operations::domain::repositories::IOperationRepository;
+    use crate::modules::operations::InMemoryOperationRepository;
+
+    let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
+    let operations = Arc::new(InMemoryOperationRepository::new());
+    let handler = SetPluginAssignmentHandler::new(assignments.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let registry_id = PluginRegistryId::new();
+    let host_id = NodeId::new();
+    let actor_id = PrincipalId::new();
+
+    let created = handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-flow-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("create dispatch")
+        .expect("create");
+    let operation_id = created
+        .assignment
+        .current_operation_id
+        .expect("operation id");
+
+    let reconciler = PluginAssignmentReconciler::new(assignments.clone(), operations.clone());
+    let first = reconciler.run_once(100).await.expect("reconcile");
+    assert_eq!(first.started, 1);
+    assert_eq!(first.replayed, 0);
+    assert!(first.failures.is_empty());
+
+    let operation = operations
+        .find_request(operation_id)
+        .await
+        .expect("find operation")
+        .expect("operation");
+    assert_eq!(operation.workflow.name(), PLUGIN_ASSIGNMENT_WORKFLOW_NAME);
+    assert_eq!(
+        operation.workflow.version(),
+        PLUGIN_ASSIGNMENT_WORKFLOW_VERSION
+    );
+    assert_eq!(operation.subject.kind(), "plugin_assignment");
+    assert_eq!(operation.subject.id(), created.assignment.id.as_uuid());
+
+    let second = reconciler.run_once(100).await.expect("reconcile replay");
+    assert_eq!(second.started, 0);
+    assert_eq!(second.replayed, 1);
+    assignments.mark_operation_started(operation_id).await;
+    assert_eq!(
+        reconciler.run_once(100).await.expect("reconciled").started,
+        0
+    );
+}
+
+#[tokio::test]
+async fn crash_point_1_assignment_survives_before_flow_operation_enqueue() {
+    use crate::modules::operations::domain::repositories::IOperationRepository;
+    use crate::modules::operations::InMemoryOperationRepository;
+
+    // Crash point 1: assignment/Operation commit before Flow creation.
+    // Prove the assignment is durable with a reserved operation id while the
+    // Operations rail has not yet accepted the workflow request; reconciler
+    // then starts exactly once and replays after a simulated restart.
+    let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
+    let operations = Arc::new(InMemoryOperationRepository::new());
+    let handler = SetPluginAssignmentHandler::new(assignments.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let registry_id = PluginRegistryId::new();
+    let host_id = NodeId::new();
+    let actor_id = PrincipalId::new();
+
+    let created = handler
+        .execute(
+            set_assignment_command(
+                organization_id,
+                project_id,
+                environment_id,
+                registry_id,
+                host_id,
+                assignment_selection("0.1.0"),
+                PluginDesiredState::Enabled,
+                actor_id,
+                "assign-crash-1",
+            ),
+            context(),
+        )
+        .await
+        .expect("create dispatch")
+        .expect("create");
+    let operation_id = created
+        .assignment
+        .current_operation_id
+        .expect("reserved operation id");
+
+    let pending = assignments
+        .pending_operation_starts(100)
+        .await
+        .expect("pending starts");
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].id, created.assignment.id);
+    assert!(
+        operations
+            .find_request(operation_id)
+            .await
+            .expect("find before enqueue")
+            .is_none(),
+        "Flow/Operation must not exist before reconciler enqueue"
+    );
+
+    let reconciler = PluginAssignmentReconciler::new(assignments.clone(), operations.clone());
+    let first = reconciler.run_once(100).await.expect("reconcile after crash gap");
+    assert_eq!(first.started, 1);
+    assert_eq!(first.replayed, 0);
+    assert!(first.failures.is_empty());
+    assert!(
+        operations
+            .find_request(operation_id)
+            .await
+            .expect("find after enqueue")
+            .is_some(),
+        "reconciler must create the Flow/Operation request"
+    );
+
+    // Simulated control-plane restart: same durable assignment, enqueue again.
+    let restarted = PluginAssignmentReconciler::new(assignments.clone(), operations.clone());
+    let second = restarted.run_once(100).await.expect("reconcile after restart");
+    assert_eq!(second.started, 0);
+    assert_eq!(second.replayed, 1);
+    assert!(second.failures.is_empty());
+}
+

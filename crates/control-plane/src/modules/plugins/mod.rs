@@ -7,18 +7,31 @@ pub mod presentation;
 pub(crate) mod test_support;
 
 pub use application::{
-    EnrollPluginRegistry, EnrollPluginRegistryHandler, EnrollPluginRegistryResult,
+    ConfirmPluginPlanProjection, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistry,
+    EnrollPluginRegistryHandler, EnrollPluginRegistryResult, GetPluginAssignment,
+    GetPluginAssignmentHandler, GetPluginPlanProjection, GetPluginPlanProjectionHandler,
     GetPluginRegistry, GetPluginRegistryHandler, InspectCachedPluginCatalog,
     InspectCachedPluginCatalogHandler, InspectPluginCatalog, InspectPluginCatalogHandler,
-    ListPluginRegistries, ListPluginRegistriesHandler, SearchCachedPluginCatalog,
+    ListPluginAssignments, ListPluginAssignmentsHandler, ListPluginRegistries,
+    ListPluginRegistriesHandler, PluginAssignmentReconcileReport, PluginAssignmentReconciler,
+    RecordPluginPlanProjection, RecordPluginPlanProjectionHandler, SearchCachedPluginCatalog,
     SearchCachedPluginCatalogHandler, SearchPluginCatalog, SearchPluginCatalogHandler,
+    SetPluginAssignment, SetPluginAssignmentHandler, SetPluginAssignmentResult,
+    PLUGIN_ASSIGNMENT_WORKFLOW_NAME, PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
 };
 
 pub use infrastructure::{
-    persistence::{InMemoryPluginRegistryRepository, PostgresPluginRegistryRepository},
+    persistence::{
+        InMemoryPluginAssignmentRepository, InMemoryPluginPlanProjectionRepository,
+        InMemoryPluginRegistryRepository, PostgresPluginAssignmentRepository,
+        PostgresPluginPlanProjectionRepository, PostgresPluginRegistryRepository,
+    },
     A3sUsePluginRegistryCatalog, IdentityPluginRegistryEnrollmentAuthorizerAdapter,
-    PluginTrustRootObjectStore,
+    PluginAssignmentFlowConfig, PluginAssignmentFlowConfigOptions, PluginAssignmentFlowRuntime,
+    PluginAssignmentFlowRuntimeDependencies, PluginPolicyObjectStore, PluginTrustRootObjectStore,
 };
 pub use presentation::{
-    PluginCatalogInspectRequest, PluginCatalogSearchRequest, PluginRegistryResponse, PluginsModule,
+    PluginAssignmentMutationResponse, PluginAssignmentResponse, PluginCatalogInspectRequest,
+    PluginCatalogSearchRequest, PluginRegistryResponse, PluginsModule, SetPluginAssignmentRequest,
+    ConfirmPluginPlanProjectionRequest, PluginPlanProjectionResponse,
 };

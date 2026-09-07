@@ -24,7 +24,7 @@ pub use agent_provider::{
 pub use artifact::{
     artifact_uri, validate_cloud_artifact, NodeArtifactDownloadRequest, NodeArtifactUploadReceipt,
     NodeArtifactUploadRequest, DURABLE_CELL_BUNDLE_MEDIA_TYPE, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
-    SKILL_BUNDLE_MEDIA_TYPE,
+    PLUGIN_POLICY_ACL_MEDIA_TYPE, PLUGIN_TRUST_ROOT_MEDIA_TYPE, SKILL_BUNDLE_MEDIA_TYPE,
 };
 pub use box_build::{
     NodeBoxBuildCacheInput, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt,
@@ -67,7 +67,10 @@ pub use observation::{
     NodeObservationBatch, NodeObservationBatchEnvelope, NodeObservationBatchV2,
     NodeObservationReceipt, RuntimeObservationReport,
 };
-pub use plugin_host::NodePluginHostCapabilitiesRequest;
+pub use plugin_host::{
+    NodePluginHostAuthorizeTrustRequest, NodePluginHostCapabilitiesRequest,
+    NodePluginHostTrustAuthorized,
+};
 pub use resource_claim::{
     NodeResourceClaimBinding, NodeResourceClaimPrepare, NodeResourceClaimPrepared,
     NodeResourceClaimRelease, NodeResourceClaimReleased, RUNTIME_RESOURCE_BINDING_DIGEST_KEY,

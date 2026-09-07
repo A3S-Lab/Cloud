@@ -191,6 +191,11 @@ Commands:
   search resources QUERY Search authorized resources in the selected organization
   plugin-registries list List trusted A3S Use Registry references
   plugin-registries get ID Get one trusted A3S Use Registry reference
+  plugin-assignments list List desired A3S Use package assignments in the selected environment
+  plugin-assignments get ID Get one desired A3S Use package assignment
+  plugin-assignments set Set one desired A3S Use package assignment from request JSON
+  plugin-plan-projections get ID Get one digest-only A3S Use plan review projection
+  plugin-plan-projections confirm ID Confirm one ask-authority plan projection from confirmation JSON
   plugin-catalog search ID Search a refreshed signed A3S Use catalog from request JSON
   plugin-catalog search-cached ID Search an already verified catalog cache from request JSON
   plugin-catalog inspect ID Inspect a refreshed signed A3S Use release from request JSON
@@ -275,7 +280,7 @@ Global options:
   --unread-only           Filter notifications list to unread records
   --stream <stdout|stderr> Filter a log command by stream
   --idempotency-key <key>  Required stable key for every mutation
-  --file <path>             A3S ACL, native Form, Workflow, or catalog JSON input file
+  --file <path>             A3S ACL, native Form, Workflow, catalog, or assignment JSON input file
   --expected-version <n>    Current aggregate version for a versioned mutation
   --cost-attribution-code <code> Optional showback code for project-attribution update
   --label <key=value>        Repeatable bounded label for project-attribution update

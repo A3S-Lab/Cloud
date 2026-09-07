@@ -88,6 +88,8 @@ identifier!(DurableCellApplicationRevisionId);
 identifier!(StorageNamespaceId);
 identifier!(EnvironmentId);
 identifier!(PluginRegistryId);
+identifier!(PluginAssignmentId);
+identifier!(PluginPlanProjectionId);
 identifier!(OperationId);
 identifier!(NodeId);
 identifier!(NodePoolId);

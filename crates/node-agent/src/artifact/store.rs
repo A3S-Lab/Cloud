@@ -90,6 +90,23 @@ impl NodeArtifactCache {
         })
     }
 
+    /// Download and seal one opaque Artifact blob without directory extraction.
+    ///
+    /// Plugin Host trust-root JSON and policy ACL bytes are content-addressed
+    /// objects, not `application/vnd.a3s.directory.v1+tar` mounts.
+    pub(super) async fn materialize_blob(
+        &self,
+        transport: &dyn NodeArtifactTransport,
+        request: &NodeArtifactDownloadRequest,
+    ) -> Result<(PathBuf, u64), NodeArtifactError> {
+        request.validate().map_err(NodeArtifactError::Invalid)?;
+        let _guard = self.mutation.lock().await;
+        self.ensure_roots().await?;
+        let artifact = request.artifact().map_err(NodeArtifactError::Invalid)?;
+        self.ensure_downloaded_blob(transport, request, &artifact)
+            .await
+    }
+
     pub(super) async fn materialize(
         &self,
         transport: &dyn NodeArtifactTransport,

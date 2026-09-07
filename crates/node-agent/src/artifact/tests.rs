@@ -639,6 +639,123 @@ fn command(node_id: Uuid, spec: RuntimeUnitSpec) -> NodeCommandEnvelope {
     .expect("artifact command")
 }
 
+#[tokio::test]
+async fn authorize_trust_downloads_opaque_blobs_without_directory_extract() {
+    use a3s_cloud_contracts::{
+        NodePluginHostAuthorizeTrustRequest, PLUGIN_POLICY_ACL_MEDIA_TYPE,
+        PLUGIN_TRUST_ROOT_MEDIA_TYPE,
+    };
+
+    let trust_bytes =
+        include_bytes!("../../../control-plane/fixtures/plugins/bootstrap-root.json").to_vec();
+    let policy_bytes = b"default = \"deny\"\nallow.plugin.selftest = true\n".to_vec();
+    let trust_digest = format!("sha256:{:x}", Sha256::digest(&trust_bytes));
+    let policy_digest = format!("sha256:{:x}", Sha256::digest(&policy_bytes));
+    let node_id = Uuid::now_v7();
+    let request = NodePluginHostAuthorizeTrustRequest::from_digests(
+        5,
+        trust_digest.clone(),
+        policy_digest.clone(),
+    )
+    .expect("authorize-trust request");
+    let issued_at = Utc::now();
+    let command = NodeCommandEnvelope::new(
+        NodeCommandMetadata {
+            command_id: Uuid::now_v7(),
+            lease_id: Uuid::now_v7(),
+            node_id,
+            sequence: 1,
+            aggregate_id: Uuid::now_v7(),
+            issued_at,
+            not_after: issued_at + Duration::minutes(10),
+            correlation_id: Uuid::now_v7(),
+        },
+        NodeCommandPayload::PluginHostAuthorizeTrust {
+            request: Box::new(request.clone()),
+        },
+    )
+    .expect("authorize-trust command");
+
+    let payloads = Arc::new(Mutex::new(BTreeMap::from([
+        (trust_digest.clone(), trust_bytes.clone()),
+        (policy_digest.clone(), policy_bytes.clone()),
+    ])));
+    let transport = Arc::new(DigestKeyedTransport {
+        payloads: payloads.clone(),
+        downloads: AtomicUsize::new(0),
+    });
+    let root = tempfile::tempdir().expect("tempdir");
+    let manager = NodeArtifactManager::new(
+        root.path(),
+        ArtifactConfig {
+            max_blob_bytes: 1024 * 1024,
+            max_file_bytes: 1024 * 1024,
+            max_expanded_bytes: 2 * 1024 * 1024,
+            max_entries: 64,
+        },
+        node_id,
+        transport,
+    )
+    .expect("manager");
+
+    let (downloaded_trust, downloaded_policy) = manager
+        .materialize_authorize_trust(&command, &request)
+        .await
+        .expect("opaque materialize");
+    assert_eq!(downloaded_trust, trust_bytes);
+    assert_eq!(downloaded_policy, policy_bytes);
+    assert_eq!(request.trust_root.media_type, PLUGIN_TRUST_ROOT_MEDIA_TYPE);
+    assert_eq!(request.policy_acl.media_type, PLUGIN_POLICY_ACL_MEDIA_TYPE);
+}
+
+struct DigestKeyedTransport {
+    payloads: Arc<Mutex<BTreeMap<String, Vec<u8>>>>,
+    downloads: AtomicUsize,
+}
+
+#[async_trait]
+impl NodeArtifactTransport for DigestKeyedTransport {
+    async fn download(
+        &self,
+        request: &NodeArtifactDownloadRequest,
+        destination: &Path,
+        maximum_bytes: u64,
+    ) -> Result<DownloadedNodeArtifact, NodeControlClientError> {
+        request
+            .validate()
+            .map_err(NodeControlClientError::Invalid)?;
+        let bytes = self
+            .payloads
+            .lock()
+            .map_err(|_| NodeControlClientError::Transport("payload lock poisoned".into()))?
+            .get(&request.artifact().map_err(NodeControlClientError::Invalid)?.digest)
+            .cloned()
+            .ok_or_else(|| NodeControlClientError::Invalid("missing digest payload".into()))?;
+        if bytes.len() as u64 > maximum_bytes {
+            return Err(NodeControlClientError::Invalid(
+                "opaque payload exceeds maximum".into(),
+            ));
+        }
+        self.downloads.fetch_add(1, Ordering::SeqCst);
+        tokio::fs::write(destination, &bytes)
+            .await
+            .map_err(|error| NodeControlClientError::Transport(error.to_string()))?;
+        Ok(DownloadedNodeArtifact {
+            size_bytes: bytes.len() as u64,
+        })
+    }
+
+    async fn upload(
+        &self,
+        _request: &NodeArtifactUploadRequest,
+        _source: &Path,
+    ) -> Result<NodeArtifactUploadReceipt, NodeControlClientError> {
+        Err(NodeControlClientError::Invalid(
+            "opaque authorize-trust test does not upload".into(),
+        ))
+    }
+}
+
 fn succeeded_observation(
     spec: &RuntimeUnitSpec,
     output: RuntimeOutputArtifact,

@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 188;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "188";
+pub const CLOUD_MIGRATION_COUNT: i64 = 190;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "190";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1713,6 +1713,30 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/188_automation_definitions_and_revisions.sql"
             )),
         ),
+        Migration::new(
+            "189",
+            "Plugin assignments",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/189_plugin_assignments.sql"
+            )),
+        ),
+        Migration::new(
+            "190",
+            "Plugin plan projections",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/190_plugin_plan_projections.sql"
+            )),
+        ),
+        Migration::new(
+            "191",
+            "Plugin plan projection confirmation envelope",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/191_plugin_plan_projection_confirmation.sql"
+            )),
+        ),
     ]
 }
 
@@ -1750,6 +1774,18 @@ mod automation_invocation_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/automation_definition_migration.rs"]
 mod automation_definition_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/plugin_assignment_migration.rs"]
+mod plugin_assignment_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/plugin_plan_projection_migration.rs"]
+mod plugin_plan_projection_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/plugin_plan_projection_confirmation_migration.rs"]
+mod plugin_plan_projection_confirmation_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/installation_scoped_facts_migration.rs"]
