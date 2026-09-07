@@ -390,22 +390,42 @@ print_next_steps() {
     '' \
     '2) Fleet long-poll node-agent (Linux ONLY; a3s-box is the sole Runtime provider):' \
     "  # binary: $agent_bin" \
-    '  # usage: a3s-cloud-node-agent /absolute/path/to/node-config.acl' \
-    '  # start from config/node.example.acl after replacing enrollment/node_control URLs,' \
-    '  # CA path, and exporting A3S_CLOUD_ENROLLMENT_TOKEN from nodes bootstrap.' \
-    '  # Darwin hosts cannot run the agent binary; use a Linux worker with a3s-box.' \
+    '  cargo build --locked -p a3s-cloud-node-agent' \
+    '  # Copy config/node.example.acl to an absolute path ending in .acl; set enrollment_url,' \
+    '  # node_control_url, server_ca_file, and box.home_dir for the Linux worker.' \
+    '  # Darwin cannot run the agent; a3s-box is required on the Linux host.' \
     '' \
-    '3) Operator enrollment / assignment (high level):' \
-    '  - Bootstrap a node (CLI nodes bootstrap ... --enrollment-token-stdin ...)' \
-    '  - Enroll the Linux agent with the one-time token' \
-    '  - Enroll a signed Use Registry (public HTTPS fixture/revision pin; never fake EXIT)' \
-    '  - Create a plugin assignment and wait for Fleet plan/apply/observe digests' \
+    '3) Exact a3s-cloud CLI recipe (API must already be up; never claims EXIT):' \
+    '  export A3S_CLOUD_URL=http://127.0.0.1:8080/api/v1' \
+    '  export A3S_CLOUD_TOKEN=<api-token-with-node:write+plugin:write>' \
+    '  export A3S_CLOUD_ORGANIZATION_ID=<org-uuid>' \
+    '  export A3S_CLOUD_PROJECT_ID=<project-uuid>' \
+    '  export A3S_CLOUD_ENVIRONMENT_ID=<environment-uuid>' \
+    '  # One-time enrollment credential: exactly a3sn_ + 64 lowercase hex digits.' \
+    '  printf %s "a3sn_<64-lowercase-hex>" | bun run cli/src/main.ts nodes bootstrap worker-1 \\' \
+    '    --enrollment-token-stdin \\' \
+    '    --expires-at=<RFC3339> \\' \
+    '    --agent-release-url=https://<trusted-release>/a3s-cloud-node-agent \\' \
+    '    --agent-release-sha256=<64-lowercase-hex> \\' \
+    '    --node-config=/absolute/path/to/node.acl \\' \
+    '    --idempotency-key=<caller-owned-key>' \
+    '  # Run the printed Bash install invocation on the Linux host, then start the agent.' \
+    '  # Signed Use Registry enrollment is Cloud application/REST (EnrollPluginRegistry);' \
+    '  # CLI currently exposes plugin-registries list|get plus catalog search/inspect only.' \
+    '  bun run cli/src/main.ts plugin-registries list' \
+    '  bun run cli/src/main.ts plugin-catalog inspect <registry-id> --file=/absolute/inspect.json' \
+    '  bun run cli/src/main.ts plugin-assignments set --file=/absolute/assignment.json --idempotency-key=<key>' \
+    '  bun run cli/src/main.ts plugin-plan-projections get <projection-id>' \
+    '  bun run cli/src/main.ts plugin-plan-projections confirm <projection-id> --file=/absolute/confirm.json --idempotency-key=<key>' \
+    '  # Wait for Fleet plan/apply/observe digests on the enrolled Linux host.' \
     '' \
     '4) After a real converge, collect evidence (still not EXIT by itself):' \
     "  bash $tools/collect_live_host_evidence.sh \\" \
     '    --host HOST --assignment ID --package ID --plan-digest DIGEST' \
     '  A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION=<cert> \' \
-    "    bash $tools/run_u0_3_exit_audit.sh <evidence-dir>"
+    "    bash $tools/run_u0_3_exit_audit.sh <evidence-dir>" \
+    '' \
+    'See tools/use-conformance/OPERATOR_LIVE_HOST.md for Darwin blockers and the ordered live path.'
 }
 
 bring_up_deps

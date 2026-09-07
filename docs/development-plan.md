@@ -5033,7 +5033,7 @@ and Node Agent enablement journal evidence, then fail-closes with
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` (live Cloud↔host without dual-version Use
 embed). CI fail-closed harness `run_u0_3_exit_audit_ci.sh` certifies validator
 self-checks and light exit-audit fail-closed behavior without claiming product
-exit; live host remains required for `A3S_CLOUD_U0_3_EXIT_CERTIFIED`. Operator collector `collect_live_host_evidence.sh` assembles validated live-host evidence and never emits product `EXIT_CERTIFIED`. Operator prep `run_u0_3_live_host_prep.sh` bootstraps migration/serving PostgreSQL roles (including docker reuse of `a3s-u03-pg`) and prints distinct `A3S_CLOUD_POSTGRES_MIGRATION_URL` / serving `A3S_CLOUD_POSTGRES_URL` without claiming EXIT.
+exit; live host remains required for `A3S_CLOUD_U0_3_EXIT_CERTIFIED`. Operator collector `collect_live_host_evidence.sh` assembles validated live-host evidence and never emits product `EXIT_CERTIFIED`. Operator prep `run_u0_3_live_host_prep.sh` bootstraps migration/serving PostgreSQL roles (including docker reuse of `a3s-u03-pg`), prints distinct `A3S_CLOUD_POSTGRES_MIGRATION_URL` / serving `A3S_CLOUD_POSTGRES_URL`, and prints the exact `a3s-cloud` enrollment/assignment CLI recipe (see `tools/use-conformance/OPERATOR_LIVE_HOST.md`) without claiming EXIT.
 
 ## 13. Milestone A1: heterogeneous Agent execution
 

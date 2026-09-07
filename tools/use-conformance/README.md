@@ -156,6 +156,9 @@ bash tools/use-conformance/run_u0_3_live_host_prep.sh
 # A3S_CLOUD_U0_3_PREP_ALLOW_PARTIAL=true bash tools/use-conformance/run_u0_3_live_host_prep.sh
 ```
 
+Operator live-host blockers and the ordered CLI path (never claims EXIT):
+`OPERATOR_LIVE_HOST.md`.
+
 Operator live-host evidence collector (writes validated cert + optional
 sidecars + checklist; never emits `A3S_CLOUD_U0_3_EXIT_CERTIFIED`):
 

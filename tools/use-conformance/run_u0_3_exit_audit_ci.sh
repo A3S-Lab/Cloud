@@ -119,6 +119,8 @@ prep="$tools/run_u0_3_live_host_prep.sh"
 grep -Fq 'ensure_postgres_roles' "$prep"
 grep -Fq 'a3s_cloud_serving' "$prep"
 grep -Fq 'A3S_CLOUD_POSTGRES_MIGRATION_URL' "$prep"
+grep -Fq 'nodes bootstrap' "$prep"
+grep -Fq 'plugin-assignments set' "$prep"
 grep -Fq 'A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$prep"
 # Prep documents EXIT_CERTIFIED only as something it never claims.
 if grep -E 'claim[s]? A3S_CLOUD_U0_3_EXIT_CERTIFIED' "$prep" | grep -vq 'NEVER\|Does not\|does NOT\|never'; then
