@@ -139,6 +139,9 @@ bash tools/use-conformance/run_u0_3_exit_audit.sh /absolute/evidence/directory
 # Optional: A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION=/path/to/cert.txt
 ```
 
+See `live-host-certification.example.txt` for the required
+`A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` marker line and operator checklist.
+
 Skill-only Node Agent journal converge (shared `PluginHostManager` port, no OKF)
 is covered by:
 

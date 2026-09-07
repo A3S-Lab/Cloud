@@ -1,0 +1,13 @@
+# Example operator certification for U0.3 live Cloud↔host exit evidence.
+# Replace PLACEHOLDER fields with real digests/hosts, then point
+# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at this file (or a copy).
+#
+# Required marker line (exact):
+A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED revision=PLACEHOLDER_USE_REVISION host=PLACEHOLDER_HOST assignment=PLACEHOLDER_ASSIGNMENT_ID package=PLACEHOLDER_PACKAGE_ID plan_digest=PLACEHOLDER_PLAN_DIGEST
+#
+# Evidence checklist the operator run must retain elsewhere:
+# - Cloud control-plane assignment Operation and Flow identity
+# - Fleet node_command delivery/ack digests for plan/apply/observe
+# - Node Agent journal replay of the same command IDs
+# - Real PluginHostManager observation converging desired/observed state
+# - No dual-version a3s-use embed in Cloud Cargo.toml
