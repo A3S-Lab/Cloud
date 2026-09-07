@@ -142,6 +142,22 @@ bash tools/use-conformance/run_u0_3_exit_audit.sh /absolute/evidence/directory
 See `live-host-certification.example.txt` for the required
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` marker line and operator checklist.
 
+Live-host certification validation (no cargo): the CERTIFIED line must include
+`revision=<40hex matching use-revision>` plus nonempty `host`, `assignment`,
+`package`, and `plan_digest`, and must reject `PLACEHOLDER_*`. Self-check:
+
+```bash
+rev=$(cat tools/use-conformance/use-revision)
+# Expect FAIL (PLACEHOLDER_* / bad revision):
+bash tools/use-conformance/validate_live_host_certification.sh \
+  tools/use-conformance/live-host-certification.example.txt "$rev"; echo exit=$?
+# Expect PASS:
+tmp=$(mktemp)
+printf '%s\n' "A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED revision=$rev host=h1 assignment=a1 package=p1 plan_digest=d1" >"$tmp"
+bash tools/use-conformance/validate_live_host_certification.sh "$tmp" "$rev"; echo exit=$?
+rm -f "$tmp"
+```
+
 Skill-only Node Agent journal converge (shared `PluginHostManager` port, no OKF)
 is covered by:
 

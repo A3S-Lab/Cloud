@@ -1263,6 +1263,7 @@ jobs:
           bash -n tools/use-conformance/run_use_host_converge_gate.sh
           bash -n tools/use-conformance/run_use_contract_fixture_gate.sh
           bash -n tools/use-conformance/run_use_scope_isolation_gate.sh
+          bash -n tools/use-conformance/validate_live_host_certification.sh
           bash -n tools/use-conformance/run_u0_3_exit_audit.sh
           bash -n tools/use-conformance/run_u0_3_foundation_gate.sh
           bash -n tools/workload-identity-conformance/run_provider_gate.sh

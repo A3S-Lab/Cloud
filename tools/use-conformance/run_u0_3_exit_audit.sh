@@ -68,11 +68,16 @@ if ((enable_status != 0)); then
 fi
 record PASS "Node Agent enablement journal (same-generation plan/apply/enablement)"
 
+# Fail closed on live-host evidence: require a typed CERTIFIED line whose
+# revision matches the Cloud-pinned Use revision and rejects PLACEHOLDER_*.
+# shellcheck source=validate_live_host_certification.sh
+source "$tools/validate_live_host_certification.sh"
+
 live_status=OPEN
 live_detail="operator-owned live Cloud↔host certification missing"
 if [[ -n ${A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION:-} ]]; then
-  if [[ -s $A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION ]] \
-    && grep -Fq 'A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED' "$A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION"
+  if validate_live_host_certification \
+    "$A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION" "$revision"
   then
     live_status=PASS
     live_detail="live Cloud↔host certified via $A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION"
@@ -80,7 +85,7 @@ if [[ -n ${A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION:-} ]]; then
       "$evidence_directory/live-host-certification.txt"
   else
     live_status=FAIL
-    live_detail="A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION set but missing A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED"
+    live_detail="A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION set but certification line invalid (revision/host/assignment/package/plan_digest; no PLACEHOLDER_*)"
   fi
 fi
 record "$live_status" "$live_detail"

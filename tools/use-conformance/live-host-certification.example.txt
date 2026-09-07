@@ -1,8 +1,21 @@
 # Example operator certification for U0.3 live Cloud↔host exit evidence.
 # Replace PLACEHOLDER fields with real digests/hosts, then point
-# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at this file (or a copy).
+# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at a copy of this file.
 #
-# Required marker line (exact):
+# IMPORTANT: This example itself must NOT unlock the exit gate. Validation
+# rejects any PLACEHOLDER_* field value. Pointing
+# A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION at this file fails closed.
+#
+# Required non-comment line shape (exact marker + five fields):
+#   A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED revision=<40hex> host=<nonempty> assignment=<nonempty> package=<nonempty> plan_digest=<nonempty>
+#
+# Field requirements enforced by validate_live_host_certification.sh:
+# - revision= must be 40 lowercase hex and equal tools/use-conformance/use-revision
+# - host=, assignment=, package=, plan_digest= must be nonempty
+# - no field may use a PLACEHOLDER_* value
+# - unknown fields are rejected; comment lines (#) are ignored
+#
+# Documentation-only example (PLACEHOLDER_* → FAIL when used as gate input):
 A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED revision=PLACEHOLDER_USE_REVISION host=PLACEHOLDER_HOST assignment=PLACEHOLDER_ASSIGNMENT_ID package=PLACEHOLDER_PACKAGE_ID plan_digest=PLACEHOLDER_PLAN_DIGEST
 #
 # Evidence checklist the operator run must retain elsewhere:
