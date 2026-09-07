@@ -30,43 +30,49 @@ record() {
 echo "===== pin =====" | tee -a "$audit_log"
 record PASS "use-revision and Cargo.toml pin=$revision"
 
-echo "===== architecture-ratchet =====" | tee -a "$audit_log"
-cd -- "$repository_root"
-set +e
-cargo test --locked -p a3s-cloud-control-plane --lib \
-  plugins_u0_assignment_surface_owns_no_second_use_platform -- --exact --nocapture \
-  2>&1 | tee -a "$audit_log"
-arch_status=${PIPESTATUS[0]}
-set -e
-if ((arch_status != 0)); then
-  record FAIL "no-second-Use-platform architecture ratchet"
-  exit "$arch_status"
+# LIGHT mode (CI fail-closed harness): skip cargo/fixture gates; still pin-check
+# and live-host fail-closed. Never unlock EXIT_CERTIFIED without a real cert.
+if [[ ${A3S_CLOUD_U0_3_EXIT_AUDIT_LIGHT:-} == 1 ]]; then
+  record PASS "light mode: skipped cargo/fixture/scope/enablement (CI fail-closed only)"
+else
+  echo "===== architecture-ratchet =====" | tee -a "$audit_log"
+  cd -- "$repository_root"
+  set +e
+  cargo test --locked -p a3s-cloud-control-plane --lib \
+    plugins_u0_assignment_surface_owns_no_second_use_platform -- --exact --nocapture \
+    2>&1 | tee -a "$audit_log"
+  arch_status=${PIPESTATUS[0]}
+  set -e
+  if ((arch_status != 0)); then
+    record FAIL "no-second-Use-platform architecture ratchet"
+    exit "$arch_status"
+  fi
+  record PASS "no-second-Use-platform architecture ratchet"
+
+  echo "===== contract-fixtures =====" | tee -a "$audit_log"
+  bash "$tools/run_use_contract_fixture_gate.sh" "$evidence_directory/use-contract-fixtures" \
+    2>&1 | tee -a "$audit_log"
+  record PASS "pinned Use golden contract fixtures"
+
+  echo "===== scope-isolation =====" | tee -a "$audit_log"
+  bash "$tools/run_use_scope_isolation_gate.sh" "$evidence_directory/use-scope-isolation" \
+    2>&1 | tee -a "$audit_log"
+  record PASS "pinned Use scope/path/symlink fail-closed"
+
+  echo "===== node-agent-enablement-journal =====" | tee -a "$audit_log"
+  cd -- "$repository_root"
+  set +e
+  cargo test --locked -p a3s-cloud-node-agent --test plugin_host \
+    same_generation_plugin_stages_dispatch_through_only_the_shared_manager_port \
+    -- --exact --nocapture 2>&1 | tee -a "$audit_log"
+  enable_status=${PIPESTATUS[0]}
+  set -e
+  if ((enable_status != 0)); then
+    record FAIL "Node Agent enablement journal (same-generation plan/apply/enablement)"
+    exit "$enable_status"
+  fi
+  record PASS "Node Agent enablement journal (same-generation plan/apply/enablement)"
 fi
-record PASS "no-second-Use-platform architecture ratchet"
-
-echo "===== contract-fixtures =====" | tee -a "$audit_log"
-bash "$tools/run_use_contract_fixture_gate.sh" "$evidence_directory/use-contract-fixtures" \
-  2>&1 | tee -a "$audit_log"
-record PASS "pinned Use golden contract fixtures"
-
-echo "===== scope-isolation =====" | tee -a "$audit_log"
-bash "$tools/run_use_scope_isolation_gate.sh" "$evidence_directory/use-scope-isolation" \
-  2>&1 | tee -a "$audit_log"
-record PASS "pinned Use scope/path/symlink fail-closed"
-
-echo "===== node-agent-enablement-journal =====" | tee -a "$audit_log"
-cd -- "$repository_root"
-set +e
-cargo test --locked -p a3s-cloud-node-agent --test plugin_host \
-  same_generation_plugin_stages_dispatch_through_only_the_shared_manager_port \
-  -- --exact --nocapture 2>&1 | tee -a "$audit_log"
-enable_status=${PIPESTATUS[0]}
-set -e
-if ((enable_status != 0)); then
-  record FAIL "Node Agent enablement journal (same-generation plan/apply/enablement)"
-  exit "$enable_status"
-fi
-record PASS "Node Agent enablement journal (same-generation plan/apply/enablement)"
 
 # Fail closed on live-host evidence: require a typed CERTIFIED line whose
 # revision matches the Cloud-pinned Use revision and rejects PLACEHOLDER_*.

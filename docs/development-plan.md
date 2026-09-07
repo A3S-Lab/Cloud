@@ -4809,7 +4809,8 @@ including `mutation_matrix=6`, `node_agent_journal=5`,
 `A3S_CLOUD_U0_3_USE_CONTRACT_FIXTURES_CERTIFIED`, and
 `A3S_CLOUD_U0_3_USE_SCOPE_ISOLATION_CERTIFIED`). Product exit additionally
 requires `run_u0_3_exit_audit.sh`, which fail-closes without operator-owned
-live Cloud↔host certification (`A3S_CLOUD_U0_3_EXIT_BLOCKED`).
+live Cloud↔host certification (`A3S_CLOUD_U0_3_EXIT_BLOCKED`); CI harness
+`run_u0_3_exit_audit_ci.sh` proves fail-closed behavior without product exit.
 
 The exact catalog selection is immutable within one assignment generation.
 Cloud assignment generation, Use installed generation, and Use capability
@@ -5030,7 +5031,9 @@ and Node Agent enablement journal evidence, then fail-closes with
 `A3S_CLOUD_U0_3_EXIT_BLOCKED` until
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFICATION` points at an operator file containing
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` (live Cloud↔host without dual-version Use
-embed).
+embed). CI fail-closed harness `run_u0_3_exit_audit_ci.sh` certifies validator
+self-checks and light exit-audit fail-closed behavior without claiming product
+exit; live host remains required for `A3S_CLOUD_U0_3_EXIT_CERTIFIED`.
 
 ## 13. Milestone A1: heterogeneous Agent execution
 

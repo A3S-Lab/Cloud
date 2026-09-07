@@ -142,6 +142,16 @@ bash tools/use-conformance/run_u0_3_exit_audit.sh /absolute/evidence/directory
 See `live-host-certification.example.txt` for the required
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` marker line and operator checklist.
 
+CI fail-closed harness (validator self-check + light exit-audit without live
+host; never claims product `A3S_CLOUD_U0_3_EXIT_CERTIFIED`):
+
+```bash
+bash tools/use-conformance/run_u0_3_exit_audit_ci.sh
+```
+
+Repository-policy CI runs that harness and `bash -n` on the script. Product
+exit still requires a real operator live-host certification.
+
 Live-host certification validation (no cargo): the CERTIFIED line must include
 `revision=<40hex matching use-revision>` plus nonempty `host`, `assignment`,
 `package`, and `plan_digest`, and must reject `PLACEHOLDER_*`. Self-check:
