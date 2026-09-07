@@ -601,6 +601,18 @@ async fn build_api_worker_application(
     let preview_source_revision_projection =
         run_relay.then(|| postgres_adapters.preview_source_revision_projection());
     let adapters: ApiWorkerPostgresAdapters = postgres_adapters.api_worker();
+    // Construct the complete Automations PostgreSQL port family in the API /
+    // worker role. Public routes, timer loops, and event consumers remain
+    // disabled until their owning authorization, schema, and target ports are
+    // explicitly composed; keeping the ports alive here prevents presentation
+    // code from constructing concrete repositories or silently switching to an
+    // in-memory implementation.
+    let automation_adapters = adapters.automations;
+    let _automation_definitions = automation_adapters.definitions;
+    let _automation_webhooks = automation_adapters.webhooks;
+    let _automation_invocations = automation_adapters.invocations;
+    let _automation_invocation_reader = automation_adapters.invocation_reader;
+    let _automation_schedule_state = automation_adapters.schedule_state;
     let active_human_memberships = adapters.identity.active_human_memberships;
     let identity_bootstrap = adapters.identity.identity_bootstrap;
     let organizations = adapters.identity.organizations;

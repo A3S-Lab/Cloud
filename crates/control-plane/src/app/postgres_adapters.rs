@@ -11,6 +11,12 @@ use crate::modules::assets::{
     PostgresAssetRepository,
 };
 use crate::modules::audit::{IAuditRecordRepository, PostgresAuditRecordRepository};
+use crate::modules::automations::{
+    IAutomationDefinitionRepository, IAutomationInvocationReader, IAutomationInvocationRepository,
+    IAutomationScheduleStateRepository, IAutomationWebhookRepository,
+    PostgresAutomationDefinitionRepository, PostgresAutomationInvocationRepository,
+    PostgresAutomationScheduleStateRepository, PostgresAutomationWebhookRepository,
+};
 use crate::modules::connectors::{
     IConnectorExecutionAttemptRepository, IConnectorExecutionAttemptResolutionRepository,
     IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
@@ -111,6 +117,7 @@ impl PostgresAdapterFactory {
     pub(super) fn api_worker(&self) -> ApiWorkerPostgresAdapters {
         let artifacts = ArtifactPostgresAdapters::new(self.executor.clone());
         ApiWorkerPostgresAdapters {
+            automations: AutomationPostgresAdapters::new(self.executor.clone()),
             identity: IdentityPostgresAdapters::new(self.executor.clone()),
             projects: ProjectPostgresAdapters::new(self.executor.clone()),
             workflow: WorkflowPostgresAdapters::new(self.executor.clone()),
@@ -223,6 +230,7 @@ impl ConnectorExecutionPostgresAdapters {
 }
 
 pub(super) struct ApiWorkerPostgresAdapters {
+    pub(super) automations: AutomationPostgresAdapters,
     pub(super) identity: IdentityPostgresAdapters,
     pub(super) projects: ProjectPostgresAdapters,
     pub(super) workflow: WorkflowPostgresAdapters,
@@ -250,6 +258,41 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     pub(super) operations: Arc<dyn IOperationRepository>,
+}
+
+/// PostgreSQL ports owned by the Automations bounded context.
+///
+/// Keeping these behind one role-selected adapter family makes it possible for
+/// the API/worker composition to opt into Automations without constructing
+/// concrete repositories in presentation or process-supervision code. The
+/// adapters do not imply that a worker or public route is enabled: those still
+/// require explicit owner ports for authorization, schema selection, and target
+/// execution.
+pub(super) struct AutomationPostgresAdapters {
+    pub(super) definitions: Arc<dyn IAutomationDefinitionRepository>,
+    pub(super) webhooks: Arc<dyn IAutomationWebhookRepository>,
+    pub(super) invocations: Arc<dyn IAutomationInvocationRepository>,
+    pub(super) invocation_reader: Arc<dyn IAutomationInvocationReader>,
+    pub(super) schedule_state: Arc<dyn IAutomationScheduleStateRepository>,
+}
+
+impl AutomationPostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        let webhook_repository =
+            Arc::new(PostgresAutomationWebhookRepository::new(executor.clone()));
+        let invocation_repository = Arc::new(PostgresAutomationInvocationRepository::new(
+            executor.clone(),
+        ));
+        Self {
+            definitions: Arc::new(PostgresAutomationDefinitionRepository::new(
+                executor.clone(),
+            )),
+            webhooks: webhook_repository,
+            invocations: invocation_repository.clone(),
+            invocation_reader: invocation_repository,
+            schedule_state: Arc::new(PostgresAutomationScheduleStateRepository::new(executor)),
+        }
+    }
 }
 
 pub(super) struct RelayPostgresAdapters {
