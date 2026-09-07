@@ -119,6 +119,12 @@ pub trait IAutomationDefinitionRepository: Send + Sync {
         automation_id: Uuid,
     ) -> Result<Option<AutomationDefinitionRecord>, RepositoryError>;
 
+    /// Return a deterministic bounded snapshot of definition heads.
+    ///
+    /// The result is an owner-facing discovery surface: callers must still
+    /// authorize each exact revision and decide which trigger type they own.
+    async fn list(&self, limit: usize) -> Result<Vec<AutomationDefinitionRecord>, RepositoryError>;
+
     async fn find_revision(
         &self,
         organization_id: Uuid,

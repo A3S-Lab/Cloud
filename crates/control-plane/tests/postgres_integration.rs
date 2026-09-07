@@ -519,6 +519,8 @@ async fn exercise_automation_definition_postgres(
             created_at: automation_timestamp(1_000),
         })
         .await?;
+    assert_eq!(repository.list(1).await?.len(), 1);
+    assert!(repository.list(0).await?.is_empty());
 
     let mut successor_spec = revision.spec().definition.clone();
     successor_spec.name = "daily-report-v2".into();

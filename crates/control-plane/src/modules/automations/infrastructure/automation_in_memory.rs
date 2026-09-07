@@ -70,6 +70,20 @@ impl IAutomationDefinitionRepository for InMemoryAutomationDefinitionRepository 
             .cloned())
     }
 
+    async fn list(&self, limit: usize) -> Result<Vec<AutomationDefinitionRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .heads
+            .read()
+            .await
+            .values()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
     async fn find_revision(
         &self,
         organization_id: Uuid,
@@ -208,6 +222,12 @@ mod tests {
                 .expect("first revision"),
             first
         );
+        assert_eq!(repository.list(1).await.expect("head list").len(), 1);
+        assert!(repository
+            .list(0)
+            .await
+            .expect("empty head list")
+            .is_empty());
         assert!(repository
             .find_revision(
                 Uuid::from_u128(0x201),

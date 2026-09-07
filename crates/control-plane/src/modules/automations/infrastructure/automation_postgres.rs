@@ -1,6 +1,6 @@
 use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, is_unique_violation, require_one_row,
-    transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
+    require_one_row, transaction_error, PostgresPersistenceError,
 };
 use crate::modules::automations::domain::{
     AppendAutomationRevision, AutomationDefinitionRecord, CreateAutomationDefinition,
@@ -67,6 +67,39 @@ impl IAutomationDefinitionRepository for PostgresAutomationDefinitionRepository 
             .transaction(move |transaction| {
                 Box::pin(async move {
                     load_head(transaction, organization_id, automation_id, false).await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn list(&self, limit: usize) -> Result<Vec<AutomationDefinitionRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let rows = fetch_all::<AutomationDefinitionRow, _>(
+                        transaction,
+                        sql_query::<AutomationDefinitionRow>(SELECT_HEAD)
+                            .append(" order by organization_id asc, automation_id asc limit ")
+                            .bind(limit),
+                    )
+                    .await?;
+                    let mut records = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        let Some(record) =
+                            load_head(transaction, row.organization_id, row.automation_id, false)
+                                .await?
+                        else {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "Automation definition head disappeared during discovery".into(),
+                            ));
+                        };
+                        records.push(record);
+                    }
+                    Ok(records)
                 })
             })
             .await
