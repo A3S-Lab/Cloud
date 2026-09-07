@@ -1268,6 +1268,7 @@ jobs:
           bash -n tools/use-conformance/run_u0_3_exit_audit.sh
           bash -n tools/use-conformance/run_u0_3_exit_audit_ci.sh
           bash -n tools/use-conformance/run_u0_3_foundation_gate.sh
+          bash -n tools/use-conformance/run_u0_3_live_host_prep.sh
           bash -n tools/workload-identity-conformance/run_provider_gate.sh
 
       - name: Certify U0.3 exit-audit CI fail-closed harness

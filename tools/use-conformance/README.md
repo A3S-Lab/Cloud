@@ -142,6 +142,15 @@ bash tools/use-conformance/run_u0_3_exit_audit.sh /absolute/evidence/directory
 See `live-host-certification.example.txt` for the required
 `A3S_CLOUD_U0_3_LIVE_HOST_CERTIFIED` marker line and operator checklist.
 
+Operator live-host dependency prep (starts/checks Postgres+NATS+registry via
+`a3s-box compose` on `deploy/dev/compose.acl`, or a docker fallback that can
+reuse `a3s-u03-pg`; builds control-plane; prints `run_cloud.sh` / Linux
+node-agent next steps). Never claims `A3S_CLOUD_U0_3_EXIT_CERTIFIED`:
+
+```bash
+bash tools/use-conformance/run_u0_3_live_host_prep.sh
+```
+
 Operator live-host evidence collector (writes validated cert + optional
 sidecars + checklist; never emits `A3S_CLOUD_U0_3_EXIT_CERTIFIED`):
 
