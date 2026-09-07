@@ -27,6 +27,7 @@ pub use application::{
     IAutomationInvocationAdmission, IAutomationInvocationHandler,
     IAutomationNormalizedEventHandler, IAutomationScheduleCandidateProvider,
     IAutomationScheduleDispatchService, ReceiveAutomationWebhookDelivery,
+    ReceiveAutomationWebhookDeliveryHandler,
     RepositoryAutomationScheduleCandidateProvider, ResolveAutomationWebhookEndpoint,
     AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
 };

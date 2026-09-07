@@ -8,6 +8,7 @@ use crate::modules::automations::domain::{
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_cloud_contracts::{AutomationWebhookRequestV1, AutomationWebhookSignatureV1};
+use a3s_boot::{Command, CommandHandler, CqrsContext};
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -32,6 +33,38 @@ pub struct ReceiveAutomationWebhookDelivery {
     pub causation_id: Option<Uuid>,
     pub receipt_id: Uuid,
     pub recorded_at: DateTime<Utc>,
+}
+
+impl Command for ReceiveAutomationWebhookDelivery {
+    type Output = ApplicationResult<AutomationWebhookAdmission>;
+}
+
+/// CQRS owner boundary for a signed webhook transport command.
+///
+/// The handler contains no transport parsing and no persistence logic; it
+/// delegates the already-captured command to the receiver's admission path.
+pub struct ReceiveAutomationWebhookDeliveryHandler {
+    receiver: Arc<AutomationWebhookReceiver>,
+}
+
+impl ReceiveAutomationWebhookDeliveryHandler {
+    pub fn new(receiver: Arc<AutomationWebhookReceiver>) -> Self {
+        Self { receiver }
+    }
+}
+
+impl CommandHandler<ReceiveAutomationWebhookDelivery> for ReceiveAutomationWebhookDeliveryHandler {
+    fn execute(
+        &self,
+        command: ReceiveAutomationWebhookDelivery,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<AutomationWebhookAdmission>>,
+    > {
+        let receiver = Arc::clone(&self.receiver);
+        Box::pin(async move { Ok(receiver.receive(command).await) })
+    }
 }
 
 /// Application-owned webhook receive composition.
