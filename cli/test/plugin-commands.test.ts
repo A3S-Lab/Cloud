@@ -127,6 +127,43 @@ describe('plugin catalog commands', () => {
     expect(fetched.stderr()).toBe('');
   });
 
+  it('enrolls a plugin registry through POST with idempotency', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const enrollmentInput = {
+      name: 'Official',
+      endpoint: 'https://registry.example.test/a3s',
+      bootstrapRootBase64: 'ZXhhbXBsZQ==',
+    };
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return envelope({ registry: REGISTRY, replayed: false }, 201);
+    };
+    const enrolled = capture();
+    expect(
+      await runCli(['plugin-registries', 'enroll', '--file=/tmp/enroll.json', '--idempotency-key=enroll-key', '--output=json'], {
+        ...enrolled.runtime,
+        environment: environment(),
+        fetch: fetcher,
+        readFile: async () => new TextEncoder().encode(JSON.stringify(enrollmentInput)),
+      })
+    ).toBe(0);
+    expect(calls.map(([input, init]) => ({
+      input,
+      method: init?.method,
+      body: init?.body,
+      idempotencyKey: (init?.headers as Record<string, string> | undefined)?.['Idempotency-Key'],
+    }))).toEqual([
+      {
+        input: `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/plugin-registries`,
+        method: 'POST',
+        body: JSON.stringify(enrollmentInput),
+        idempotencyKey: 'enroll-key',
+      },
+    ]);
+    expect(enrolled.stdout()).toBe(`${JSON.stringify({ registry: REGISTRY, replayed: false }, null, 2)}\n`);
+    expect(enrolled.stderr()).toBe('');
+  });
+
   it('lists, gets, and sets environment-scoped plugin assignments', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const assignmentInput = {

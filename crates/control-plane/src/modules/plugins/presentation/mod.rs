@@ -3,8 +3,9 @@ mod dto;
 mod plugins_module;
 
 pub use dto::{
-    ConfirmPluginPlanProjectionRequest, PluginAssignmentMutationResponse,
-    PluginAssignmentResponse, PluginCatalogInspectRequest, PluginCatalogSearchRequest,
-    PluginPlanProjectionResponse, PluginRegistryResponse, SetPluginAssignmentRequest,
+    ConfirmPluginPlanProjectionRequest, EnrollPluginRegistryRequest,
+    PluginAssignmentMutationResponse, PluginAssignmentResponse, PluginCatalogInspectRequest,
+    PluginCatalogSearchRequest, PluginPlanProjectionResponse, PluginRegistryMutationResponse,
+    PluginRegistryResponse, SetPluginAssignmentRequest,
 };
 pub use plugins_module::PluginsModule;

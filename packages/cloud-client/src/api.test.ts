@@ -48,7 +48,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 describe('CloudApi', () => {
   it('pins the shared client to the stable REST contract', () => {
     expect(CLOUD_API_MAJOR_VERSION).toBe(1);
-    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.84.0');
+    expect(CLOUD_API_CONTRACT_VERSION).toBe('1.85.0');
     expect(DEFAULT_CLOUD_API_BASE_PATH).toBe('/api/v1');
     expect(new CloudApi(undefined).baseUrl).toBe(DEFAULT_CLOUD_API_BASE_PATH);
   });
@@ -423,6 +423,15 @@ describe('CloudApi', () => {
 
     await api.listPluginRegistries('organization / one');
     await api.getPluginRegistry('organization / one', 'registry / one');
+    await api.enrollPluginRegistry(
+      'organization / one',
+      {
+        name: 'Official',
+        endpoint: 'https://registry.example.test/a3s',
+        bootstrapRootBase64: 'ZXhhbXBsZQ==',
+      },
+      'enroll-key'
+    );
     await api.searchPluginCatalog('organization / one', 'registry / one', search);
     await api.searchCachedPluginCatalog('organization / one', 'registry / one', search);
     await api.inspectPluginCatalog('organization / one', 'registry / one', inspect);
@@ -450,6 +459,17 @@ describe('CloudApi', () => {
         body: undefined,
         contentType: undefined,
         idempotencyKey: undefined,
+      },
+      {
+        input: '/api/v1/organizations/organization%20%2F%20one/plugin-registries',
+        method: 'POST',
+        body: JSON.stringify({
+          name: 'Official',
+          endpoint: 'https://registry.example.test/a3s',
+          bootstrapRootBase64: 'ZXhhbXBsZQ==',
+        }),
+        contentType: 'application/json',
+        idempotencyKey: 'enroll-key',
       },
       {
         input:

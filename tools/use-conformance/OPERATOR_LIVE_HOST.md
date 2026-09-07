@@ -35,8 +35,8 @@ bash tools/dev/run_cloud.sh
 3. Follow the exact `a3s-cloud` enrollment recipe printed by prep step 3
    (`nodes bootstrap`, Linux install invocation, registry list/catalog inspect,
    `plugin-assignments set`, plan projection confirm). Registry **enrollment**
-   uses the Cloud `EnrollPluginRegistry` application/REST command; the CLI
-   currently exposes `plugin-registries list|get` and catalog read paths only.
+   uses `a3s-cloud plugin-registries enroll --file=<enroll.json> --idempotency-key=<key>`
+   (JSON: name, endpoint, bootstrapRootBase64) against the Plugins REST enroll path.
 
 4. On a Linux worker with `a3s-box`, run the printed agent install invocation,
    then start `a3s-cloud-node-agent` with an absolute `.acl` config derived from

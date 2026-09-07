@@ -31,7 +31,8 @@ pub use infrastructure::{
     PluginAssignmentFlowRuntimeDependencies, PluginPolicyObjectStore, PluginTrustRootObjectStore,
 };
 pub use presentation::{
+    ConfirmPluginPlanProjectionRequest, EnrollPluginRegistryRequest,
     PluginAssignmentMutationResponse, PluginAssignmentResponse, PluginCatalogInspectRequest,
-    PluginCatalogSearchRequest, PluginRegistryResponse, PluginsModule, SetPluginAssignmentRequest,
-    ConfirmPluginPlanProjectionRequest, PluginPlanProjectionResponse,
+    PluginCatalogSearchRequest, PluginPlanProjectionResponse, PluginRegistryMutationResponse,
+    PluginRegistryResponse, PluginsModule, SetPluginAssignmentRequest,
 };

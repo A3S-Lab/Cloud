@@ -103,6 +103,17 @@ export interface PluginRegistry {
   updatedAt: string;
 }
 
+export interface EnrollPluginRegistryInput {
+  name: string;
+  endpoint: string;
+  bootstrapRootBase64: string;
+}
+
+export interface PluginRegistryMutationResult {
+  registry: PluginRegistry;
+  replayed: boolean;
+}
+
 export interface PluginAssignment {
   organizationId: string;
   projectId: string;

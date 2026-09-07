@@ -410,8 +410,8 @@ print_next_steps() {
     '    --node-config=/absolute/path/to/node.acl \\' \
     '    --idempotency-key=<caller-owned-key>' \
     '  # Run the printed Bash install invocation on the Linux host, then start the agent.' \
-    '  # Signed Use Registry enrollment is Cloud application/REST (EnrollPluginRegistry);' \
-    '  # CLI currently exposes plugin-registries list|get plus catalog search/inspect only.' \
+    '  # Signed Use Registry enrollment via CLI (Plugins REST EnrollPluginRegistry):' \
+    '  bun run cli/src/main.ts plugin-registries enroll --file=/absolute/enroll.json --idempotency-key=<key>' \
     '  bun run cli/src/main.ts plugin-registries list' \
     '  bun run cli/src/main.ts plugin-catalog inspect <registry-id> --file=/absolute/inspect.json' \
     '  bun run cli/src/main.ts plugin-assignments set --file=/absolute/assignment.json --idempotency-key=<key>' \

@@ -7901,6 +7901,14 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
         );
     }
 
+    let commands_controller = std::fs::read_to_string(
+        root.join("plugins/presentation/controllers/plugin_registry_commands_controller.rs"),
+    )
+    .expect("read Plugins registry commands controller");
+    let production_commands = production_source(&commands_controller);
+    assert!(production_commands.contains("organization_tenant_plugin_write_controller(controller)"));
+    assert!(production_commands.contains("EnrollPluginRegistry"));
+
     let controller = std::fs::read_to_string(
         root.join("plugins/presentation/controllers/plugin_registry_queries_controller.rs"),
     )
@@ -8008,7 +8016,10 @@ fn plugins_u0_assignment_surface_owns_no_second_use_platform() {
         let trimmed = line.trim_start();
         trimmed.starts_with("a3s-use ") || trimmed.starts_with("a3s-use=")
     });
-    assert!(has_use_core && has_use_extension, "Cloud must pin a3s-use-core and a3s-use-extension");
+    assert!(
+        has_use_core && has_use_extension,
+        "Cloud must pin a3s-use-core and a3s-use-extension"
+    );
     assert!(
         !has_full_use,
         "Cloud must not embed the a3s-use package until Flow/Runtime pins align"
@@ -8028,7 +8039,6 @@ fn plugins_u0_assignment_surface_owns_no_second_use_platform() {
         }),
         "Node Agent must not depend on the full a3s-use crate"
     );
-
 }
 
 #[test]

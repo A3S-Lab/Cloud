@@ -2,6 +2,7 @@ import type {
   A3sUseJsonObject,
   CloudApi,
   ConfirmPluginPlanProjectionInput,
+  EnrollPluginRegistryInput,
   PluginCatalogInspectRequest,
   PluginCatalogSearchRequest,
   SetPluginAssignmentInput,
@@ -29,6 +30,7 @@ import {
   pluginCatalogResult,
   pluginPlanProjectionResult,
   pluginRegistriesResult,
+  pluginRegistryMutationResult,
   pluginRegistryResult,
 } from './plugin-results';
 import type { CommandResult } from './results';
@@ -60,6 +62,17 @@ export async function executePluginCommand(
           positionalUuid(positionals, 2, 'Plugin Registry ID')
         )
       );
+    case 'plugin-registries enroll': {
+      const mutation = requirePluginRegistryEnrollmentMutation(arguments_);
+      const input = await readPluginRegistryEnrollmentInput(mutation.file, dependencies.readFile);
+      return pluginRegistryMutationResult(
+        await cloudApi().enrollPluginRegistry(
+          requireOrganization(context),
+          input,
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'plugin-assignments list': {
       requireListCommand(arguments_);
       const scope = requireEnvironmentScope(context);
@@ -179,6 +192,55 @@ async function readCatalogRequest(
     throw usageError('Plugin catalog request must be a JSON object');
   }
   return value;
+}
+
+
+function requirePluginRegistryEnrollmentMutation(arguments_: ParsedArguments): {
+  idempotencyKey: string;
+  file: string;
+} {
+  requireArity(arguments_.positionals, 2, 'plugin-registries enroll');
+  rejectLogOptions(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  const idempotencyKey = requireIdempotencyKey(arguments_);
+  const file = arguments_.file;
+  if (file === undefined || file.length > 4_096 || /[\0\r\n]/.test(file)) {
+    throw usageError('--file with a valid plugin registry enrollment JSON path is required');
+  }
+  return { idempotencyKey, file };
+}
+
+async function readPluginRegistryEnrollmentInput(
+  path: string,
+  readFile?: (path: string) => Promise<Uint8Array>
+): Promise<EnrollPluginRegistryInput> {
+  const value = await readBoundedJsonFile(
+    path,
+    {
+      label: 'Plugin registry enrollment input',
+      maximumBytes: MAX_PLUGIN_CATALOG_REQUEST_BYTES,
+      readError: 'unable to read the plugin registry enrollment JSON file',
+    },
+    readFile
+  );
+  if (!isEnrollPluginRegistryInput(value)) {
+    throw usageError(
+      'Plugin registry enrollment input must contain name, endpoint, and bootstrapRootBase64'
+    );
+  }
+  return value;
+}
+
+function isEnrollPluginRegistryInput(value: unknown): value is EnrollPluginRegistryInput {
+  if (!isJsonObject(value)) {
+    return false;
+  }
+  return (
+    typeof value.name === 'string' &&
+    typeof value.endpoint === 'string' &&
+    typeof value.bootstrapRootBase64 === 'string'
+  );
 }
 
 function requirePluginAssignmentMutation(arguments_: ParsedArguments): {

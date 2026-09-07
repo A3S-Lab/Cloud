@@ -574,6 +574,9 @@ fn operation_summary(method: &str, path: &str) -> String {
             return "Get audit retention status".into()
         }
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
+        ("post", "/organizations/{organization_id}/plugin-registries") => {
+            return "Enroll a plugin registry".into()
+        }
         ("post", "/webhooks/github") => return "Receive a GitHub webhook".into(),
         ("get", "/organizations/{organization_id}/search") => {
             return "Search authorized organization resources".into()

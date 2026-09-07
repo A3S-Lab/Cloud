@@ -1980,6 +1980,22 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/plugin-registries"];
     assert_eq!(plugin_registries["get"]["tags"], json!(["Plugins"]));
     assert!(plugin_registries["get"]["responses"]["200"].is_object());
+    assert_eq!(plugin_registries["post"]["tags"], json!(["Plugins"]));
+    assert_eq!(
+        plugin_registries["post"]["summary"],
+        json!("Enroll a plugin registry")
+    );
+    assert_eq!(
+        plugin_registries["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["required"],
+        json!(["name", "endpoint", "bootstrapRootBase64"])
+    );
+    assert!(plugin_registries["post"]["responses"]["200"].is_object());
+    assert!(plugin_registries["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key" && parameter["in"] == "header"
+        })));
     let plugin_registry = &document["paths"]
         ["/organizations/{organization_id}/plugin-registries/{registry_id}"]["get"];
     assert_eq!(plugin_registry["tags"], json!(["Plugins"]));

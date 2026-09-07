@@ -51,7 +51,7 @@ resource lists and filters them locally. Results include the Cloud-owned
 `plugin_registry` projection and its organization-level detail link, never A3S
 Use catalog records or cached TUF metadata.
 
-`plugin-registries list|get` reads Cloud-owned tenant Registry references.
+`plugin-registries list|get` reads Cloud-owned tenant Registry references. `plugin-registries enroll` creates one trusted Registry reference from `--file=<enroll.json>` with a caller-owned `--idempotency-key` (name, endpoint, bootstrapRootBase64).
 `plugin-catalog search|search-cached|inspect|inspect-cached <registry-id>`
 requires `--file=<request.json>` and passes one bounded canonical A3S Use JSON
 object unchanged. Online and cached reads are separate commands with no
@@ -67,7 +67,7 @@ exact command with the same key to receive the durable replay result.
 API starts a short-lived no-store browser installation flow instead of a
 replayable resource mutation.
 
-REST contract `1.82.0` exposes installation-scoped privileged management
+REST contract `1.85.0` exposes installation-scoped privileged management
 without requiring Organization, Project, or Environment context.
 `platform-role-policy current|get|accept` reads immutable revisions or accepts
 the exact next revision from `--file=<policy.acl>` with expected-current
@@ -421,6 +421,7 @@ operations list
 search resources <query> [--limit=<1..50>]
 plugin-registries list
 plugin-registries get <registry-id>
+plugin-registries enroll
 plugin-catalog search <registry-id> --file=<request.json>
 plugin-catalog search-cached <registry-id> --file=<request.json>
 plugin-catalog inspect <registry-id> --file=<request.json>

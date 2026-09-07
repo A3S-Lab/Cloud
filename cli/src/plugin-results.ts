@@ -4,6 +4,7 @@ import type {
   PluginAssignmentMutationResult,
   PluginPlanProjection,
   PluginRegistry,
+  PluginRegistryMutationResult,
 } from '@a3s/cloud-client';
 import { renderTable } from './output';
 import type { CommandResult } from './results';
@@ -45,6 +46,13 @@ export function pluginRegistriesResult(rows: PluginRegistry[]): CommandResult {
 
 export function pluginRegistryResult(row: PluginRegistry): CommandResult {
   return { json: row, table: renderTable([row], PLUGIN_REGISTRY_COLUMNS) };
+}
+
+export function pluginRegistryMutationResult(result: PluginRegistryMutationResult): CommandResult {
+  return {
+    json: result,
+    table: renderTable([result.registry], PLUGIN_REGISTRY_COLUMNS),
+  };
 }
 
 export function pluginAssignmentsResult(rows: PluginAssignment[]): CommandResult {

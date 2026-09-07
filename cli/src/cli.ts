@@ -191,6 +191,7 @@ Commands:
   search resources QUERY Search authorized resources in the selected organization
   plugin-registries list List trusted A3S Use Registry references
   plugin-registries get ID Get one trusted A3S Use Registry reference
+  plugin-registries enroll Enroll one trusted A3S Use Registry reference from request JSON
   plugin-assignments list List desired A3S Use package assignments in the selected environment
   plugin-assignments get ID Get one desired A3S Use package assignment
   plugin-assignments set Set one desired A3S Use package assignment from request JSON

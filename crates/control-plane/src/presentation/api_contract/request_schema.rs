@@ -28,6 +28,7 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         }
         "/organizations/{organization_id}/domain-claims/{claim_id}/verify" => proof_schema(),
         "/organizations/{organization_id}/enrollment-tokens" => enrollment_token_schema(),
+        "/organizations/{organization_id}/plugin-registries" => enroll_plugin_registry_schema(),
         "/organizations/{organization_id}/memberships" => membership_schema(),
         "/organizations/{organization_id}/memberships/{membership_id}/revocation" => {
             expected_version_schema("expectedVersion")
@@ -428,6 +429,33 @@ fn agent_execution_fork_schema() -> Value {
             }
         }),
     )
+}
+
+fn enroll_plugin_registry_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "endpoint", "bootstrapRootBase64"],
+        "properties": {
+            "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 63,
+                "description": "Tenant-visible Plugin Registry display name."
+            },
+            "endpoint": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "description": "Canonical HTTPS A3S Use Registry endpoint directory URL."
+            },
+            "bootstrapRootBase64": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Standard base64 encoding of the exact TUF bootstrap root bytes."
+            }
+        }
+    })
 }
 
 fn enrollment_token_schema() -> Value {
