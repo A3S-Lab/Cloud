@@ -55,26 +55,28 @@ grep -Fq 'step1_status=enroll_preflight_ok' "$gate"
 grep -Fq 'enroll_executed' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_EXECUTE' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_ENROLL_NODE_ID' "$gate"
-grep -Fq 'steps8-9_executed=not_run' "$gate"
+grep -Fq 'step9_executed=not_run' "$gate"
 grep -Fq 'oci_executed' "$gate"
 grep -Fq 'deploy_executed' "$gate"
 grep -Fq 'health_executed' "$gate"
 grep -Fq 'https_executed' "$gate"
 grep -Fq 'logs_executed' "$gate"
 grep -Fq 'update_executed' "$gate"
+grep -Fq 'rollback_executed' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_ARTIFACT_DIGEST' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_SERVICE_ID' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_HEALTH_URL' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_HTTPS_URL' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_LOGS_CURSOR' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_UPDATE_DIGEST' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_ROLLBACK_DIGEST' "$gate"
 grep -Fq 'step2_status=oci_preflight_ok' "$gate"
 grep -Fq 'step3_status=deploy_preflight_ok' "$gate"
 grep -Fq 'step4_status=health_preflight_ok' "$gate"
 grep -Fq 'step5_status=https_preflight_ok' "$gate"
 grep -Fq 'step6_status=logs_preflight_ok' "$gate"
 grep -Fq 'step7_status=update_preflight_ok' "$gate"
-grep -Fq 'step8=rollback_preflight_ok' "$gate"
+grep -Fq 'step8_status=rollback_preflight_ok' "$gate"
 grep -Fq 'step9=stop_cleanup_preflight_ok' "$gate"
 grep -Fq 'oci=not_run' "$gate"
 grep -Fq 'deploy=not_run' "$gate"
@@ -120,6 +122,8 @@ grep -Fq 'logs_cursor_missing' "$steps"
 grep -Fq 'bx0_step_logs_execute' "$steps"
 grep -Fq 'update_digest_missing' "$steps"
 grep -Fq 'bx0_step_update_execute' "$steps"
+grep -Fq 'rollback_digest_missing' "$steps"
+grep -Fq 'bx0_step_rollback_execute' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 bash -n "$tools/run_bx0_clean_host_prep.sh"
@@ -692,6 +696,35 @@ grep -Fq 'status=preflight_ok' "$steps_evidence/rollback-ok/08-rollback.txt"
 grep -Fq 'rollback=not_run' "$steps_evidence/rollback-ok/08-rollback.txt"
 grep -Fq "$stub_rollback" "$steps_evidence/rollback-ok/08-rollback.txt"
 forbid_exit_certified_claim "$steps_evidence/rollback-ok/08-rollback.txt"
+
+echo "===== step library: rollback execute (Darwin-safe) ====="
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback" \
+  env -u A3S_CLOUD_BX0_ROLLBACK_DIGEST \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_rollback_execute "$1"
+  ' "$steps" "$steps_evidence/rollback-exec-missing"
+missing_rollback_exec=$?
+set -e
+if ((missing_rollback_exec != 1)); then
+  printf '%s\n' "expected rollback execute fail without digest, got $missing_rollback_exec" >&2
+  exit 1
+fi
+grep -Fq 'rollback_digest_missing' "$steps_evidence/rollback-exec-missing/08-rollback.txt"
+grep -Fq 'rollback=not_run' "$steps_evidence/rollback-exec-missing/08-rollback.txt"
+
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback" \
+  A3S_CLOUD_BX0_ROLLBACK_DIGEST='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  bx0_step_rollback_execute "$steps_evidence/rollback-exec-ok"
+grep -Fq 'status=execute_ok' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
+grep -Fq 'rollback=executed' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
+grep -Fq 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
+forbid_exit_certified_claim "$steps_evidence/rollback-exec-ok/08-rollback.txt"
 
 echo "===== step library: stop/cleanup preflight (Darwin-safe) ====="
 set +e
@@ -1347,7 +1380,7 @@ if [[ $os_name == Linux ]]; then
     'step7=update_preflight_ok' \
     'step8=rollback_preflight_ok' \
     'step9=stop_cleanup_preflight_ok' \
-    'steps8-9_executed=not_run'; do
+    'step9_executed=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -1707,7 +1740,56 @@ ACL
   forbid_exit_certified_claim "$evidence_directory/armed-exec-no-update.out"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-no-update.err"
 
-  echo "===== armed EXECUTE with enroll through update receipts must OPEN ====="
+  echo "===== armed EXECUTE without rollback digest must exit 1 ====="
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    -u A3S_CLOUD_BX0_ROLLBACK_DIGEST \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BX0_EXECUTE=1 \
+    A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
+    A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
+    A3S_CLOUD_BX0_ENROLL_NODE_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' \
+    A3S_CLOUD_BX0_ARTIFACT_DIGEST='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+    A3S_CLOUD_BX0_SERVICE_ID='svc-execute-ci-1' \
+    A3S_CLOUD_BX0_HEALTH_URL='http://127.0.0.1:18080/ready' \
+    A3S_CLOUD_BX0_HTTPS_URL='https://svc.example.test/' \
+    A3S_CLOUD_BX0_LOGS_CURSOR='cursor-ci-1' \
+    A3S_CLOUD_BX0_UPDATE_DIGEST='sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210' \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/exec-no-rollback-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-exec-no-rollback.out" 2>"$evidence_directory/armed-exec-no-rollback.err"
+  exec_no_rollback_status=$?
+  set -e
+  if ((exec_no_rollback_status != 1)); then
+    printf '%s\n' "expected EXECUTE without rollback digest exit 1, got $exec_no_rollback_status" >&2
+    cat "$evidence_directory/armed-exec-no-rollback.out" >&2 || true
+    cat "$evidence_directory/armed-exec-no-rollback.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'rollback_digest_missing' "$evidence_directory/armed-exec-no-rollback.err"; then
+    printf '%s\n' "expected rollback_digest_missing" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-rollback.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-rollback.err"
+
+  echo "===== armed EXECUTE with enroll through rollback receipts must OPEN ====="
   exec_ok_evidence="$evidence_directory/exec-ok-evidence"
   set +e
   env -u A3S_CLOUD_BOX_REVISION \
@@ -1730,6 +1812,7 @@ ACL
     A3S_CLOUD_BX0_HTTPS_URL='https://svc.example.test/' \
     A3S_CLOUD_BX0_LOGS_CURSOR='cursor-ci-1' \
     A3S_CLOUD_BX0_UPDATE_DIGEST='sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210' \
+    A3S_CLOUD_BX0_ROLLBACK_DIGEST='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
     A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
     A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
     A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
@@ -1744,7 +1827,7 @@ ACL
   exec_ok_status=$?
   set -e
   if ((exec_ok_status != 3)); then
-    printf '%s\n' "expected EXECUTE enroll through update exit 3 OPEN, got $exec_ok_status" >&2
+    printf '%s\n' "expected EXECUTE enroll through rollback exit 3 OPEN, got $exec_ok_status" >&2
     cat "$evidence_directory/armed-exec-ok.out" >&2 || true
     cat "$evidence_directory/armed-exec-ok.err" >&2 || true
     exit 1
@@ -1757,7 +1840,8 @@ ACL
   grep -Fq 'step5=https_executed' <<<"$combined_exec"
   grep -Fq 'step6=logs_executed' <<<"$combined_exec"
   grep -Fq 'step7=update_executed' <<<"$combined_exec"
-  grep -Fq 'steps8-9_executed=not_run' <<<"$combined_exec"
+  grep -Fq 'step8=rollback_executed' <<<"$combined_exec"
+  grep -Fq 'step9_executed=not_run' <<<"$combined_exec"
   grep -Fq 'enroll=executed' "$exec_ok_evidence/01-enroll.txt"
   grep -Fq 'oci=executed' "$exec_ok_evidence/02-oci.txt"
   grep -Fq 'deploy=executed' "$exec_ok_evidence/03-deploy.txt"
@@ -1765,6 +1849,7 @@ ACL
   grep -Fq 'https=executed' "$exec_ok_evidence/05-https.txt"
   grep -Fq 'logs=executed' "$exec_ok_evidence/06-logs.txt"
   grep -Fq 'update=executed' "$exec_ok_evidence/07-update.txt"
+  grep -Fq 'rollback=executed' "$exec_ok_evidence/08-rollback.txt"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.out"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.err"
   forbid_exit_certified_claim "$exec_ok_evidence/01-enroll.txt"
@@ -1774,6 +1859,7 @@ ACL
   forbid_exit_certified_claim "$exec_ok_evidence/05-https.txt"
   forbid_exit_certified_claim "$exec_ok_evidence/06-logs.txt"
   forbid_exit_certified_claim "$exec_ok_evidence/07-update.txt"
+  forbid_exit_certified_claim "$exec_ok_evidence/08-rollback.txt"
 fi
 
 echo "===== LOOP certification validator refuse-to-fake ====="

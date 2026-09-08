@@ -801,21 +801,21 @@ revisions, runs enroll…stop/cleanup steps 1–9 preflight only
 `https=not_run`, `logs=not_run`, `update=not_run`, `rollback=not_run`,
 `stop_cleanup=not_run`), leaves Power `UNBOUND` until PW0; product `EXIT`
 remains open and does not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. With
-`A3S_CLOUD_BX0_EXECUTE=1`, steps 1–7 may record `*=executed` only after
+`A3S_CLOUD_BX0_EXECUTE=1`, steps 1–8 may record `*=executed` only after
 validated node ACL/token/`A3S_CLOUD_BX0_ENROLL_NODE_ID`,
 `A3S_CLOUD_BX0_ARTIFACT_DIGEST`, `A3S_CLOUD_BX0_SERVICE_ID`,
 `A3S_CLOUD_BX0_HEALTH_URL`, `A3S_CLOUD_BX0_HTTPS_URL`,
-`A3S_CLOUD_BX0_LOGS_CURSOR`, and `A3S_CLOUD_BX0_UPDATE_DIGEST` from real
-enroll/OCI/deploy/Ready/managed-TLS/log read/immutable update (never
-PLACEHOLDER); prep
+`A3S_CLOUD_BX0_LOGS_CURSOR`, `A3S_CLOUD_BX0_UPDATE_DIGEST`, and
+`A3S_CLOUD_BX0_ROLLBACK_DIGEST` from real enroll/OCI/deploy/Ready/managed-TLS/log
+read/immutable update/cloned rollback (never PLACEHOLDER); prep
 `tools/box-conformance/run_bx0_clean_host_prep.sh` prints the recipe without
 claiming LOOP/EXIT. CI fail-closed harness
 `tools/box-conformance/run_bx0_clean_host_gate_ci.sh` proves those refuse paths
 (including stub pin missing/mismatch/match, all nine step preflights, and
 execute fail-closed without
-node_id/digest/service_id/health_url/https_url/logs_cursor/update_digest) and
-may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it never unlocks product
-EXIT.
+node_id/digest/service_id/health_url/https_url/logs_cursor/update_digest/rollback_digest)
+and may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it never unlocks
+product EXIT.
 
 Operator LOOP certification
 (`validate_bx0_clean_host_certification.sh` /

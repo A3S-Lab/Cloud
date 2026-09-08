@@ -278,6 +278,8 @@ step6_status=logs_preflight_ok
 step6_logs=not_run
 step7_status=update_preflight_ok
 step7_update=not_run
+step8_status=rollback_preflight_ok
+step8_rollback=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -411,6 +413,25 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step7_status=update_executed
   step7_update=executed
+
+  if ! bx0_step_rollback_execute "$evidence_dir"; then
+    print_checklist
+    rollback_reason=rollback_execute_failed
+    if [[ -f $evidence_dir/08-rollback.txt ]]; then
+      rollback_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/08-rollback.txt" 2>/dev/null || true
+      )"
+      [[ -n $rollback_reason ]] || rollback_reason=rollback_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$rollback_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$rollback_reason" \
+      "evidence=$evidence_dir/08-rollback.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_ROLLBACK_DIGEST (sha256:64hex) from a real cloned rollback.' >&2
+    exit 1
+  fi
+  step8_status=rollback_executed
+  step8_rollback=executed
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -426,7 +447,7 @@ printf 'step4_health=%s health=%s\n' "$step4_status" "$step4_health"
 printf 'step5_https=%s https=%s\n' "$step5_status" "$step5_https"
 printf 'step6_logs=%s logs=%s\n' "$step6_status" "$step6_logs"
 printf 'step7_update=%s update=%s\n' "$step7_status" "$step7_update"
-printf 'step8_rollback=preflight_ok rollback=not_run\n'
+printf 'step8_rollback=%s rollback=%s\n' "$step8_status" "$step8_rollback"
 printf 'step9_stop_cleanup=preflight_ok stop_cleanup=not_run\n'
 printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
@@ -439,6 +460,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=${step7_status} step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps8-9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=${step7_status} step8=${step8_status} step9=stop_cleanup_preflight_ok step9_executed=not_run
 OPEN
 exit 3

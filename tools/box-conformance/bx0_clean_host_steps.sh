@@ -974,6 +974,66 @@ EOF
   return 0
 }
 
+# Operator post-rollback digest from a real cloned rollback. Does not roll back.
+# Returns 0 on rollback=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_rollback_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/08-rollback.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local probe=
+  if ! probe="$(bx0_resolve_rollback_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=8
+name=rollback
+status=execute_failed
+reason=rollback_probe_unavailable
+rollback=not_run
+EOF
+    return 1
+  fi
+
+  local digest=${A3S_CLOUD_BX0_ROLLBACK_DIGEST:-}
+  if [[ -z $digest || $digest == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=execute_failed
+reason=rollback_digest_missing
+rollback_probe=$probe
+rollback=not_run
+hint=Roll back to a cloned prior revision, then set A3S_CLOUD_BX0_ROLLBACK_DIGEST
+EOF
+    return 1
+  fi
+  if [[ ! $digest =~ ^(sha256:)?[0-9a-f]{64}$ ]]; then
+    cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=execute_failed
+reason=rollback_digest_invalid
+rollback_probe=$probe
+rollback_digest=$digest
+rollback=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=execute_ok
+rollback_probe=$probe
+rollback_digest=$digest
+rollback=executed
+EOF
+  return 0
+}
+
 bx0_resolve_cleanup_box() {
   local candidate
   for candidate in \
