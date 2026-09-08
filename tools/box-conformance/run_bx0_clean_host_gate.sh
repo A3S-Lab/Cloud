@@ -149,12 +149,35 @@ expected_gateway_revision="$(
 cloud_revision="$(git -C "$CLOUD_ROOT" rev-parse HEAD 2>/dev/null || true)"
 [[ $cloud_revision =~ ^[0-9a-f]{40}$ ]] || die "Cloud HEAD is not an exact revision"
 
+# shellcheck source=bx0_clean_host_steps.sh
+source "$SCRIPT_DIRECTORY/bx0_clean_host_steps.sh"
+
+evidence_dir="${A3S_CLOUD_BX0_EVIDENCE_DIR:-}"
+if [[ -z $evidence_dir ]]; then
+  evidence_dir="$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-bx0-clean-host.XXXXXX")"
+fi
+mkdir -p -- "$evidence_dir"
+
+if ! bx0_step_enroll_preflight "$evidence_dir"; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=node_agent_unavailable" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=node_agent_unavailable" \
+    "evidence=$evidence_dir/01-enroll.txt" \
+    'Set A3S_CLOUD_NODE_AGENT_BIN to an executable a3s-cloud-node-agent (preflight only; enroll not run).' >&2
+  exit 1
+fi
+bx0_write_remaining_open_steps "$evidence_dir"
+
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
 printf 'bound Cloud revision: %s\n' "$cloud_revision"
 printf 'bound Runtime revision: %s\n' "$expected_runtime_revision"
 printf 'bound Box revision: %s\n' "$expected_box_revision"
 printf 'bound Gateway revision: %s\n' "$expected_gateway_revision"
 printf 'power_revision=UNBOUND reason=pw0_no_pin_file\n'
+printf 'step1_enroll=preflight_ok enroll=not_run\n'
+printf 'steps2-9=OPEN not_run=1\n'
+printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
 print_checklist
@@ -165,5 +188,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
+step1=enroll_preflight_ok steps2-9=not_run
 OPEN
 exit 3

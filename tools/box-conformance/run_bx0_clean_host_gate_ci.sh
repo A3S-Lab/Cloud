@@ -48,9 +48,17 @@ grep -Fq 'runtime_revision_missing' "$gate"
 grep -Fq 'gateway_revision_missing' "$gate"
 grep -Fq 'pw0_no_pin_file' "$gate"
 grep -Fq 'bound=Cloud+Runtime+Box+Gateway' "$gate"
+grep -Fq 'bx0_clean_host_steps.sh' "$gate"
+grep -Fq 'node_agent_unavailable' "$gate"
+grep -Fq 'enroll=not_run' "$gate"
+grep -Fq 'step1=enroll_preflight_ok' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
+steps="$tools/bx0_clean_host_steps.sh"
+[[ -f $steps ]]
+bash -n "$steps"
+bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
 gateway_pin="$tools/../gateway-conformance/gateway-revision"
 [[ -f $runtime_pin && -f $gateway_pin ]]
@@ -64,6 +72,49 @@ if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERT
   printf '%s\n' "gate must not printf/echo product EXIT_CERTIFIED" >&2
   exit 1
 fi
+
+echo "===== step library: enroll preflight (Darwin-safe) ====="
+# shellcheck source=bx0_clean_host_steps.sh
+# shellcheck disable=SC1090
+source "$steps"
+steps_evidence="$evidence_directory/steps-lib"
+mkdir -p -- "$steps_evidence"
+unset A3S_CLOUD_NODE_AGENT_BIN || true
+# Negative case: empty Cloud root + stripped PATH so cargo/PATH agents cannot resolve.
+set +e
+CLOUD_ROOT="$steps_evidence/empty-cloud-root" \
+  PATH="/usr/bin:/bin" \
+  env -u A3S_CLOUD_NODE_AGENT_BIN \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_enroll_preflight "$1"
+  ' "$steps" "$steps_evidence/missing"
+missing_enroll=$?
+set -e
+if ((missing_enroll != 1)); then
+  printf '%s\n' "expected enroll preflight fail without node-agent, got $missing_enroll" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/missing/01-enroll.txt"
+grep -Fq 'enroll=not_run' "$steps_evidence/missing/01-enroll.txt"
+forbid_exit_certified_claim "$steps_evidence/missing/01-enroll.txt"
+
+stub_agent="$steps_evidence/stub-a3s-cloud-node-agent"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_agent"
+chmod +x "$stub_agent"
+CLOUD_ROOT="$repository_root" \
+  A3S_CLOUD_NODE_AGENT_BIN="$stub_agent" \
+  bx0_step_enroll_preflight "$steps_evidence/ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/ok/01-enroll.txt"
+grep -Fq 'enroll=not_run' "$steps_evidence/ok/01-enroll.txt"
+grep -Fq "$stub_agent" "$steps_evidence/ok/01-enroll.txt"
+bx0_write_remaining_open_steps "$steps_evidence/ok"
+[[ -f $steps_evidence/ok/02-oci.txt ]]
+[[ -f $steps_evidence/ok/09-stop_cleanup.txt ]]
+grep -Fq 'status=OPEN' "$steps_evidence/ok/02-oci.txt"
+forbid_exit_certified_claim "$steps_evidence/ok/01-enroll.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -216,21 +267,59 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-rt-missing.out"
   forbid_exit_certified_claim "$evidence_directory/armed-rt-missing.err"
 
+  echo "===== armed stub missing node-agent must exit 1 ====="
+  stub_no_agent="$evidence_directory/stub-box-no-agent"
+  mkdir -p -- "$stub_no_agent"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_agent/a3s-box"
+  chmod +x "$stub_no_agent/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_agent/BOX-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_NODE_AGENT_BIN \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_agent/a3s-box" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-agent-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-agent.out" 2>"$evidence_directory/armed-no-agent.err"
+  no_agent_status=$?
+  set -e
+  if ((no_agent_status != 1)); then
+    printf '%s\n' "expected node_agent_unavailable exit 1, got $no_agent_status" >&2
+    cat "$evidence_directory/armed-no-agent.out" >&2 || true
+    cat "$evidence_directory/armed-no-agent.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'node_agent_unavailable' "$evidence_directory/armed-no-agent.err"; then
+    printf '%s\n' "expected node_agent_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-agent.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-agent.err"
+
   echo "===== armed stub with matching Box pin must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
   chmod +x "$stub_match/a3s-box"
   printf '%s\n' "$revision" >"$stub_match/BOX-REVISION"
+  stub_node_agent="$evidence_directory/stub-node-agent"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent"
+  chmod +x "$stub_node_agent"
   runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
   gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
   cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
+  match_evidence="$evidence_directory/match-evidence"
   set +e
   env -u A3S_CLOUD_BOX_REVISION \
     -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
     -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
     A3S_CLOUD_BX0_CLEAN_HOST=1 \
     A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$match_evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
   match_status=$?
@@ -253,14 +342,20 @@ if [[ $os_name == Linux ]]; then
     "$gateway_revision" \
     "$cloud_revision" \
     'pw0_no_pin_file' \
-    'bound=Cloud+Runtime+Box+Gateway'; do
+    'bound=Cloud+Runtime+Box+Gateway' \
+    'step1=enroll_preflight_ok' \
+    'steps2-9=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
     fi
   done
+  grep -Fq 'status=preflight_ok' "$match_evidence/01-enroll.txt"
+  grep -Fq 'enroll=not_run' "$match_evidence/01-enroll.txt"
+  [[ -f $match_evidence/09-stop_cleanup.txt ]]
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
+  forbid_exit_certified_claim "$match_evidence/01-enroll.txt"
 fi
 
 printf '%s\n' \

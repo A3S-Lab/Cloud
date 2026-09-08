@@ -443,7 +443,7 @@ boundary.
    clean-host harness entrypoint `tools/box-conformance/run_bx0_clean_host_gate.sh`
    exists but fail-closes without claiming EXIT; armed runs verify the install
    tree Box pin and bind Cloud+Runtime+Gateway pins (Power still UNBOUND) before
-   staying `OPEN`; CI harness
+   staying `OPEN`, with step-1 enroll preflight only (`enroll=not_run`); CI harness
    `run_bx0_clean_host_gate_ci.sh` certifies fail-closed behavior only
    (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`). Complete Box-only conformance and
    the clean-host product release gate remain open.
