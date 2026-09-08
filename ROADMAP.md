@@ -3311,7 +3311,7 @@ through `WI7`.
 `H0.4-WI2-C1` is verified as the non-authorizing Runtime
 evidence contract. Cloud pins A3S Runtime `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.5` at
-`c7cb1793faa20498bc5c500fe89938a7bf6aa355`. They preserve one opaque Identity
+`09e5874b49d9f521321e1a09399a81cb36cddd8e`. They preserve one opaque Identity
 policy digest across Unit Spec, provider evidence, restart/replay and
 confidential-provider attestation; Runtime 0.5 also carries distinct Service
 readiness, liveness, and graceful-shutdown intent. Box now gives non-snapshot
@@ -3322,7 +3322,7 @@ named-volume or image mutation, without fallback. The exact
 [Box 3.2.5 release](https://github.com/A3S-Lab/Box/releases/tag/v3.2.5) passes a
 checksummed release-layout installation and product startup on x86_64 and
 aarch64 against OCI Runtime commit
-`438e4b7936cd08d408160fe9341a21786f60cd26`, then runs the complete Rust,
+`fb517c6fe7793911c860f07143f6f1b4cb37eae7`, then runs the complete Rust,
 Python, TypeScript, and Go Sandbox suites with `/dev/kvm` absent and with a
 mode-000 wrong-type path. Both lanes also retain exact owner-replacement,
 generation, and cleanup evidence. Cloud REST/OpenAPI `1.82.1`, the current Node
