@@ -828,6 +828,11 @@ Gateway pins; without LOOP evidence or while Power remains UNBOUND the exit
 audit prints `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` and exits 2. Product
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` requires LOOP + a bound Power pin
 (PW0). See `tools/box-conformance/OPERATOR_CLEAN_HOST.md`.
+Do not invent `tools/power-conformance/power-revision`; see
+`tools/power-conformance/README.md`. Darwin hosts may run
+`tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh` to exercise
+Linux-only CI stubs inside a3s-box (never Docker); that path does not unlock
+product EXIT.
 
 On a clean supported Linux host with no Docker or compatible daemon, install
 exact Cloud, Runtime, Box, Gateway, and Power revisions; enroll one outbound

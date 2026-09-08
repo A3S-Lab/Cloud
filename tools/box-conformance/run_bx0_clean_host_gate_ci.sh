@@ -89,6 +89,36 @@ grep -Fq 'update=not_run' "$gate"
 grep -Fq 'rollback=not_run' "$gate"
 grep -Fq 'stop_cleanup=not_run' "$gate"
 grep -Fq 'control_plane_unavailable' "$gate"
+
+via_box="$tools/run_bx0_clean_host_gate_ci_via_box.sh"
+[[ -f $via_box ]]
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED' "$via_box"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_BLOCKED' "$via_box"
+grep -Fq 'product_exit=not_claimed' "$via_box"
+grep -Fq 'a3s-box_unavailable' "$via_box"
+grep -Fq 'monorepo_root_unavailable' "$via_box"
+grep -Fq 'A3S_CLOUD_BX0_VIA_BOX_APT_TIMEOUT' "$via_box"
+grep -Fq 'A3S_CLOUD_BX0_VIA_BOX_CI_TIMEOUT' "$via_box"
+grep -Fq 'GIT_CONFIG_GLOBAL' "$via_box"
+grep -Fq 'alpine:3.20' "$via_box"
+bash -n "$via_box"
+# via-box refuses Docker; a3s-box is the sole Linux CI guest path from Darwin.
+if grep -Eiq 'docker[[:space:]]+run|orbstack' "$via_box"; then
+  printf '%s\n' "via-box must not invoke Docker/OrbStack" >&2
+  exit 1
+fi
+
+power_readme="$repository_root/tools/power-conformance/README.md"
+[[ -f $power_readme ]]
+grep -Fq 'pw0_no_pin_file' "$gate"
+grep -Fq 'Do **not** invent' "$power_readme"
+grep -Fq 'power-revision' "$power_readme"
+# PW0 pin must remain absent until a real Power pin lands.
+if [[ -f $repository_root/tools/power-conformance/power-revision ]]; then
+  printf '%s\n' \
+    "tools/power-conformance/power-revision must not be invented before PW0" >&2
+  exit 1
+fi
 grep -Fq 'health_probe_unavailable' "$gate"
 grep -Fq 'gateway_unavailable' "$gate"
 grep -Fq 'logs_probe_unavailable' "$gate"

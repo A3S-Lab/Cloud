@@ -162,6 +162,20 @@ armed-without-box paths, Linux stub pin missing/mismatch/match, Runtime
 pin-missing, and missing-dependency fail-closed behavior, then emits
 `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
 
+On Darwin (or any host with `a3s-box`), run the same harness inside a Linux
+MicroVM — never Docker (default guest image `alpine:3.20`):
+
+```bash
+export A3S_CLOUD_BOX_BIN=$HOME/.local/a3s-box/a3s-box   # if needed
+bash tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh
+# emits A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED; still not product EXIT
+```
+
+Product clean-host LOOP still requires a supported Linux x86_64 host and the
+pinned Box fixture from `install_box_release.sh` (see `OPERATOR_CLEAN_HOST.md`).
+Power remains UNBOUND until PW0 lands `tools/power-conformance/power-revision`
+(see that directory's README; do not invent the pin).
+
 ### BX0.5 operator LOOP certification (exit audit)
 
 `validate_bx0_clean_host_certification.sh` validates an operator

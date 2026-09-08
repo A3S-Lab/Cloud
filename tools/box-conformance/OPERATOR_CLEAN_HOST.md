@@ -5,6 +5,18 @@ Product `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` stays open until:
 1. A validated LOOP certification exists for enroll→…→stop/cleanup, and
 2. A Power pin file is bound (PW0; currently UNBOUND).
 
+## Linux CI stubs via a3s-box (not Docker)
+
+Darwin hosts can exercise the Linux-only armed stubs of
+`run_bx0_clean_host_gate_ci.sh` inside an a3s-box MicroVM:
+
+```bash
+bash tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh
+```
+
+This certifies `A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED` only. It does
+**not** replace the clean Linux x86_64 LOOP or product EXIT.
+
 ## Prep
 
 Print the enroll recipe (Darwin-safe; never claims LOOP/EXIT):

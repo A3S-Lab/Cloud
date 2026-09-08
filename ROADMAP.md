@@ -454,7 +454,10 @@ boundary.
    node_id/artifact digest/service_id/health URL/HTTPS URL/logs cursor/update
    digest/rollback digest/cleanup instance; when all nine execute,
    `execute_receipts_complete=1` still leaves `loop_exit=not_certified`; prep
-   prints the enroll recipe without claiming EXIT.
+   prints the enroll recipe without claiming EXIT. Darwin may run
+   `run_bx0_clean_host_gate_ci_via_box.sh` (a3s-box Linux guest, never Docker)
+   for Linux CI stubs only. Power pin stays absent under
+   `tools/power-conformance/` until PW0.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
