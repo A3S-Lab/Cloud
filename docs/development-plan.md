@@ -796,13 +796,13 @@ non-Linux, unarmed Linux (`A3S_CLOUD_BX0_CLEAN_HOST` unset / missing `a3s-box`
 → exit 2), armed install-tree pin missing/mismatch (exit 1), missing Runtime or
 Gateway pin files (exit 1), or armed-but-unautomated pin-matched runs (exit 3 /
 `A3S_CLOUD_BX0_CLEAN_HOST_OPEN`). Armed OPEN now binds Cloud+Runtime+Box+Gateway
-revisions, runs enroll/OCI/deploy/health/HTTPS steps 1–5 preflight only
+revisions, runs enroll/OCI/deploy/health/HTTPS/logs steps 1–6 preflight only
 (`enroll=not_run`, `oci=not_run`, `deploy=not_run`, `health=not_run`,
-`https=not_run`), leaves steps 6–9 OPEN, and leaves Power `UNBOUND` until PW0;
-product `EXIT` remains open and does not emit
+`https=not_run`, `logs=not_run`), leaves steps 7–9 OPEN, and leaves Power
+`UNBOUND` until PW0; product `EXIT` remains open and does not emit
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. CI fail-closed harness
 `tools/box-conformance/run_bx0_clean_host_gate_ci.sh` proves those refuse paths
-(including stub pin missing/mismatch/match and enroll/OCI/deploy/health/HTTPS
+(including stub pin missing/mismatch/match and enroll/OCI/deploy/health/HTTPS/logs
 preflight) and may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it never
 unlocks product EXIT.
 

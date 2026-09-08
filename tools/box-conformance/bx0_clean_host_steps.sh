@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Steps 1–5 (enroll / OCI / deploy / health / HTTPS) are preflight-only: require
-# resolvable binaries (OCI Runtime pin for step 2; Gateway pin for step 5),
-# record evidence, never perform enroll/OCI publish/deploy/Ready/TLS routing,
-# and never claim product EXIT. Steps 6–9 remain OPEN / not-run until later
-# automation lands.
+# Steps 1–6 (enroll / OCI / deploy / health / HTTPS / logs) are preflight-only:
+# require resolvable binaries (OCI Runtime pin for step 2; Gateway pin for
+# step 5), record evidence, never perform enroll/OCI publish/deploy/Ready/TLS
+# routing/log readback, and never claim product EXIT. Steps 7–9 remain OPEN /
+# not-run until later automation lands.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -384,6 +384,49 @@ EOF
   return 0
 }
 
+bx0_resolve_logs_probe() {
+  local candidate
+  if [[ -n ${A3S_CLOUD_LOGS_PROBE_BIN:-} ]]; then
+    if [[ -x $A3S_CLOUD_LOGS_PROBE_BIN ]]; then
+      printf '%s\n' "$A3S_CLOUD_LOGS_PROBE_BIN"
+      return 0
+    fi
+    return 1
+  fi
+  if command -v jq >/dev/null 2>&1; then
+    command -v jq
+    return 0
+  fi
+  return 1
+}
+
+# Writes 06-logs.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires jq (or override) for structured ordered-log evidence; does not read logs.
+bx0_step_logs_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/06-logs.txt"
+  mkdir -p -- "$evidence_dir"
+  local probe=
+  if ! probe="$(bx0_resolve_logs_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=6
+name=logs
+status=preflight_failed
+reason=logs_probe_unavailable
+logs=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=6
+name=logs
+status=preflight_ok
+logs_probe=$probe
+logs=not_run
+EOF
+  return 0
+}
+
 bx0_write_open_step() {
   local evidence_dir=$1
   local index=$2
@@ -398,11 +441,10 @@ not_run=1
 EOF
 }
 
-# Record steps 6–9 as OPEN / not-run (remainder after enroll…HTTPS preflight).
+# Record steps 7–9 as OPEN / not-run (remainder after enroll…logs preflight).
 bx0_write_remaining_open_steps() {
   local evidence_dir=$1
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 6 logs
   bx0_write_open_step "$evidence_dir" 7 update
   bx0_write_open_step "$evidence_dir" 8 rollback
   bx0_write_open_step "$evidence_dir" 9 stop_cleanup

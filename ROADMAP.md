@@ -443,11 +443,12 @@ boundary.
    clean-host harness entrypoint `tools/box-conformance/run_bx0_clean_host_gate.sh`
    exists but fail-closes without claiming EXIT; armed runs verify the install
    tree Box pin and bind Cloud+Runtime+Gateway pins (Power still UNBOUND) before
-   staying `OPEN`, with steps 1–5 enroll/OCI/deploy/health/HTTPS preflight only
-   (`enroll=not_run`, `oci=not_run`, `deploy=not_run`, `health=not_run`,
-   `https=not_run`); CI harness `run_bx0_clean_host_gate_ci.sh` certifies
-   fail-closed behavior only (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`). Complete
-   Box-only conformance and the clean-host product release gate remain open.
+   staying `OPEN`, with steps 1–6 enroll/OCI/deploy/health/HTTPS/logs preflight
+   only (`enroll=not_run`, `oci=not_run`, `deploy=not_run`, `health=not_run`,
+   `https=not_run`, `logs=not_run`); CI harness `run_bx0_clean_host_gate_ci.sh`
+   certifies fail-closed behavior only (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`).
+   Complete Box-only conformance and the clean-host product release gate remain
+   open.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
