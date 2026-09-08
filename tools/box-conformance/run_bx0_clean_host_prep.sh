@@ -88,7 +88,8 @@ This prep does NOT claim A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED.
   export A3S_CLOUD_BX0_CLEANUP_INSTANCE=<stopped-removed-instance-id>
   export A3S_CLOUD_ENROLLMENT_TOKEN=...
   bash tools/box-conformance/run_bx0_clean_host_gate.sh
-  # expected with all receipts: exit 3 OPEN execute_receipts_complete=1 loop_exit=not_certified
+  # expected with all receipts: exit 3 OPEN execute_receipts_complete=1
+  #   next_loop=… next_exit=… product_exit=not_claimed loop_exit=not_certified
 
 6) After full enroll→…→cleanup, collect LOOP evidence from the gate evidence dir
    (steps 1–9 *=executed); exit audit still needs Power (PW0):
