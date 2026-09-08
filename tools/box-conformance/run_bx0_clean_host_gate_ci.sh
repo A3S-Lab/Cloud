@@ -55,9 +55,13 @@ grep -Fq 'step1_status=enroll_preflight_ok' "$gate"
 grep -Fq 'enroll_executed' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_EXECUTE' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_ENROLL_NODE_ID' "$gate"
-grep -Fq 'steps2-9_executed=not_run' "$gate"
-grep -Fq 'step2=oci_preflight_ok' "$gate"
-grep -Fq 'step3=deploy_preflight_ok' "$gate"
+grep -Fq 'steps4-9_executed=not_run' "$gate"
+grep -Fq 'oci_executed' "$gate"
+grep -Fq 'deploy_executed' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_ARTIFACT_DIGEST' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_SERVICE_ID' "$gate"
+grep -Fq 'step2_status=oci_preflight_ok' "$gate"
+grep -Fq 'step3_status=deploy_preflight_ok' "$gate"
 grep -Fq 'step4=health_preflight_ok' "$gate"
 grep -Fq 'step5=https_preflight_ok' "$gate"
 grep -Fq 'step6=logs_preflight_ok' "$gate"
@@ -96,6 +100,10 @@ grep -Fq 'rollback_probe_unavailable' "$steps"
 grep -Fq 'cleanup_box_unavailable' "$steps"
 grep -Fq 'enroll_node_id_missing' "$steps"
 grep -Fq 'bx0_step_enroll_execute' "$steps"
+grep -Fq 'artifact_digest_missing' "$steps"
+grep -Fq 'bx0_step_oci_execute' "$steps"
+grep -Fq 'service_id_missing' "$steps"
+grep -Fq 'bx0_step_deploy_execute' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 bash -n "$tools/run_bx0_clean_host_prep.sh"
@@ -280,6 +288,34 @@ grep -Fq 'oci=not_run' "$steps_evidence/oci-ok/02-oci.txt"
 grep -Fq "$oci_runtime_revision" "$steps_evidence/oci-ok/02-oci.txt"
 forbid_exit_certified_claim "$steps_evidence/oci-ok/02-oci.txt"
 
+echo "===== step library: OCI execute (Darwin-safe) ====="
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_OCI_BIN="$oci_install/a3s-oci" \
+  env -u A3S_CLOUD_BX0_ARTIFACT_DIGEST \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_oci_execute "$1"
+  ' "$steps" "$steps_evidence/oci-exec-missing"
+missing_oci_exec=$?
+set -e
+if ((missing_oci_exec != 1)); then
+  printf '%s\n' "expected OCI execute fail without digest, got $missing_oci_exec" >&2
+  exit 1
+fi
+grep -Fq 'artifact_digest_missing' "$steps_evidence/oci-exec-missing/02-oci.txt"
+grep -Fq 'oci=not_run' "$steps_evidence/oci-exec-missing/02-oci.txt"
+
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_OCI_BIN="$oci_install/a3s-oci" \
+  A3S_CLOUD_BX0_ARTIFACT_DIGEST='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+  bx0_step_oci_execute "$steps_evidence/oci-exec-ok"
+grep -Fq 'status=execute_ok' "$steps_evidence/oci-exec-ok/02-oci.txt"
+grep -Fq 'oci=executed' "$steps_evidence/oci-exec-ok/02-oci.txt"
+forbid_exit_certified_claim "$steps_evidence/oci-exec-ok/02-oci.txt"
+
 echo "===== step library: deploy preflight (Darwin-safe) ====="
 set +e
 CLOUD_ROOT="$steps_evidence/empty-cloud-root" \
@@ -313,6 +349,35 @@ grep -Fq 'status=preflight_ok' "$steps_evidence/deploy-ok/03-deploy.txt"
 grep -Fq 'deploy=not_run' "$steps_evidence/deploy-ok/03-deploy.txt"
 grep -Fq "$stub_cp" "$steps_evidence/deploy-ok/03-deploy.txt"
 forbid_exit_certified_claim "$steps_evidence/deploy-ok/03-deploy.txt"
+
+echo "===== step library: deploy execute (Darwin-safe) ====="
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp" \
+  env -u A3S_CLOUD_BX0_SERVICE_ID -u A3S_CLOUD_DEV_API_BIN \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_deploy_execute "$1"
+  ' "$steps" "$steps_evidence/deploy-exec-missing"
+missing_deploy_exec=$?
+set -e
+if ((missing_deploy_exec != 1)); then
+  printf '%s\n' "expected deploy execute fail without service_id, got $missing_deploy_exec" >&2
+  exit 1
+fi
+grep -Fq 'service_id_missing' "$steps_evidence/deploy-exec-missing/03-deploy.txt"
+grep -Fq 'deploy=not_run' "$steps_evidence/deploy-exec-missing/03-deploy.txt"
+
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp" \
+  A3S_CLOUD_BX0_SERVICE_ID='svc-execute-1' \
+  bx0_step_deploy_execute "$steps_evidence/deploy-exec-ok"
+grep -Fq 'status=execute_ok' "$steps_evidence/deploy-exec-ok/03-deploy.txt"
+grep -Fq 'deploy=executed' "$steps_evidence/deploy-exec-ok/03-deploy.txt"
+grep -Fq 'svc-execute-1' "$steps_evidence/deploy-exec-ok/03-deploy.txt"
+forbid_exit_certified_claim "$steps_evidence/deploy-exec-ok/03-deploy.txt"
 
 echo "===== step library: health preflight (Darwin-safe) ====="
 set +e
@@ -1150,7 +1215,7 @@ if [[ $os_name == Linux ]]; then
     'step7=update_preflight_ok' \
     'step8=rollback_preflight_ok' \
     'step9=stop_cleanup_preflight_ok' \
-    'steps2-9_executed=not_run'; do
+    'steps4-9_executed=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -1236,7 +1301,95 @@ ACL
   forbid_exit_certified_claim "$evidence_directory/armed-exec-no-node.out"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-no-node.err"
 
-  echo "===== armed EXECUTE with enroll node_id must OPEN with enroll_executed ====="
+  echo "===== armed EXECUTE without artifact digest must exit 1 ====="
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    -u A3S_CLOUD_BX0_ARTIFACT_DIGEST \
+    -u A3S_CLOUD_BX0_SERVICE_ID \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BX0_EXECUTE=1 \
+    A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
+    A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
+    A3S_CLOUD_BX0_ENROLL_NODE_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/exec-no-digest-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-exec-no-digest.out" 2>"$evidence_directory/armed-exec-no-digest.err"
+  exec_no_digest_status=$?
+  set -e
+  if ((exec_no_digest_status != 1)); then
+    printf '%s\n' "expected EXECUTE without digest exit 1, got $exec_no_digest_status" >&2
+    cat "$evidence_directory/armed-exec-no-digest.out" >&2 || true
+    cat "$evidence_directory/armed-exec-no-digest.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'artifact_digest_missing' "$evidence_directory/armed-exec-no-digest.err"; then
+    printf '%s\n' "expected artifact_digest_missing" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-digest.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-digest.err"
+
+  echo "===== armed EXECUTE without service_id must exit 1 ====="
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    -u A3S_CLOUD_BX0_SERVICE_ID \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BX0_EXECUTE=1 \
+    A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
+    A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
+    A3S_CLOUD_BX0_ENROLL_NODE_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' \
+    A3S_CLOUD_BX0_ARTIFACT_DIGEST='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/exec-no-svc-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-exec-no-svc.out" 2>"$evidence_directory/armed-exec-no-svc.err"
+  exec_no_svc_status=$?
+  set -e
+  if ((exec_no_svc_status != 1)); then
+    printf '%s\n' "expected EXECUTE without service_id exit 1, got $exec_no_svc_status" >&2
+    cat "$evidence_directory/armed-exec-no-svc.out" >&2 || true
+    cat "$evidence_directory/armed-exec-no-svc.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'service_id_missing' "$evidence_directory/armed-exec-no-svc.err"; then
+    printf '%s\n' "expected service_id_missing" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-svc.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-svc.err"
+
+  echo "===== armed EXECUTE with enroll+oci+deploy receipts must OPEN ====="
   exec_ok_evidence="$evidence_directory/exec-ok-evidence"
   set +e
   env -u A3S_CLOUD_BOX_REVISION \
@@ -1253,6 +1406,8 @@ ACL
     A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
     A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
     A3S_CLOUD_BX0_ENROLL_NODE_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' \
+    A3S_CLOUD_BX0_ARTIFACT_DIGEST='sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' \
+    A3S_CLOUD_BX0_SERVICE_ID='svc-execute-ci-1' \
     A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
     A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
     A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
@@ -1267,19 +1422,24 @@ ACL
   exec_ok_status=$?
   set -e
   if ((exec_ok_status != 3)); then
-    printf '%s\n' "expected EXECUTE enroll_executed exit 3 OPEN, got $exec_ok_status" >&2
+    printf '%s\n' "expected EXECUTE enroll+oci+deploy exit 3 OPEN, got $exec_ok_status" >&2
     cat "$evidence_directory/armed-exec-ok.out" >&2 || true
     cat "$evidence_directory/armed-exec-ok.err" >&2 || true
     exit 1
   fi
   combined_exec="$evidence_directory/armed-exec-ok.out"$'\n'"$(cat "$evidence_directory/armed-exec-ok.err")"
   grep -Fq 'step1=enroll_executed' <<<"$combined_exec"
-  grep -Fq 'steps2-9_executed=not_run' <<<"$combined_exec"
+  grep -Fq 'step2=oci_executed' <<<"$combined_exec"
+  grep -Fq 'step3=deploy_executed' <<<"$combined_exec"
+  grep -Fq 'steps4-9_executed=not_run' <<<"$combined_exec"
   grep -Fq 'enroll=executed' "$exec_ok_evidence/01-enroll.txt"
-  grep -Fq 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' "$exec_ok_evidence/01-enroll.txt"
+  grep -Fq 'oci=executed' "$exec_ok_evidence/02-oci.txt"
+  grep -Fq 'deploy=executed' "$exec_ok_evidence/03-deploy.txt"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.out"
   forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.err"
   forbid_exit_certified_claim "$exec_ok_evidence/01-enroll.txt"
+  forbid_exit_certified_claim "$exec_ok_evidence/02-oci.txt"
+  forbid_exit_certified_claim "$exec_ok_evidence/03-deploy.txt"
 fi
 
 echo "===== LOOP certification validator refuse-to-fake ====="

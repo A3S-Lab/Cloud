@@ -139,12 +139,13 @@ probe, rollback probe, or cleanup box fail-closes with exit 1. It never emits
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Use `install_box_release.sh` to
 install the pinned Linux Box fixture before arming the gate.
 
-With `A3S_CLOUD_BX0_EXECUTE=1`, step 1 may advance to `enroll=executed` only
-when an absolute node `.acl`, enrollment token, and real
-`A3S_CLOUD_BX0_ENROLL_NODE_ID` are supplied (rejects `PLACEHOLDER_*`); missing
-execute inputs fail-closed. The gate does not start the long-poll agent.
-`run_bx0_clean_host_prep.sh` prints the operator enroll recipe without claiming
-LOOP or EXIT. See `OPERATOR_CLEAN_HOST.md`.
+With `A3S_CLOUD_BX0_EXECUTE=1`, steps 1–3 may advance to `*=executed` only
+when absolute node `.acl`, enrollment token, real
+`A3S_CLOUD_BX0_ENROLL_NODE_ID`, `A3S_CLOUD_BX0_ARTIFACT_DIGEST` (`sha256:` + 64
+hex), and `A3S_CLOUD_BX0_SERVICE_ID` are supplied (rejects `PLACEHOLDER_*`);
+missing execute inputs fail-closed. The gate does not start the long-poll agent
+or publish/deploy. `run_bx0_clean_host_prep.sh` prints the operator enroll
+recipe without claiming LOOP or EXIT. See `OPERATOR_CLEAN_HOST.md`.
 
 `run_bx0_clean_host_gate_ci.sh` is the CI fail-closed harness (mirror of
 U0.3 `run_u0_3_exit_audit_ci.sh`). It certifies static refuse-to-fake contracts,

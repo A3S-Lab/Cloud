@@ -266,6 +266,10 @@ fi
 
 step1_status=enroll_preflight_ok
 step1_enroll=not_run
+step2_status=oci_preflight_ok
+step2_oci=not_run
+step3_status=deploy_preflight_ok
+step3_deploy=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -285,6 +289,44 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step1_status=enroll_executed
   step1_enroll=executed
+
+  if ! bx0_step_oci_execute "$evidence_dir"; then
+    print_checklist
+    oci_reason=oci_execute_failed
+    if [[ -f $evidence_dir/02-oci.txt ]]; then
+      oci_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/02-oci.txt" 2>/dev/null || true
+      )"
+      [[ -n $oci_reason ]] || oci_reason=oci_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$oci_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$oci_reason" \
+      "evidence=$evidence_dir/02-oci.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_ARTIFACT_DIGEST (sha256:64hex) from a real OCI publish.' >&2
+    exit 1
+  fi
+  step2_status=oci_executed
+  step2_oci=executed
+
+  if ! bx0_step_deploy_execute "$evidence_dir"; then
+    print_checklist
+    deploy_reason=deploy_execute_failed
+    if [[ -f $evidence_dir/03-deploy.txt ]]; then
+      deploy_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/03-deploy.txt" 2>/dev/null || true
+      )"
+      [[ -n $deploy_reason ]] || deploy_reason=deploy_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$deploy_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$deploy_reason" \
+      "evidence=$evidence_dir/03-deploy.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_SERVICE_ID from a real Box-hosted deploy.' >&2
+    exit 1
+  fi
+  step3_status=deploy_executed
+  step3_deploy=executed
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -294,8 +336,8 @@ printf 'bound Box revision: %s\n' "$expected_box_revision"
 printf 'bound Gateway revision: %s\n' "$expected_gateway_revision"
 printf 'power_revision=UNBOUND reason=pw0_no_pin_file\n'
 printf 'step1_enroll=%s enroll=%s\n' "$step1_status" "$step1_enroll"
-printf 'step2_oci=preflight_ok oci=not_run\n'
-printf 'step3_deploy=preflight_ok deploy=not_run\n'
+printf 'step2_oci=%s oci=%s\n' "$step2_status" "$step2_oci"
+printf 'step3_deploy=%s deploy=%s\n' "$step3_status" "$step3_deploy"
 printf 'step4_health=preflight_ok health=not_run\n'
 printf 'step5_https=preflight_ok https=not_run\n'
 printf 'step6_logs=preflight_ok logs=not_run\n'
@@ -313,6 +355,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=oci_preflight_ok step3=deploy_preflight_ok step4=health_preflight_ok step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps2-9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=health_preflight_ok step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps4-9_executed=not_run
 OPEN
 exit 3

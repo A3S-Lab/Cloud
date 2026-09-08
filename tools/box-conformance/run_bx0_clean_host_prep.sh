@@ -73,14 +73,16 @@ This prep does NOT claim A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED.
   a3s-cloud-node-agent /absolute/path/to/node.acl
   # Capture the enrolled node_id from the agent/API response.
 
-5) Arm gate preflight, then execute step-1 with real node_id (still not EXIT):
+5) Arm gate preflight, then execute steps 1–3 with real receipts (still not EXIT):
   export A3S_CLOUD_BX0_CLEAN_HOST=1
   export A3S_CLOUD_BX0_EXECUTE=1
   export A3S_CLOUD_BX0_NODE_CONFIG=/absolute/path/to/node.acl
   export A3S_CLOUD_BX0_ENROLL_NODE_ID=<real-node-uuid>
+  export A3S_CLOUD_BX0_ARTIFACT_DIGEST=sha256:<64-hex>
+  export A3S_CLOUD_BX0_SERVICE_ID=<real-service-id>
   export A3S_CLOUD_ENROLLMENT_TOKEN=...
   bash tools/box-conformance/run_bx0_clean_host_gate.sh
-  # expected while steps 2–9 unexecuted: exit 3 OPEN with step1=enroll_executed
+  # expected while steps 4–9 unexecuted: exit 3 OPEN with enroll/oci/deploy executed
 
 6) After full enroll→…→cleanup, collect LOOP evidence; exit audit still needs Power (PW0):
   bash tools/box-conformance/collect_bx0_clean_host_evidence.sh \\

@@ -21,7 +21,7 @@ On a supported Linux host with no Docker/compatible daemon:
 bash tools/box-conformance/install_box_release.sh
 ```
 
-2. Arm the fail-closed gate (preflight only until joint automation lands):
+2. Arm the fail-closed gate (preflight only until execute receipts are set):
 
 ```bash
 export A3S_CLOUD_BX0_CLEAN_HOST=1
@@ -29,11 +29,20 @@ export A3S_CLOUD_BOX_BIN=/path/to/a3s-box
 # plus node-agent, a3s-oci, control-plane, gateway, curl, jq, sha256sum/shasum, diff/cmp
 bash tools/box-conformance/run_bx0_clean_host_gate.sh
 # expected while unautomated: exit 3 A3S_CLOUD_BX0_CLEAN_HOST_OPEN
+
+# Opt-in execute for steps 1–3 (still not product EXIT):
+export A3S_CLOUD_BX0_EXECUTE=1
+export A3S_CLOUD_BX0_NODE_CONFIG=/absolute/path/to/node.acl
+export A3S_CLOUD_BX0_ENROLL_NODE_ID=<real-node-uuid>
+export A3S_CLOUD_BX0_ARTIFACT_DIGEST=sha256:<64-hex>
+export A3S_CLOUD_BX0_SERVICE_ID=<real-service-id>
+export A3S_CLOUD_ENROLLMENT_TOKEN=...
+bash tools/box-conformance/run_bx0_clean_host_gate.sh
 ```
 
-3. Run the real enroll → OCI → deploy → health → HTTPS → logs → update →
-   rollback → stop/cleanup loop against exact Cloud/Runtime/Box/Gateway pins.
-   Retain Service/node/artifact identities.
+3. Run the remaining health → HTTPS → logs → update → rollback → stop/cleanup
+   loop against exact Cloud/Runtime/Box/Gateway pins. Retain Service/node/artifact
+   identities.
 
 ## Collect LOOP evidence (never claims EXIT)
 

@@ -3,11 +3,10 @@
 #
 # Steps 1–9 preflight require resolvable binaries (OCI Runtime pin for step 2;
 # Gateway pin for step 5), record evidence, and never claim product EXIT.
-# When A3S_CLOUD_BX0_EXECUTE=1, step 1 may advance to enroll=executed only with
-# a validated node ACL, enrollment token, and operator-supplied node_id from a
-# real enroll (never PLACEHOLDER_*). Full daemon enroll/long-poll is out of
-# band; this gate refuses to fake enrollment.
-
+# When A3S_CLOUD_BX0_EXECUTE=1, steps 1–3 may advance to *=executed only with
+# validated operator receipts (node_id, artifact digest, service_id) from a real
+# enroll/OCI publish/deploy (never PLACEHOLDER_*). Full daemon work is out of
+# band; this gate refuses to fake those steps.
 bx0_resolve_node_agent() {
   local candidate
   if [[ -n ${A3S_CLOUD_NODE_AGENT_BIN:-} ]]; then
@@ -286,6 +285,66 @@ EOF
   return 0
 }
 
+# Operator artifact digest from a real OCI publish. Does not build/publish.
+# Returns 0 on oci=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_oci_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/02-oci.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local oci=
+  if ! oci="$(bx0_resolve_oci_cli)"; then
+    cat >"$evidence" <<'EOF'
+step=2
+name=oci
+status=execute_failed
+reason=oci_unavailable
+oci=not_run
+EOF
+    return 1
+  fi
+
+  local digest=${A3S_CLOUD_BX0_ARTIFACT_DIGEST:-}
+  if [[ -z $digest || $digest == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=2
+name=oci
+status=execute_failed
+reason=artifact_digest_missing
+a3s_oci=$oci
+oci=not_run
+hint=Publish a digest-pinned OCI Artifact, then set A3S_CLOUD_BX0_ARTIFACT_DIGEST
+EOF
+    return 1
+  fi
+  if [[ ! $digest =~ ^(sha256:)?[0-9a-f]{64}$ ]]; then
+    cat >"$evidence" <<EOF
+step=2
+name=oci
+status=execute_failed
+reason=artifact_digest_invalid
+a3s_oci=$oci
+artifact_digest=$digest
+oci=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=2
+name=oci
+status=execute_ok
+a3s_oci=$oci
+artifact_digest=$digest
+oci=executed
+EOF
+  return 0
+}
+
 bx0_resolve_control_plane() {
   local candidate
   # Prefer explicit BX0/deploy override, then the existing cloud_up API bin env.
@@ -338,6 +397,54 @@ name=deploy
 status=preflight_ok
 control_plane=$control_plane
 deploy=not_run
+EOF
+  return 0
+}
+
+# Operator service_id from a real Box-hosted deploy. Does not deploy.
+# Returns 0 on deploy=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_deploy_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/03-deploy.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local control_plane=
+  if ! control_plane="$(bx0_resolve_control_plane)"; then
+    cat >"$evidence" <<'EOF'
+step=3
+name=deploy
+status=execute_failed
+reason=control_plane_unavailable
+deploy=not_run
+EOF
+    return 1
+  fi
+
+  local service_id=${A3S_CLOUD_BX0_SERVICE_ID:-}
+  if [[ -z $service_id || $service_id == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=3
+name=deploy
+status=execute_failed
+reason=service_id_missing
+control_plane=$control_plane
+deploy=not_run
+hint=Deploy one Box-hosted Service via the ordinary Runtime path, then set A3S_CLOUD_BX0_SERVICE_ID
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=3
+name=deploy
+status=execute_ok
+control_plane=$control_plane
+service_id=$service_id
+deploy=executed
 EOF
   return 0
 }
