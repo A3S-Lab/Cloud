@@ -778,6 +778,13 @@ cache Artifact through the same `BuildCache`, and requires the rebuilt manifest
 descriptor to match the original exactly before cleanup. This adds no clock
 option, alternate build engine, cache store, adapter, or replay mechanism.
 
+The ninth `BX0.3` slice advances the A3S Box pin to
+`c7cb1793faa20498bc5c500fe89938a7bf6aa355` (`3.2.5`) for the Linux Sandbox
+delegated runtime, cgroup alignment, launcher discovery, and orphan cleanup
+path while keeping the OCI Runtime pin unchanged. `BX0.3` remains open for
+complete Sandbox plus hardware-backed MicroVM/TEE isolation certification on
+the joint gate.
+
 The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 

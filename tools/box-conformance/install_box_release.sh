@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly BOX_RELEASE_VERSION=3.2.3
+readonly BOX_RELEASE_VERSION=3.2.5
 readonly BOX_ARCHIVE="a3s-box-v${BOX_RELEASE_VERSION}-linux-x86_64.tar.gz"
-readonly BOX_ARCHIVE_ASSET_ID=540750788
-readonly BOX_ARCHIVE_SHA256=bea9ecbe854b3758be29bf1677b68551ebcd4879f1a8e5b5005eb868eaae1911
+readonly BOX_ARCHIVE_ASSET_ID=546981282
+readonly BOX_ARCHIVE_SHA256=33df2462ed0fe0db1359e5d37d47c440746417e3d97b51c7f795c0375af1dca5
 readonly SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly BOX_REVISION="$(<"$SCRIPT_DIRECTORY/box-revision")"
 readonly OCI_RUNTIME_REVISION="$(<"$SCRIPT_DIRECTORY/oci-runtime-revision")"
