@@ -15,6 +15,16 @@ up:
 down:
     ./tools/dev/cloud_down.sh
 
+# Start the Use Registry local TUF transport (not the OCI registry from `up`).
+# Default: http://127.0.0.1:4873/ — pin --trust-root separately in a3s-use.
+# From monorepo root the same recipes are `just up::registry` / `just down::registry`.
+up-registry:
+    just --justfile "{{ justfile_directory() }}/../../justfile" up::registry
+
+# Stop the Use Registry local TUF transport
+down-registry:
+    just --justfile "{{ justfile_directory() }}/../../justfile" down::registry
+
 # Stop the local PostgreSQL, NATS, and registry dependencies
 # (prefer `just down` when the API was started with `just up`)
 cloud-down:
