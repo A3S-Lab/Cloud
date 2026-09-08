@@ -1351,10 +1351,15 @@ jobs:
             printf '%s\n' "$forbidden_paths"
             exit 1
           fi
+          # tools/dev/cloud_{up,down}.sh may use Docker only for local compose
+          # middleware (Postgres/NATS/registry), never as a Runtime Unit provider.
+          # Crates coverage lives in architecture_tests (zero-Docker ratchet).
           removed_runtime_pattern="(^|[;&|[:space:]])$removed_provider([[:space:]]|$)|/var/run/$removed_provider\\.sock|$removed_client|$removed_builder"
           if git grep -I -n -E "$removed_runtime_pattern" -- \
             .github justfile deploy tools/box-conformance tools/c0-conformance \
-            tools/cell-conformance tools/dev tools/g0-conformance tools/runtime-conformance; then
+            tools/cell-conformance tools/dev tools/g0-conformance tools/runtime-conformance \
+            ':(exclude)tools/dev/cloud_up.sh' \
+            ':(exclude)tools/dev/cloud_down.sh'; then
             exit 1
           fi
 

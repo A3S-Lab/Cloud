@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Start local a3s-cloud dependencies and the control-plane API in the background.
 # Prefer a3s-box compose; fall back to Docker containers matching deploy/dev/compose.acl ports.
+# Docker here is local middleware only (Postgres/NATS/registry), never the Runtime Unit provider.
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"

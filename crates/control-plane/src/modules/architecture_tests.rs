@@ -8042,6 +8042,189 @@ fn plugins_u0_assignment_surface_owns_no_second_use_platform() {
 }
 
 #[test]
+fn crates_forbid_docker_execution_provider_mechanisms() {
+    let cloud_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates")
+        .parent()
+        .expect("cloud root");
+    let forbidden = docker_execution_provider_forbidden_tokens();
+    let mut hits = BTreeSet::new();
+
+    let mut candidates = walk_files(&cloud_root.join("crates"), &["rs"]);
+    candidates.extend(
+        walk_files(&cloud_root.join("crates"), &["toml"])
+            .into_iter()
+            .filter(|relative| {
+                relative.file_name().and_then(|value| value.to_str()) == Some("Cargo.toml")
+            }),
+    );
+    for relative in candidates {
+        let path = cloud_root.join("crates").join(&relative);
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if forbidden.iter().any(|token| content.contains(token)) {
+            hits.insert(format!("crates/{}", display(&relative)));
+        }
+    }
+    for relative in ["Cargo.toml", "Cargo.lock"] {
+        let path = cloud_root.join(relative);
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        if forbidden.iter().any(|token| content.contains(token)) {
+            hits.insert(relative.to_owned());
+        }
+    }
+
+    assert!(
+        hits.is_empty(),
+        "crates must not retain retired execution-provider mechanisms:\n{}",
+        hits.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn node_agent_composes_sole_box_runtime_provider() {
+    let cloud_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates")
+        .parent()
+        .expect("cloud root");
+    let main = std::fs::read_to_string(cloud_root.join("crates/node-agent/src/main.rs"))
+        .expect("read node-agent main");
+    assert!(
+        main.contains("build_box_runtime_provider"),
+        "node-agent main must compose build_box_runtime_provider"
+    );
+    assert!(
+        main.contains("sole Runtime provider"),
+        "node-agent main must name Box as the sole Runtime provider"
+    );
+    assert!(
+        !main.contains(&format!("{}ard", "boll")),
+        "node-agent main must not reference the retired container client"
+    );
+
+    let cargo = std::fs::read_to_string(cloud_root.join("crates/node-agent/Cargo.toml"))
+        .expect("read node-agent Cargo.toml");
+    assert!(
+        cargo.contains("a3s-box-runtime"),
+        "node-agent must depend on a3s-box-runtime"
+    );
+    assert!(
+        !cargo.contains(&format!("{}ard", "boll")),
+        "node-agent Cargo.toml must not depend on the retired container client"
+    );
+
+    let lib = std::fs::read_to_string(cloud_root.join("crates/node-agent/src/lib.rs"))
+        .expect("read node-agent lib");
+    assert!(
+        lib.contains("build_box_runtime_provider"),
+        "node-agent lib must expose build_box_runtime_provider under linux cfg"
+    );
+}
+
+#[test]
+fn docker_middleware_sites_can_only_shrink() {
+    let allowed = lines(
+        r#"
+tools/dev/cloud_up.sh
+tools/dev/cloud_down.sh
+"#,
+    );
+    let cloud_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates")
+        .parent()
+        .expect("cloud root");
+    let scan_roots = [
+        "tools/dev",
+        "tools/box-conformance",
+        "tools/c0-conformance",
+        "tools/cell-conformance",
+        "tools/g0-conformance",
+        "tools/runtime-conformance",
+        ".github/workflows",
+        "justfile",
+        "deploy",
+    ];
+    let mut actual = BTreeSet::new();
+    for root_name in scan_roots {
+        let root = cloud_root.join(root_name);
+        if !root.exists() {
+            continue;
+        }
+        let files = if root.is_file() {
+            vec![PathBuf::from(root_name)]
+        } else {
+            walk_files(&root, &[])
+                .into_iter()
+                .map(|relative| PathBuf::from(root_name).join(relative))
+                .collect()
+        };
+        for relative in files {
+            let path = cloud_root.join(&relative);
+            let Ok(content) = std::fs::read_to_string(&path) else {
+                continue;
+            };
+            if content_has_execution_docker_signal(&content) {
+                actual.insert(display(&relative));
+            }
+        }
+    }
+
+    let unexpected = difference(&actual, &allowed);
+    let resolved = difference(&allowed, &actual);
+    assert!(
+        unexpected.is_empty(),
+        "new Docker middleware/automation sites must not appear outside the shrink-only allowlist:\n{}",
+        unexpected.join("\n")
+    );
+    assert!(
+        resolved.is_empty(),
+        "resolved Docker middleware debt must leave the exact allowlist:\n{}",
+        resolved.join("\n")
+    );
+}
+
+#[test]
+fn ci_enforces_box_only_runtime_paths_with_middleware_allowlist() {
+    let cloud_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates")
+        .parent()
+        .expect("cloud root");
+    let ci = std::fs::read_to_string(cloud_root.join(".github/workflows/ci.yml"))
+        .expect("read CI workflow");
+    let gate = workflow_step(&ci, "Enforce Box-only runtime and automation paths");
+    assert!(
+        gate.contains("removed_client=") && gate.contains("'boll'") && gate.contains("\"ard\""),
+        "Box-only runtime path gate must forbid the retired container client"
+    );
+    assert!(
+        gate.contains("removed_builder=") && gate.contains("'build'") && gate.contains("\"kit\""),
+        "Box-only runtime path gate must forbid the retired builder"
+    );
+    assert!(
+        gate.contains("removed_runtime_pattern")
+            && gate.contains("/var/run/$removed_provider")
+            && gate.contains(".sock"),
+        "Box-only runtime path gate must forbid provider daemon socket patterns"
+    );
+    for allowlisted in [
+        ":(exclude)tools/dev/cloud_up.sh",
+        ":(exclude)tools/dev/cloud_down.sh",
+    ] {
+        assert!(
+            gate.contains(allowlisted),
+            "Box-only runtime path gate must exclude middleware script via {allowlisted}"
+        );
+    }
+}
+
+#[test]
 fn sources_preview_handoff_has_one_interface_boundary_and_no_second_delivery_mechanism() {
     let projector_path = "sources/infrastructure/pull_request_preview_source_projector.rs";
     let projector = std::fs::read_to_string(module_root().join(projector_path))
@@ -9166,6 +9349,90 @@ fn is_test_only(relative: &Path) -> bool {
                 | Some("tests.rs")
         )
         || file.is_some_and(|name| name.ends_with("_tests.rs"))
+}
+
+fn docker_execution_provider_forbidden_tokens() -> Vec<String> {
+    vec![
+        format!("{}ard", "boll"),
+        format!("{}Runtime", "Docker"),
+        format!("{}_HOST", "DOCKER"),
+        format!("/var/run/{}.sock", "docker"),
+    ]
+}
+
+fn content_has_execution_docker_signal(content: &str) -> bool {
+    let forbidden = docker_execution_provider_forbidden_tokens();
+    if forbidden.iter().any(|token| content.contains(token))
+        || content.contains(&format!("{}kit", "build"))
+    {
+        return true;
+    }
+    content_has_docker_cli_token(content)
+}
+
+fn content_has_docker_cli_token(content: &str) -> bool {
+    let bytes = content.as_bytes();
+    let needle = b"docker";
+    let mut index = 0;
+    while index + needle.len() <= bytes.len() {
+        if bytes[index..].starts_with(needle) {
+            let before_ok = index == 0
+                || matches!(
+                    bytes[index - 1],
+                    b';' | b'&' | b'|' | b' ' | b'\t' | b'\n' | b'\r'
+                );
+            let after_index = index + needle.len();
+            let after_ok = after_index == bytes.len()
+                || matches!(
+                    bytes[after_index],
+                    b' ' | b'\t' | b'\n' | b'\r' | b';' | b'&' | b'|'
+                );
+            if before_ok && after_ok {
+                return true;
+            }
+        }
+        index += 1;
+    }
+    false
+}
+
+fn walk_files(root: &Path, extensions: &[&str]) -> Vec<PathBuf> {
+    let mut pending = vec![root.to_path_buf()];
+    let mut files = Vec::new();
+    while let Some(path) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&path) else {
+            continue;
+        };
+        for entry in entries {
+            let Ok(entry) = entry else {
+                continue;
+            };
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if name == "target" || name == ".git" {
+                continue;
+            }
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            if !extensions.is_empty() {
+                let Some(ext) = path.extension().and_then(|value| value.to_str()) else {
+                    continue;
+                };
+                if !extensions.iter().any(|allowed| *allowed == ext) {
+                    continue;
+                }
+            }
+            let relative = path
+                .strip_prefix(root)
+                .expect("walked path stays under root");
+            files.push(relative.to_path_buf());
+        }
+    }
+    files.sort();
+    files
 }
 
 fn module_root() -> PathBuf {

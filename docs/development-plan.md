@@ -648,6 +648,9 @@ build controller, state store, or object store.
    gates; remove Bollard, Docker source/configuration/environment variables,
    daemon sockets, fixtures, workflows, and stale docs; add a zero-Docker
    architecture test covering source, tests, examples, scripts, and workflows.
+   The zero-Docker architecture tests now forbid bollard/DockerRuntime/DOCKER_HOST/docker.sock
+   under crates/, retain a shrink-only allowlist for tools/dev/cloud_up.sh and
+   cloud_down.sh middleware, and the CI Box-only path gate excludes that allowlist.
 
 The Node Agent is still the authenticated remote boundary. Box is node-local.
 Runtime owns provider-neutral lifecycle semantics; Box owns execution, images,

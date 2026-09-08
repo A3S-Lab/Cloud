@@ -437,8 +437,10 @@ boundary.
    process-death certification remains open.
 5. `BX0.5` has removed the retired build executors and adds an architecture
    guard against BuildKit, Bollard, Runtime build adapters, and duplicate build
-   caches, journals, schedulers, or services. Complete Box-only conformance and
-   the clean-host release gate remain open.
+   caches, journals, schedulers, or services. Zero-Docker architecture tests now
+   forbid execution-provider mechanisms under crates/ with a shrink-only
+   middleware allowlist for tools/dev/cloud_up.sh and cloud_down.sh. Complete
+   Box-only conformance and the clean-host release gate remain open.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
