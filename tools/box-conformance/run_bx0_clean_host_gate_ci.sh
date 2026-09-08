@@ -55,11 +55,14 @@ grep -Fq 'step1=enroll_preflight_ok' "$gate"
 grep -Fq 'step2=oci_preflight_ok' "$gate"
 grep -Fq 'step3=deploy_preflight_ok' "$gate"
 grep -Fq 'step4=health_preflight_ok' "$gate"
+grep -Fq 'step5=https_preflight_ok' "$gate"
 grep -Fq 'oci=not_run' "$gate"
 grep -Fq 'deploy=not_run' "$gate"
 grep -Fq 'health=not_run' "$gate"
+grep -Fq 'https=not_run' "$gate"
 grep -Fq 'control_plane_unavailable' "$gate"
 grep -Fq 'health_probe_unavailable' "$gate"
+grep -Fq 'gateway_unavailable' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
@@ -69,6 +72,8 @@ grep -Fq 'oci_unavailable' "$steps"
 grep -Fq 'oci_runtime_revision_mismatch' "$steps"
 grep -Fq 'control_plane_unavailable' "$steps"
 grep -Fq 'health_probe_unavailable' "$steps"
+grep -Fq 'gateway_unavailable' "$steps"
+grep -Fq 'gateway_revision_mismatch' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
@@ -247,11 +252,69 @@ A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe" \
 grep -Fq 'status=preflight_ok' "$steps_evidence/health-ok/04-health.txt"
 grep -Fq 'health=not_run' "$steps_evidence/health-ok/04-health.txt"
 grep -Fq "$stub_probe" "$steps_evidence/health-ok/04-health.txt"
-bx0_write_remaining_open_steps "$steps_evidence/health-ok"
-[[ -f $steps_evidence/health-ok/05-https.txt ]]
-[[ -f $steps_evidence/health-ok/09-stop_cleanup.txt ]]
-grep -Fq 'status=OPEN' "$steps_evidence/health-ok/05-https.txt"
 forbid_exit_certified_claim "$steps_evidence/health-ok/04-health.txt"
+
+echo "===== step library: HTTPS / Gateway preflight (Darwin-safe) ====="
+set +e
+CLOUD_ROOT="$steps_evidence/empty-cloud-root" \
+  PATH="/usr/bin:/bin" \
+  env -u A3S_CLOUD_GATEWAY_BIN -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_https_preflight "$1"
+  ' "$steps" "$steps_evidence/https-missing"
+missing_https=$?
+set -e
+if ((missing_https != 1)); then
+  printf '%s\n' "expected HTTPS preflight fail without gateway, got $missing_https" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/https-missing/05-https.txt"
+grep -Fq 'https=not_run' "$steps_evidence/https-missing/05-https.txt"
+forbid_exit_certified_claim "$steps_evidence/https-missing/05-https.txt"
+
+gw_install="$steps_evidence/gw-install"
+mkdir -p -- "$gw_install"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$gw_install/a3s-gateway"
+chmod +x "$gw_install/a3s-gateway"
+printf '%s\n' '0000000000000000000000000000000000000000' \
+  >"$gw_install/GATEWAY-REVISION"
+set +e
+CLOUD_ROOT="$repository_root" \
+  A3S_CLOUD_GATEWAY_BIN="$gw_install/a3s-gateway" \
+  env -u A3S_CLOUD_GATEWAY_REVISION -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_https_preflight "$1"
+  ' "$steps" "$steps_evidence/https-mismatch"
+mismatch_https=$?
+set -e
+if ((mismatch_https != 1)); then
+  printf '%s\n' "expected Gateway pin mismatch fail, got $mismatch_https" >&2
+  exit 1
+fi
+grep -Fq 'gateway_revision_mismatch' "$steps_evidence/https-mismatch/05-https.txt"
+
+printf '%s\n' "$gateway_revision" >"$gw_install/GATEWAY-REVISION"
+unset A3S_CLOUD_GATEWAY_REVISION A3S_CLOUD_TEST_GATEWAY_REVISION || true
+CLOUD_ROOT="$repository_root" \
+  A3S_CLOUD_GATEWAY_BIN="$gw_install/a3s-gateway" \
+  bx0_step_https_preflight "$steps_evidence/https-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/https-ok/05-https.txt"
+grep -Fq 'https=not_run' "$steps_evidence/https-ok/05-https.txt"
+grep -Fq "$gateway_revision" "$steps_evidence/https-ok/05-https.txt"
+bx0_write_remaining_open_steps "$steps_evidence/https-ok"
+[[ -f $steps_evidence/https-ok/06-logs.txt ]]
+[[ -f $steps_evidence/https-ok/09-stop_cleanup.txt ]]
+grep -Fq 'status=OPEN' "$steps_evidence/https-ok/06-logs.txt"
+forbid_exit_certified_claim "$steps_evidence/https-ok/05-https.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -560,7 +623,58 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-health.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-health.err"
 
-  echo "===== armed stub with matching Box+OCI pins must stay OPEN (exit 3) ====="
+  echo "===== armed stub missing gateway must exit 1 ====="
+  stub_no_gw="$evidence_directory/stub-box-no-gw"
+  mkdir -p -- "$stub_no_gw"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_gw/a3s-box"
+  chmod +x "$stub_no_gw/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_gw/BOX-REVISION"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_gw/a3s-oci"
+  chmod +x "$stub_no_gw/a3s-oci"
+  printf '%s\n' "$oci_runtime_revision" >"$stub_no_gw/OCI-RUNTIME-REVISION"
+  stub_node_agent_g="$evidence_directory/stub-node-agent-for-gw"
+  stub_cp_g="$evidence_directory/stub-cp-for-gw"
+  stub_probe_g="$evidence_directory/stub-probe-for-gw"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent_g"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_cp_g"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_probe_g"
+  chmod +x "$stub_node_agent_g" "$stub_cp_g" "$stub_probe_g"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_gw/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent_g" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp_g" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe_g" \
+    A3S_CLOUD_GATEWAY_BIN="$evidence_directory/does-not-exist-gateway" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-gw-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-gw.out" 2>"$evidence_directory/armed-no-gw.err"
+  no_gw_status=$?
+  set -e
+  if ((no_gw_status != 1)); then
+    printf '%s\n' "expected gateway_unavailable exit 1, got $no_gw_status" >&2
+    cat "$evidence_directory/armed-no-gw.out" >&2 || true
+    cat "$evidence_directory/armed-no-gw.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'gateway_unavailable' "$evidence_directory/armed-no-gw.err"; then
+    printf '%s\n' "expected gateway_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-gw.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-gw.err"
+
+  echo "===== armed stub with matching Box+OCI+Gateway pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
@@ -578,6 +692,11 @@ if [[ $os_name == Linux ]]; then
   stub_health_probe="$evidence_directory/stub-health-probe"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_health_probe"
   chmod +x "$stub_health_probe"
+  stub_gateway="$evidence_directory/stub-gateway"
+  mkdir -p -- "$stub_gateway"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_gateway/a3s-gateway"
+  chmod +x "$stub_gateway/a3s-gateway"
+  printf '%s\n' "$gateway_revision" >"$stub_gateway/GATEWAY-REVISION"
   runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
   gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
   cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
@@ -587,6 +706,9 @@ if [[ $os_name == Linux ]]; then
     -u A3S_CLOUD_OCI_BIN \
     -u A3S_CLOUD_OCI_RUNTIME_REVISION \
     -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
     -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
     -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
     A3S_CLOUD_BX0_CLEAN_HOST=1 \
@@ -594,6 +716,7 @@ if [[ $os_name == Linux ]]; then
     A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
     A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
     A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
     A3S_CLOUD_BX0_EVIDENCE_DIR="$match_evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
@@ -622,7 +745,8 @@ if [[ $os_name == Linux ]]; then
     'step2=oci_preflight_ok' \
     'step3=deploy_preflight_ok' \
     'step4=health_preflight_ok' \
-    'steps5-9=not_run'; do
+    'step5=https_preflight_ok' \
+    'steps6-9=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -636,6 +760,8 @@ if [[ $os_name == Linux ]]; then
   grep -Fq 'deploy=not_run' "$match_evidence/03-deploy.txt"
   grep -Fq 'status=preflight_ok' "$match_evidence/04-health.txt"
   grep -Fq 'health=not_run' "$match_evidence/04-health.txt"
+  grep -Fq 'status=preflight_ok' "$match_evidence/05-https.txt"
+  grep -Fq 'https=not_run' "$match_evidence/05-https.txt"
   [[ -f $match_evidence/09-stop_cleanup.txt ]]
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
@@ -643,6 +769,7 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$match_evidence/02-oci.txt"
   forbid_exit_certified_claim "$match_evidence/03-deploy.txt"
   forbid_exit_certified_claim "$match_evidence/04-health.txt"
+  forbid_exit_certified_claim "$match_evidence/05-https.txt"
 fi
 
 printf '%s\n' \

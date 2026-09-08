@@ -206,6 +206,23 @@ if ! bx0_step_health_preflight "$evidence_dir"; then
     'Set A3S_CLOUD_HEALTH_PROBE_BIN to curl (or equivalent); Ready probe not run.' >&2
   exit 1
 fi
+
+if ! bx0_step_https_preflight "$evidence_dir"; then
+  print_checklist
+  https_reason=gateway_unavailable
+  if [[ -f $evidence_dir/05-https.txt ]]; then
+    https_reason="$(
+      awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/05-https.txt" 2>/dev/null || true
+    )"
+    [[ -n $https_reason ]] || https_reason=gateway_unavailable
+  fi
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=$https_reason" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$https_reason" \
+    "evidence=$evidence_dir/05-https.txt" \
+    'Require a3s-gateway + matching GATEWAY-REVISION (tools/gateway-conformance/gateway-revision); TLS route not run.' >&2
+  exit 1
+fi
 bx0_write_remaining_open_steps "$evidence_dir"
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -218,7 +235,8 @@ printf 'step1_enroll=preflight_ok enroll=not_run\n'
 printf 'step2_oci=preflight_ok oci=not_run\n'
 printf 'step3_deploy=preflight_ok deploy=not_run\n'
 printf 'step4_health=preflight_ok health=not_run\n'
-printf 'steps5-9=OPEN not_run=1\n'
+printf 'step5_https=preflight_ok https=not_run\n'
+printf 'steps6-9=OPEN not_run=1\n'
 printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
@@ -230,6 +248,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=enroll_preflight_ok step2=oci_preflight_ok step3=deploy_preflight_ok step4=health_preflight_ok steps5-9=not_run
+step1=enroll_preflight_ok step2=oci_preflight_ok step3=deploy_preflight_ok step4=health_preflight_ok step5=https_preflight_ok steps6-9=not_run
 OPEN
 exit 3

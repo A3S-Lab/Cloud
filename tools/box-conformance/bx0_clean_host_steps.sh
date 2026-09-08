@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Steps 1–3 (enroll / OCI / deploy) are preflight-only: require resolvable
-# binaries (and OCI Runtime pin for step 2), record evidence, never perform
-# enroll/OCI publish/deploy, and never claim product EXIT. Step 4 health is
-# preflight-only (require a health probe binary). Steps 5–9 remain OPEN /
-# not-run until later automation lands.
+# Steps 1–5 (enroll / OCI / deploy / health / HTTPS) are preflight-only: require
+# resolvable binaries (OCI Runtime pin for step 2; Gateway pin for step 5),
+# record evidence, never perform enroll/OCI publish/deploy/Ready/TLS routing,
+# and never claim product EXIT. Steps 6–9 remain OPEN / not-run until later
+# automation lands.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -268,6 +268,122 @@ EOF
   return 0
 }
 
+bx0_resolve_gateway() {
+  local candidate
+  for candidate in \
+    "${A3S_CLOUD_GATEWAY_BIN:-}" \
+    "${A3S_CLOUD_TEST_GATEWAY_BIN:-}"; do
+    if [[ -n $candidate ]]; then
+      if [[ -x $candidate ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      return 1
+    fi
+  done
+  if command -v a3s-gateway >/dev/null 2>&1; then
+    command -v a3s-gateway
+    return 0
+  fi
+  for candidate in \
+    "${CLOUD_ROOT:-}/crates/gateway/target/debug/a3s-gateway" \
+    "${CLOUD_ROOT:-}/crates/gateway/target/release/a3s-gateway" \
+    "${CLOUD_ROOT:-}/target/debug/a3s-gateway" \
+    "${CLOUD_ROOT:-}/target/release/a3s-gateway"; do
+    if [[ -n $candidate && -x $candidate ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Writes 05-https.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires resolvable a3s-gateway + matching Gateway pin; does not route TLS.
+bx0_step_https_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/05-https.txt"
+  mkdir -p -- "$evidence_dir"
+
+  local pin_file="${A3S_CLOUD_BX0_GATEWAY_REVISION_FILE:-${CLOUD_ROOT:-}/tools/gateway-conformance/gateway-revision}"
+  local expected=
+  if [[ ! -f $pin_file ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=preflight_failed
+reason=gateway_pin_missing
+https=not_run
+EOF
+    return 1
+  fi
+  expected="$(<"$pin_file")"
+  if [[ ! $expected =~ ^[0-9a-f]{40}$ ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=preflight_failed
+reason=gateway_pin_invalid
+https=not_run
+EOF
+    return 1
+  fi
+
+  local gateway=
+  if ! gateway="$(bx0_resolve_gateway)"; then
+    cat >"$evidence" <<'EOF'
+step=5
+name=https
+status=preflight_failed
+reason=gateway_unavailable
+https=not_run
+EOF
+    return 1
+  fi
+
+  local installed="${A3S_CLOUD_GATEWAY_REVISION:-${A3S_CLOUD_TEST_GATEWAY_REVISION:-}}"
+  local sidecar
+  sidecar="$(dirname "$gateway")/GATEWAY-REVISION"
+  if [[ -z $installed && -f $sidecar ]]; then
+    installed="$(<"$sidecar")"
+  fi
+  if [[ -z $installed ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=preflight_failed
+reason=gateway_revision_missing
+a3s_gateway=$gateway
+expected_pin=$expected
+https=not_run
+EOF
+    return 1
+  fi
+  if [[ $installed != "$expected" ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=preflight_failed
+reason=gateway_revision_mismatch
+a3s_gateway=$gateway
+expected_pin=$expected
+installed=$installed
+https=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=5
+name=https
+status=preflight_ok
+a3s_gateway=$gateway
+gateway_revision=$expected
+https=not_run
+EOF
+  return 0
+}
+
 bx0_write_open_step() {
   local evidence_dir=$1
   local index=$2
@@ -282,11 +398,10 @@ not_run=1
 EOF
 }
 
-# Record steps 5–9 as OPEN / not-run (remainder after enroll…health preflight).
+# Record steps 6–9 as OPEN / not-run (remainder after enroll…HTTPS preflight).
 bx0_write_remaining_open_steps() {
   local evidence_dir=$1
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 5 https
   bx0_write_open_step "$evidence_dir" 6 logs
   bx0_write_open_step "$evidence_dir" 7 update
   bx0_write_open_step "$evidence_dir" 8 rollback
