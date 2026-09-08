@@ -451,7 +451,7 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
       "BX0 clean-host gate: FAIL_CLOSED reason=$cleanup_reason" \
       "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$cleanup_reason" \
       "evidence=$evidence_dir/09-stop_cleanup.txt" \
-      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_CLEANUP_INSTANCE from a real Box stop/remove.' >&2
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_CLEANUP_INSTANCE whose a3s-box inspect fails (already removed).' >&2
     exit 1
   fi
   step9_status=stop_cleanup_executed

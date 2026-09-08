@@ -151,7 +151,8 @@ hex), `A3S_CLOUD_BX0_SERVICE_ID`, `A3S_CLOUD_BX0_HEALTH_URL` (`http`/`https`),
 health and HTTPS execute invoke the HTTP probe against those URLs
 (`probe_ran=1`, fail-closed on `*_probe_failed`); logs/update/rollback execute
 invoke override probe bins with cursor/digest (host jq/sha256sum/diff are
-preflight-only); missing execute inputs
+preflight-only); stop/cleanup execute verifies the instance is absent via
+`a3s-box inspect`; missing execute inputs
 fail-closed. When all nine execute receipts land, OPEN
 prints `execute_receipts_complete=1` only after re-verifying on-disk
 `*=executed` files, plus `next_loop` / `next_exit` /

@@ -152,6 +152,9 @@ grep -Fq 'logs_probe_unavailable' "$steps"
 grep -Fq 'digest_probe_unavailable' "$steps"
 grep -Fq 'rollback_probe_unavailable' "$steps"
 grep -Fq 'cleanup_box_unavailable' "$steps"
+grep -Fq 'bx0_verify_cleanup_instance_absent' "$steps"
+grep -Fq 'cleanup_instance_still_present' "$steps"
+grep -Fq 'cleanup_verified=1' "$steps"
 grep -Fq 'enroll_node_id_missing' "$steps"
 grep -Fq 'bx0_step_enroll_execute' "$steps"
 grep -Fq 'artifact_digest_missing' "$steps"
@@ -926,9 +929,20 @@ grep -Fq "$stub_cleanup_box" "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
 forbid_exit_certified_claim "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
 
 echo "===== step library: stop/cleanup execute (Darwin-safe) ====="
+stub_cleanup_absent="$steps_evidence/stub-cleanup-box-absent"
+cat >"$stub_cleanup_absent" <<'STUB'
+#!/usr/bin/env bash
+# inspect must fail (instance already removed) for cleanup execute.
+case "${1:-}" in
+  inspect) exit 1 ;;
+  *) exit 0 ;;
+esac
+STUB
+chmod +x "$stub_cleanup_absent"
+
 set +e
 A3S_CLOUD_BX0_EXECUTE=1 \
-  A3S_CLOUD_BOX_BIN="$stub_cleanup_box" \
+  A3S_CLOUD_BOX_BIN="$stub_cleanup_absent" \
   env -u A3S_CLOUD_BX0_CLEANUP_INSTANCE -u BX0_BOX_BINARY \
   bash -c '
     set -euo pipefail
@@ -946,13 +960,35 @@ grep -Fq 'cleanup_instance_missing' "$steps_evidence/cleanup-exec-missing/09-sto
 grep -Fq 'stop_cleanup=not_run' "$steps_evidence/cleanup-exec-missing/09-stop_cleanup.txt"
 
 A3S_CLOUD_BX0_EXECUTE=1 \
-  A3S_CLOUD_BOX_BIN="$stub_cleanup_box" \
+  A3S_CLOUD_BOX_BIN="$stub_cleanup_absent" \
   A3S_CLOUD_BX0_CLEANUP_INSTANCE='box-instance-cleanup-1' \
   bx0_step_stop_cleanup_execute "$steps_evidence/cleanup-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
 grep -Fq 'stop_cleanup=executed' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
+grep -Fq 'cleanup_verified=1' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
+grep -Fq 'inspect_absent=1' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
 grep -Fq 'box-instance-cleanup-1' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
 forbid_exit_certified_claim "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
+
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_BOX_BIN="$stub_cleanup_box" \
+  A3S_CLOUD_BX0_CLEANUP_INSTANCE='box-instance-still-here' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_stop_cleanup_execute "$1"
+  ' "$steps" "$steps_evidence/cleanup-exec-present"
+present_cleanup_exec=$?
+set -e
+if ((present_cleanup_exec != 1)); then
+  printf '%s\n' "expected cleanup execute fail when inspect succeeds, got $present_cleanup_exec" >&2
+  exit 1
+fi
+grep -Fq 'cleanup_instance_still_present' "$steps_evidence/cleanup-exec-present/09-stop_cleanup.txt"
+grep -Fq 'stop_cleanup=not_run' "$steps_evidence/cleanup-exec-present/09-stop_cleanup.txt"
+forbid_exit_certified_claim "$steps_evidence/cleanup-exec-present/09-stop_cleanup.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -1494,7 +1530,14 @@ if [[ $os_name == Linux ]]; then
   echo "===== armed stub with matching Box+OCI+Gateway pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
-  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
+  cat >"$stub_match/a3s-box" <<'STUB'
+#!/usr/bin/env bash
+# inspect must fail for cleanup execute (instance already removed).
+case "${1:-}" in
+  inspect) exit 1 ;;
+  *) exit 0 ;;
+esac
+STUB
   chmod +x "$stub_match/a3s-box"
   printf '%s\n' "$revision" >"$stub_match/BOX-REVISION"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-oci"

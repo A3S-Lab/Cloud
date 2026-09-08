@@ -1267,8 +1267,19 @@ EOF
   return 0
 }
 
-# Operator stop/remove receipt from a real Box cleanup. Does not stop or remove.
-# Returns 0 on stop_cleanup=executed, 1 on execute_failed. No-op when EXECUTE unset.
+# Prove cleanup_instance is absent via `a3s-box inspect` (must fail). Returns 0
+# when absent, 1 when still present or inspect unexpectedly succeeds.
+bx0_verify_cleanup_instance_absent() {
+  local box=$1
+  local instance=$2
+  if "$box" inspect "$instance" >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+# Operator stop/remove receipt: require CLEANUP_INSTANCE and verify it is gone
+# via a3s-box inspect. Does not stop or remove. Returns 0 on stop_cleanup=executed.
 bx0_step_stop_cleanup_execute() {
   local evidence_dir=$1
   local evidence="$evidence_dir/09-stop_cleanup.txt"
@@ -1304,12 +1315,28 @@ EOF
     return 1
   fi
 
+  if ! bx0_verify_cleanup_instance_absent "$box" "$instance"; then
+    cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=execute_failed
+reason=cleanup_instance_still_present
+a3s_box=$box
+cleanup_instance=$instance
+stop_cleanup=not_run
+hint=a3s-box inspect still succeeds; stop/remove the instance before EXECUTE
+EOF
+    return 1
+  fi
+
   cat >"$evidence" <<EOF
 step=9
 name=stop_cleanup
 status=execute_ok
 a3s_box=$box
 cleanup_instance=$instance
+cleanup_verified=1
+inspect_absent=1
 stop_cleanup=executed
 EOF
   return 0

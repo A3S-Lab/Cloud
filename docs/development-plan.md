@@ -810,7 +810,8 @@ validated node ACL/token/`A3S_CLOUD_BX0_ENROLL_NODE_ID`,
 enroll/OCI/deploy/Ready/managed-TLS/log read/immutable update/cloned
 rollback/stop-remove (never PLACEHOLDER); health and HTTPS execute invoke the
 HTTP probe against the Ready/TLS URLs; logs/update/rollback execute invoke
-override probe bins (`probe_ran=1`); all nine execute still
+override probe bins (`probe_ran=1`); stop/cleanup execute verifies the
+instance is absent via `a3s-box inspect`; all nine execute still
 print `execute_receipts_complete=1` only after re-verifying on-disk gate receipts,
 plus `next_loop` / `next_exit` / `product_exit=not_claimed` and
 `loop_exit=not_certified` without product EXIT. Prep
