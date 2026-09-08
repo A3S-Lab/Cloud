@@ -441,8 +441,10 @@ boundary.
    forbid execution-provider mechanisms under crates/ with a shrink-only
    middleware allowlist for tools/dev/cloud_up.sh and cloud_down.sh. The
    clean-host harness entrypoint `tools/box-conformance/run_bx0_clean_host_gate.sh`
-   exists but fail-closes without claiming EXIT; complete Box-only conformance
-   and the clean-host release gate remain open.
+   exists but fail-closes without claiming EXIT; CI harness
+   `run_bx0_clean_host_gate_ci.sh` certifies fail-closed behavior only
+   (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`). Complete Box-only conformance and
+   the clean-host product release gate remain open.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The

@@ -113,3 +113,8 @@ checklist and required markers, then exits 3 with
 not yet automated. It never emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
 Use `install_box_release.sh` to install the pinned Linux Box fixture before
 arming the gate.
+
+`run_bx0_clean_host_gate_ci.sh` is the CI fail-closed harness (mirror of
+U0.3 `run_u0_3_exit_audit_ci.sh`). It certifies static refuse-to-fake contracts
+and unarmed / armed-without-box / stub-armed OPEN behavior, then emits
+`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.

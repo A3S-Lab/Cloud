@@ -795,7 +795,10 @@ The clean-host harness entrypoint
 non-Linux, unarmed Linux (`A3S_CLOUD_BX0_CLEAN_HOST` unset / missing `a3s-box`
 → exit 2), or armed-but-unautomated runs (exit 3 /
 `A3S_CLOUD_BX0_CLEAN_HOST_OPEN`). Product `EXIT` remains open: the script does
-not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
+not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. CI fail-closed harness
+`tools/box-conformance/run_bx0_clean_host_gate_ci.sh` proves those refuse paths
+and may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it never unlocks
+product EXIT.
 
 On a clean supported Linux host with no Docker or compatible daemon, install
 exact Cloud, Runtime, Box, Gateway, and Power revisions; enroll one outbound
