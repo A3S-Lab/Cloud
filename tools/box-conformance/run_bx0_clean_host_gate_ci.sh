@@ -54,9 +54,12 @@ grep -Fq 'enroll=not_run' "$gate"
 grep -Fq 'step1=enroll_preflight_ok' "$gate"
 grep -Fq 'step2=oci_preflight_ok' "$gate"
 grep -Fq 'step3=deploy_preflight_ok' "$gate"
+grep -Fq 'step4=health_preflight_ok' "$gate"
 grep -Fq 'oci=not_run' "$gate"
 grep -Fq 'deploy=not_run' "$gate"
+grep -Fq 'health=not_run' "$gate"
 grep -Fq 'control_plane_unavailable' "$gate"
+grep -Fq 'health_probe_unavailable' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
@@ -65,6 +68,7 @@ steps="$tools/bx0_clean_host_steps.sh"
 grep -Fq 'oci_unavailable' "$steps"
 grep -Fq 'oci_runtime_revision_mismatch' "$steps"
 grep -Fq 'control_plane_unavailable' "$steps"
+grep -Fq 'health_probe_unavailable' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
@@ -212,11 +216,42 @@ CLOUD_ROOT="$repository_root" \
 grep -Fq 'status=preflight_ok' "$steps_evidence/deploy-ok/03-deploy.txt"
 grep -Fq 'deploy=not_run' "$steps_evidence/deploy-ok/03-deploy.txt"
 grep -Fq "$stub_cp" "$steps_evidence/deploy-ok/03-deploy.txt"
-bx0_write_remaining_open_steps "$steps_evidence/deploy-ok"
-[[ -f $steps_evidence/deploy-ok/04-health.txt ]]
-[[ -f $steps_evidence/deploy-ok/09-stop_cleanup.txt ]]
-grep -Fq 'status=OPEN' "$steps_evidence/deploy-ok/04-health.txt"
 forbid_exit_certified_claim "$steps_evidence/deploy-ok/03-deploy.txt"
+
+echo "===== step library: health preflight (Darwin-safe) ====="
+set +e
+PATH="/usr/bin:/bin" \
+  A3S_CLOUD_HEALTH_PROBE_BIN="$steps_evidence/does-not-exist-health-probe" \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_health_preflight "$1"
+  ' "$steps" "$steps_evidence/health-missing"
+missing_health=$?
+set -e
+if ((missing_health != 1)); then
+  printf '%s\n' "expected health preflight fail without probe, got $missing_health" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/health-missing/04-health.txt"
+grep -Fq 'health_probe_unavailable' "$steps_evidence/health-missing/04-health.txt"
+grep -Fq 'health=not_run' "$steps_evidence/health-missing/04-health.txt"
+forbid_exit_certified_claim "$steps_evidence/health-missing/04-health.txt"
+
+stub_probe="$steps_evidence/stub-health-probe"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_probe"
+chmod +x "$stub_probe"
+A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe" \
+  bx0_step_health_preflight "$steps_evidence/health-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/health-ok/04-health.txt"
+grep -Fq 'health=not_run' "$steps_evidence/health-ok/04-health.txt"
+grep -Fq "$stub_probe" "$steps_evidence/health-ok/04-health.txt"
+bx0_write_remaining_open_steps "$steps_evidence/health-ok"
+[[ -f $steps_evidence/health-ok/05-https.txt ]]
+[[ -f $steps_evidence/health-ok/09-stop_cleanup.txt ]]
+grep -Fq 'status=OPEN' "$steps_evidence/health-ok/05-https.txt"
+forbid_exit_certified_claim "$steps_evidence/health-ok/04-health.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -480,6 +515,51 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-cp.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-cp.err"
 
+  echo "===== armed stub missing health probe must exit 1 ====="
+  stub_no_health="$evidence_directory/stub-box-no-health"
+  mkdir -p -- "$stub_no_health"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_health/a3s-box"
+  chmod +x "$stub_no_health/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_health/BOX-REVISION"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_health/a3s-oci"
+  chmod +x "$stub_no_health/a3s-oci"
+  printf '%s\n' "$oci_runtime_revision" >"$stub_no_health/OCI-RUNTIME-REVISION"
+  stub_node_agent_h="$evidence_directory/stub-node-agent-for-health"
+  stub_cp_h="$evidence_directory/stub-cp-for-health"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent_h"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_cp_h"
+  chmod +x "$stub_node_agent_h" "$stub_cp_h"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_health/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent_h" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp_h" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$evidence_directory/does-not-exist-health-probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-health-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-health.out" 2>"$evidence_directory/armed-no-health.err"
+  no_health_status=$?
+  set -e
+  if ((no_health_status != 1)); then
+    printf '%s\n' "expected health_probe_unavailable exit 1, got $no_health_status" >&2
+    cat "$evidence_directory/armed-no-health.out" >&2 || true
+    cat "$evidence_directory/armed-no-health.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'health_probe_unavailable' "$evidence_directory/armed-no-health.err"; then
+    printf '%s\n' "expected health_probe_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-health.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-health.err"
+
   echo "===== armed stub with matching Box+OCI pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
@@ -495,6 +575,9 @@ if [[ $os_name == Linux ]]; then
   stub_control_plane="$evidence_directory/stub-control-plane"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_control_plane"
   chmod +x "$stub_control_plane"
+  stub_health_probe="$evidence_directory/stub-health-probe"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_health_probe"
+  chmod +x "$stub_health_probe"
   runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
   gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
   cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
@@ -510,6 +593,7 @@ if [[ $os_name == Linux ]]; then
     A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
     A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
     A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
     A3S_CLOUD_BX0_EVIDENCE_DIR="$match_evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
@@ -537,7 +621,8 @@ if [[ $os_name == Linux ]]; then
     'step1=enroll_preflight_ok' \
     'step2=oci_preflight_ok' \
     'step3=deploy_preflight_ok' \
-    'steps4-9=not_run'; do
+    'step4=health_preflight_ok' \
+    'steps5-9=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -549,12 +634,15 @@ if [[ $os_name == Linux ]]; then
   grep -Fq 'oci=not_run' "$match_evidence/02-oci.txt"
   grep -Fq 'status=preflight_ok' "$match_evidence/03-deploy.txt"
   grep -Fq 'deploy=not_run' "$match_evidence/03-deploy.txt"
+  grep -Fq 'status=preflight_ok' "$match_evidence/04-health.txt"
+  grep -Fq 'health=not_run' "$match_evidence/04-health.txt"
   [[ -f $match_evidence/09-stop_cleanup.txt ]]
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
   forbid_exit_certified_claim "$match_evidence/01-enroll.txt"
   forbid_exit_certified_claim "$match_evidence/02-oci.txt"
   forbid_exit_certified_claim "$match_evidence/03-deploy.txt"
+  forbid_exit_certified_claim "$match_evidence/04-health.txt"
 fi
 
 printf '%s\n' \

@@ -3,8 +3,9 @@
 #
 # Steps 1–3 (enroll / OCI / deploy) are preflight-only: require resolvable
 # binaries (and OCI Runtime pin for step 2), record evidence, never perform
-# enroll/OCI publish/deploy, and never claim product EXIT. Steps 4–9 remain
-# OPEN / not-run until later automation lands.
+# enroll/OCI publish/deploy, and never claim product EXIT. Step 4 health is
+# preflight-only (require a health probe binary). Steps 5–9 remain OPEN /
+# not-run until later automation lands.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -224,6 +225,49 @@ EOF
   return 0
 }
 
+bx0_resolve_health_probe() {
+  local candidate
+  if [[ -n ${A3S_CLOUD_HEALTH_PROBE_BIN:-} ]]; then
+    if [[ -x $A3S_CLOUD_HEALTH_PROBE_BIN ]]; then
+      printf '%s\n' "$A3S_CLOUD_HEALTH_PROBE_BIN"
+      return 0
+    fi
+    return 1
+  fi
+  if command -v curl >/dev/null 2>&1; then
+    command -v curl
+    return 0
+  fi
+  return 1
+}
+
+# Writes 04-health.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires a resolvable HTTP probe (curl or override); does not hit Ready.
+bx0_step_health_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/04-health.txt"
+  mkdir -p -- "$evidence_dir"
+  local probe=
+  if ! probe="$(bx0_resolve_health_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=4
+name=health
+status=preflight_failed
+reason=health_probe_unavailable
+health=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=4
+name=health
+status=preflight_ok
+health_probe=$probe
+health=not_run
+EOF
+  return 0
+}
+
 bx0_write_open_step() {
   local evidence_dir=$1
   local index=$2
@@ -238,11 +282,10 @@ not_run=1
 EOF
 }
 
-# Record steps 4–9 as OPEN / not-run (remainder after enroll+OCI+deploy preflight).
+# Record steps 5–9 as OPEN / not-run (remainder after enroll…health preflight).
 bx0_write_remaining_open_steps() {
   local evidence_dir=$1
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 4 health
   bx0_write_open_step "$evidence_dir" 5 https
   bx0_write_open_step "$evidence_dir" 6 logs
   bx0_write_open_step "$evidence_dir" 7 update
