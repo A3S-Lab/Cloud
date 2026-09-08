@@ -186,6 +186,16 @@ if ! bx0_step_oci_preflight "$evidence_dir"; then
     'Require a3s-oci + matching OCI-RUNTIME-REVISION (install_box_release.sh); OCI publish not run.' >&2
   exit 1
 fi
+
+if ! bx0_step_deploy_preflight "$evidence_dir"; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=control_plane_unavailable" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=control_plane_unavailable" \
+    "evidence=$evidence_dir/03-deploy.txt" \
+    'Set A3S_CLOUD_CONTROL_PLANE_BIN or A3S_CLOUD_DEV_API_BIN to a3s-cloud-control-plane (preflight only; deploy not run).' >&2
+  exit 1
+fi
 bx0_write_remaining_open_steps "$evidence_dir"
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -196,7 +206,8 @@ printf 'bound Gateway revision: %s\n' "$expected_gateway_revision"
 printf 'power_revision=UNBOUND reason=pw0_no_pin_file\n'
 printf 'step1_enroll=preflight_ok enroll=not_run\n'
 printf 'step2_oci=preflight_ok oci=not_run\n'
-printf 'steps3-9=OPEN not_run=1\n'
+printf 'step3_deploy=preflight_ok deploy=not_run\n'
+printf 'steps4-9=OPEN not_run=1\n'
 printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
@@ -208,6 +219,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=enroll_preflight_ok step2=oci_preflight_ok steps3-9=not_run
+step1=enroll_preflight_ok step2=oci_preflight_ok step3=deploy_preflight_ok steps4-9=not_run
 OPEN
 exit 3

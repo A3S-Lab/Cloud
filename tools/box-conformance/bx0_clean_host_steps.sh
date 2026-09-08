@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Step 1 enroll / step 2 OCI are preflight-only: require resolvable binaries
-# (and OCI Runtime pin for step 2), record evidence, never perform enroll/OCI
-# publish, and never claim product EXIT. Steps 3–9 remain OPEN / not-run until
-# later automation lands.
+# Steps 1–3 (enroll / OCI / deploy) are preflight-only: require resolvable
+# binaries (and OCI Runtime pin for step 2), record evidence, never perform
+# enroll/OCI publish/deploy, and never claim product EXIT. Steps 4–9 remain
+# OPEN / not-run until later automation lands.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -84,8 +84,6 @@ bx0_resolve_oci_cli() {
 }
 
 # Writes 02-oci.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
-# Requires tools/box-conformance/oci-runtime-revision (or override file) and a
-# matching install-tree OCI-RUNTIME-REVISION / A3S_CLOUD_OCI_RUNTIME_REVISION.
 bx0_step_oci_preflight() {
   local evidence_dir=$1
   local evidence="$evidence_dir/02-oci.txt"
@@ -170,6 +168,62 @@ EOF
   return 0
 }
 
+bx0_resolve_control_plane() {
+  local candidate
+  # Prefer explicit BX0/deploy override, then the existing cloud_up API bin env.
+  for candidate in \
+    "${A3S_CLOUD_CONTROL_PLANE_BIN:-}" \
+    "${A3S_CLOUD_DEV_API_BIN:-}"; do
+    if [[ -n $candidate ]]; then
+      if [[ -x $candidate ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      return 1
+    fi
+  done
+  if command -v a3s-cloud-control-plane >/dev/null 2>&1; then
+    command -v a3s-cloud-control-plane
+    return 0
+  fi
+  for candidate in \
+    "${CLOUD_ROOT:-}/target/debug/a3s-cloud-control-plane" \
+    "${CLOUD_ROOT:-}/target/release/a3s-cloud-control-plane"; do
+    if [[ -n $candidate && -x $candidate ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+# Writes 03-deploy.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires a resolvable control-plane binary; does not deploy a Service.
+bx0_step_deploy_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/03-deploy.txt"
+  mkdir -p -- "$evidence_dir"
+  local control_plane=
+  if ! control_plane="$(bx0_resolve_control_plane)"; then
+    cat >"$evidence" <<'EOF'
+step=3
+name=deploy
+status=preflight_failed
+reason=control_plane_unavailable
+deploy=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=3
+name=deploy
+status=preflight_ok
+control_plane=$control_plane
+deploy=not_run
+EOF
+  return 0
+}
+
 bx0_write_open_step() {
   local evidence_dir=$1
   local index=$2
@@ -184,11 +238,10 @@ not_run=1
 EOF
 }
 
-# Record steps 3–9 as OPEN / not-run (ordered checklist remainder after enroll+OCI).
+# Record steps 4–9 as OPEN / not-run (remainder after enroll+OCI+deploy preflight).
 bx0_write_remaining_open_steps() {
   local evidence_dir=$1
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 3 deploy
   bx0_write_open_step "$evidence_dir" 4 health
   bx0_write_open_step "$evidence_dir" 5 https
   bx0_write_open_step "$evidence_dir" 6 logs

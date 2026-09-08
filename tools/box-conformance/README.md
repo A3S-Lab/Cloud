@@ -116,16 +116,19 @@ HEAD`), Runtime (`tools/runtime-conformance/runtime-revision`), and Gateway
 only (`bx0_clean_host_steps.sh`: require `A3S_CLOUD_NODE_AGENT_BIN` / cargo
 target / PATH agent; write `01-enroll.txt` with `enroll=not_run`), then step-2
 OCI **preflight** (require `a3s-oci` + matching `OCI-RUNTIME-REVISION` against
-`oci-runtime-revision`; write `02-oci.txt` with `oci=not_run`), records steps
-3–9 as OPEN/not-run, prints `power_revision=UNBOUND reason=pw0_no_pin_file`,
-then exits 3 with `A3S_CLOUD_BX0_CLEAN_HOST_OPEN`. Missing node-agent or OCI
+`oci-runtime-revision`; write `02-oci.txt` with `oci=not_run`), then step-3
+deploy **preflight** (require `A3S_CLOUD_CONTROL_PLANE_BIN` /
+`A3S_CLOUD_DEV_API_BIN` / PATH / cargo `a3s-cloud-control-plane`; write
+`03-deploy.txt` with `deploy=not_run`), records steps 4–9 as OPEN/not-run,
+prints `power_revision=UNBOUND reason=pw0_no_pin_file`, then exits 3 with
+`A3S_CLOUD_BX0_CLEAN_HOST_OPEN`. Missing node-agent, OCI, or control-plane
 fail-closes with exit 1. It never emits
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Use `install_box_release.sh` to
 install the pinned Linux Box fixture before arming the gate.
 
 `run_bx0_clean_host_gate_ci.sh` is the CI fail-closed harness (mirror of
 U0.3 `run_u0_3_exit_audit_ci.sh`). It certifies static refuse-to-fake contracts,
-Darwin-safe enroll/OCI preflight library cases, unarmed / armed-without-box
-paths, Linux stub pin missing/mismatch/match, Runtime pin-missing, and
-node-agent / OCI missing fail-closed behavior, then emits
-`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
+Darwin-safe enroll/OCI/deploy preflight library cases, unarmed /
+armed-without-box paths, Linux stub pin missing/mismatch/match, Runtime
+pin-missing, and node-agent / OCI / control-plane missing fail-closed behavior,
+then emits `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
