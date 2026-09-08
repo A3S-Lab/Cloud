@@ -57,15 +57,18 @@ grep -Fq 'step3=deploy_preflight_ok' "$gate"
 grep -Fq 'step4=health_preflight_ok' "$gate"
 grep -Fq 'step5=https_preflight_ok' "$gate"
 grep -Fq 'step6=logs_preflight_ok' "$gate"
+grep -Fq 'step7=update_preflight_ok' "$gate"
 grep -Fq 'oci=not_run' "$gate"
 grep -Fq 'deploy=not_run' "$gate"
 grep -Fq 'health=not_run' "$gate"
 grep -Fq 'https=not_run' "$gate"
 grep -Fq 'logs=not_run' "$gate"
+grep -Fq 'update=not_run' "$gate"
 grep -Fq 'control_plane_unavailable' "$gate"
 grep -Fq 'health_probe_unavailable' "$gate"
 grep -Fq 'gateway_unavailable' "$gate"
 grep -Fq 'logs_probe_unavailable' "$gate"
+grep -Fq 'digest_probe_unavailable' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
@@ -78,6 +81,7 @@ grep -Fq 'health_probe_unavailable' "$steps"
 grep -Fq 'gateway_unavailable' "$steps"
 grep -Fq 'gateway_revision_mismatch' "$steps"
 grep -Fq 'logs_probe_unavailable' "$steps"
+grep -Fq 'digest_probe_unavailable' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
@@ -345,11 +349,42 @@ A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs" \
 grep -Fq 'status=preflight_ok' "$steps_evidence/logs-ok/06-logs.txt"
 grep -Fq 'logs=not_run' "$steps_evidence/logs-ok/06-logs.txt"
 grep -Fq "$stub_logs" "$steps_evidence/logs-ok/06-logs.txt"
-bx0_write_remaining_open_steps "$steps_evidence/logs-ok"
-[[ -f $steps_evidence/logs-ok/07-update.txt ]]
-[[ -f $steps_evidence/logs-ok/09-stop_cleanup.txt ]]
-grep -Fq 'status=OPEN' "$steps_evidence/logs-ok/07-update.txt"
 forbid_exit_certified_claim "$steps_evidence/logs-ok/06-logs.txt"
+
+echo "===== step library: update / digest preflight (Darwin-safe) ====="
+set +e
+PATH="/usr/bin:/bin" \
+  A3S_CLOUD_DIGEST_PROBE_BIN="$steps_evidence/does-not-exist-digest-probe" \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_update_preflight "$1"
+  ' "$steps" "$steps_evidence/update-missing"
+missing_update=$?
+set -e
+if ((missing_update != 1)); then
+  printf '%s\n' "expected update preflight fail without digest probe, got $missing_update" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/update-missing/07-update.txt"
+grep -Fq 'digest_probe_unavailable' "$steps_evidence/update-missing/07-update.txt"
+grep -Fq 'update=not_run' "$steps_evidence/update-missing/07-update.txt"
+forbid_exit_certified_claim "$steps_evidence/update-missing/07-update.txt"
+
+stub_digest="$steps_evidence/stub-digest-probe"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_digest"
+chmod +x "$stub_digest"
+A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest" \
+  bx0_step_update_preflight "$steps_evidence/update-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/update-ok/07-update.txt"
+grep -Fq 'update=not_run' "$steps_evidence/update-ok/07-update.txt"
+grep -Fq "$stub_digest" "$steps_evidence/update-ok/07-update.txt"
+bx0_write_remaining_open_steps "$steps_evidence/update-ok"
+[[ -f $steps_evidence/update-ok/08-rollback.txt ]]
+[[ -f $steps_evidence/update-ok/09-stop_cleanup.txt ]]
+grep -Fq 'status=OPEN' "$steps_evidence/update-ok/08-rollback.txt"
+forbid_exit_certified_claim "$steps_evidence/update-ok/07-update.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -765,6 +800,65 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-logs.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-logs.err"
 
+  echo "===== armed stub missing digest probe must exit 1 ====="
+  stub_no_digest="$evidence_directory/stub-box-no-digest"
+  mkdir -p -- "$stub_no_digest"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_digest/a3s-box"
+  chmod +x "$stub_no_digest/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_digest/BOX-REVISION"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_digest/a3s-oci"
+  chmod +x "$stub_no_digest/a3s-oci"
+  printf '%s\n' "$oci_runtime_revision" >"$stub_no_digest/OCI-RUNTIME-REVISION"
+  stub_node_agent_d="$evidence_directory/stub-node-agent-for-digest"
+  stub_cp_d="$evidence_directory/stub-cp-for-digest"
+  stub_probe_d="$evidence_directory/stub-probe-for-digest"
+  stub_logs_d="$evidence_directory/stub-logs-for-digest"
+  stub_gw_d="$evidence_directory/stub-gw-for-digest"
+  mkdir -p -- "$stub_gw_d"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent_d"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_cp_d"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_probe_d"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_logs_d"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_gw_d/a3s-gateway"
+  chmod +x "$stub_node_agent_d" "$stub_cp_d" "$stub_probe_d" "$stub_logs_d" "$stub_gw_d/a3s-gateway"
+  printf '%s\n' "$gateway_revision" >"$stub_gw_d/GATEWAY-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_digest/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent_d" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp_d" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe_d" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gw_d/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_d" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$evidence_directory/does-not-exist-digest-probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-digest-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-digest.out" 2>"$evidence_directory/armed-no-digest.err"
+  no_digest_status=$?
+  set -e
+  if ((no_digest_status != 1)); then
+    printf '%s\n' "expected digest_probe_unavailable exit 1, got $no_digest_status" >&2
+    cat "$evidence_directory/armed-no-digest.out" >&2 || true
+    cat "$evidence_directory/armed-no-digest.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'digest_probe_unavailable' "$evidence_directory/armed-no-digest.err"; then
+    printf '%s\n' "expected digest_probe_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-digest.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-digest.err"
+
   echo "===== armed stub with matching Box+OCI+Gateway pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
@@ -791,6 +885,9 @@ if [[ $os_name == Linux ]]; then
   stub_logs_probe="$evidence_directory/stub-logs-probe"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_logs_probe"
   chmod +x "$stub_logs_probe"
+  stub_digest_probe="$evidence_directory/stub-digest-probe"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_digest_probe"
+  chmod +x "$stub_digest_probe"
   runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
   gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
   cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
@@ -812,6 +909,7 @@ if [[ $os_name == Linux ]]; then
     A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
     A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
     A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
     A3S_CLOUD_BX0_EVIDENCE_DIR="$match_evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
@@ -842,7 +940,8 @@ if [[ $os_name == Linux ]]; then
     'step4=health_preflight_ok' \
     'step5=https_preflight_ok' \
     'step6=logs_preflight_ok' \
-    'steps7-9=not_run'; do
+    'step7=update_preflight_ok' \
+    'steps8-9=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -860,6 +959,8 @@ if [[ $os_name == Linux ]]; then
   grep -Fq 'https=not_run' "$match_evidence/05-https.txt"
   grep -Fq 'status=preflight_ok' "$match_evidence/06-logs.txt"
   grep -Fq 'logs=not_run' "$match_evidence/06-logs.txt"
+  grep -Fq 'status=preflight_ok' "$match_evidence/07-update.txt"
+  grep -Fq 'update=not_run' "$match_evidence/07-update.txt"
   [[ -f $match_evidence/09-stop_cleanup.txt ]]
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
@@ -869,6 +970,7 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$match_evidence/04-health.txt"
   forbid_exit_certified_claim "$match_evidence/05-https.txt"
   forbid_exit_certified_claim "$match_evidence/06-logs.txt"
+  forbid_exit_certified_claim "$match_evidence/07-update.txt"
 fi
 
 printf '%s\n' \

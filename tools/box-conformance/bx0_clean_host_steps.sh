@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Steps 1–6 (enroll / OCI / deploy / health / HTTPS / logs) are preflight-only:
-# require resolvable binaries (OCI Runtime pin for step 2; Gateway pin for
-# step 5), record evidence, never perform enroll/OCI publish/deploy/Ready/TLS
-# routing/log readback, and never claim product EXIT. Steps 7–9 remain OPEN /
-# not-run until later automation lands.
+# Steps 1–7 (enroll / OCI / deploy / health / HTTPS / logs / update) are
+# preflight-only: require resolvable binaries (OCI Runtime pin for step 2;
+# Gateway pin for step 5), record evidence, never perform enroll/OCI
+# publish/deploy/Ready/TLS routing/log readback/immutable update, and never
+# claim product EXIT. Steps 8–9 remain OPEN / not-run until later automation
+# lands.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -427,6 +428,54 @@ EOF
   return 0
 }
 
+bx0_resolve_digest_probe() {
+  local candidate
+  if [[ -n ${A3S_CLOUD_DIGEST_PROBE_BIN:-} ]]; then
+    if [[ -x $A3S_CLOUD_DIGEST_PROBE_BIN ]]; then
+      printf '%s\n' "$A3S_CLOUD_DIGEST_PROBE_BIN"
+      return 0
+    fi
+    return 1
+  fi
+  if command -v sha256sum >/dev/null 2>&1; then
+    command -v sha256sum
+    return 0
+  fi
+  if command -v shasum >/dev/null 2>&1; then
+    command -v shasum
+    return 0
+  fi
+  return 1
+}
+
+# Writes 07-update.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires sha256sum/shasum (or override) for digest-pinned update evidence;
+# does not perform an immutable update.
+bx0_step_update_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/07-update.txt"
+  mkdir -p -- "$evidence_dir"
+  local probe=
+  if ! probe="$(bx0_resolve_digest_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=7
+name=update
+status=preflight_failed
+reason=digest_probe_unavailable
+update=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=7
+name=update
+status=preflight_ok
+digest_probe=$probe
+update=not_run
+EOF
+  return 0
+}
+
 bx0_write_open_step() {
   local evidence_dir=$1
   local index=$2
@@ -441,11 +490,10 @@ not_run=1
 EOF
 }
 
-# Record steps 7–9 as OPEN / not-run (remainder after enroll…logs preflight).
+# Record steps 8–9 as OPEN / not-run (remainder after enroll…update preflight).
 bx0_write_remaining_open_steps() {
   local evidence_dir=$1
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 7 update
   bx0_write_open_step "$evidence_dir" 8 rollback
   bx0_write_open_step "$evidence_dir" 9 stop_cleanup
 }
