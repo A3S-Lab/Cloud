@@ -20,11 +20,10 @@ trap cleanup EXIT
 
 forbid_exit_certified_claim() {
   local path=$1
-  # Product EXIT marker may appear only as a documented required/refused marker.
-  # Any line that claims certification (…EXIT_CERTIFIED without OPEN/required/
-  # refuses/not emitted/Must bind scaffolding context) is forbidden in harness output.
+  # Documentation may list the bare marker name (checklist / refuses-to-fake).
+  # A real product claim always continues with fields (cloud_revision=…).
   if grep -E --quiet \
-    '^[[:space:]]*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED[[:space:]]*$' \
+    '^[[:space:]]*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED[[:space:]]+[^[:space:]]' \
     "$path" 2>/dev/null; then
     printf '%s\n' \
       "CI harness must never emit product EXIT_CERTIFIED claim: $path" >&2
@@ -949,13 +948,15 @@ if [[ $os_name == Linux ]]; then
   chmod +x "$stub_no_agent/a3s-box"
   printf '%s\n' "$revision" >"$stub_no_agent/BOX-REVISION"
   set +e
+  # Point NODE_AGENT_BIN at a missing path so CLOUD_ROOT/target fallbacks cannot
+  # false-pass when a local (or host-mounted) build tree is present.
   env -u A3S_CLOUD_BOX_REVISION \
-    -u A3S_CLOUD_NODE_AGENT_BIN \
     -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
     -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
     PATH="/usr/bin:/bin" \
     A3S_CLOUD_BX0_CLEAN_HOST=1 \
     A3S_CLOUD_BOX_BIN="$stub_no_agent/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$evidence_directory/does-not-exist-node-agent" \
     A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-agent-evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-no-agent.out" 2>"$evidence_directory/armed-no-agent.err"
@@ -1397,7 +1398,9 @@ if [[ $os_name == Linux ]]; then
     printf '%s\n' "expected A3S_CLOUD_BX0_CLEAN_HOST_OPEN for pin-matched stub" >&2
     exit 1
   fi
-  combined_match="$evidence_directory/armed-match.out"$'\n'"$(cat "$evidence_directory/armed-match.err")"
+  combined_match="$(
+    cat "$evidence_directory/armed-match.out" "$evidence_directory/armed-match.err"
+  )"
   for needle in \
     "$revision" \
     "$runtime_revision" \
@@ -1918,7 +1921,9 @@ ACL
     cat "$evidence_directory/armed-exec-ok.err" >&2 || true
     exit 1
   fi
-  combined_exec="$evidence_directory/armed-exec-ok.out"$'\n'"$(cat "$evidence_directory/armed-exec-ok.err")"
+  combined_exec="$(
+    cat "$evidence_directory/armed-exec-ok.out" "$evidence_directory/armed-exec-ok.err"
+  )"
   grep -Fq 'step1=enroll_executed' <<<"$combined_exec"
   grep -Fq 'step2=oci_executed' <<<"$combined_exec"
   grep -Fq 'step3=deploy_executed' <<<"$combined_exec"
