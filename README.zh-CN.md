@@ -1,9 +1,8 @@
 # A3S Cloud
 
 <p align="center">
-  <img src="assets/readme/hero.svg" width="100%" alt="A3S Cloud turns Agent, Workflow, Function, Durable Cell, inference, and Web semantics into governed services on A3S Runtime and Box" />
+  <img src="assets/readme/hero.svg" width="100%" alt="A3S Cloud 将 Agent、Workflow、Function、Durable Cell、推理与 Web 语义转化为 A3S Runtime 与 Box 上的受治理服务" />
 </p>
-
 
 <p align="center">
   <strong>Language / 语言:</strong>
@@ -13,121 +12,73 @@
 
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=release" /></a>
-  <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST contract 1.85.0" src="https://img.shields.io/badge/REST_contract-1.85.0-2872b8" /></a>
-  <a href="LICENSE"><img alt="MIT license" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
+  <img alt="Rust 1.88 或更高" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
+  <a href="openapi/v1.json"><img alt="REST 契约 1.85.0" src="https://img.shields.io/badge/REST_contract-1.85.0-2872b8" /></a>
+  <a href="LICENSE"><img alt="MIT 许可证" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 
 <p align="center">
-  <a href="#how-it-works">架构</a>·
-  <a href="#service-outcomes">服务</a>·
-  <a href="#quick-start">快速入门</a>·
-  <a href="#platform-capabilities">功能</a>·
-  <a href="#delivery-status">发货</a>·
-  <a href="#documentation">文档</a>
+  <a href="#工作原理">架构</a> &middot;
+  <a href="#服务结果">服务</a> &middot;
+  <a href="#快速开始">快速开始</a> &middot;
+  <a href="#平台能力">能力</a> &middot;
+  <a href="#交付状态">交付</a> &middot;
+  <a href="#文档">文档</a>
 </p>
 
-**A3S Cloud 是一个自托管、代理优先的开发者平台，可将
-将租户授权的产品意图转化为耐用的 AaaS、WaaS、FaaS、Durable Cell、
-模型推理以及运营商拥有的 CPU/GPU 上的静态 Web 服务
-基础设施。** 云拥有产品和期望状态的真相； A3S Flow
-协调持久的工作； A3S Runtime定义了一个生命周期合约； A3S Box
-执行它； A3S Gateway 是唯一的公共边。
+**A3S Cloud 是自托管、Agent 优先的开发者平台，将租户授权的产品意图转化为运营商自有 CPU/GPU 基础设施上的持久 AaaS、WaaS、FaaS、Durable Cell、模型推理与 Static Web 服务。** Cloud 拥有产品与期望状态真相；A3S Flow 协调持久工作；A3S Runtime 定义统一生命周期契约；A3S Box 执行它；A3S Gateway 是唯一公共边缘。
 
 > [!IMPORTANT]
-> 架构目标不是可用性声明。能力被释放
-> 仅在其真实提供者、故障、恢复、清理、升级和发布之后
-> 登机口在 [ROADMAP.md](ROADMAP.md) 中标记为 <code>已验证</code>。
+> 架构目标不是可用性声明。仅当某能力在 [ROADMAP.md](ROADMAP.md) 中将其真实提供商、失败、恢复、清理、升级与发布闸门标为 <code>Verified</code> 后，该能力才算发布。
 
 > [!NOTE]
-> A3S Cloud 不附带管理仪表板。它确实托管不可变的
-> React/Vue 和其他适用于应用程序和代理的租户 Web 版本。那些
-> 站点使用与所有其他客户端相同的网关和 API。
+> A3S Cloud 不附带管理 Dashboard。它确实托管面向 Application 与 Agent 的不可变 React/Vue 及其他租户 Web 发布。这些站点与其他所有客户端使用相同的 Gateway 与 API。
 
 > [!TIP]
-> 自动 CI 和 Box 一致性仅在推送到 `release` 和拉取时运行
-> 请求定位`release`。 `main`分支不会启动这些
-> 自动工作流程；使用显式工作流调度条目
-> 临时验证运行。
+> 自动 CI 与 Box 符合性仅对推送到 `release` 以及面向 `release` 的 pull request 运行。`main` 分支不会自动启动这些工作流；对临时验证运行请使用显式 workflow dispatch 条目。
 
-## 它是如何工作的
+## 工作原理
 
 <p align="center">
-  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud authority map from A3S Gateway through tenant product domains, Identity, PostgreSQL, Flow, Workloads and Fleet, Runtime, Box, supply, storage, dispatch, and observability" />
+  <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud 权威图：从 A3S Gateway 经租户产品域、Identity、PostgreSQL、Flow、Workloads 与 Fleet、Runtime、Box、供给、存储、派发与可观测性" />
 </p>
 
-该架构对于每项服务都遵循一条路径：
+架构对每种服务遵循同一路径：
 
-1. **承认：** A3S Gateway 对公共流量进行认证；身份解决了
-   准确的安装、组织、项目、环境、主体和
-   凭证范围。
-2. **提交：**应用程序用例自动写入所需状态，
-   通过 A3S ORM 向 PostgreSQL 提供幂等性、审计证据和发件箱事实。
-3. **坐标：** A3S Flow 和Operations拥有持久的等待，重试，重放，
-   批准、补偿、取消和交付历史记录。
-4. **放置并执行：** 工作负载和队列拥有单个 CPU/GPU 调度程序，
-   声明、推出、流失和隔离；节点代理收敛A3S Runtime
-   <code>任务</code>或<code>服务</code>单元至A3S Box。
-5. **发布：** Edge编译完整的版本化路由快照； A3S Gateway
-   应用并服务于他们。云永远不会成为第二个请求字节代理。
+1. **准入（Admit）：** A3S Gateway 认证公共流量；Identity 解析确切 Installation、Organization、Project、Environment、Principal 与凭证范围。
+2. **提交（Commit）：** Application 用例经 A3S ORM 向 PostgreSQL 原子写入期望状态、幂等、审计证据与 Outbox 事实。
+3. **协调（Coordinate）：** A3S Flow 与 Operations 拥有持久等待、重试、重放、审批、补偿、取消与投递历史。
+4. **放置与执行：** Workloads 与 Fleet 拥有单一 CPU/GPU 调度器、Claims、滚动、排空与 fencing；节点 agent 经 A3S Box 收敛 A3S Runtime <code>Task</code> 或 <code>Service</code> 单元。
+5. **发布（Publish）：** Edge 编译完整带版本路由快照；A3S Gateway 应用并服务它们。Cloud 永不成为第二个请求字节代理。
 
-运行时 CI/CD 使用相同的权威图：构建一次，验证准确的摘要，
-推广相同的不可变版本，通过工作负载/队列进行部署，转移
-通过 Edge/Gateway 的流量，并回滚到较早承认的版本。
-产品域保留发布真相； Flow 保留管道历史记录。
+Runtime CI/CD 使用同一权威图：构建一次、验证确切摘要、晋升降级同一不可变发布、经 Workloads/Fleet 部署、经 Edge/Gateway 切换流量，并回滚到更早已准入发布。产品域保留发布真相；Flow 保留流水线历史。
 
-## 服务成果
+## 服务结果
 
-六个产品成果共享两个执行类，而不是创建六个
-运行时堆栈：
+六种产品结果共享两类执行，而非创建六套运行时栈：
 
-- **AaaS — 代理即服务。** 代理拥有对话、执行、
-  语义事件、批准、检查点、分叉、工具证据、提供者
-  绑定和恢复。有状态代理（例如 A3S Code）以温暖方式运行，
-  会话防护运行时<code>Service</code> 单位；有界批次代理可以
-  使用<code>任务</code>。
-- **WaaS — 工作流即服务。**工作流拥有本体，不可变
-  定义和计划、WorkflowRun、HumanTask、类型化节点顺序以及
-  结果。 A3S Flow 坐标 Agent、Function、MCP、Inference、Cell、人类、
-  连接器、任务和服务节点；没有重复的工作流运行时。
-- **FaaS — 功能即服务。** 资产拥有不可变的功能
-  发布/简介；它的应用程序门面将每次调用委托给
-  执行、工作负载或连接器不拥有另一个生命周期。一个
-  函数作为运行时<code>Task</code>运行，无状态
-  <code>Service</code>，或外部 FaaS 连接器。无会话 MCP 和呼叫
-  从 A3S Code 使用相同的模式。 `FN0.1` 冻结这些组件合约；
-  FaaS 保持不可用，直到后来的所有者和生产大门通过。
-- **Durable Cell。** Durable Cells 拥有应用程序修订、兼容性、
-  保留和部署/存储关联。一个普通的运行时
-  <code>Service</code> 提供一个命名的、序列化的、可休眠的状态空间
-  适用于人员和多个代理，无需复制代理或工作流程历史记录。
-- **模型推理。**推理拥有模型修订、部署、角色
-  拓扑、路由策略、使用和评估。它支持独立
-  共享 CPU/GPU 上的副本和类型化多节点预填充/解码组
-  放置导轨。
-- **静态 Web。** 应用程序和资产拥有不可变的 Web 版本。反应，
-  Vue 和其他承认的对象由带有缓存的网关直接提供服务，
-  CSP、SPA回退、路由和回滚策略； SSR就是普通的
-  <code>服务</code>简介。
+- **AaaS — Agent as a Service。** Agents 拥有对话、执行、语义事件、审批、检查点、fork、Tool 证据、提供商绑定与恢复。有状态 Agent（如 A3S Code）作为温热、会话隔离的 Runtime <code>Service</code> 单元运行；有界批处理 Agent 可用 <code>Task</code>。
+- **WaaS — Workflow as a Service。** Workflow 拥有本体、不可变定义与计划、WorkflowRun、HumanTask、类型化节点顺序与结果。A3S Flow 协调 Agent、Function、MCP、Inference、Cell、人工、Connector、Task 与 Service 节点；没有重复的 Workflow 运行时。
+- **FaaS — Function as a Service。** Assets 拥有不可变 Function 发布/配置文件；其应用门面将每次调用委托给 Executions、Workloads 或 Connectors，而不拥有另一套生命周期。Function 作为 Runtime <code>Task</code>、无状态 <code>Service</code> 或外部 FaaS Connector 运行。无会话 MCP 与来自 A3S Code 的调用使用相同模式。`FN0.1` 冻结这些组件契约；在后续所有者与生产闸门通过前，FaaS 仍不可用。
+- **Durable Cell。** Durable Cells 拥有应用修订、兼容性、保留与部署/存储关联。普通 Runtime <code>Service</code> 为人员与多个 Agent 提供命名、串行化、可休眠的状态空间，而不复制 Agent 或 Workflow 历史。
+- **模型推理。** Inference 拥有模型修订、部署、角色拓扑、路由策略、用量与评估。它在共享 CPU/GPU 放置轨上支持独立副本与类型化多节点 prefill/decode 组。
+- **Static Web。** Applications 与 Assets 拥有不可变 Web 发布。React、Vue 及其他已准入对象由 Gateway 直接服务，带缓存、CSP、SPA 回退、路由与回滚策略；SSR 是普通 <code>Service</code> 配置文件。
 
-唯一的通用执行类是**任务**和**服务**。代理，
-表达功能、MCP、推理、Cell、构建和云系统行为
-通过不可变的消费者拥有的配置文件。 A3S Runtime拥有统一
-生命周期合同； A3S Box 提供商实现它。
+唯一通用执行类是 **Task** 与 **Service**。Agent、Function、MCP、推理、Cell、构建与 Cloud 系统行为通过不可变、消费者拥有的配置文件表达。A3S Runtime 拥有统一生命周期契约；A3S Box 提供商实现它。
 
 ## 快速开始
 
 ### 要求
 
-- Rust 1.88 或更高版本
-- PostgreSQL 17 或兼容的受支持版本
-- 用于固定外部源获取的 Git CLI
-- A3S Box 用于节点本地工作负载/构建执行
-- 路由服务的固定A3S Gateway修订版
-- 用于生产<code>all</code>、Worker 或 Relay 角色的 NATS JetStream
-- Bun 仅适用于 TypeScript 客户端或 CLI 开发
+- Rust 1.88 或更高
+- PostgreSQL 17 或兼容的受支持发行版
+- 用于 pin 外部源获取的 Git CLI
+- 用于节点本地工作负载/构建执行的 A3S Box
+- 用于路由服务的已 pin A3S Gateway 修订
+- 生产 <code>all</code>、Worker 或 Relay 角色所需的 NATS JetStream
+- 仅 TypeScript 客户端或 CLI 开发需要 Bun
 
-### 启动开发API
+### 启动开发 API
 
 ~~~bash
 export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3s_cloud"
@@ -139,9 +90,7 @@ cargo run -p a3s-cloud-control-plane --bin a3s-cloud-migrate -- config/cloud.acl
 cargo run -p a3s-cloud-control-plane -- config/cloud.acl
 ~~~
 
-服务进程从不运行迁移。一次性迁移器追随
-PostgreSQL 是可访问的，并且在 API、Worker、Relay 或 <code>all</code> 之前；
-生产使用不同的迁移和服务主体。
+服务进程永不跑迁移。一次性 migrator 在 PostgreSQL 可达之后、API、Worker、Relay 或 <code>all</code> 之前运行；生产使用不同的迁移与服务主体。
 
 ~~~bash
 curl http://127.0.0.1:8080/api/v1/health/live
@@ -149,17 +98,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 curl http://127.0.0.1:8080/api/v1/openapi.json
 ~~~
 
-直接端口访问为本地开发提供了便利。制作出版
-API只能通过A3S Gateway。
+直接端口访问是本地开发便利。生产仅通过 A3S Gateway 发布 API。
 
 <details>
-<summary><strong>启动第一个组织</strong></summary>
+<summary><strong>引导第一个 Organization</strong></summary>
 
-云仅存储 API 令牌摘要；调用者创建并保留
-凭证。下面的请求还创建接受的基线平台角色
-策略并将 <code>PlatformOwner</code> 绑定到同一个引导程序主体。
-并发相同的请求在重播之前序列化，并且任何策略、审计、
-或发件箱故障将回滚完整的身份和权限根。
+Cloud 仅存储 API token 摘要；调用方创建并保留凭证。下列请求还会创建已接受的基线平台角色策略，并将 <code>PlatformOwner</code> 绑定到同一引导 Principal。并发相同请求在重放前串行化；任何策略、审计或 Outbox 失败会回滚完整身份与权威根。
 
 ~~~bash
 export A3S_CLOUD_ADMIN_TOKEN="a3s_$(openssl rand -hex 32)"
@@ -171,8 +115,7 @@ curl --request POST http://127.0.0.1:8080/api/v1/bootstrap \
   --data "{\"organizationName\":\"Local\",\"tokenName\":\"local-admin\",\"token\":\"$A3S_CLOUD_ADMIN_TOKEN\",\"expiresAt\":null}"
 ~~~
 
-随后的突变使用 <code>Authorization: Bearer ...</code> 和一个稳定的
-<code>幂等性密钥</code>。
+后续变更使用 <code>Authorization: Bearer ...</code> 与稳定 <code>idempotency-key</code>。
 
 </details>
 
@@ -189,219 +132,123 @@ bun run --cwd cli src/main.ts organizations list --output=json
 bun run --cwd cli src/main.ts operations list --output=json
 ~~~
 
-凭证来自环境变量或标准输入，并且永远不会
-写入 CLI 上下文文件。
+凭证来自环境变量或标准输入，永不写入 CLI 上下文文件。
 
 ## 平台能力
 
-### 建造、供应和推广
+### 构建、供给与晋升降级
 
-- 托管 Git 权威加上外部源修订、webhooks、可重现
-  整机构建、出处、拉取请求预览、不可变工件，以及
-  保消化促进。
-- 独立的 **Git**、**OCI 注册表** 和 **A3S Use 注册表** 权限。
-  没有一个被重载来模仿另一种供应类型。
-- 受控逻辑模型和模型修订加上不可变的模型权重
-  清单/对象、外部集线器解析（例如 ModelScope）、许可证、
-  信任策略和可重构节点缓存。
-- 一种支持流程的 CI/CD 模型，适用于代理、工作流、功能/MCP、耐用单元、
-  推理、静态 Web 和云系统服务版本。
-- 托管代理将一份规范的代码拥有的最终发布清单绑定到
-  准确的 OCI 和签名的构建来源，然后安装其确定性存档
-  通过普通工作负载/运行时路径只读。同样的清单
-  拥有就绪路径、活跃路径和优雅关闭间隔；
-  调用者无法在部署时削弱生命周期契约。
+- 托管 Git 权威加外部源修订、webhook、可复现 Box 构建、provenance、pull request 预览、不可变产物与保留摘要的晋升降级。
+- 分离的 **Git**、**OCI Registry** 与 **A3S Use Registry** 权威。无一被过载去冒充另一供给类型。
+- 受治理的逻辑 Model 与 Model Revision，加不可变模型权重 manifest/对象、外部 hub 解析（如 ModelScope）、许可证、信任策略与可重建节点缓存。
+- 面向 Agent、Workflow、Function/MCP、Durable Cell、推理、Static Web 与 Cloud 系统服务发布的统一 Flow 后备 CI/CD 模型。
+- 托管 Agent 将一份规范、Code 拥有的最终发布 manifest 绑定到确切 OCI 与已签名构建 provenance，再经普通 Workloads/Runtime 路径只读挂载其确定性归档。同一 manifest 拥有就绪路径、存活路径与优雅关停间隔；调用方不能在部署时削弱生命周期契约。
 
-### 运行、扩展和恢复
+### 运行、扩缩与恢复
 
-- 一种用于 CPU 池、GPU 池、加速器/拓扑的异构调度器
-  限制、索赔、反亲和力、帮派安置、维护、配额和
-  抢占政策。
-- 无状态水平缩放和缩放至零；有状态消耗，单写入器
-  隔离、检查点/切换、恢复和位置感知放置。
-- 具有独立副本、多节点组的分布式推理，
-  预填充/解码分解角色、显式 KV 传输和一个共享
-  调度程序而不是第二个推理控制平面。
-- 独立可扩展的API、Worker、Relay、迁移器、节点代理和网关
-  具有明确准备、迁移、租赁/领导、部署和恢复的角色
-  合同。
+- 面向 CPU 池、GPU 池、加速器/拓扑约束、Claims、反亲和、gang 放置、维护、配额与抢占策略的统一异构调度器。
+- 无状态水平扩缩与 scale-to-zero；有状态排空、单写 fencing、检查点/交接、恢复与局部性感知放置。
+- 分布式推理含独立副本、多节点组、prefill/decode 解耦角色、显式 KV 传输，以及共享调度器而非第二套推理控制面。
+- 可独立扩缩的 API、Worker、Relay、migrator、node-agent 与 Gateway 角色，带显式就绪、迁移、lease/leader、滚动与恢复契约。
 
-### 储存、服务和观察
+### 存储、服务与观测
 
-- 通过外部 HTTPS AWS S3 的一种类型化不可变对象客户端或
-  S3 兼容存储。云捆绑没有 S3 服务器并且不存在对象
-  存储为 POSIX/FUSE。可变卷、备份、恢复、保留和写入器
-  fencing属于Data/S0。
-- A3S Gateway 拥有 TLS、身份验证、请求限制、路由、模型/代理/
-  功能/MCP 端点和租户 Web 交付。云服务保持私有。
-- OpenTelemetry 关联日志、指标、跟踪、SLO 和事件。
-  不可变的证据由域名所有者保留； Apache Doris 是可选的，
-  可重建的分析和 SLO 预测。
+- 面向外部 HTTPS AWS S3 或 S3 兼容存储的统一类型化不可变对象客户端。Cloud 不捆绑 S3 服务器，也不将对象存储呈现为 POSIX/FUSE。可变卷、备份、恢复、保留与写 fencing 属于 Data/S0。
+- A3S Gateway 拥有 TLS、认证、请求限制、路由、模型/Agent/Function/MCP 端点与租户 Web 投递。Cloud 服务保持私有。
+- OpenTelemetry 关联日志、指标、追踪、SLO 与事件。不可变证据留在域所有者处；Apache Doris 是可选、可重建的分析与 SLO 投影。
 
-### 管理租户和特权访问
+### 治理租户与特权访问
 
-- 一种不可变的安装身份和一种受歧视的身份
-  跨租户的安装/组织/项目/环境范围合同
-  隔离、成员身份、资源授予、配额、凭证、审核、发件箱、
-  和生命周期清理。平台事实从来不借用哨兵组织。
-- 一个独特的系统管理员 RBAC 平面，用于安装、车队、
-  移民、政策、事件和打破玻璃的职责。系统角色从不
-  以静默方式授予租户数据或秘密访问权限。
-- 租户支持需要一个积极主动的人，一个公认的支持使用角色，
-  一项短期的、不可续签的赠款、后代范围和一项封闭的赠款
-  非敏感权限。每个都允许引脚可重播策略、凭证、
-  约束力、授予、行动、资源和请求证据。
-- 新的引导程序自动创建第一个组织，服务主体，
-  所有者成员资格、API 令牌、可接受的基准平台角色策略，以及
-  匹配 <code>PlatformOwner</code> 与共享审核、发件箱和
-  幂等性事实。
-- 特权突变和安装范围的组织目录读取使用
-  相同的 Identity/PostgreSQL 决策发布者。有效的精确
-  <code>cloud:读取</code>凭证，无需
-  <code>TenantLifecycleRead</code>只看到自己的组织；撤销，
-  过期、不匹配或范围不足的凭据无法关闭。
-- 工作负载信任使用不可变的 TrustDomain 和 WorkloadIdentityPolicy
-  同一身份机构的修订。当前的、精确的、有限的历史，
-  工作负载索引读取加上 CAS 防护接受通过以下方式公开
-  REST/OpenAPI、TypeScript 客户端和 CLI，无需调用者编写的参与者，
-  凭据或安装覆盖。
-- 规范的 <code>cloud.identity.workload-provider.v1</code> 配置文件绑定
-  每个 TrustDomain 修订版都通过摘要对一个可替换的提供程序适配器进行修改。的
-  仅 API <code>spiffe_https_web</code> 适配器执行新的 HTTPS，
-  有界、严格的 JSON SPIFFE 捆绑观察并承认这一点
-  准确的修订。其合约将端点证据标记为<code>observed*</code>
-  和摘要绑定配置文件策略为<code>声明*</code>；它拥有没有
-  证书颁发、私钥、提供商注册表或并行信任
-  状态。
-- 版本化
-  <code>cloud.identity.workload-runtime-evidence-binding.v1</code> 基础
-  将一个精确的策略摘要与其工作负载声明、节点池和队列节点绑定
-  会话/功能快照，加上运行时单元生成和 Box 提供程序
-  证明。已验证的 C2 仅包含工作负载和队列所有者事实。
-  纯组件 C3a 之前承认一种通用身份授权
-  调度并保留不可变的工作负载记录，包括显式的
-  无策略结果，因此崩溃重放无法重新标记遗留或正在运行的单元。
-  纯组件 C3b 添加了唯一的身份拥有的不可变属性
-<code>cloud.identity.workload-runtime-evidence-record.v1</code> 历史记录
-  迁移<code>181</code>。准确的入场重播可能会恢复其历史性
-  事实；每个新的写入都会重新读取当前的 TrustDomain/Policy 和两个所有者
-  规范安装围栏下的事实，然后通过一种类型提交
-  A3S ORM 存储库。 PostgreSQL 拒绝突变、过时的证据和
-  没有首先连载的政策/证据竞赛。确定性 V1
-  记录仍然缺乏节点硬件证明并且无法授权凭证
-  发行； C4 仍然是一个必需的新决定，而不是推断的
-  能力。
-- OpenShift 级成果——协调、调度、隔离、推出、
-  策略、可观察性和第二天操作以及 TokenHub 级
-  结果——受控模型/提供商/密钥访问、路由、配额、诊断、
-  和使用——由 A3S 权威组成，而不是复制 API 或
-  控制平面。
+- 统一不可变 Installation 身份，以及跨租户隔离、成员、Resource Grant、配额、凭证、审计、Outbox 与生命周期清理的统一判别 Installation/Organization/Project/Environment 范围契约。平台事实永不借用哨兵 Organization。
+- 面向安装、机群、迁移、策略、事件与 break-glass 职责的独立系统管理员 RBAC 平面。系统角色永不静默授予租户数据或 Secret 访问。
+- 租户支持需要活跃确切人工、已准入支持用途角色、短时不可续期授权、后代范围，以及一条封闭非敏感权限。每次允许钉住可重放的策略、凭证、绑定、授权、动作、资源与请求证据。
+- 全新引导原子创建第一个 Organization、服务 Principal、所有者 Membership、API token、已接受基线平台角色策略，以及匹配的 <code>PlatformOwner</code> 绑定，共享审计、Outbox 与幂等事实。
+- 特权变更与安装级组织目录读取使用同一 Identity/PostgreSQL 决策签发器。有效确切 <code>cloud:read</code> 凭证若无 <code>TenantLifecycleRead</code>，仅见其自身 Organization；已撤销、过期、不匹配或范围不足的凭证失败封闭。
+- 工作负载信任在同一 Identity 权威中使用不可变 TrustDomain 与 WorkloadIdentityPolicy 修订。当前、确切、有界历史与按工作负载索引的读取，以及 CAS fencing 的接受，经 REST/OpenAPI、TypeScript 客户端与 CLI 暴露，无调用方自写 actor、凭证或 Installation 覆盖。
+- 规范 <code>cloud.identity.workload-provider.v1</code> 配置文件将每个 TrustDomain 修订按摘要绑定到一个可替换提供商适配器。仅 API 的 <code>spiffe_https_web</code> 适配器执行新鲜 HTTPS、有界、严格 JSON 的 SPIFFE bundle 观察，并对照该确切修订准入。其契约将端点证据标为 <code>observed*</code>，将摘要绑定的配置文件策略标为 <code>declared*</code>；它不拥有证书签发、私钥、提供商注册表或并行信任状态。
+- 带版本的 <code>cloud.identity.workload-runtime-evidence-binding.v1</code> 基础将一份确切策略摘要绑定到其 Workloads Claim、NodePool 与 Fleet Node 会话/能力快照，以及 Runtime Unit 世代与 Box 提供商证明。已验证的 C2 仅组合 Workloads 与 Fleet 所有者事实。仅组件的 C3a 在调度前准入一次通用 Identity 授权，并持久化不可变 Workloads 记录（含显式无策略结果），使崩溃重放不能重新标记遗留或运行中 Unit。仅组件的 C3b 在迁移 <code>181</code> 中加入唯一 Identity 拥有的不可变 <code>cloud.identity.workload-runtime-evidence-record.v1</code> 历史。确切准入重放可返回其历史事实；每次新写入在规范 Installation fencing 下重读当前 TrustDomain/Policy 与双方所有者事实，再经一个类型化 A3S ORM 仓库提交。PostgreSQL 拒绝变更、陈旧证据，以及未先串行化的 Policy/证据竞态。确定性 V1 记录仍缺少 Node 硬件证明，且不能授权凭证签发；C4 仍是必需的新鲜决策，而非推断能力。
+- OpenShift 级结果——协调、调度、隔离、滚动、策略、可观测性与 day-two 运维——以及 TokenHub 级结果——受治理模型/提供商/密钥访问、路由、配额、诊断与用量——经 A3S 权威组合，而非复制 API 或控制面。
 
-## 构造的一致性
+## 构造一致性
 
-|关注|规范规则 |
-| ---| ---|
-|命令并发|以事务方式检查确切的租户范围、幂等性密钥、预期版本和有效负载摘要；漂移或冲突重放失败关闭|
-|数据库写入|聚合、幂等、审计、Outbox通过A3S ORM/PostgreSQL一起提交；数据库解析规范安装沿袭|
-|跨系统工作 | A3S Flow 传奇故事和所有者收据协调不确定的结果；没有数据库事务跨越外部提供商|
-|速率限制和配额 |网关强制执行请求限制；所有者入场强制执行持久配额。 Redis 可能会加速计数器，但永远不会成为配额真理 |
-|缓存| Redis 拥有有界的、可重构的读取、发现、令牌和协调提示以及修订后的失效；缓存丢失会改变延迟，而不是正确性
-|锁和租赁| PostgreSQL/CAS 拥有正确性和防护。分布式锁可以减少争用，但不能替换版本或队列声明 |
-|调度压力| A3S Lane 出于公平性、背压和有限并发性的目的，只允许持久工作；它既不拥有工作流也不拥有队列真相|
-|分析|多丽丝消耗可重建的遥测/证据投影； PostgreSQL 和有界上下文所有者仍然是可操作的真理
+| 关注点 | 规范规则 |
+| --- | --- |
+| 命令并发 | 确切租户范围、幂等键、期望版本与载荷摘要事务性检查；漂移或冲突重放失败封闭 |
+| 数据库写入 | 聚合、幂等、审计与 Outbox 经 A3S ORM/PostgreSQL 一并提交；数据库解析规范 Installation 谱系 |
+| 跨系统工作 | A3S Flow saga 与所有者回执调和不确定结果；无数据库事务跨越外部提供商 |
+| 速率限制与配额 | Gateway 强制请求限制；所有者准入强制持久配额。Redis 可加速计数器但永不成为配额真相 |
+| 缓存 | Redis 持有有界、可重建的读、发现、token 与协调提示，带修订失效；缓存丢失改变延迟，不改变正确性 |
+| 锁与租约 | PostgreSQL/CAS 拥有正确性与 fencing。分布式锁可降低争用，但不能替代版本或 Fleet Claims |
+| 派发压力 | A3S Lane 仅为公平、背压与有界并发准入已持久化工作；它既不拥有工作流也不拥有队列真相 |
+| 分析 | Doris 消费可重建遥测/证据投影；PostgreSQL 与有界上下文所有者仍是运维真相 |
 
-## DDD 和单一权限
+## DDD 与单一权威
 
 <p align="center">
-  <img src="assets/readme/ddd-boundary.svg" width="100%" alt="A3S Cloud DDD dependency direction from inbound adapters through Presentation, Application, Domain, inward-owned ports, Infrastructure providers, and committed integration facts" />
+  <img src="assets/readme/ddd-boundary.svg" width="100%" alt="A3S Cloud DDD 依赖方向：从入站适配器经 Presentation、Application、Domain、内向拥有端口、Infrastructure 提供商与已提交集成事实" />
 </p>
 
-演示调用应用程序；应用程序协调其域和
-消费者拥有的港口；基础设施实施这些入境港口。上下文
-仅通过同步所有者应用程序合约或
-从所有者提交的发件箱发出的版本化事实。
+Presentation 调用 Application；Application 协调其 Domain 与消费者拥有的端口；Infrastructure 实现这些内向端口。上下文仅通过同步所有者 Application 契约，或从所有者已提交 Outbox 发出的带版本事实协作。
 
-|关注|独家授权|禁止重复 |
+| 关注点 | 唯一权威 | 禁止的重复 |
 | --- | --- | --- |
-|租户身份和授权 |身份+项目|适配器本地角色、仅限 UI 的策略、提供程序会话或缓存声明为真 |
-|产品含义 |拥有代理、工作流、功能、单元、推理、应用程序或资产上下文 |运行时/提供程序字段成为产品状态 |
-|持久协调 |运营 + A3S Flow |产品重试表、睡眠循环或其他工作流程引擎 |
-|构建和发布交付 |来源+工件+产品发布所有者+交付管道|产品本地 CI 状态、升级时重建或可变部署标签 |
-|放置和推出|工作负载 + 机队 |特定于代理、MCP、单元、模型或网关的调度程序
-|提供商生命周期 | A3S Runtime + A3S Box |来自产品领域的直接流程/容器/FaaS 调用 |
-|公网流量 |边缘期望状态 + A3S Gateway 应用状态 |云代理、每个产品入口或其他网关发布者 |
-|不可变和可变数据 |共享对象客户端+数据/S0 |每个产品的 S3 客户端、备份引擎或提供程序状态为所需状态真相 |
-|整合事实|一个范围感知的事务发件箱 + A3S Event |提交前发布、哨兵租户或并行产品/平台事件总线 |
-|配置| A3S ACL 由 <code>a3s-acl</code> 解析 |兼容性解析器或其他产品配置语言 |
+| 租户身份与授权 | Identity + Projects | 适配器本地角色、仅 UI 策略、提供商会话，或以缓存声明为真相 |
+| 产品含义 | 拥有 Agent、Workflow、Function、Cell、Inference、Application 或 Asset 的上下文 | Runtime/提供商字段变成产品状态 |
+| 持久协调 | Operations + A3S Flow | 产品重试表、sleep 循环或另一工作流引擎 |
+| 构建与发布投递 | Sources + Artifacts + 产品 Release 所有者 + Delivery Pipelines | 产品本地 CI 状态、晋升降级时重建，或可变部署标签 |
+| 放置与滚动 | Workloads + Fleet | Agent、MCP、Cell、模型或 Gateway 专用调度器 |
+| 提供商生命周期 | A3S Runtime + A3S Box | 产品域直接调用进程/容器/FaaS |
+| 公共流量 | Edge 期望状态 + A3S Gateway 已应用状态 | Cloud 代理、按产品入口，或另一 Gateway 发布者 |
+| 不可变与可变数据 | 共享对象客户端 + Data/S0 | 按产品 S3 客户端、备份引擎，或以提供商状态为期望状态真相 |
+| 集成事实 | 一个范围感知事务 Outbox + A3S Event | 提交前发布、哨兵租户，或并行产品/平台事件总线 |
+| 配置 | 由 <code>a3s-acl</code> 解析的 A3S ACL | 兼容解析器或另一产品配置语言 |
 
-横切行为遵循一个可见的有序管道：身份验证、
-授权、验证、幂等性、交易、审计/发件箱，然后
-派遣。日志记录、跟踪、指标、缓存、速率限制和 AOP 拦截器
-观察或保护该路径；没有人可以成为第二个商业权威。
-[Executable architecture ratchets](docs/architecture-audit.md)止外层
-在消除已知债务的同时，避免进口和重复机制的扩散。
+横切行为遵循一条可见有序管道：认证、授权、校验、幂等、事务、审计/Outbox，然后派发。日志、追踪、指标、缓存、速率限制与 AOP 拦截器观察或保护该路径；无一可成为第二业务权威。
+[可执行架构棘轮](docs/architecture-audit.md) 阻止外层导入与重复机制在已知债务清理期间扩散。
 
-## 交货状态
+## 交付状态
 
-投资组合是门驱动的，而不是百分比驱动的。截至 **2026-09-06**：
+组合以闸门驱动，而非百分比驱动。截至 **2026-09-06**：
 
-|车道 |证据状态 |
-| ---| ---|
-|租户范围的身份、PostgreSQL/A3S ORM、操作/流程、发件箱、公共 API 和迁移 | **经过验证的基础** |
-|安装范围和系统管理员RBAC | **已验证核心，更广泛的大门正在进行中。** 原子新引导程序、策略/绑定和支持授予存储库、精确特权决策、受保护的突变、REST/OpenAPI、TypeScript 客户端、CLI、管理 MCP 和撤销防护组织目录均经过验证。预 root 安装的受控恢复以及更广泛的 MT3 角色矩阵、所有者端口清理和敌对租户证据仍然存在 |
-|工作负载、队列、运行时/Box、网关、供应、协作和企业控制 | **进行中; A0.4 真实提供商门已验证。** [A0.4 PostgreSQL/real-Box provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332) 和 [complete Cloud CI](https://github.com/A3S-Lab/Cloud/actions/runs/33686237772) 通过 Box `65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` 和 OCI Runtime `878f8414cef3b85bef1b51fe6735017b25828252`；更广泛的组件/提供商门仍然存在
-|代理和托管 MCP 产品通道 | **进行中; A0.4 已验证。** A0.4 已发布-Agent 部署、PostgreSQL 持久化、真实 Box 恢复、Secret 重物化、取消和清理门由保留的[provider evidence](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332) 进行验证； A0.3、A0.5 和托管 MCP 仍受门限限制，因此组件证据并不意味着完整的 AaaS 可用性 |
-|本体工作流程和人工智能应用程序/文件| **正在进行中。** 完整的 WaaS 和应用程序产品仍然受限制 |
-|自动化| **组件基础正在进行中。** 精确修订 Webhook 准入、计划日历/失火/并发/持久游标租用边界、确定性到期时间信封、具有持久 PostgreSQL 状态的幂等调用准入、可注入有界计划工作人员/规范化事件使用者边界以及摘要验证的调用目标所有者切换。当提供所有者组成的提供者/处理程序时，控制平面主管接受并优雅地停止这些进程。生产候选者发现、目标布线、实时恢复证据和公开可用性仍然开放|
-|数据/S0 和耐用电池 | **基础工作正在进行中。** Durable Cell 是一流目标，但尚未成为可用的托管服务 |
-|工作负载身份| **经过验证的信任和WI2-C1/C2基础； C3a 和 C3b 在 main 上验证。** [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)、[C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529) 和 [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) 通过。 C3a生产-通过迁移组成通用身份授权ACL和一个不可变的工作负载预调度绑定/无策略记录`180`；完整的[C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762)和[same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830)通行证。 C3b 添加了迁移`181`、一种类型化的不可变身份证据历史、精确的历史重播、当前策略/信任域重新验证、确定性相同事实采用以及保留并发/撤销测试，无需公共 API 或第二所有者生命周期； [C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) 和 [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079) 通过。舰队硬件证明、完整的发行决定、发行、执行、撤销和联合保持开放 |
-| FaaS、分布式推理、模型提供、静态 Web、运行时 CI/CD 和完整的 HA 操作 | **计划的或早期的基础。**它们的架构和权限边界已定义，但完整的产品门仍然存在 |
+| 泳道 | 证据状态 |
+| --- | --- |
+| 租户范围 Identity、PostgreSQL/A3S ORM、Operations/Flow、Outbox、公共 API 与迁移 | **已验证基础** |
+| Installation 范围与系统管理员 RBAC | **已验证核心，更广闸门进行中。** 原子全新引导、策略/绑定与支持授权仓库、确切特权决策、受保护变更、REST/OpenAPI、TypeScript 客户端、CLI、Management MCP，以及撤销 fencing 的组织目录已验证。预根安装的受控恢复，以及更广 MT3 角色矩阵、所有者端口清理与敌对租户证据仍待完成 |
+| Workloads、Fleet、Runtime/Box、Gateway、供给、协作与企业控制 | **进行中；A0.4 真实提供商闸门已验证。** [A0.4 PostgreSQL/真实 Box 提供商闸门](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332) 与 [完整 Cloud CI](https://github.com/A3S-Lab/Cloud/actions/runs/33686237772) 对照 Box `65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` 与 OCI Runtime `878f8414cef3b85bef1b51fe6735017b25828252` 通过；更广组件/提供商闸门仍待 |
+| Agent 与托管 MCP 产品泳道 | **进行中；A0.4 已验证。** A0.4 已发布 Agent 部署、PostgreSQL 持久化、真实 Box 恢复、Secret 再物化、取消与清理闸门由保留的 [提供商证据](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332) 验证；A0.3、A0.5 与托管 MCP 仍受闸门约束，因此组件证据不意味着完整 AaaS 可用 |
+| 本体 Workflow 与 AI Applications/Files | **进行中。** 完整 WaaS 与 Application 产品仍受闸门约束 |
+| Automations | **组件基础进行中。** 确切修订 webhook 准入、调度日历/misfire/并发/持久游标租约边界、确定性到期时间信封、带持久 PostgreSQL 状态的幂等调用准入、可注入有界调度 worker/规范化事件消费者边界，以及摘要验证的调用目标所有者交接已实现。控制面 supervisor 在提供所有者组合的提供商/处理器时接受并优雅停止这些进程。生产候选发现、目标接线、实况恢复证据与公开可用性仍开放 |
+| Data/S0 与 Durable Cell | **基础进行中。** Durable Cell 是一等目标，但尚非可用托管服务 |
+| 工作负载身份 | **已验证信任与 WI2-C1/C2 基础；C3a 与 C3b 在 main 上已验证。** [信任/提供商 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009)、[C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529) 与 [C1/C2 Box 提供商符合性](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) 通过。C3a 经迁移 `180` 生产组合通用 Identity 授权 ACL 与一份不可变 Workloads 调度前 bound/no-policy 记录；完整 [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) 与 [同修订 Box 提供商符合性](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) 通过。C3b 加入迁移 `181`、一份类型化不可变 Identity 证据历史、确切历史重放、当前 Policy/TrustDomain 再验证、确定性同事实采纳，以及保留的并发/撤销测试，无公共 API 或第二所有者生命周期；[C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) 与 [同修订 Box 提供商符合性](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079) 通过。Fleet 硬件证明、完整签发决策、签发、强制、撤销与联邦仍开放 |
+| FaaS、分布式推理、模型供给、Static Web、Runtime CI/CD 与完整 HA 运维 | **已规划或早期基础。** 其架构与权威边界已定义，但完整产品闸门仍待 |
 
-请参阅 [product roadmap](ROADMAP.md)、[platform gap
-analysis](docs/platform-gap-analysis.md) 和 [ecosystem project
-roadmaps](docs/project-roadmaps/README.md) 了解确切的依赖性、证据和
-剩余的门。
+确切依赖、证据与剩余闸门见 [产品路线图](ROADMAP.md)、[平台差距分析](docs/platform-gap-analysis.md) 与 [生态项目路线图](docs/project-roadmaps/README.md)。
 
 ## 部署模型
 
-云系统服务和租户工作负载共享机制但从不借用
-权威机构：
+Cloud 系统服务与租户工作负载共享机制，但永不借用权威：
 
-- 引导平面安装 PostgreSQL、NATS、S3 兼容存储、Git、
-  OCI 注册表、A3S Use 注册表、迁移器、API、Worker、中继、网关和
-  通过一个依赖 DAG 的可观察性依赖；
-- API、Worker、Relay、迁移器、节点代理和网关独立扩展；
-- 租户工作负载仅通过承认的版本、工作负载/队列进入
-  放置、运行时/框执行和网关发布；
-- 管理是API/OpenAPI/客户端/CLI/MCP优先；没有云仪表板
-  或特定于 UI 的后端。
+- 引导平面经一个依赖 DAG 安装 PostgreSQL、NATS、S3 兼容存储、Git、OCI Registry、A3S Use Registry、migrator、API、Worker、Relay、Gateway 与可观测性依赖；
+- API、Worker、Relay、migrator、节点 agent 与 Gateway 独立扩缩；
+- 租户工作负载仅经已准入发布、Workloads/Fleet 放置、Runtime/Box 执行与 Gateway 发布进入；
+- 管理以 API/OpenAPI/客户端/CLI/MCP 为先；没有 Cloud Dashboard 或 UI 专用后端。
 
-初始 Box 托管的配置文件是安装基础。生产HA
-需要指定的全新安装、升级、回滚、依赖丢失、
-凭证轮换、存储恢复、节点耗尽和多副本门
-[deployment architecture](docs/deployment-and-cluster-architecture.md)。
+初始 Box 托管配置文件是安装基础。生产 HA 需要 [部署架构](docs/deployment-and-cluster-architecture.md) 中命名的干净安装、升级、回滚、依赖丢失、凭证轮换、存储恢复、节点排空与多副本闸门。
 
-## 接口和配置
+## 接口与配置
 
-|表面|合同|从这里开始 |
+| 面 | 契约 | 从这里开始 |
 | --- | --- | --- |
-|休息/OpenAPI |版本化<code>/api/v1</code>、请求 ID、幂等性、通用信封、提交快照 | [Guide](docs/openapi.md) · [openapi/v1.json](openapi/v1.json) |
-| TypeScript 客户端 |通过相同的 REST 合约维护适配器 | [packages/cloud-client](packages/cloud-client) |
-|命令行|没有标记参数的可编写脚本的结构化输出[cli/README.md](cli/README.md) |
-|管理MCP |相同应用程序处理程序上的无会话、租户授权工具 | [docs/management-mcp.md](docs/management-mcp.md) |
+| REST/OpenAPI | 带版本 <code>/api/v1</code>、请求 ID、幂等、通用信封、已提交快照 | [指南](docs/openapi.md) · [openapi/v1.json](openapi/v1.json) |
+| TypeScript 客户端 | 同一 REST 契约上的维护适配器 | [packages/cloud-client](packages/cloud-client) |
+| CLI | 可脚本化结构化输出，无 token 参数 | [cli/README.md](cli/README.md) |
+| Management MCP | 无会话、租户授权工具，经同一 Application 处理器 | [docs/management-mcp.md](docs/management-mcp.md) |
 
-云和节点代理仅接受已关闭、经过验证的 **A3S ACL** 解析
-<code>a3s-acl</code>。未知字段和不安全时序关系失败之前
-启动；秘密值永远不属于 ACL。开始于
-[config/cloud.acl](config/cloud.acl),
-[config/node.example.acl](config/node.example.acl)，以及
-[deploy/production](deploy/production/README.md) 基线。
+Cloud 与 Node Agent 仅接受由 <code>a3s-acl</code> 解析的封闭、已校验 **A3S ACL**。未知字段与不安全时序关系在启动前失败；Secret 值永不属于 ACL。从 [config/cloud.acl](config/cloud.acl)、[config/node.example.acl](config/node.example.acl) 与 [deploy/production](deploy/production/README.md) 基线开始。
 
-Redis 是可选加速，Doris 是可选分析，两者都不是
-持久的真理。兼容S3的对象存储和NATS是外部生产的
-依赖关系。
+Redis 是可选加速，Doris 是可选分析，二者皆非持久真相。S3 兼容对象存储与 NATS 是外部生产依赖。
 
-## 存储库和开发
+## 仓库与开发
 
 <details>
 <summary><strong>仓库布局</strong></summary>
@@ -424,7 +271,7 @@ Cloud/
 </details>
 
 <details>
-<summary><strong>核心开发门</strong></summary>
+<summary><strong>核心开发闸门</strong></summary>
 
 ~~~bash
 cargo fmt --all -- --check
@@ -435,33 +282,27 @@ cargo clippy --workspace --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ~~~
 
-真实提供商和发布认证在隔离的 Linux 主机上运行。重要
-存储库拥有的门包括 [cross-surface
-conformance](tools/c0-conformance/README.md)、[Runtime
-conformance](tools/runtime-conformance/README.md)、[Box provider
-conformance](tools/box-conformance/README.md)、[workload-identity provider
-conformance](tools/workload-identity-conformance/README.md) 和 [pinned
-Gateway revision](tools/gateway-conformance/gateway-revision)。
+真实提供商与发布认证在隔离 Linux 主机上运行。重要的仓库自有闸门包括 [跨面符合性](tools/c0-conformance/README.md)、[Runtime 符合性](tools/runtime-conformance/README.md)、[Box 提供商符合性](tools/box-conformance/README.md)、[工作负载身份提供商符合性](tools/workload-identity-conformance/README.md)，以及 [已 pin Gateway 修订](tools/gateway-conformance/gateway-revision)。
 
 </details>
 
 ## 文档
 
-|从这里开始 |目的|
+| 从这里开始 | 用途 |
 | --- | --- |
-| [Product roadmap](ROADMAP.md) |门状态、依赖性、证据和交货单 |
-| [Technical architecture](docs/architecture.md) |稳定的所有权、拓扑、一致性和故障行为 |
-| [AI service platform](docs/ai-service-platform-architecture.md) | AaaS、WaaS、FaaS、Durable Cell、推理、运行时、Box 和网关组合 |
-| [Agent release deployment contract](docs/agent-release-deployment-contract.md) |代码拥有的最终清单生成、出处、持久性、重播和运行时投影 |
-| [Agent Runtime](docs/agent-runtime-architecture.md)·[Function Runtime](docs/function-runtime-architecture.md)·[Durable Cell](docs/durable-cell-platform-plan.md) |统一运行时的服务语义|
-| [Static Web](docs/static-web-hosting-architecture.md)·[model supply](docs/model-supply-architecture.md)·[inference](docs/inference-plan.md) |租户 UI、模型/权重和服务架构 |
-| [Cluster deployment](docs/deployment-and-cluster-architecture.md) · [elastic services](docs/elastic-service-deployment-architecture.md) |系统服务、CPU/GPU 调度、有状态/无状态融合、HA |
-| [Runtime CI/CD](docs/runtime-cicd-architecture.md) · [workload identity](docs/workload-identity-and-service-connectivity-architecture.md) |交付、证明、私有发现、mTLS 和撤销 |
-| [Distributed API consistency](docs/distributed-api-consistency-architecture.md) · [Redis and Lane](docs/redis-and-lane-platform-architecture.md) |并发、事务、缓存、锁、公平性和背压 |
-| [Observability and analytics](docs/observability-and-analytics-architecture.md) · [platform gap analysis](docs/platform-gap-analysis.md) |遥测/SLO/事件设计和优先缺失结果 |
-| [Multi-tenant platform](docs/multi-tenant-developer-platform-architecture.md) · [capability architecture](docs/platform-capability-architecture.md) |租户/管理员 RBAC 和 OpenShift-/TokenHub 级结果 |
-| [DDD, AOP, and patterns](docs/ddd-aop-and-pattern-architecture.md) · [architecture audit](docs/architecture-audit.md) |层规则、方面顺序、模式和可执行债务棘轮 |
-| [Ecosystem roadmaps](docs/project-roadmaps/README.md) |每个 A3S 子项目的使命、依赖性、证据和负面边界 |
+| [产品路线图](ROADMAP.md) | 闸门状态、依赖、证据与交付顺序 |
+| [技术架构](docs/architecture.md) | 稳定所有权、拓扑、一致性与失败行为 |
+| [AI 服务平台](docs/ai-service-platform-architecture.md) | AaaS、WaaS、FaaS、Durable Cell、Inference、Runtime、Box 与 Gateway 组合 |
+| [Agent 发布部署契约](docs/agent-release-deployment-contract.md) | Code 拥有的最终 manifest 生成、provenance、持久化、重放与 Runtime 投影 |
+| [Agent Runtime](docs/agent-runtime-architecture.md) · [Function Runtime](docs/function-runtime-architecture.md) · [Durable Cell](docs/durable-cell-platform-plan.md) | 统一 Runtime 上的服务语义 |
+| [Static Web](docs/static-web-hosting-architecture.md) · [模型供给](docs/model-supply-architecture.md) · [推理](docs/inference-plan.md) | 租户 UI、模型/权重与服务架构 |
+| [集群部署](docs/deployment-and-cluster-architecture.md) · [弹性服务](docs/elastic-service-deployment-architecture.md) | 系统服务、CPU/GPU 调度、有状态/无状态收敛与 HA |
+| [Runtime CI/CD](docs/runtime-cicd-architecture.md) · [工作负载身份](docs/workload-identity-and-service-connectivity-architecture.md) | 投递、证明、私有发现、mTLS 与撤销 |
+| [分布式 API 一致性](docs/distributed-api-consistency-architecture.md) · [Redis 与 Lane](docs/redis-and-lane-platform-architecture.md) | 并发、事务、缓存、锁、公平与背压 |
+| [可观测性与分析](docs/observability-and-analytics-architecture.md) · [平台差距分析](docs/platform-gap-analysis.md) | 遥测/SLO/事件设计与优先缺失结果 |
+| [多租户平台](docs/multi-tenant-developer-platform-architecture.md) · [能力架构](docs/platform-capability-architecture.md) | 租户/管理员 RBAC 与 OpenShift-/TokenHub 级结果 |
+| [DDD、AOP 与模式](docs/ddd-aop-and-pattern-architecture.md) · [架构审计](docs/architecture-audit.md) | 分层规则、切面顺序、模式与可执行债务棘轮 |
+| [生态路线图](docs/project-roadmaps/README.md) | 每个 A3S 子项目的使命、依赖、证据与负面边界 |
 
 ## 许可证
 
