@@ -276,6 +276,8 @@ step5_status=https_preflight_ok
 step5_https=not_run
 step6_status=logs_preflight_ok
 step6_logs=not_run
+step7_status=update_preflight_ok
+step7_update=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -390,6 +392,25 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step6_status=logs_executed
   step6_logs=executed
+
+  if ! bx0_step_update_execute "$evidence_dir"; then
+    print_checklist
+    update_reason=update_execute_failed
+    if [[ -f $evidence_dir/07-update.txt ]]; then
+      update_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/07-update.txt" 2>/dev/null || true
+      )"
+      [[ -n $update_reason ]] || update_reason=update_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$update_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$update_reason" \
+      "evidence=$evidence_dir/07-update.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_UPDATE_DIGEST (sha256:64hex) from a real immutable update.' >&2
+    exit 1
+  fi
+  step7_status=update_executed
+  step7_update=executed
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -404,7 +425,7 @@ printf 'step3_deploy=%s deploy=%s\n' "$step3_status" "$step3_deploy"
 printf 'step4_health=%s health=%s\n' "$step4_status" "$step4_health"
 printf 'step5_https=%s https=%s\n' "$step5_status" "$step5_https"
 printf 'step6_logs=%s logs=%s\n' "$step6_status" "$step6_logs"
-printf 'step7_update=preflight_ok update=not_run\n'
+printf 'step7_update=%s update=%s\n' "$step7_status" "$step7_update"
 printf 'step8_rollback=preflight_ok rollback=not_run\n'
 printf 'step9_stop_cleanup=preflight_ok stop_cleanup=not_run\n'
 printf 'evidence_dir=%s\n' "$evidence_dir"
@@ -418,6 +439,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps7-9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=${step7_status} step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps8-9_executed=not_run
 OPEN
 exit 3

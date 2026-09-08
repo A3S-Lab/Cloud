@@ -867,6 +867,66 @@ EOF
   return 0
 }
 
+# Operator post-update digest from a real immutable update. Does not update.
+# Returns 0 on update=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_update_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/07-update.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local probe=
+  if ! probe="$(bx0_resolve_digest_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=7
+name=update
+status=execute_failed
+reason=digest_probe_unavailable
+update=not_run
+EOF
+    return 1
+  fi
+
+  local digest=${A3S_CLOUD_BX0_UPDATE_DIGEST:-}
+  if [[ -z $digest || $digest == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=7
+name=update
+status=execute_failed
+reason=update_digest_missing
+digest_probe=$probe
+update=not_run
+hint=Apply one digest-pinned immutable update, then set A3S_CLOUD_BX0_UPDATE_DIGEST
+EOF
+    return 1
+  fi
+  if [[ ! $digest =~ ^(sha256:)?[0-9a-f]{64}$ ]]; then
+    cat >"$evidence" <<EOF
+step=7
+name=update
+status=execute_failed
+reason=update_digest_invalid
+digest_probe=$probe
+update_digest=$digest
+update=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=7
+name=update
+status=execute_ok
+digest_probe=$probe
+update_digest=$digest
+update=executed
+EOF
+  return 0
+}
+
 bx0_resolve_rollback_probe() {
   local candidate
   if [[ -n ${A3S_CLOUD_ROLLBACK_PROBE_BIN:-} ]]; then

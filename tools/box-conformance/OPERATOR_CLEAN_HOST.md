@@ -30,7 +30,7 @@ export A3S_CLOUD_BOX_BIN=/path/to/a3s-box
 bash tools/box-conformance/run_bx0_clean_host_gate.sh
 # expected while unautomated: exit 3 A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 
-# Opt-in execute for steps 1–6 (still not product EXIT):
+# Opt-in execute for steps 1–7 (still not product EXIT):
 export A3S_CLOUD_BX0_EXECUTE=1
 export A3S_CLOUD_BX0_NODE_CONFIG=/absolute/path/to/node.acl
 export A3S_CLOUD_BX0_ENROLL_NODE_ID=<real-node-uuid>
@@ -39,11 +39,12 @@ export A3S_CLOUD_BX0_SERVICE_ID=<real-service-id>
 export A3S_CLOUD_BX0_HEALTH_URL=http://127.0.0.1:<port>/ready
 export A3S_CLOUD_BX0_HTTPS_URL=https://<managed-host>/
 export A3S_CLOUD_BX0_LOGS_CURSOR=<ordered-log-cursor>
+export A3S_CLOUD_BX0_UPDATE_DIGEST=sha256:<64-hex>
 export A3S_CLOUD_ENROLLMENT_TOKEN=...
 bash tools/box-conformance/run_bx0_clean_host_gate.sh
 ```
 
-3. Run the remaining update → rollback → stop/cleanup
+3. Run the remaining rollback → stop/cleanup
    loop against exact Cloud/Runtime/Box/Gateway pins. Retain Service/node/artifact
    identities.
 
