@@ -1255,6 +1255,8 @@ jobs:
           bash -n tools/cell-conformance/verify_celld_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
+          bash -n tools/dev/cloud_up.sh
+          bash -n tools/dev/cloud_down.sh
           bash -n tools/use-conformance/run_postgres_registry_gate.sh
           bash -n tools/use-conformance/run_postgres_assignment_gate.sh
           bash -n tools/use-conformance/run_registry_gate.sh

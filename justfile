@@ -3,13 +3,22 @@
 default:
     @just --list
 
-# Start the control-plane API
+# Start the control-plane API (foreground)
 cloud:
     ./tools/dev/run_cloud.sh
 
+# One-click: start dependencies + control-plane API (detached)
+up:
+    ./tools/dev/cloud_up.sh
+
+# One-click: stop detached API + local dependencies
+down:
+    ./tools/dev/cloud_down.sh
+
 # Stop the local PostgreSQL, NATS, and registry dependencies
+# (prefer `just down` when the API was started with `just up`)
 cloud-down:
-    a3s-box compose --file deploy/dev/compose.acl down
+    ./tools/dev/cloud_down.sh
 
 # Run the typed Cloud CLI without persisting credentials or context
 cloud-cli *args:

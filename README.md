@@ -129,9 +129,32 @@ lifecycle contract; A3S Box providers implement it.
 
 ### Start the development API
 
+From the A3S monorepo root (preferred one-click path):
+
 ~~~bash
-export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3s_cloud"
-export A3S_CLOUD_POSTGRES_MIGRATION_URL="$A3S_CLOUD_POSTGRES_URL"
+just up          # deps (a3s-box compose, or Docker fallback) + control-plane detached
+curl http://127.0.0.1:8080/api/v1/health/live
+just down        # stop API and local compose/docker deps
+~~~
+
+State, logs, and the generated bootstrap token live under
+<code>apps/cloud/.a3s/cloud/dev/</code>. Prefer <code>a3s-box compose</code>
+with [deploy/dev/compose.acl](deploy/dev/compose.acl); when Box is unavailable,
+<code>just up</code> falls back to Docker containers on the same ports and
+bootstraps the migration/serving Postgres roles.
+
+Inside this repository alone:
+
+~~~bash
+just up
+# or foreground: just cloud
+~~~
+
+Manual env (production-shaped principals):
+
+~~~bash
+export A3S_CLOUD_POSTGRES_URL="postgres://a3s_cloud_serving:replace-me@127.0.0.1:5432/a3s_cloud"
+export A3S_CLOUD_POSTGRES_MIGRATION_URL="postgres://a3s_cloud:replace-me@127.0.0.1:5432/a3s_cloud"
 export A3S_CLOUD_BOOTSTRAP_TOKEN="replace-with-at-least-32-random-characters"
 export A3S_CLOUD_GITHUB_WEBHOOK_SECRET="replace-with-32-to-512-random-bytes"
 
