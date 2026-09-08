@@ -449,7 +449,9 @@ boundary.
    Box-only conformance and the clean-host product release gate remain open.
    Operator LOOP certification / exit-audit scripts now fail-close without
    LOOP evidence or while Power is UNBOUND; they never fake
-   `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
+   `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Opt-in
+   `A3S_CLOUD_BX0_EXECUTE=1` may record step-1 `enroll=executed` only with a
+   real node_id; prep prints the enroll recipe without claiming EXIT.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The

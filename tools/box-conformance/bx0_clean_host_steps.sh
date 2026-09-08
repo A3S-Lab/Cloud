@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Steps 1–9 (enroll / OCI / deploy / health / HTTPS / logs / update / rollback /
-# stop_cleanup) are preflight-only: require resolvable binaries (OCI Runtime pin
-# for step 2; Gateway pin for step 5), record evidence, never perform
-# enroll/OCI publish/deploy/Ready/TLS routing/log readback/immutable
-# update/cloned rollback/stop-cleanup, and never claim product EXIT.
+# Steps 1–9 preflight require resolvable binaries (OCI Runtime pin for step 2;
+# Gateway pin for step 5), record evidence, and never claim product EXIT.
+# When A3S_CLOUD_BX0_EXECUTE=1, step 1 may advance to enroll=executed only with
+# a validated node ACL, enrollment token, and operator-supplied node_id from a
+# real enroll (never PLACEHOLDER_*). Full daemon enroll/long-poll is out of
+# band; this gate refuses to fake enrollment.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -53,6 +54,122 @@ name=enroll
 status=preflight_ok
 node_agent=$agent
 enroll=not_run
+EOF
+  return 0
+}
+
+# Validate node ACL + token + operator node_id. Does not start a3s-cloud-node-agent.
+# Returns 0 on enroll=executed, 1 on execute_failed. No-op (return 0) when
+# A3S_CLOUD_BX0_EXECUTE is unset/not 1 (caller should skip).
+bx0_step_enroll_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/01-enroll.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local agent=
+  if ! agent="$(bx0_resolve_node_agent)"; then
+    cat >"$evidence" <<'EOF'
+step=1
+name=enroll
+status=execute_failed
+reason=node_agent_unavailable
+enroll=not_run
+EOF
+    return 1
+  fi
+
+  local config=${A3S_CLOUD_BX0_NODE_CONFIG:-}
+  if [[ -z $config || $config != /* || $config != *.acl || ! -f $config ]]; then
+    cat >"$evidence" <<'EOF'
+step=1
+name=enroll
+status=execute_failed
+reason=node_config_unavailable
+enroll=not_run
+EOF
+    return 1
+  fi
+
+  local missing_keys=()
+  for key in enrollment_url enrollment_token_env node_control_url; do
+    if ! grep -Eq "^[[:space:]]*${key}[[:space:]]*=" "$config"; then
+      missing_keys+=("$key")
+    fi
+  done
+  if ((${#missing_keys[@]} > 0)); then
+    cat >"$evidence" <<EOF
+step=1
+name=enroll
+status=execute_failed
+reason=node_config_incomplete
+missing_keys=${missing_keys[*]}
+node_config=$config
+enroll=not_run
+EOF
+    return 1
+  fi
+
+  local token_env
+  token_env="$(
+    awk -F= '/^[[:space:]]*enrollment_token_env[[:space:]]*=/ {
+      gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2)
+      gsub(/^"|"$/, "", $2)
+      print $2
+      exit
+    }' "$config"
+  )"
+  [[ -n $token_env ]] || token_env=A3S_CLOUD_ENROLLMENT_TOKEN
+  if [[ -z ${!token_env:-} ]]; then
+    cat >"$evidence" <<EOF
+step=1
+name=enroll
+status=execute_failed
+reason=enrollment_token_unavailable
+token_env=$token_env
+node_config=$config
+enroll=not_run
+EOF
+    return 1
+  fi
+  if [[ ${!token_env} == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=1
+name=enroll
+status=execute_failed
+reason=enrollment_token_placeholder
+token_env=$token_env
+enroll=not_run
+EOF
+    return 1
+  fi
+
+  local node_id=${A3S_CLOUD_BX0_ENROLL_NODE_ID:-}
+  if [[ -z $node_id || $node_id == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=1
+name=enroll
+status=execute_failed
+reason=enroll_node_id_missing
+node_agent=$agent
+node_config=$config
+enroll=not_run
+hint=Run real nodes bootstrap + Linux a3s-cloud-node-agent enroll, then set A3S_CLOUD_BX0_ENROLL_NODE_ID
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=1
+name=enroll
+status=execute_ok
+node_agent=$agent
+node_config=$config
+node_id=$node_id
+enroll=executed
 EOF
   return 0
 }

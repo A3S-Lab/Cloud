@@ -7,6 +7,12 @@ Product `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` stays open until:
 
 ## Prep
 
+Print the enroll recipe (Darwin-safe; never claims LOOP/EXIT):
+
+```bash
+bash tools/box-conformance/run_bx0_clean_host_prep.sh
+```
+
 On a supported Linux host with no Docker/compatible daemon:
 
 1. Install the pinned Box fixture:

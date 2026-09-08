@@ -800,11 +800,16 @@ revisions, runs enroll…stop/cleanup steps 1–9 preflight only
 (`enroll=not_run`, `oci=not_run`, `deploy=not_run`, `health=not_run`,
 `https=not_run`, `logs=not_run`, `update=not_run`, `rollback=not_run`,
 `stop_cleanup=not_run`), leaves Power `UNBOUND` until PW0; product `EXIT`
-remains open and does not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. CI
-fail-closed harness `tools/box-conformance/run_bx0_clean_host_gate_ci.sh` proves
-those refuse paths (including stub pin missing/mismatch/match and all nine
-step preflights) and may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it
-never unlocks product EXIT.
+remains open and does not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. With
+`A3S_CLOUD_BX0_EXECUTE=1`, step 1 may record `enroll=executed` only after a
+validated node ACL, enrollment token, and operator `A3S_CLOUD_BX0_ENROLL_NODE_ID`
+from a real enroll (never PLACEHOLDER); prep
+`tools/box-conformance/run_bx0_clean_host_prep.sh` prints the recipe without
+claiming LOOP/EXIT. CI fail-closed harness
+`tools/box-conformance/run_bx0_clean_host_gate_ci.sh` proves those refuse paths
+(including stub pin missing/mismatch/match, all nine step preflights, and
+execute fail-closed without node_id) and may emit
+`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it never unlocks product EXIT.
 
 Operator LOOP certification
 (`validate_bx0_clean_host_certification.sh` /

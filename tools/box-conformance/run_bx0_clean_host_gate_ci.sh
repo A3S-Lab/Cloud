@@ -51,7 +51,11 @@ grep -Fq 'bound=Cloud+Runtime+Box+Gateway' "$gate"
 grep -Fq 'bx0_clean_host_steps.sh' "$gate"
 grep -Fq 'node_agent_unavailable' "$gate"
 grep -Fq 'enroll=not_run' "$gate"
-grep -Fq 'step1=enroll_preflight_ok' "$gate"
+grep -Fq 'step1_status=enroll_preflight_ok' "$gate"
+grep -Fq 'enroll_executed' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_EXECUTE' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_ENROLL_NODE_ID' "$gate"
+grep -Fq 'steps2-9_executed=not_run' "$gate"
 grep -Fq 'step2=oci_preflight_ok' "$gate"
 grep -Fq 'step3=deploy_preflight_ok' "$gate"
 grep -Fq 'step4=health_preflight_ok' "$gate"
@@ -90,8 +94,11 @@ grep -Fq 'logs_probe_unavailable' "$steps"
 grep -Fq 'digest_probe_unavailable' "$steps"
 grep -Fq 'rollback_probe_unavailable' "$steps"
 grep -Fq 'cleanup_box_unavailable' "$steps"
+grep -Fq 'enroll_node_id_missing' "$steps"
+grep -Fq 'bx0_step_enroll_execute' "$steps"
 bash -n "$steps"
 bash -n "$gate"
+bash -n "$tools/run_bx0_clean_host_prep.sh"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
 gateway_pin="$tools/../gateway-conformance/gateway-revision"
 oci_pin="$tools/oci-runtime-revision"
@@ -147,6 +154,74 @@ grep -Fq 'status=preflight_ok' "$steps_evidence/ok/01-enroll.txt"
 grep -Fq 'enroll=not_run' "$steps_evidence/ok/01-enroll.txt"
 grep -Fq "$stub_agent" "$steps_evidence/ok/01-enroll.txt"
 forbid_exit_certified_claim "$steps_evidence/ok/01-enroll.txt"
+
+echo "===== step library: enroll execute (Darwin-safe) ====="
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_NODE_AGENT_BIN="$stub_agent" \
+  env -u A3S_CLOUD_BX0_NODE_CONFIG -u A3S_CLOUD_BX0_ENROLL_NODE_ID \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_enroll_execute "$1"
+  ' "$steps" "$steps_evidence/enroll-exec-no-config"
+missing_exec_config=$?
+set -e
+if ((missing_exec_config != 1)); then
+  printf '%s\n' "expected enroll execute fail without node config, got $missing_exec_config" >&2
+  exit 1
+fi
+grep -Fq 'node_config_unavailable' "$steps_evidence/enroll-exec-no-config/01-enroll.txt"
+grep -Fq 'enroll=not_run' "$steps_evidence/enroll-exec-no-config/01-enroll.txt"
+forbid_exit_certified_claim "$steps_evidence/enroll-exec-no-config/01-enroll.txt"
+
+stub_node_acl="$steps_evidence/stub-node.acl"
+cat >"$stub_node_acl" <<'ACL'
+control_plane {
+  enrollment_url = "http://127.0.0.1:8080/api/v1/node-control/enroll"
+  node_control_url = "https://localhost:8443"
+  enrollment_token_env = "A3S_CLOUD_ENROLLMENT_TOKEN"
+}
+ACL
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_NODE_AGENT_BIN="$stub_agent" \
+  A3S_CLOUD_BX0_NODE_CONFIG="$stub_node_acl" \
+  A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_test_token_not_placeholder' \
+  env -u A3S_CLOUD_BX0_ENROLL_NODE_ID \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_enroll_execute "$1"
+  ' "$steps" "$steps_evidence/enroll-exec-no-node"
+missing_exec_node=$?
+set -e
+if ((missing_exec_node != 1)); then
+  printf '%s\n' "expected enroll execute fail without node_id, got $missing_exec_node" >&2
+  exit 1
+fi
+grep -Fq 'enroll_node_id_missing' "$steps_evidence/enroll-exec-no-node/01-enroll.txt"
+
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_NODE_AGENT_BIN="$stub_agent" \
+  A3S_CLOUD_BX0_NODE_CONFIG="$stub_node_acl" \
+  A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_test_token_not_placeholder' \
+  A3S_CLOUD_BX0_ENROLL_NODE_ID='11111111-2222-3333-4444-555555555555' \
+  bx0_step_enroll_execute "$steps_evidence/enroll-exec-ok"
+grep -Fq 'status=execute_ok' "$steps_evidence/enroll-exec-ok/01-enroll.txt"
+grep -Fq 'enroll=executed' "$steps_evidence/enroll-exec-ok/01-enroll.txt"
+grep -Fq '11111111-2222-3333-4444-555555555555' "$steps_evidence/enroll-exec-ok/01-enroll.txt"
+forbid_exit_certified_claim "$steps_evidence/enroll-exec-ok/01-enroll.txt"
+
+echo "===== prep script prints recipe without EXIT ====="
+bash "$tools/run_bx0_clean_host_prep.sh" \
+  >"$evidence_directory/prep.out" 2>"$evidence_directory/prep.err"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_PREP' "$evidence_directory/prep.out"
+grep -Fq 'product_exit=not_claimed' "$evidence_directory/prep.out"
+forbid_exit_certified_claim "$evidence_directory/prep.out"
+forbid_exit_certified_claim "$evidence_directory/prep.err"
 
 echo "===== step library: OCI preflight (Darwin-safe) ====="
 set +e
@@ -1075,7 +1150,7 @@ if [[ $os_name == Linux ]]; then
     'step7=update_preflight_ok' \
     'step8=rollback_preflight_ok' \
     'step9=stop_cleanup_preflight_ok' \
-    'steps_executed=not_run'; do
+    'steps2-9_executed=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -1110,6 +1185,101 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$match_evidence/07-update.txt"
   forbid_exit_certified_claim "$match_evidence/08-rollback.txt"
   forbid_exit_certified_claim "$match_evidence/09-stop_cleanup.txt"
+
+  echo "===== armed EXECUTE without enroll node_id must exit 1 ====="
+  exec_acl="$evidence_directory/exec-node.acl"
+  cat >"$exec_acl" <<'ACL'
+control_plane {
+  enrollment_url = "http://127.0.0.1:8080/api/v1/node-control/enroll"
+  node_control_url = "https://localhost:8443"
+  enrollment_token_env = "A3S_CLOUD_ENROLLMENT_TOKEN"
+}
+ACL
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    -u A3S_CLOUD_BX0_ENROLL_NODE_ID \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BX0_EXECUTE=1 \
+    A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
+    A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/exec-no-node-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-exec-no-node.out" 2>"$evidence_directory/armed-exec-no-node.err"
+  exec_no_node_status=$?
+  set -e
+  if ((exec_no_node_status != 1)); then
+    printf '%s\n' "expected EXECUTE without node_id exit 1, got $exec_no_node_status" >&2
+    cat "$evidence_directory/armed-exec-no-node.out" >&2 || true
+    cat "$evidence_directory/armed-exec-no-node.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'enroll_node_id_missing' "$evidence_directory/armed-exec-no-node.err"; then
+    printf '%s\n' "expected enroll_node_id_missing" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-node.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-no-node.err"
+
+  echo "===== armed EXECUTE with enroll node_id must OPEN with enroll_executed ====="
+  exec_ok_evidence="$evidence_directory/exec-ok-evidence"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BX0_EXECUTE=1 \
+    A3S_CLOUD_BX0_NODE_CONFIG="$exec_acl" \
+    A3S_CLOUD_ENROLLMENT_TOKEN='a3sn_ci_token_not_placeholder' \
+    A3S_CLOUD_BX0_ENROLL_NODE_ID='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_control_plane" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_health_probe" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$exec_ok_evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-exec-ok.out" 2>"$evidence_directory/armed-exec-ok.err"
+  exec_ok_status=$?
+  set -e
+  if ((exec_ok_status != 3)); then
+    printf '%s\n' "expected EXECUTE enroll_executed exit 3 OPEN, got $exec_ok_status" >&2
+    cat "$evidence_directory/armed-exec-ok.out" >&2 || true
+    cat "$evidence_directory/armed-exec-ok.err" >&2 || true
+    exit 1
+  fi
+  combined_exec="$evidence_directory/armed-exec-ok.out"$'\n'"$(cat "$evidence_directory/armed-exec-ok.err")"
+  grep -Fq 'step1=enroll_executed' <<<"$combined_exec"
+  grep -Fq 'steps2-9_executed=not_run' <<<"$combined_exec"
+  grep -Fq 'enroll=executed' "$exec_ok_evidence/01-enroll.txt"
+  grep -Fq 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' "$exec_ok_evidence/01-enroll.txt"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-exec-ok.err"
+  forbid_exit_certified_claim "$exec_ok_evidence/01-enroll.txt"
 fi
 
 echo "===== LOOP certification validator refuse-to-fake ====="
