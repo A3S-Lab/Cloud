@@ -4,12 +4,12 @@
   <img src="assets/readme/hero.svg" width="100%" alt="A3S Cloud turns Agent, Workflow, Function, Durable Cell, inference, and Web semantics into governed services on A3S Runtime and Box" />
 </p>
 
-
 <p align="center">
   <strong>Language / 语言:</strong>
   <a href="README.md">English</a> ·
   <a href="README.zh-CN.md">中文</a>
 </p>
+
 
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=release" /></a>
