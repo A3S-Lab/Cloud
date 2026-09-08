@@ -39,6 +39,9 @@ grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_SKIP' "$gate"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED' "$gate"
 grep -Fq 'refuses to fake EXIT_CERTIFIED' "$gate"
 grep -Fq 'box-revision' "$gate"
+grep -Fq 'BOX-REVISION' "$gate"
+grep -Fq 'box_revision_missing' "$gate"
+grep -Fq 'box_revision_mismatch' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
@@ -118,36 +121,92 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-box.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-box.err"
 
-  echo "===== armed with stub box must stay OPEN (exit 3), never EXIT ====="
-  stub_bin="$evidence_directory/stub-box/bin"
-  mkdir -p -- "$stub_bin"
-  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_bin/a3s-box"
-  chmod +x "$stub_bin/a3s-box"
+  echo "===== armed stub without BOX-REVISION must exit 1 ====="
+  stub_root="$evidence_directory/stub-box-missing"
+  mkdir -p -- "$stub_root"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_root/a3s-box"
+  chmod +x "$stub_root/a3s-box"
   set +e
-  A3S_CLOUD_BX0_CLEAN_HOST=1 \
-    A3S_CLOUD_BOX_BIN="$stub_bin/a3s-box" \
+  env -u A3S_CLOUD_BOX_REVISION \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_root/a3s-box" \
     bash "$gate" \
-    >"$evidence_directory/armed-stub.out" 2>"$evidence_directory/armed-stub.err"
-  stub_status=$?
+    >"$evidence_directory/armed-missing.out" 2>"$evidence_directory/armed-missing.err"
+  missing_status=$?
   set -e
-  if ((stub_status != 3)); then
-    printf '%s\n' "expected armed-stub exit 3 OPEN, got $stub_status" >&2
-    cat "$evidence_directory/armed-stub.out" >&2 || true
-    cat "$evidence_directory/armed-stub.err" >&2 || true
+  if ((missing_status != 1)); then
+    printf '%s\n' "expected missing BOX-REVISION exit 1, got $missing_status" >&2
+    cat "$evidence_directory/armed-missing.out" >&2 || true
+    cat "$evidence_directory/armed-missing.err" >&2 || true
     exit 1
   fi
-  if ! grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_OPEN' "$evidence_directory/armed-stub.out" \
-    && ! grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_OPEN' "$evidence_directory/armed-stub.err"; then
-    printf '%s\n' "expected A3S_CLOUD_BX0_CLEAN_HOST_OPEN for stub-armed run" >&2
+  if ! grep -Fq 'box_revision_missing' "$evidence_directory/armed-missing.err"; then
+    printf '%s\n' "expected box_revision_missing" >&2
     exit 1
   fi
-  if ! grep -Fq "$revision" "$evidence_directory/armed-stub.out" \
-    && ! grep -Fq "$revision" "$evidence_directory/armed-stub.err"; then
+  forbid_exit_certified_claim "$evidence_directory/armed-missing.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-missing.err"
+
+  echo "===== armed stub with mismatched BOX-REVISION must exit 1 ====="
+  stub_mismatch="$evidence_directory/stub-box-mismatch"
+  mkdir -p -- "$stub_mismatch"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_mismatch/a3s-box"
+  chmod +x "$stub_mismatch/a3s-box"
+  printf '%s\n' '0000000000000000000000000000000000000000' \
+    >"$stub_mismatch/BOX-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_mismatch/a3s-box" \
+    bash "$gate" \
+    >"$evidence_directory/armed-mismatch.out" 2>"$evidence_directory/armed-mismatch.err"
+  mismatch_status=$?
+  set -e
+  if ((mismatch_status != 1)); then
+    printf '%s\n' "expected mismatch exit 1, got $mismatch_status" >&2
+    cat "$evidence_directory/armed-mismatch.out" >&2 || true
+    cat "$evidence_directory/armed-mismatch.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'box_revision_mismatch' "$evidence_directory/armed-mismatch.err"; then
+    printf '%s\n' "expected box_revision_mismatch" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-mismatch.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-mismatch.err"
+
+  echo "===== armed stub with matching pin must stay OPEN (exit 3) ====="
+  stub_match="$evidence_directory/stub-box-match"
+  mkdir -p -- "$stub_match"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
+  chmod +x "$stub_match/a3s-box"
+  printf '%s\n' "$revision" >"$stub_match/BOX-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
+    bash "$gate" \
+    >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
+  match_status=$?
+  set -e
+  if ((match_status != 3)); then
+    printf '%s\n' "expected armed-match exit 3 OPEN, got $match_status" >&2
+    cat "$evidence_directory/armed-match.out" >&2 || true
+    cat "$evidence_directory/armed-match.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_OPEN' "$evidence_directory/armed-match.out" \
+    && ! grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_OPEN' "$evidence_directory/armed-match.err"; then
+    printf '%s\n' "expected A3S_CLOUD_BX0_CLEAN_HOST_OPEN for pin-matched stub" >&2
+    exit 1
+  fi
+  if ! grep -Fq "$revision" "$evidence_directory/armed-match.out" \
+    && ! grep -Fq "$revision" "$evidence_directory/armed-match.err"; then
     printf '%s\n' "expected pinned box-revision $revision in armed output" >&2
     exit 1
   fi
-  forbid_exit_certified_claim "$evidence_directory/armed-stub.out"
-  forbid_exit_certified_claim "$evidence_directory/armed-stub.err"
+  forbid_exit_certified_claim "$evidence_directory/armed-match.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-match.err"
 fi
 
 printf '%s\n' \

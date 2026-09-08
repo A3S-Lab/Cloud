@@ -82,15 +82,37 @@ if [[ -z $box_binary || ! -x $box_binary ]]; then
   exit 2
 fi
 
-expected_box_revision=
-if [[ -f $BOX_REVISION_FILE ]]; then
-  expected_box_revision="$(<"$BOX_REVISION_FILE")"
+[[ -f $BOX_REVISION_FILE ]] || die "missing pin file: $BOX_REVISION_FILE"
+expected_box_revision="$(<"$BOX_REVISION_FILE")"
+[[ $expected_box_revision =~ ^[0-9a-f]{40}$ ]] ||
+  die "Box pin is not an exact 40-hex revision: $expected_box_revision"
+
+installed_box_revision="${A3S_CLOUD_BOX_REVISION:-}"
+box_revision_sidecar="$(dirname "$box_binary")/BOX-REVISION"
+if [[ -z $installed_box_revision && -f $box_revision_sidecar ]]; then
+  installed_box_revision="$(<"$box_revision_sidecar")"
+fi
+if [[ -z $installed_box_revision ]]; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=box_revision_missing" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=box_revision_missing" \
+    "expected pin=$expected_box_revision" \
+    "set A3S_CLOUD_BOX_REVISION or place BOX-REVISION next to a3s-box (install_box_release.sh)" >&2
+  exit 1
+fi
+if [[ $installed_box_revision != "$expected_box_revision" ]]; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=box_revision_mismatch" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=box_revision_mismatch" \
+    "expected pin=$expected_box_revision" \
+    "installed=$installed_box_revision" >&2
+  exit 1
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
-if [[ -n $expected_box_revision ]]; then
-  printf 'pinned Box revision: %s\n' "$expected_box_revision"
-fi
+printf 'pinned Box revision: %s\n' "$expected_box_revision"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
 print_checklist
