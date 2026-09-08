@@ -19,11 +19,38 @@ set -euo pipefail
 readonly SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly CLOUD_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
 readonly BOX_REVISION_FILE="$SCRIPT_DIRECTORY/box-revision"
+readonly RUNTIME_REVISION_FILE="${A3S_CLOUD_BX0_RUNTIME_REVISION_FILE:-$CLOUD_ROOT/tools/runtime-conformance/runtime-revision}"
+readonly GATEWAY_REVISION_FILE="${A3S_CLOUD_BX0_GATEWAY_REVISION_FILE:-$CLOUD_ROOT/tools/gateway-conformance/gateway-revision}"
 readonly INSTALL_BOX_RELEASE="$SCRIPT_DIRECTORY/install_box_release.sh"
 
 die() {
   printf 'BX0 clean-host gate: %s\n' "$1" >&2
   exit 1
+}
+
+require_exact_pin_file() {
+  local label=$1
+  local path=$2
+  local reason_missing=$3
+  if [[ ! -f $path ]]; then
+    print_checklist
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$reason_missing" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$reason_missing" \
+      "missing pin file: $path" >&2
+    exit 1
+  fi
+  local value
+  value="$(<"$path")"
+  if [[ ! $value =~ ^[0-9a-f]{40}$ ]]; then
+    print_checklist
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=${label}_revision_invalid" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=${label}_revision_invalid" \
+      "pin file=$path value=$value" >&2
+    exit 1
+  fi
+  printf '%s\n' "$value"
 }
 
 print_checklist() {
@@ -111,8 +138,23 @@ if [[ $installed_box_revision != "$expected_box_revision" ]]; then
   exit 1
 fi
 
+# EXIT requires Cloud+Runtime+Box+Gateway+Power. Bind the pins that exist today;
+# Power stays UNBOUND until PW0 lands a pin file (do not invent one).
+expected_runtime_revision="$(
+  require_exact_pin_file runtime "$RUNTIME_REVISION_FILE" runtime_revision_missing
+)"
+expected_gateway_revision="$(
+  require_exact_pin_file gateway "$GATEWAY_REVISION_FILE" gateway_revision_missing
+)"
+cloud_revision="$(git -C "$CLOUD_ROOT" rev-parse HEAD 2>/dev/null || true)"
+[[ $cloud_revision =~ ^[0-9a-f]{40}$ ]] || die "Cloud HEAD is not an exact revision"
+
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
-printf 'pinned Box revision: %s\n' "$expected_box_revision"
+printf 'bound Cloud revision: %s\n' "$cloud_revision"
+printf 'bound Runtime revision: %s\n' "$expected_runtime_revision"
+printf 'bound Box revision: %s\n' "$expected_box_revision"
+printf 'bound Gateway revision: %s\n' "$expected_gateway_revision"
+printf 'power_revision=UNBOUND reason=pw0_no_pin_file\n'
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
 print_checklist
@@ -122,5 +164,6 @@ cat <<'OPEN'
 A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
+bound=Cloud+Runtime+Box+Gateway power=UNBOUND
 OPEN
 exit 3

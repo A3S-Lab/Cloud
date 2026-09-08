@@ -42,9 +42,22 @@ grep -Fq 'box-revision' "$gate"
 grep -Fq 'BOX-REVISION' "$gate"
 grep -Fq 'box_revision_missing' "$gate"
 grep -Fq 'box_revision_mismatch' "$gate"
+grep -Fq 'runtime-revision' "$gate"
+grep -Fq 'gateway-revision' "$gate"
+grep -Fq 'runtime_revision_missing' "$gate"
+grep -Fq 'gateway_revision_missing' "$gate"
+grep -Fq 'pw0_no_pin_file' "$gate"
+grep -Fq 'bound=Cloud+Runtime+Box+Gateway' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
+runtime_pin="$tools/../runtime-conformance/runtime-revision"
+gateway_pin="$tools/../gateway-conformance/gateway-revision"
+[[ -f $runtime_pin && -f $gateway_pin ]]
+runtime_revision=$(<"$runtime_pin")
+gateway_revision=$(<"$gateway_pin")
+[[ $runtime_revision =~ ^[0-9a-f]{40}$ ]]
+[[ $gateway_revision =~ ^[0-9a-f]{40}$ ]]
 # No success emission of EXIT_CERTIFIED (printf/echo/cat claiming it).
 if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$gate" \
   | grep -Ev 'Required certification markers|not emitted|refuses to fake|Must bind'; then
@@ -175,14 +188,47 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-mismatch.out"
   forbid_exit_certified_claim "$evidence_directory/armed-mismatch.err"
 
-  echo "===== armed stub with matching pin must stay OPEN (exit 3) ====="
+  echo "===== armed stub missing Runtime pin must exit 1 ====="
+  stub_rt_missing="$evidence_directory/stub-box-rt-missing"
+  mkdir -p -- "$stub_rt_missing"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_rt_missing/a3s-box"
+  chmod +x "$stub_rt_missing/a3s-box"
+  printf '%s\n' "$revision" >"$stub_rt_missing/BOX-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_rt_missing/a3s-box" \
+    A3S_CLOUD_BX0_RUNTIME_REVISION_FILE="$evidence_directory/does-not-exist-runtime-revision" \
+    bash "$gate" \
+    >"$evidence_directory/armed-rt-missing.out" 2>"$evidence_directory/armed-rt-missing.err"
+  rt_missing_status=$?
+  set -e
+  if ((rt_missing_status != 1)); then
+    printf '%s\n' "expected runtime_revision_missing exit 1, got $rt_missing_status" >&2
+    cat "$evidence_directory/armed-rt-missing.out" >&2 || true
+    cat "$evidence_directory/armed-rt-missing.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'runtime_revision_missing' "$evidence_directory/armed-rt-missing.err"; then
+    printf '%s\n' "expected runtime_revision_missing" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-rt-missing.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-rt-missing.err"
+
+  echo "===== armed stub with matching Box pin must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
   chmod +x "$stub_match/a3s-box"
   printf '%s\n' "$revision" >"$stub_match/BOX-REVISION"
+  runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
+  gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
+  cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
   set +e
   env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
     A3S_CLOUD_BX0_CLEAN_HOST=1 \
     A3S_CLOUD_BOX_BIN="$stub_match/a3s-box" \
     bash "$gate" \
@@ -200,11 +246,19 @@ if [[ $os_name == Linux ]]; then
     printf '%s\n' "expected A3S_CLOUD_BX0_CLEAN_HOST_OPEN for pin-matched stub" >&2
     exit 1
   fi
-  if ! grep -Fq "$revision" "$evidence_directory/armed-match.out" \
-    && ! grep -Fq "$revision" "$evidence_directory/armed-match.err"; then
-    printf '%s\n' "expected pinned box-revision $revision in armed output" >&2
-    exit 1
-  fi
+  combined_match="$evidence_directory/armed-match.out"$'\n'"$(cat "$evidence_directory/armed-match.err")"
+  for needle in \
+    "$revision" \
+    "$runtime_revision" \
+    "$gateway_revision" \
+    "$cloud_revision" \
+    'pw0_no_pin_file' \
+    'bound=Cloud+Runtime+Box+Gateway'; do
+    if ! grep -Fq "$needle" <<<"$combined_match"; then
+      printf '%s\n' "expected armed OPEN output to include: $needle" >&2
+      exit 1
+    fi
+  done
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
 fi

@@ -110,14 +110,17 @@ without `A3S_CLOUD_BX0_CLEAN_HOST=1` and a usable `a3s-box`, the script prints
 `SKIP`/`BLOCKED` and exits 2. When armed, the gate requires the install-tree pin
 (`A3S_CLOUD_BOX_REVISION` or sibling `BOX-REVISION` from `install_box_release.sh`)
 to match `tools/box-conformance/box-revision`; missing or mismatched pins
-fail-closed with exit 1. A pin-matched armed run prints the ordered checklist
-and exits 3 with `A3S_CLOUD_BX0_CLEAN_HOST_OPEN` because the joint
-Cloud+Box+Gateway harness is not yet automated. It never emits
-`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Use `install_box_release.sh` to
-install the pinned Linux Box fixture before arming the gate.
+fail-closed with exit 1. A pin-matched armed run also binds Cloud (`git rev-parse
+HEAD`), Runtime (`tools/runtime-conformance/runtime-revision`), and Gateway
+(`tools/gateway-conformance/gateway-revision`), prints
+`power_revision=UNBOUND reason=pw0_no_pin_file`, then exits 3 with
+`A3S_CLOUD_BX0_CLEAN_HOST_OPEN` because the joint Cloud+Box+Gateway harness is
+not yet automated. It never emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
+Use `install_box_release.sh` to install the pinned Linux Box fixture before
+arming the gate.
 
 `run_bx0_clean_host_gate_ci.sh` is the CI fail-closed harness (mirror of
 U0.3 `run_u0_3_exit_audit_ci.sh`). It certifies static refuse-to-fake contracts,
-unarmed / armed-without-box paths, and Linux stub pin missing/mismatch/match
-behavior, then emits `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT
-stays open.
+unarmed / armed-without-box paths, Linux stub pin missing/mismatch/match, and
+Runtime pin-missing fail-closed behavior, then emits
+`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
