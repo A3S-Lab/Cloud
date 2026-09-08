@@ -87,12 +87,15 @@ Do **not** point at `bx0-clean-host-certification.example.txt` (PLACEHOLDER_* �
 ## Exit audit
 
 ```bash
+export A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION=/tmp/bx0-evidence/bx0-clean-host-certification.txt
+export A3S_CLOUD_BX0_EVIDENCE_DIR="$GATE_EVIDENCE_DIR"
 bash tools/box-conformance/run_bx0_clean_host_exit_audit.sh /tmp/bx0-exit-audit
 ```
 
 - Without LOOP certification → `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` exit 2
-- With LOOP but no Power pin → `EXIT_BLOCKED reason=power_unbound` exit 2
-- With LOOP + Power pin → may emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
+- With LOOP but no gate execute receipts → `EXIT_BLOCKED reason=execute_receipts_incomplete` exit 2
+- With LOOP + receipts but no Power pin → `EXIT_BLOCKED reason=power_unbound` exit 2
+- With LOOP + receipts + Power pin → may emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
 
 CI fail-closed harness `run_bx0_clean_host_gate_ci.sh` proves refuse paths only
 (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`).

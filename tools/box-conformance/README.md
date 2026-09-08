@@ -186,6 +186,8 @@ pins plus host/service_id/node_id/artifact_digest; rejects `PLACEHOLDER_*`).
 `*=executed` receipts matching node_id / artifact_digest / service_id; IDs alone
 are insufficient. It never claims product EXIT.
 `run_bx0_clean_host_exit_audit.sh` fail-closes with
-`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` when LOOP evidence is missing or when
+`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` when LOOP evidence is missing, when
+gate execute receipts are incomplete (`A3S_CLOUD_BX0_EVIDENCE_DIR`), or when
 Power remains UNBOUND (PW0); it emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
-only with LOOP + a bound Power pin. See `OPERATOR_CLEAN_HOST.md`.
+only with LOOP + matching execute receipts + a bound Power pin. See
+`OPERATOR_CLEAN_HOST.md`.

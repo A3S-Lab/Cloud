@@ -2149,10 +2149,32 @@ forbid_exit_certified_claim "$evidence_directory/exit-audit-no-loop.out"
 forbid_exit_certified_claim "$evidence_directory/exit-audit-no-loop.err"
 forbid_exit_certified_claim "$audit_dir/bx0-exit-certification.txt"
 
-echo "===== exit audit with LOOP but Power UNBOUND must exit 2 ====="
+echo "===== exit audit with LOOP but no execute receipts must exit 2 ====="
+audit_dir_receipts="$evidence_directory/exit-audit-no-receipts"
+set +e
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+  env -u A3S_CLOUD_BX0_EVIDENCE_DIR -u A3S_CLOUD_BX0_POWER_REVISION_FILE \
+  bash "$exit_audit" "$audit_dir_receipts" \
+  >"$evidence_directory/exit-audit-no-receipts.out" 2>"$evidence_directory/exit-audit-no-receipts.err"
+no_receipts_audit_status=$?
+set -e
+if ((no_receipts_audit_status != 2)); then
+  printf '%s\n' "expected exit audit with LOOP but no receipts to exit 2, got $no_receipts_audit_status" >&2
+  cat "$evidence_directory/exit-audit-no-receipts.out" >&2 || true
+  cat "$evidence_directory/exit-audit-no-receipts.err" >&2 || true
+  exit 1
+fi
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$audit_dir_receipts/bx0-exit-certification.txt"
+grep -Fq 'execute_receipts_incomplete' "$audit_dir_receipts/bx0-exit-certification.txt"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-receipts.out"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-receipts.err"
+forbid_exit_certified_claim "$audit_dir_receipts/bx0-exit-certification.txt"
+
+echo "===== exit audit with LOOP + receipts but Power UNBOUND must exit 2 ====="
 audit_dir_power="$evidence_directory/exit-audit-no-power"
 set +e
 A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+  A3S_CLOUD_BX0_EVIDENCE_DIR="$gate_receipts" \
   env -u A3S_CLOUD_BX0_POWER_REVISION_FILE \
   bash "$exit_audit" "$audit_dir_power" \
   >"$evidence_directory/exit-audit-no-power.out" 2>"$evidence_directory/exit-audit-no-power.err"
