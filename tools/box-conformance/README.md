@@ -133,23 +133,27 @@ then step-7 update **preflight** (require `A3S_CLOUD_DIGEST_PROBE_BIN` or
 `rollback=not_run`), then step-9 stop/cleanup **preflight** (require resolvable
 `a3s-box`; write `09-stop_cleanup.txt` with `stop_cleanup=not_run`), prints
 `power_revision=UNBOUND reason=pw0_no_pin_file`, then exits 3 with
-`A3S_CLOUD_BX0_CLEAN_HOST_OPEN` and `steps2-9_executed=not_run`. Missing
-node-agent, OCI, control-plane, health probe, gateway, logs probe, digest
-probe, rollback probe, or cleanup box fail-closes with exit 1. It never emits
+`A3S_CLOUD_BX0_CLEAN_HOST_OPEN`, `execute_receipts_complete=0` (preflight-only),
+and `loop_exit=not_certified`. Missing node-agent, OCI, control-plane, health
+probe, gateway, logs probe, digest probe, rollback probe, or cleanup box
+fail-closes with exit 1. It never emits
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Use `install_box_release.sh` to
 install the pinned Linux Box fixture before arming the gate.
 
-With `A3S_CLOUD_BX0_EXECUTE=1`, steps 1–8 may advance to `*=executed` only
+With `A3S_CLOUD_BX0_EXECUTE=1`, steps 1–9 may advance to `*=executed` only
 when absolute node `.acl`, enrollment token, real
 `A3S_CLOUD_BX0_ENROLL_NODE_ID`, `A3S_CLOUD_BX0_ARTIFACT_DIGEST` (`sha256:` + 64
 hex), `A3S_CLOUD_BX0_SERVICE_ID`, `A3S_CLOUD_BX0_HEALTH_URL` (`http`/`https`),
 `A3S_CLOUD_BX0_HTTPS_URL` (`https://` only), `A3S_CLOUD_BX0_LOGS_CURSOR`,
-`A3S_CLOUD_BX0_UPDATE_DIGEST` (`sha256:` + 64 hex), and
-`A3S_CLOUD_BX0_ROLLBACK_DIGEST` (`sha256:` + 64 hex) are supplied (rejects
-`PLACEHOLDER_*`); missing execute inputs fail-closed. The gate does not start the
-long-poll agent or publish/deploy/probe/route/read logs/update/rollback.
-`run_bx0_clean_host_prep.sh` prints the operator enroll recipe without claiming
-LOOP or EXIT. See `OPERATOR_CLEAN_HOST.md`.
+`A3S_CLOUD_BX0_UPDATE_DIGEST` (`sha256:` + 64 hex),
+`A3S_CLOUD_BX0_ROLLBACK_DIGEST` (`sha256:` + 64 hex), and
+`A3S_CLOUD_BX0_CLEANUP_INSTANCE` are supplied (rejects `PLACEHOLDER_*`);
+missing execute inputs fail-closed. When all nine execute receipts land, OPEN
+prints `execute_receipts_complete=1` and still `loop_exit=not_certified` — not
+product EXIT. The gate does not start the long-poll agent or
+publish/deploy/probe/route/read logs/update/rollback/stop. `run_bx0_clean_host_prep.sh`
+prints the operator enroll recipe without claiming LOOP or EXIT. See
+`OPERATOR_CLEAN_HOST.md`.
 
 `run_bx0_clean_host_gate_ci.sh` is the CI fail-closed harness (mirror of
 U0.3 `run_u0_3_exit_audit_ci.sh`). It certifies static refuse-to-fake contracts,

@@ -1080,3 +1080,51 @@ stop_cleanup=not_run
 EOF
   return 0
 }
+
+# Operator stop/remove receipt from a real Box cleanup. Does not stop or remove.
+# Returns 0 on stop_cleanup=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_stop_cleanup_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/09-stop_cleanup.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local box=
+  if ! box="$(bx0_resolve_cleanup_box)"; then
+    cat >"$evidence" <<'EOF'
+step=9
+name=stop_cleanup
+status=execute_failed
+reason=cleanup_box_unavailable
+stop_cleanup=not_run
+EOF
+    return 1
+  fi
+
+  local instance=${A3S_CLOUD_BX0_CLEANUP_INSTANCE:-}
+  if [[ -z $instance || $instance == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=execute_failed
+reason=cleanup_instance_missing
+a3s_box=$box
+stop_cleanup=not_run
+hint=Stop and remove the Box-hosted instance, then set A3S_CLOUD_BX0_CLEANUP_INSTANCE
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=execute_ok
+a3s_box=$box
+cleanup_instance=$instance
+stop_cleanup=executed
+EOF
+  return 0
+}

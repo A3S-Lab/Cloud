@@ -280,6 +280,8 @@ step7_status=update_preflight_ok
 step7_update=not_run
 step8_status=rollback_preflight_ok
 step8_rollback=not_run
+step9_status=stop_cleanup_preflight_ok
+step9_stop_cleanup=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -432,6 +434,30 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step8_status=rollback_executed
   step8_rollback=executed
+
+  if ! bx0_step_stop_cleanup_execute "$evidence_dir"; then
+    print_checklist
+    cleanup_reason=cleanup_execute_failed
+    if [[ -f $evidence_dir/09-stop_cleanup.txt ]]; then
+      cleanup_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/09-stop_cleanup.txt" 2>/dev/null || true
+      )"
+      [[ -n $cleanup_reason ]] || cleanup_reason=cleanup_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$cleanup_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$cleanup_reason" \
+      "evidence=$evidence_dir/09-stop_cleanup.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_CLEANUP_INSTANCE from a real Box stop/remove.' >&2
+    exit 1
+  fi
+  step9_status=stop_cleanup_executed
+  step9_stop_cleanup=executed
+fi
+
+execute_receipts_complete=0
+if [[ $step9_status == stop_cleanup_executed ]]; then
+  execute_receipts_complete=1
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -448,7 +474,8 @@ printf 'step5_https=%s https=%s\n' "$step5_status" "$step5_https"
 printf 'step6_logs=%s logs=%s\n' "$step6_status" "$step6_logs"
 printf 'step7_update=%s update=%s\n' "$step7_status" "$step7_update"
 printf 'step8_rollback=%s rollback=%s\n' "$step8_status" "$step8_rollback"
-printf 'step9_stop_cleanup=preflight_ok stop_cleanup=not_run\n'
+printf 'step9_stop_cleanup=%s stop_cleanup=%s\n' "$step9_status" "$step9_stop_cleanup"
+printf 'execute_receipts_complete=%s\n' "$execute_receipts_complete"
 printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
@@ -460,6 +487,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=${step7_status} step8=${step8_status} step9=stop_cleanup_preflight_ok step9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=${step6_status} step7=${step7_status} step8=${step8_status} step9=${step9_status} execute_receipts_complete=${execute_receipts_complete} loop_exit=not_certified
 OPEN
 exit 3
