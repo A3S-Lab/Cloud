@@ -785,6 +785,14 @@ path while keeping the OCI Runtime pin unchanged. `BX0.3` remains open for
 complete Sandbox plus hardware-backed MicroVM/TEE isolation certification on
 the joint gate.
 
+The tenth `BX0.3` slice advances the A3S Box pin to
+`09e5874b49d9f521321e1a09399a81cb36cddd8e` (`3.2.5`) and the OCI Runtime pin to
+`fb517c6fe7793911c860f07143f6f1b4cb37eae7` for Windows WHPX fail-closed paths,
+macOS FIFO/scale/cpuset hardening, and rootless native-linux-host-service
+device-policy bootstrap used by Box Sandbox composition. `BX0.3` remains open
+for complete Sandbox plus hardware-backed MicroVM/TEE isolation certification
+on the joint gate.
+
 The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 
