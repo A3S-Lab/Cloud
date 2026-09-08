@@ -668,6 +668,66 @@ EOF
   return 0
 }
 
+# Operator managed-TLS URL from a real Gateway route. Does not terminate TLS.
+# Returns 0 on https=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_https_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/05-https.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local gateway=
+  if ! gateway="$(bx0_resolve_gateway)"; then
+    cat >"$evidence" <<'EOF'
+step=5
+name=https
+status=execute_failed
+reason=gateway_unavailable
+https=not_run
+EOF
+    return 1
+  fi
+
+  local https_url=${A3S_CLOUD_BX0_HTTPS_URL:-}
+  if [[ -z $https_url || $https_url == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=execute_failed
+reason=https_url_missing
+a3s_gateway=$gateway
+https=not_run
+hint=Reach the Service through managed Gateway TLS, then set A3S_CLOUD_BX0_HTTPS_URL
+EOF
+    return 1
+  fi
+  if [[ ! $https_url =~ ^https://[^[:space:]]+$ ]]; then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=execute_failed
+reason=https_url_invalid
+a3s_gateway=$gateway
+https_url=$https_url
+https=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=5
+name=https
+status=execute_ok
+a3s_gateway=$gateway
+https_url=$https_url
+https=executed
+EOF
+  return 0
+}
+
 bx0_resolve_logs_probe() {
   local candidate
   if [[ -n ${A3S_CLOUD_LOGS_PROBE_BIN:-} ]]; then

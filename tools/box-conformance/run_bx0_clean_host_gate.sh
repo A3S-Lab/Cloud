@@ -272,6 +272,8 @@ step3_status=deploy_preflight_ok
 step3_deploy=not_run
 step4_status=health_preflight_ok
 step4_health=not_run
+step5_status=https_preflight_ok
+step5_https=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -348,6 +350,25 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step4_status=health_executed
   step4_health=executed
+
+  if ! bx0_step_https_execute "$evidence_dir"; then
+    print_checklist
+    https_reason=https_execute_failed
+    if [[ -f $evidence_dir/05-https.txt ]]; then
+      https_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/05-https.txt" 2>/dev/null || true
+      )"
+      [[ -n $https_reason ]] || https_reason=https_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$https_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$https_reason" \
+      "evidence=$evidence_dir/05-https.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HTTPS_URL (https://) from a real managed-TLS reach.' >&2
+    exit 1
+  fi
+  step5_status=https_executed
+  step5_https=executed
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -360,7 +381,7 @@ printf 'step1_enroll=%s enroll=%s\n' "$step1_status" "$step1_enroll"
 printf 'step2_oci=%s oci=%s\n' "$step2_status" "$step2_oci"
 printf 'step3_deploy=%s deploy=%s\n' "$step3_status" "$step3_deploy"
 printf 'step4_health=%s health=%s\n' "$step4_status" "$step4_health"
-printf 'step5_https=preflight_ok https=not_run\n'
+printf 'step5_https=%s https=%s\n' "$step5_status" "$step5_https"
 printf 'step6_logs=preflight_ok logs=not_run\n'
 printf 'step7_update=preflight_ok update=not_run\n'
 printf 'step8_rollback=preflight_ok rollback=not_run\n'
@@ -376,6 +397,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps5-9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=${step5_status} step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps6-9_executed=not_run
 OPEN
 exit 3

@@ -450,9 +450,9 @@ boundary.
    Operator LOOP certification / exit-audit scripts now fail-close without
    LOOP evidence or while Power is UNBOUND; they never fake
    `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`. Opt-in
-   `A3S_CLOUD_BX0_EXECUTE=1` may record steps 1–4 `*=executed` only with real
-   node_id/artifact digest/service_id/health URL; prep prints the enroll recipe
-   without claiming EXIT.
+   `A3S_CLOUD_BX0_EXECUTE=1` may record steps 1–5 `*=executed` only with real
+   node_id/artifact digest/service_id/health URL/HTTPS URL; prep prints the
+   enroll recipe without claiming EXIT.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The
