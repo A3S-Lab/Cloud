@@ -243,7 +243,26 @@ if ! bx0_step_update_preflight "$evidence_dir"; then
     'Set A3S_CLOUD_DIGEST_PROBE_BIN to sha256sum/shasum (or equivalent); immutable update not run.' >&2
   exit 1
 fi
-bx0_write_remaining_open_steps "$evidence_dir"
+
+if ! bx0_step_rollback_preflight "$evidence_dir"; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=rollback_probe_unavailable" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=rollback_probe_unavailable" \
+    "evidence=$evidence_dir/08-rollback.txt" \
+    'Set A3S_CLOUD_ROLLBACK_PROBE_BIN to diff/cmp (or equivalent); cloned rollback not run.' >&2
+  exit 1
+fi
+
+if ! bx0_step_stop_cleanup_preflight "$evidence_dir"; then
+  print_checklist
+  printf '%s\n' \
+    "BX0 clean-host gate: FAIL_CLOSED reason=cleanup_box_unavailable" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=cleanup_box_unavailable" \
+    "evidence=$evidence_dir/09-stop_cleanup.txt" \
+    'Require a resolvable a3s-box for stop/remove; cleanup not run.' >&2
+  exit 1
+fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
 printf 'bound Cloud revision: %s\n' "$cloud_revision"
@@ -258,7 +277,8 @@ printf 'step4_health=preflight_ok health=not_run\n'
 printf 'step5_https=preflight_ok https=not_run\n'
 printf 'step6_logs=preflight_ok logs=not_run\n'
 printf 'step7_update=preflight_ok update=not_run\n'
-printf 'steps8-9=OPEN not_run=1\n'
+printf 'step8_rollback=preflight_ok rollback=not_run\n'
+printf 'step9_stop_cleanup=preflight_ok stop_cleanup=not_run\n'
 printf 'evidence_dir=%s\n' "$evidence_dir"
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
@@ -270,6 +290,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=enroll_preflight_ok step2=oci_preflight_ok step3=deploy_preflight_ok step4=health_preflight_ok step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok steps8-9=not_run
+step1=enroll_preflight_ok step2=oci_preflight_ok step3=deploy_preflight_ok step4=health_preflight_ok step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps_executed=not_run
 OPEN
 exit 3

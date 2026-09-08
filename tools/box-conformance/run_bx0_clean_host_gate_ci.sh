@@ -58,17 +58,23 @@ grep -Fq 'step4=health_preflight_ok' "$gate"
 grep -Fq 'step5=https_preflight_ok' "$gate"
 grep -Fq 'step6=logs_preflight_ok' "$gate"
 grep -Fq 'step7=update_preflight_ok' "$gate"
+grep -Fq 'step8=rollback_preflight_ok' "$gate"
+grep -Fq 'step9=stop_cleanup_preflight_ok' "$gate"
 grep -Fq 'oci=not_run' "$gate"
 grep -Fq 'deploy=not_run' "$gate"
 grep -Fq 'health=not_run' "$gate"
 grep -Fq 'https=not_run' "$gate"
 grep -Fq 'logs=not_run' "$gate"
 grep -Fq 'update=not_run' "$gate"
+grep -Fq 'rollback=not_run' "$gate"
+grep -Fq 'stop_cleanup=not_run' "$gate"
 grep -Fq 'control_plane_unavailable' "$gate"
 grep -Fq 'health_probe_unavailable' "$gate"
 grep -Fq 'gateway_unavailable' "$gate"
 grep -Fq 'logs_probe_unavailable' "$gate"
 grep -Fq 'digest_probe_unavailable' "$gate"
+grep -Fq 'rollback_probe_unavailable' "$gate"
+grep -Fq 'cleanup_box_unavailable' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
@@ -82,6 +88,8 @@ grep -Fq 'gateway_unavailable' "$steps"
 grep -Fq 'gateway_revision_mismatch' "$steps"
 grep -Fq 'logs_probe_unavailable' "$steps"
 grep -Fq 'digest_probe_unavailable' "$steps"
+grep -Fq 'rollback_probe_unavailable' "$steps"
+grep -Fq 'cleanup_box_unavailable' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
@@ -380,11 +388,69 @@ A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest" \
 grep -Fq 'status=preflight_ok' "$steps_evidence/update-ok/07-update.txt"
 grep -Fq 'update=not_run' "$steps_evidence/update-ok/07-update.txt"
 grep -Fq "$stub_digest" "$steps_evidence/update-ok/07-update.txt"
-bx0_write_remaining_open_steps "$steps_evidence/update-ok"
-[[ -f $steps_evidence/update-ok/08-rollback.txt ]]
-[[ -f $steps_evidence/update-ok/09-stop_cleanup.txt ]]
-grep -Fq 'status=OPEN' "$steps_evidence/update-ok/08-rollback.txt"
 forbid_exit_certified_claim "$steps_evidence/update-ok/07-update.txt"
+
+echo "===== step library: rollback preflight (Darwin-safe) ====="
+set +e
+PATH="/usr/bin:/bin" \
+  A3S_CLOUD_ROLLBACK_PROBE_BIN="$steps_evidence/does-not-exist-rollback-probe" \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_rollback_preflight "$1"
+  ' "$steps" "$steps_evidence/rollback-missing"
+missing_rollback=$?
+set -e
+if ((missing_rollback != 1)); then
+  printf '%s\n' "expected rollback preflight fail without probe, got $missing_rollback" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/rollback-missing/08-rollback.txt"
+grep -Fq 'rollback_probe_unavailable' "$steps_evidence/rollback-missing/08-rollback.txt"
+grep -Fq 'rollback=not_run' "$steps_evidence/rollback-missing/08-rollback.txt"
+forbid_exit_certified_claim "$steps_evidence/rollback-missing/08-rollback.txt"
+
+stub_rollback="$steps_evidence/stub-rollback-probe"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_rollback"
+chmod +x "$stub_rollback"
+A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback" \
+  bx0_step_rollback_preflight "$steps_evidence/rollback-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/rollback-ok/08-rollback.txt"
+grep -Fq 'rollback=not_run' "$steps_evidence/rollback-ok/08-rollback.txt"
+grep -Fq "$stub_rollback" "$steps_evidence/rollback-ok/08-rollback.txt"
+forbid_exit_certified_claim "$steps_evidence/rollback-ok/08-rollback.txt"
+
+echo "===== step library: stop/cleanup preflight (Darwin-safe) ====="
+set +e
+PATH="/usr/bin:/bin" \
+  env -u A3S_CLOUD_BOX_BIN -u BX0_BOX_BINARY \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_stop_cleanup_preflight "$1"
+  ' "$steps" "$steps_evidence/cleanup-missing"
+missing_cleanup=$?
+set -e
+if ((missing_cleanup != 1)); then
+  printf '%s\n' "expected cleanup preflight fail without box, got $missing_cleanup" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/cleanup-missing/09-stop_cleanup.txt"
+grep -Fq 'cleanup_box_unavailable' "$steps_evidence/cleanup-missing/09-stop_cleanup.txt"
+grep -Fq 'stop_cleanup=not_run' "$steps_evidence/cleanup-missing/09-stop_cleanup.txt"
+forbid_exit_certified_claim "$steps_evidence/cleanup-missing/09-stop_cleanup.txt"
+
+stub_cleanup_box="$steps_evidence/stub-cleanup-box"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_cleanup_box"
+chmod +x "$stub_cleanup_box"
+A3S_CLOUD_BOX_BIN="$stub_cleanup_box" \
+  bx0_step_stop_cleanup_preflight "$steps_evidence/cleanup-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
+grep -Fq 'stop_cleanup=not_run' "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
+grep -Fq "$stub_cleanup_box" "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
+forbid_exit_certified_claim "$steps_evidence/cleanup-ok/09-stop_cleanup.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -859,6 +925,68 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-digest.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-digest.err"
 
+  echo "===== armed stub missing rollback probe must exit 1 ====="
+  stub_no_rb="$evidence_directory/stub-box-no-rb"
+  mkdir -p -- "$stub_no_rb"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_rb/a3s-box"
+  chmod +x "$stub_no_rb/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_rb/BOX-REVISION"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_rb/a3s-oci"
+  chmod +x "$stub_no_rb/a3s-oci"
+  printf '%s\n' "$oci_runtime_revision" >"$stub_no_rb/OCI-RUNTIME-REVISION"
+  stub_node_agent_r="$evidence_directory/stub-node-agent-for-rb"
+  stub_cp_r="$evidence_directory/stub-cp-for-rb"
+  stub_probe_r="$evidence_directory/stub-probe-for-rb"
+  stub_logs_r="$evidence_directory/stub-logs-for-rb"
+  stub_digest_r="$evidence_directory/stub-digest-for-rb"
+  stub_gw_r="$evidence_directory/stub-gw-for-rb"
+  mkdir -p -- "$stub_gw_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_cp_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_probe_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_logs_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_digest_r"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_gw_r/a3s-gateway"
+  chmod +x "$stub_node_agent_r" "$stub_cp_r" "$stub_probe_r" "$stub_logs_r" "$stub_digest_r" "$stub_gw_r/a3s-gateway"
+  printf '%s\n' "$gateway_revision" >"$stub_gw_r/GATEWAY-REVISION"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_DEV_API_BIN \
+    -u A3S_CLOUD_TEST_GATEWAY_BIN \
+    -u A3S_CLOUD_GATEWAY_REVISION \
+    -u A3S_CLOUD_TEST_GATEWAY_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_rb/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent_r" \
+    A3S_CLOUD_CONTROL_PLANE_BIN="$stub_cp_r" \
+    A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe_r" \
+    A3S_CLOUD_GATEWAY_BIN="$stub_gw_r/a3s-gateway" \
+    A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_r" \
+    A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_r" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$evidence_directory/does-not-exist-rollback-probe" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-rb-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-rb.out" 2>"$evidence_directory/armed-no-rb.err"
+  no_rb_status=$?
+  set -e
+  if ((no_rb_status != 1)); then
+    printf '%s\n' "expected rollback_probe_unavailable exit 1, got $no_rb_status" >&2
+    cat "$evidence_directory/armed-no-rb.out" >&2 || true
+    cat "$evidence_directory/armed-no-rb.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'rollback_probe_unavailable' "$evidence_directory/armed-no-rb.err"; then
+    printf '%s\n' "expected rollback_probe_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-rb.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-rb.err"
+
   echo "===== armed stub with matching Box+OCI+Gateway pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
@@ -888,6 +1016,9 @@ if [[ $os_name == Linux ]]; then
   stub_digest_probe="$evidence_directory/stub-digest-probe"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_digest_probe"
   chmod +x "$stub_digest_probe"
+  stub_rollback_probe="$evidence_directory/stub-rollback-probe"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_rollback_probe"
+  chmod +x "$stub_rollback_probe"
   runtime_revision=$(<"$tools/../runtime-conformance/runtime-revision")
   gateway_revision=$(<"$tools/../gateway-conformance/gateway-revision")
   cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
@@ -910,6 +1041,7 @@ if [[ $os_name == Linux ]]; then
     A3S_CLOUD_GATEWAY_BIN="$stub_gateway/a3s-gateway" \
     A3S_CLOUD_LOGS_PROBE_BIN="$stub_logs_probe" \
     A3S_CLOUD_DIGEST_PROBE_BIN="$stub_digest_probe" \
+    A3S_CLOUD_ROLLBACK_PROBE_BIN="$stub_rollback_probe" \
     A3S_CLOUD_BX0_EVIDENCE_DIR="$match_evidence" \
     bash "$gate" \
     >"$evidence_directory/armed-match.out" 2>"$evidence_directory/armed-match.err"
@@ -941,7 +1073,9 @@ if [[ $os_name == Linux ]]; then
     'step5=https_preflight_ok' \
     'step6=logs_preflight_ok' \
     'step7=update_preflight_ok' \
-    'steps8-9=not_run'; do
+    'step8=rollback_preflight_ok' \
+    'step9=stop_cleanup_preflight_ok' \
+    'steps_executed=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -961,7 +1095,10 @@ if [[ $os_name == Linux ]]; then
   grep -Fq 'logs=not_run' "$match_evidence/06-logs.txt"
   grep -Fq 'status=preflight_ok' "$match_evidence/07-update.txt"
   grep -Fq 'update=not_run' "$match_evidence/07-update.txt"
-  [[ -f $match_evidence/09-stop_cleanup.txt ]]
+  grep -Fq 'status=preflight_ok' "$match_evidence/08-rollback.txt"
+  grep -Fq 'rollback=not_run' "$match_evidence/08-rollback.txt"
+  grep -Fq 'status=preflight_ok' "$match_evidence/09-stop_cleanup.txt"
+  grep -Fq 'stop_cleanup=not_run' "$match_evidence/09-stop_cleanup.txt"
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
   forbid_exit_certified_claim "$match_evidence/01-enroll.txt"
@@ -971,6 +1108,8 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$match_evidence/05-https.txt"
   forbid_exit_certified_claim "$match_evidence/06-logs.txt"
   forbid_exit_certified_claim "$match_evidence/07-update.txt"
+  forbid_exit_certified_claim "$match_evidence/08-rollback.txt"
+  forbid_exit_certified_claim "$match_evidence/09-stop_cleanup.txt"
 fi
 
 printf '%s\n' \

@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host ordered step helpers (sourced by run_bx0_clean_host_gate.sh).
 #
-# Steps 1–7 (enroll / OCI / deploy / health / HTTPS / logs / update) are
-# preflight-only: require resolvable binaries (OCI Runtime pin for step 2;
-# Gateway pin for step 5), record evidence, never perform enroll/OCI
-# publish/deploy/Ready/TLS routing/log readback/immutable update, and never
-# claim product EXIT. Steps 8–9 remain OPEN / not-run until later automation
-# lands.
+# Steps 1–9 (enroll / OCI / deploy / health / HTTPS / logs / update / rollback /
+# stop_cleanup) are preflight-only: require resolvable binaries (OCI Runtime pin
+# for step 2; Gateway pin for step 5), record evidence, never perform
+# enroll/OCI publish/deploy/Ready/TLS routing/log readback/immutable
+# update/cloned rollback/stop-cleanup, and never claim product EXIT.
 
 bx0_resolve_node_agent() {
   local candidate
@@ -476,24 +475,96 @@ EOF
   return 0
 }
 
-bx0_write_open_step() {
-  local evidence_dir=$1
-  local index=$2
-  local name=$3
-  local file
-  printf -v file '%s/%02d-%s.txt' "$evidence_dir" "$index" "$name"
-  cat >"$file" <<EOF
-step=$index
-name=$name
-status=OPEN
-not_run=1
-EOF
+bx0_resolve_rollback_probe() {
+  local candidate
+  if [[ -n ${A3S_CLOUD_ROLLBACK_PROBE_BIN:-} ]]; then
+    if [[ -x $A3S_CLOUD_ROLLBACK_PROBE_BIN ]]; then
+      printf '%s\n' "$A3S_CLOUD_ROLLBACK_PROBE_BIN"
+      return 0
+    fi
+    return 1
+  fi
+  if command -v diff >/dev/null 2>&1; then
+    command -v diff
+    return 0
+  fi
+  if command -v cmp >/dev/null 2>&1; then
+    command -v cmp
+    return 0
+  fi
+  return 1
 }
 
-# Record steps 8–9 as OPEN / not-run (remainder after enroll…update preflight).
-bx0_write_remaining_open_steps() {
+# Writes 08-rollback.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires diff/cmp (or override) for cloned-revision evidence; does not roll back.
+bx0_step_rollback_preflight() {
   local evidence_dir=$1
+  local evidence="$evidence_dir/08-rollback.txt"
   mkdir -p -- "$evidence_dir"
-  bx0_write_open_step "$evidence_dir" 8 rollback
-  bx0_write_open_step "$evidence_dir" 9 stop_cleanup
+  local probe=
+  if ! probe="$(bx0_resolve_rollback_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=8
+name=rollback
+status=preflight_failed
+reason=rollback_probe_unavailable
+rollback=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=preflight_ok
+rollback_probe=$probe
+rollback=not_run
+EOF
+  return 0
+}
+
+bx0_resolve_cleanup_box() {
+  local candidate
+  for candidate in \
+    "${A3S_CLOUD_BOX_BIN:-}" \
+    "${BX0_BOX_BINARY:-}"; do
+    if [[ -n $candidate ]]; then
+      if [[ -x $candidate ]]; then
+        printf '%s\n' "$candidate"
+        return 0
+      fi
+      return 1
+    fi
+  done
+  if command -v a3s-box >/dev/null 2>&1; then
+    command -v a3s-box
+    return 0
+  fi
+  return 1
+}
+
+# Writes 09-stop_cleanup.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
+# Requires resolvable a3s-box for stop/remove; does not stop or clean up.
+bx0_step_stop_cleanup_preflight() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/09-stop_cleanup.txt"
+  mkdir -p -- "$evidence_dir"
+  local box=
+  if ! box="$(bx0_resolve_cleanup_box)"; then
+    cat >"$evidence" <<'EOF'
+step=9
+name=stop_cleanup
+status=preflight_failed
+reason=cleanup_box_unavailable
+stop_cleanup=not_run
+EOF
+    return 1
+  fi
+  cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=preflight_ok
+a3s_box=$box
+stop_cleanup=not_run
+EOF
+  return 0
 }
