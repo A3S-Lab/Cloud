@@ -771,6 +771,54 @@ EOF
   return 0
 }
 
+# Operator ordered-log cursor from a real log read. Does not fetch logs.
+# Returns 0 on logs=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_logs_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/06-logs.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local probe=
+  if ! probe="$(bx0_resolve_logs_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=6
+name=logs
+status=execute_failed
+reason=logs_probe_unavailable
+logs=not_run
+EOF
+    return 1
+  fi
+
+  local cursor=${A3S_CLOUD_BX0_LOGS_CURSOR:-}
+  if [[ -z $cursor || $cursor == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=6
+name=logs
+status=execute_failed
+reason=logs_cursor_missing
+logs_probe=$probe
+logs=not_run
+hint=Read durable ordered Service logs, then set A3S_CLOUD_BX0_LOGS_CURSOR
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=6
+name=logs
+status=execute_ok
+logs_probe=$probe
+logs_cursor=$cursor
+logs=executed
+EOF
+  return 0
+}
+
 bx0_resolve_digest_probe() {
   local candidate
   if [[ -n ${A3S_CLOUD_DIGEST_PROBE_BIN:-} ]]; then
