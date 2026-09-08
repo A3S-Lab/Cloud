@@ -492,6 +492,66 @@ EOF
   return 0
 }
 
+# Operator Ready URL from a real health probe. Does not curl the Service.
+# Returns 0 on health=executed, 1 on execute_failed. No-op when EXECUTE unset.
+bx0_step_health_execute() {
+  local evidence_dir=$1
+  local evidence="$evidence_dir/04-health.txt"
+  mkdir -p -- "$evidence_dir"
+
+  if [[ ${A3S_CLOUD_BX0_EXECUTE:-} != 1 ]]; then
+    return 0
+  fi
+
+  local probe=
+  if ! probe="$(bx0_resolve_health_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=4
+name=health
+status=execute_failed
+reason=health_probe_unavailable
+health=not_run
+EOF
+    return 1
+  fi
+
+  local health_url=${A3S_CLOUD_BX0_HEALTH_URL:-}
+  if [[ -z $health_url || $health_url == PLACEHOLDER_* ]]; then
+    cat >"$evidence" <<EOF
+step=4
+name=health
+status=execute_failed
+reason=health_url_missing
+health_probe=$probe
+health=not_run
+hint=Probe the Box-hosted Service Ready endpoint, then set A3S_CLOUD_BX0_HEALTH_URL
+EOF
+    return 1
+  fi
+  if [[ ! $health_url =~ ^https?://[^[:space:]]+$ ]]; then
+    cat >"$evidence" <<EOF
+step=4
+name=health
+status=execute_failed
+reason=health_url_invalid
+health_probe=$probe
+health_url=$health_url
+health=not_run
+EOF
+    return 1
+  fi
+
+  cat >"$evidence" <<EOF
+step=4
+name=health
+status=execute_ok
+health_probe=$probe
+health_url=$health_url
+health=executed
+EOF
+  return 0
+}
+
 bx0_resolve_gateway() {
   local candidate
   for candidate in \

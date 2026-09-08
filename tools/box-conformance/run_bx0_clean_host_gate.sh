@@ -270,6 +270,8 @@ step2_status=oci_preflight_ok
 step2_oci=not_run
 step3_status=deploy_preflight_ok
 step3_deploy=not_run
+step4_status=health_preflight_ok
+step4_health=not_run
 if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   if ! bx0_step_enroll_execute "$evidence_dir"; then
     print_checklist
@@ -327,6 +329,25 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
   fi
   step3_status=deploy_executed
   step3_deploy=executed
+
+  if ! bx0_step_health_execute "$evidence_dir"; then
+    print_checklist
+    health_reason=health_execute_failed
+    if [[ -f $evidence_dir/04-health.txt ]]; then
+      health_reason="$(
+        awk -F= '/^reason=/{print $2; exit}' "$evidence_dir/04-health.txt" 2>/dev/null || true
+      )"
+      [[ -n $health_reason ]] || health_reason=health_execute_failed
+    fi
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=$health_reason" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$health_reason" \
+      "evidence=$evidence_dir/04-health.txt" \
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HEALTH_URL (http/https) from a real Ready probe.' >&2
+    exit 1
+  fi
+  step4_status=health_executed
+  step4_health=executed
 fi
 
 printf 'BX0 clean-host gate: armed on Linux with a3s-box=%s\n' "$box_binary"
@@ -338,7 +359,7 @@ printf 'power_revision=UNBOUND reason=pw0_no_pin_file\n'
 printf 'step1_enroll=%s enroll=%s\n' "$step1_status" "$step1_enroll"
 printf 'step2_oci=%s oci=%s\n' "$step2_status" "$step2_oci"
 printf 'step3_deploy=%s deploy=%s\n' "$step3_status" "$step3_deploy"
-printf 'step4_health=preflight_ok health=not_run\n'
+printf 'step4_health=%s health=%s\n' "$step4_status" "$step4_health"
 printf 'step5_https=preflight_ok https=not_run\n'
 printf 'step6_logs=preflight_ok logs=not_run\n'
 printf 'step7_update=preflight_ok update=not_run\n'
@@ -355,6 +376,6 @@ A3S_CLOUD_BX0_CLEAN_HOST_OPEN
 not yet automated / requires joint Cloud+Box+Gateway harness
 This entrypoint refuses to fake EXIT_CERTIFIED.
 bound=Cloud+Runtime+Box+Gateway power=UNBOUND
-step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=health_preflight_ok step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps4-9_executed=not_run
+step1=${step1_status} step2=${step2_status} step3=${step3_status} step4=${step4_status} step5=https_preflight_ok step6=logs_preflight_ok step7=update_preflight_ok step8=rollback_preflight_ok step9=stop_cleanup_preflight_ok steps5-9_executed=not_run
 OPEN
 exit 3
