@@ -790,6 +790,13 @@ MicroVM/TEE isolation certification.
 
 #### Exit gate
 
+The clean-host harness entrypoint
+`tools/box-conformance/run_bx0_clean_host_gate.sh` exists and fail-closes on
+non-Linux, unarmed Linux (`A3S_CLOUD_BX0_CLEAN_HOST` unset / missing `a3s-box`
+→ exit 2), or armed-but-unautomated runs (exit 3 /
+`A3S_CLOUD_BX0_CLEAN_HOST_OPEN`). Product `EXIT` remains open: the script does
+not emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
+
 On a clean supported Linux host with no Docker or compatible daemon, install
 exact Cloud, Runtime, Box, Gateway, and Power revisions; enroll one outbound
 node; build and publish an OCI Artifact; deploy, route, observe, update, roll

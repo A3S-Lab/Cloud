@@ -100,3 +100,16 @@ NATS, Registry, and object-storage fixtures therefore use the same Box and OCI
 capability surface as the Cloud provider gate. The script verifies the host
 artifact archive and does not require a VM-capable host or another workload
 daemon.
+
+### BX0.5 clean-host release gate
+
+`run_bx0_clean_host_gate.sh` is the fail-closed entrypoint for the BX0.5/E0
+Box re-certification clean-host loop (enroll → OCI → deploy → health → HTTPS →
+logs → update → rollback → stop/cleanup). Non-Linux hosts fail closed. On Linux
+without `A3S_CLOUD_BX0_CLEAN_HOST=1` and a usable `a3s-box`, the script prints
+`SKIP`/`BLOCKED` and exits 2. When armed with Box available it prints the ordered
+checklist and required markers, then exits 3 with
+`A3S_CLOUD_BX0_CLEAN_HOST_OPEN` because the joint Cloud+Box+Gateway harness is
+not yet automated. It never emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
+Use `install_box_release.sh` to install the pinned Linux Box fixture before
+arming the gate.

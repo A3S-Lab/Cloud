@@ -1252,6 +1252,7 @@ jobs:
       - name: Validate shell syntax
         run: |
           bash -n tools/box-conformance/install_box_release.sh
+          bash -n tools/box-conformance/run_bx0_clean_host_gate.sh
           bash -n tools/cell-conformance/verify_celld_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
