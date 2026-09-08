@@ -52,20 +52,27 @@ grep -Fq 'bx0_clean_host_steps.sh' "$gate"
 grep -Fq 'node_agent_unavailable' "$gate"
 grep -Fq 'enroll=not_run' "$gate"
 grep -Fq 'step1=enroll_preflight_ok' "$gate"
+grep -Fq 'step2=oci_preflight_ok' "$gate"
+grep -Fq 'oci=not_run' "$gate"
 grep -Eq 'exit 1' "$gate"
 grep -Eq 'exit 2' "$gate"
 grep -Eq 'exit 3' "$gate"
 steps="$tools/bx0_clean_host_steps.sh"
 [[ -f $steps ]]
+grep -Fq 'oci_unavailable' "$steps"
+grep -Fq 'oci_runtime_revision_mismatch' "$steps"
 bash -n "$steps"
 bash -n "$gate"
 runtime_pin="$tools/../runtime-conformance/runtime-revision"
 gateway_pin="$tools/../gateway-conformance/gateway-revision"
-[[ -f $runtime_pin && -f $gateway_pin ]]
+oci_pin="$tools/oci-runtime-revision"
+[[ -f $runtime_pin && -f $gateway_pin && -f $oci_pin ]]
 runtime_revision=$(<"$runtime_pin")
 gateway_revision=$(<"$gateway_pin")
+oci_runtime_revision=$(<"$oci_pin")
 [[ $runtime_revision =~ ^[0-9a-f]{40}$ ]]
 [[ $gateway_revision =~ ^[0-9a-f]{40}$ ]]
+[[ $oci_runtime_revision =~ ^[0-9a-f]{40}$ ]]
 # No success emission of EXIT_CERTIFIED (printf/echo/cat claiming it).
 if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$gate" \
   | grep -Ev 'Required certification markers|not emitted|refuses to fake|Must bind'; then
@@ -110,11 +117,68 @@ CLOUD_ROOT="$repository_root" \
 grep -Fq 'status=preflight_ok' "$steps_evidence/ok/01-enroll.txt"
 grep -Fq 'enroll=not_run' "$steps_evidence/ok/01-enroll.txt"
 grep -Fq "$stub_agent" "$steps_evidence/ok/01-enroll.txt"
-bx0_write_remaining_open_steps "$steps_evidence/ok"
-[[ -f $steps_evidence/ok/02-oci.txt ]]
-[[ -f $steps_evidence/ok/09-stop_cleanup.txt ]]
-grep -Fq 'status=OPEN' "$steps_evidence/ok/02-oci.txt"
 forbid_exit_certified_claim "$steps_evidence/ok/01-enroll.txt"
+
+echo "===== step library: OCI preflight (Darwin-safe) ====="
+set +e
+CLOUD_ROOT="$repository_root" \
+  PATH="/usr/bin:/bin" \
+  env -u A3S_CLOUD_OCI_BIN -u A3S_CLOUD_BOX_BIN -u BX0_BOX_BINARY \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_oci_preflight "$1"
+  ' "$steps" "$steps_evidence/oci-missing"
+missing_oci=$?
+set -e
+if ((missing_oci != 1)); then
+  printf '%s\n' "expected OCI preflight fail without a3s-oci, got $missing_oci" >&2
+  exit 1
+fi
+grep -Fq 'status=preflight_failed' "$steps_evidence/oci-missing/02-oci.txt"
+grep -Fq 'oci_unavailable' "$steps_evidence/oci-missing/02-oci.txt"
+grep -Fq 'oci=not_run' "$steps_evidence/oci-missing/02-oci.txt"
+forbid_exit_certified_claim "$steps_evidence/oci-missing/02-oci.txt"
+
+oci_install="$steps_evidence/oci-install"
+mkdir -p -- "$oci_install"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$oci_install/a3s-oci"
+chmod +x "$oci_install/a3s-oci"
+printf '%s\n' '0000000000000000000000000000000000000000' \
+  >"$oci_install/OCI-RUNTIME-REVISION"
+set +e
+CLOUD_ROOT="$repository_root" \
+  A3S_CLOUD_OCI_BIN="$oci_install/a3s-oci" \
+  env -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_oci_preflight "$1"
+  ' "$steps" "$steps_evidence/oci-mismatch"
+mismatch_oci=$?
+set -e
+if ((mismatch_oci != 1)); then
+  printf '%s\n' "expected OCI pin mismatch fail, got $mismatch_oci" >&2
+  exit 1
+fi
+grep -Fq 'oci_runtime_revision_mismatch' "$steps_evidence/oci-mismatch/02-oci.txt"
+
+printf '%s\n' "$oci_runtime_revision" >"$oci_install/OCI-RUNTIME-REVISION"
+unset A3S_CLOUD_OCI_RUNTIME_REVISION || true
+CLOUD_ROOT="$repository_root" \
+  A3S_CLOUD_OCI_BIN="$oci_install/a3s-oci" \
+  bx0_step_oci_preflight "$steps_evidence/oci-ok"
+grep -Fq 'status=preflight_ok' "$steps_evidence/oci-ok/02-oci.txt"
+grep -Fq 'oci=not_run' "$steps_evidence/oci-ok/02-oci.txt"
+grep -Fq "$oci_runtime_revision" "$steps_evidence/oci-ok/02-oci.txt"
+bx0_write_remaining_open_steps "$steps_evidence/oci-ok"
+[[ -f $steps_evidence/oci-ok/03-deploy.txt ]]
+[[ -f $steps_evidence/oci-ok/09-stop_cleanup.txt ]]
+grep -Fq 'status=OPEN' "$steps_evidence/oci-ok/03-deploy.txt"
+forbid_exit_certified_claim "$steps_evidence/oci-ok/02-oci.txt"
 
 echo "===== unarmed gate must fail-close (no product EXIT) ====="
 unset A3S_CLOUD_BX0_CLEAN_HOST || true
@@ -299,12 +363,52 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$evidence_directory/armed-no-agent.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-agent.err"
 
-  echo "===== armed stub with matching Box pin must stay OPEN (exit 3) ====="
+  echo "===== armed stub missing OCI must exit 1 ====="
+  stub_no_oci="$evidence_directory/stub-box-no-oci"
+  mkdir -p -- "$stub_no_oci"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_no_oci/a3s-box"
+  chmod +x "$stub_no_oci/a3s-box"
+  printf '%s\n' "$revision" >"$stub_no_oci/BOX-REVISION"
+  stub_node_agent_oci="$evidence_directory/stub-node-agent-for-oci"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent_oci"
+  chmod +x "$stub_node_agent_oci"
+  set +e
+  env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
+    -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
+    -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
+    PATH="/usr/bin:/bin" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_no_oci/a3s-box" \
+    A3S_CLOUD_NODE_AGENT_BIN="$stub_node_agent_oci" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$evidence_directory/no-oci-evidence" \
+    bash "$gate" \
+    >"$evidence_directory/armed-no-oci.out" 2>"$evidence_directory/armed-no-oci.err"
+  no_oci_status=$?
+  set -e
+  if ((no_oci_status != 1)); then
+    printf '%s\n' "expected oci_unavailable exit 1, got $no_oci_status" >&2
+    cat "$evidence_directory/armed-no-oci.out" >&2 || true
+    cat "$evidence_directory/armed-no-oci.err" >&2 || true
+    exit 1
+  fi
+  if ! grep -Fq 'oci_unavailable' "$evidence_directory/armed-no-oci.err"; then
+    printf '%s\n' "expected oci_unavailable" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-no-oci.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-no-oci.err"
+
+  echo "===== armed stub with matching Box+OCI pins must stay OPEN (exit 3) ====="
   stub_match="$evidence_directory/stub-box-match"
   mkdir -p -- "$stub_match"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-box"
   chmod +x "$stub_match/a3s-box"
   printf '%s\n' "$revision" >"$stub_match/BOX-REVISION"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_match/a3s-oci"
+  chmod +x "$stub_match/a3s-oci"
+  printf '%s\n' "$oci_runtime_revision" >"$stub_match/OCI-RUNTIME-REVISION"
   stub_node_agent="$evidence_directory/stub-node-agent"
   printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_node_agent"
   chmod +x "$stub_node_agent"
@@ -314,6 +418,8 @@ if [[ $os_name == Linux ]]; then
   match_evidence="$evidence_directory/match-evidence"
   set +e
   env -u A3S_CLOUD_BOX_REVISION \
+    -u A3S_CLOUD_OCI_BIN \
+    -u A3S_CLOUD_OCI_RUNTIME_REVISION \
     -u A3S_CLOUD_BX0_RUNTIME_REVISION_FILE \
     -u A3S_CLOUD_BX0_GATEWAY_REVISION_FILE \
     A3S_CLOUD_BX0_CLEAN_HOST=1 \
@@ -344,7 +450,8 @@ if [[ $os_name == Linux ]]; then
     'pw0_no_pin_file' \
     'bound=Cloud+Runtime+Box+Gateway' \
     'step1=enroll_preflight_ok' \
-    'steps2-9=not_run'; do
+    'step2=oci_preflight_ok' \
+    'steps3-9=not_run'; do
     if ! grep -Fq "$needle" <<<"$combined_match"; then
       printf '%s\n' "expected armed OPEN output to include: $needle" >&2
       exit 1
@@ -352,10 +459,13 @@ if [[ $os_name == Linux ]]; then
   done
   grep -Fq 'status=preflight_ok' "$match_evidence/01-enroll.txt"
   grep -Fq 'enroll=not_run' "$match_evidence/01-enroll.txt"
+  grep -Fq 'status=preflight_ok' "$match_evidence/02-oci.txt"
+  grep -Fq 'oci=not_run' "$match_evidence/02-oci.txt"
   [[ -f $match_evidence/09-stop_cleanup.txt ]]
   forbid_exit_certified_claim "$evidence_directory/armed-match.out"
   forbid_exit_certified_claim "$evidence_directory/armed-match.err"
   forbid_exit_certified_claim "$match_evidence/01-enroll.txt"
+  forbid_exit_certified_claim "$match_evidence/02-oci.txt"
 fi
 
 printf '%s\n' \
