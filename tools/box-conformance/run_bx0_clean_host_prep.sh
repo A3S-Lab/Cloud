@@ -90,8 +90,10 @@ This prep does NOT claim A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED.
   bash tools/box-conformance/run_bx0_clean_host_gate.sh
   # expected with all receipts: exit 3 OPEN execute_receipts_complete=1 loop_exit=not_certified
 
-6) After full enroll→…→cleanup, collect LOOP evidence; exit audit still needs Power (PW0):
+6) After full enroll→…→cleanup, collect LOOP evidence from the gate evidence dir
+   (steps 1–9 *=executed); exit audit still needs Power (PW0):
   bash tools/box-conformance/collect_bx0_clean_host_evidence.sh \\
-    --host HOST --service-id ID --node-id ID --artifact-digest DIGEST
+    --host HOST --service-id ID --node-id ID --artifact-digest DIGEST \\
+    --gate-evidence-dir "\$A3S_CLOUD_BX0_EVIDENCE_DIR"
   See tools/box-conformance/OPERATOR_CLEAN_HOST.md
 EOF

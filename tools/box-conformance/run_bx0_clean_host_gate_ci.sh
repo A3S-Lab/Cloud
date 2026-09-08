@@ -1999,6 +1999,9 @@ bash -n "$exit_audit"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$validator"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$exit_audit"
 grep -Fq 'power_unbound' "$exit_audit"
+grep -Fq 'bx0_require_execute_receipts_dir' "$steps"
+grep -Fq 'execute_receipts_incomplete' "$collector"
+grep -Fq -- '--gate-evidence-dir' "$collector"
 # EXIT_CERTIFIED may appear in exit_audit source as the success path, but CI
 # must prove it is never emitted without Power+LOOP. Collector must never claim it.
 if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$collector"; then
@@ -2028,6 +2031,84 @@ bash "$validator" "$good_loop" "$cloud_revision" "$runtime_revision" "$revision"
 forbid_exit_certified_claim "$evidence_directory/validator-good.out"
 forbid_exit_certified_claim "$evidence_directory/validator-good.err"
 
+echo "===== collector refuses LOOP without execute receipts ====="
+set +e
+bash "$collector" \
+  --host ci-host-1 \
+  --service-id svc-1 \
+  --node-id node-1 \
+  --artifact-digest sha256:deadbeef \
+  --evidence-dir "$evidence_directory/collector-no-receipts" \
+  >"$evidence_directory/collector-no-receipts.out" 2>"$evidence_directory/collector-no-receipts.err"
+no_receipts_status=$?
+set -e
+if ((no_receipts_status == 0)); then
+  printf '%s\n' "expected collector without gate evidence to fail" >&2
+  exit 1
+fi
+grep -Fq 'execute_receipts_dir_missing' "$evidence_directory/collector-no-receipts.err"
+forbid_exit_certified_claim "$evidence_directory/collector-no-receipts.out"
+forbid_exit_certified_claim "$evidence_directory/collector-no-receipts.err"
+
+gate_receipts="$evidence_directory/gate-execute-receipts"
+mkdir -p -- "$gate_receipts"
+cat >"$gate_receipts/01-enroll.txt" <<'EOF'
+step=1
+name=enroll
+status=execute_ok
+node_id=node-1
+enroll=executed
+EOF
+cat >"$gate_receipts/02-oci.txt" <<'EOF'
+step=2
+name=oci
+status=execute_ok
+artifact_digest=sha256:deadbeef
+oci=executed
+EOF
+cat >"$gate_receipts/03-deploy.txt" <<'EOF'
+step=3
+name=deploy
+status=execute_ok
+service_id=svc-1
+deploy=executed
+EOF
+for pair in \
+  '04-health.txt:health' \
+  '05-https.txt:https' \
+  '06-logs.txt:logs' \
+  '07-update.txt:update' \
+  '08-rollback.txt:rollback' \
+  '09-stop_cleanup.txt:stop_cleanup'; do
+  file=${pair%%:*}
+  name=${pair#*:}
+  cat >"$gate_receipts/$file" <<EOF
+step=${file%%-*}
+name=$name
+status=execute_ok
+${name}=executed
+EOF
+done
+
+set +e
+bash "$collector" \
+  --host ci-host-1 \
+  --service-id svc-1 \
+  --node-id node-mismatch \
+  --artifact-digest sha256:deadbeef \
+  --gate-evidence-dir "$gate_receipts" \
+  --evidence-dir "$evidence_directory/collector-mismatch" \
+  >"$evidence_directory/collector-mismatch.out" 2>"$evidence_directory/collector-mismatch.err"
+mismatch_status=$?
+set -e
+if ((mismatch_status == 0)); then
+  printf '%s\n' "expected collector node_id mismatch to fail" >&2
+  exit 1
+fi
+grep -Fq 'execute_receipt_node_id_mismatch' "$evidence_directory/collector-mismatch.err"
+forbid_exit_certified_claim "$evidence_directory/collector-mismatch.out"
+forbid_exit_certified_claim "$evidence_directory/collector-mismatch.err"
+
 echo "===== collector writes LOOP only (never EXIT) ====="
 collect_dir="$evidence_directory/collector"
 bash "$collector" \
@@ -2035,9 +2116,11 @@ bash "$collector" \
   --service-id svc-1 \
   --node-id node-1 \
   --artifact-digest sha256:deadbeef \
+  --gate-evidence-dir "$gate_receipts" \
   --evidence-dir "$collect_dir" \
   >"$evidence_directory/collector.out" 2>"$evidence_directory/collector.err"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_COLLECTED' "$evidence_directory/collector.out"
+grep -Fq 'execute_receipts_complete=1' "$evidence_directory/collector.out"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$collect_dir/bx0-clean-host-certification.txt"
 grep -Fq 'product_exit=not_claimed' "$evidence_directory/collector.out"
 forbid_exit_certified_claim "$evidence_directory/collector.out"

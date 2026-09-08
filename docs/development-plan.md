@@ -824,7 +824,9 @@ Operator LOOP certification
 `collect_bx0_clean_host_evidence.sh` /
 `run_bx0_clean_host_exit_audit.sh`) accepts only a non-placeholder
 `A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED` line matching exact Cloud/Runtime/Box/
-Gateway pins; without LOOP evidence or while Power remains UNBOUND the exit
+Gateway pins, and only when `--gate-evidence-dir` / `A3S_CLOUD_BX0_EVIDENCE_DIR`
+contains steps 1–9 `*=executed` receipts matching node_id / artifact_digest /
+service_id; without LOOP evidence or while Power remains UNBOUND the exit
 audit prints `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` and exits 2. Product
 `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` requires LOOP + a bound Power pin
 (PW0). See `tools/box-conformance/OPERATOR_CLEAN_HOST.md`.

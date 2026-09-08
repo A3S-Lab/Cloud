@@ -65,11 +65,14 @@ bash tools/box-conformance/run_bx0_clean_host_gate.sh
 ## Collect LOOP evidence (never claims EXIT)
 
 ```bash
+# GATE_EVIDENCE_DIR = absolute path from the armed EXECUTE gate (steps 1–9 *=executed).
+# Without it the collector fail-closes (execute_receipts_dir_missing).
 bash tools/box-conformance/collect_bx0_clean_host_evidence.sh \
   --host "$HOST" \
   --service-id "$SERVICE_ID" \
   --node-id "$NODE_ID" \
   --artifact-digest "$ARTIFACT_DIGEST" \
+  --gate-evidence-dir "$GATE_EVIDENCE_DIR" \
   --evidence-dir /tmp/bx0-evidence
 ```
 

@@ -1128,3 +1128,74 @@ stop_cleanup=executed
 EOF
   return 0
 }
+
+# Require gate evidence dir with steps 1–9 *=executed. Optionally check
+# node_id / artifact_digest / service_id match collector fields.
+# Returns 0 when complete; prints reason and returns 1 otherwise.
+bx0_require_execute_receipts_dir() {
+  local evidence_dir=$1
+  local expected_node_id=${2:-}
+  local expected_artifact_digest=${3:-}
+  local expected_service_id=${4:-}
+  local file key expected actual
+  local -a required=(
+    '01-enroll.txt:enroll=executed'
+    '02-oci.txt:oci=executed'
+    '03-deploy.txt:deploy=executed'
+    '04-health.txt:health=executed'
+    '05-https.txt:https=executed'
+    '06-logs.txt:logs=executed'
+    '07-update.txt:update=executed'
+    '08-rollback.txt:rollback=executed'
+    '09-stop_cleanup.txt:stop_cleanup=executed'
+  )
+
+  if [[ -z $evidence_dir || $evidence_dir != /* || ! -d $evidence_dir ]]; then
+    printf '%s\n' 'reason=execute_receipts_dir_missing' >&2
+    return 1
+  fi
+
+  for entry in "${required[@]}"; do
+    file=${entry%%:*}
+    key=${entry#*:}
+    if [[ ! -f $evidence_dir/$file ]]; then
+      printf '%s\n' "reason=execute_receipt_missing file=$file" >&2
+      return 1
+    fi
+    if ! grep -Fq "$key" "$evidence_dir/$file"; then
+      printf '%s\n' "reason=execute_receipt_incomplete file=$file need=$key" >&2
+      return 1
+    fi
+    if grep -Fq 'status=execute_failed' "$evidence_dir/$file"; then
+      printf '%s\n' "reason=execute_receipt_failed file=$file" >&2
+      return 1
+    fi
+  done
+
+  if [[ -n $expected_node_id ]]; then
+    actual=$(awk -F= '/^node_id=/{print $2; exit}' "$evidence_dir/01-enroll.txt" 2>/dev/null || true)
+    if [[ $actual != "$expected_node_id" ]]; then
+      printf '%s\n' \
+        "reason=execute_receipt_node_id_mismatch got=$actual expected=$expected_node_id" >&2
+      return 1
+    fi
+  fi
+  if [[ -n $expected_artifact_digest ]]; then
+    actual=$(awk -F= '/^artifact_digest=/{print $2; exit}' "$evidence_dir/02-oci.txt" 2>/dev/null || true)
+    if [[ $actual != "$expected_artifact_digest" ]]; then
+      printf '%s\n' \
+        "reason=execute_receipt_artifact_digest_mismatch got=$actual expected=$expected_artifact_digest" >&2
+      return 1
+    fi
+  fi
+  if [[ -n $expected_service_id ]]; then
+    actual=$(awk -F= '/^service_id=/{print $2; exit}' "$evidence_dir/03-deploy.txt" 2>/dev/null || true)
+    if [[ $actual != "$expected_service_id" ]]; then
+      printf '%s\n' \
+        "reason=execute_receipt_service_id_mismatch got=$actual expected=$expected_service_id" >&2
+      return 1
+    fi
+  fi
+
+  return 0
+}
