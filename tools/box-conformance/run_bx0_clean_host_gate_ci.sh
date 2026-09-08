@@ -138,8 +138,13 @@ grep -Fq 'oci_runtime_revision_mismatch' "$steps"
 grep -Fq 'control_plane_unavailable' "$steps"
 grep -Fq 'health_probe_unavailable' "$steps"
 grep -Fq 'bx0_invoke_http_probe' "$steps"
+grep -Fq 'bx0_invoke_arg_probe' "$steps"
 grep -Fq 'health_probe_failed' "$steps"
 grep -Fq 'https_probe_failed' "$steps"
+grep -Fq 'logs_probe_failed' "$steps"
+grep -Fq 'digest_probe_failed' "$steps"
+grep -Fq 'rollback_probe_failed' "$steps"
+grep -Fq 'logs_probe_host_tool_only' "$steps"
 grep -Fq 'probe_ran=1' "$steps"
 grep -Fq 'gateway_unavailable' "$steps"
 grep -Fq 'gateway_revision_mismatch' "$steps"
@@ -694,8 +699,32 @@ A3S_CLOUD_BX0_EXECUTE=1 \
   bx0_step_logs_execute "$steps_evidence/logs-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/logs-exec-ok/06-logs.txt"
 grep -Fq 'logs=executed' "$steps_evidence/logs-exec-ok/06-logs.txt"
+grep -Fq 'probe_ran=1' "$steps_evidence/logs-exec-ok/06-logs.txt"
 grep -Fq 'cursor-execute-1' "$steps_evidence/logs-exec-ok/06-logs.txt"
 forbid_exit_certified_claim "$steps_evidence/logs-exec-ok/06-logs.txt"
+
+fail_logs="$steps_evidence/stub-logs-probe-fail"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 9' >"$fail_logs"
+chmod +x "$fail_logs"
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_LOGS_PROBE_BIN="$fail_logs" \
+  A3S_CLOUD_BX0_LOGS_CURSOR='cursor-execute-1' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_logs_execute "$1"
+  ' "$steps" "$steps_evidence/logs-exec-fail"
+fail_logs_exec=$?
+set -e
+if ((fail_logs_exec != 1)); then
+  printf '%s\n' "expected logs execute fail on probe exit 9, got $fail_logs_exec" >&2
+  exit 1
+fi
+grep -Fq 'logs_probe_failed' "$steps_evidence/logs-exec-fail/06-logs.txt"
+grep -Fq 'probe_exit=9' "$steps_evidence/logs-exec-fail/06-logs.txt"
+grep -Fq 'logs=not_run' "$steps_evidence/logs-exec-fail/06-logs.txt"
 
 echo "===== step library: update / digest preflight (Darwin-safe) ====="
 set +e
@@ -754,8 +783,32 @@ A3S_CLOUD_BX0_EXECUTE=1 \
   bx0_step_update_execute "$steps_evidence/update-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/update-exec-ok/07-update.txt"
 grep -Fq 'update=executed' "$steps_evidence/update-exec-ok/07-update.txt"
+grep -Fq 'probe_ran=1' "$steps_evidence/update-exec-ok/07-update.txt"
 grep -Fq 'sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210' "$steps_evidence/update-exec-ok/07-update.txt"
 forbid_exit_certified_claim "$steps_evidence/update-exec-ok/07-update.txt"
+
+fail_digest="$steps_evidence/stub-digest-probe-fail"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 11' >"$fail_digest"
+chmod +x "$fail_digest"
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_DIGEST_PROBE_BIN="$fail_digest" \
+  A3S_CLOUD_BX0_UPDATE_DIGEST='sha256:fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_update_execute "$1"
+  ' "$steps" "$steps_evidence/update-exec-fail"
+fail_update_exec=$?
+set -e
+if ((fail_update_exec != 1)); then
+  printf '%s\n' "expected update execute fail on probe exit 11, got $fail_update_exec" >&2
+  exit 1
+fi
+grep -Fq 'digest_probe_failed' "$steps_evidence/update-exec-fail/07-update.txt"
+grep -Fq 'probe_exit=11' "$steps_evidence/update-exec-fail/07-update.txt"
+grep -Fq 'update=not_run' "$steps_evidence/update-exec-fail/07-update.txt"
 
 echo "===== step library: rollback preflight (Darwin-safe) ====="
 set +e
@@ -814,8 +867,32 @@ A3S_CLOUD_BX0_EXECUTE=1 \
   bx0_step_rollback_execute "$steps_evidence/rollback-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
 grep -Fq 'rollback=executed' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
+grep -Fq 'probe_ran=1' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
 grep -Fq 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' "$steps_evidence/rollback-exec-ok/08-rollback.txt"
 forbid_exit_certified_claim "$steps_evidence/rollback-exec-ok/08-rollback.txt"
+
+fail_rollback="$steps_evidence/stub-rollback-probe-fail"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 13' >"$fail_rollback"
+chmod +x "$fail_rollback"
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_ROLLBACK_PROBE_BIN="$fail_rollback" \
+  A3S_CLOUD_BX0_ROLLBACK_DIGEST='sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_rollback_execute "$1"
+  ' "$steps" "$steps_evidence/rollback-exec-fail"
+fail_rollback_exec=$?
+set -e
+if ((fail_rollback_exec != 1)); then
+  printf '%s\n' "expected rollback execute fail on probe exit 13, got $fail_rollback_exec" >&2
+  exit 1
+fi
+grep -Fq 'rollback_probe_failed' "$steps_evidence/rollback-exec-fail/08-rollback.txt"
+grep -Fq 'probe_exit=13' "$steps_evidence/rollback-exec-fail/08-rollback.txt"
+grep -Fq 'rollback=not_run' "$steps_evidence/rollback-exec-fail/08-rollback.txt"
 
 echo "===== step library: stop/cleanup preflight (Darwin-safe) ====="
 set +e

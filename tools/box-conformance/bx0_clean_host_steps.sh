@@ -814,6 +814,23 @@ bx0_resolve_logs_probe() {
   return 1
 }
 
+# Invoke an evidence probe with one argument (cursor or digest). Host tools
+# used only for preflight availability (jq/sha256sum/shasum/diff/cmp) return 2
+# so execute fail-closes until an override probe bin is set. Returns 0 on
+# success, probe exit status otherwise.
+bx0_invoke_arg_probe() {
+  local probe=$1
+  local arg=$2
+  local base
+  base=$(basename -- "$probe")
+  case $base in
+    jq | sha256sum | shasum | diff | cmp)
+      return 2
+      ;;
+  esac
+  "$probe" "$arg"
+}
+
 # Writes 06-logs.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
 # Requires jq (or override) for structured ordered-log evidence; does not read logs.
 bx0_step_logs_preflight() {
@@ -841,8 +858,8 @@ EOF
   return 0
 }
 
-# Operator ordered-log cursor from a real log read. Does not fetch logs.
-# Returns 0 on logs=executed, 1 on execute_failed. No-op when EXECUTE unset.
+# Operator ordered-log cursor: invoke logs probe with the cursor (never
+# PLACEHOLDER). Host jq is preflight-only. Returns 0 on logs=executed.
 bx0_step_logs_execute() {
   local evidence_dir=$1
   local evidence="$evidence_dir/06-logs.txt"
@@ -878,12 +895,45 @@ EOF
     return 1
   fi
 
+  local probe_rc=0
+  set +e
+  bx0_invoke_arg_probe "$probe" "$cursor"
+  probe_rc=$?
+  set -e
+  if ((probe_rc == 2)); then
+    cat >"$evidence" <<EOF
+step=6
+name=logs
+status=execute_failed
+reason=logs_probe_host_tool_only
+logs_probe=$probe
+logs_cursor=$cursor
+logs=not_run
+hint=Set A3S_CLOUD_LOGS_PROBE_BIN to a probe that accepts the ordered-log cursor
+EOF
+    return 1
+  fi
+  if ((probe_rc != 0)); then
+    cat >"$evidence" <<EOF
+step=6
+name=logs
+status=execute_failed
+reason=logs_probe_failed
+logs_probe=$probe
+logs_cursor=$cursor
+probe_exit=$probe_rc
+logs=not_run
+EOF
+    return 1
+  fi
+
   cat >"$evidence" <<EOF
 step=6
 name=logs
 status=execute_ok
 logs_probe=$probe
 logs_cursor=$cursor
+probe_ran=1
 logs=executed
 EOF
   return 0
@@ -937,8 +987,8 @@ EOF
   return 0
 }
 
-# Operator post-update digest from a real immutable update. Does not update.
-# Returns 0 on update=executed, 1 on execute_failed. No-op when EXECUTE unset.
+# Operator post-update digest: invoke digest probe with the digest (never
+# PLACEHOLDER). Host sha256sum/shasum are preflight-only.
 bx0_step_update_execute() {
   local evidence_dir=$1
   local evidence="$evidence_dir/07-update.txt"
@@ -986,12 +1036,45 @@ EOF
     return 1
   fi
 
+  local probe_rc=0
+  set +e
+  bx0_invoke_arg_probe "$probe" "$digest"
+  probe_rc=$?
+  set -e
+  if ((probe_rc == 2)); then
+    cat >"$evidence" <<EOF
+step=7
+name=update
+status=execute_failed
+reason=digest_probe_host_tool_only
+digest_probe=$probe
+update_digest=$digest
+update=not_run
+hint=Set A3S_CLOUD_DIGEST_PROBE_BIN to a probe that accepts the update digest
+EOF
+    return 1
+  fi
+  if ((probe_rc != 0)); then
+    cat >"$evidence" <<EOF
+step=7
+name=update
+status=execute_failed
+reason=digest_probe_failed
+digest_probe=$probe
+update_digest=$digest
+probe_exit=$probe_rc
+update=not_run
+EOF
+    return 1
+  fi
+
   cat >"$evidence" <<EOF
 step=7
 name=update
 status=execute_ok
 digest_probe=$probe
 update_digest=$digest
+probe_ran=1
 update=executed
 EOF
   return 0
@@ -1044,8 +1127,8 @@ EOF
   return 0
 }
 
-# Operator post-rollback digest from a real cloned rollback. Does not roll back.
-# Returns 0 on rollback=executed, 1 on execute_failed. No-op when EXECUTE unset.
+# Operator post-rollback digest: invoke rollback probe with the digest (never
+# PLACEHOLDER). Host diff/cmp are preflight-only.
 bx0_step_rollback_execute() {
   local evidence_dir=$1
   local evidence="$evidence_dir/08-rollback.txt"
@@ -1093,12 +1176,45 @@ EOF
     return 1
   fi
 
+  local probe_rc=0
+  set +e
+  bx0_invoke_arg_probe "$probe" "$digest"
+  probe_rc=$?
+  set -e
+  if ((probe_rc == 2)); then
+    cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=execute_failed
+reason=rollback_probe_host_tool_only
+rollback_probe=$probe
+rollback_digest=$digest
+rollback=not_run
+hint=Set A3S_CLOUD_ROLLBACK_PROBE_BIN to a probe that accepts the rollback digest
+EOF
+    return 1
+  fi
+  if ((probe_rc != 0)); then
+    cat >"$evidence" <<EOF
+step=8
+name=rollback
+status=execute_failed
+reason=rollback_probe_failed
+rollback_probe=$probe
+rollback_digest=$digest
+probe_exit=$probe_rc
+rollback=not_run
+EOF
+    return 1
+  fi
+
   cat >"$evidence" <<EOF
 step=8
 name=rollback
 status=execute_ok
 rollback_probe=$probe
 rollback_digest=$digest
+probe_ran=1
 rollback=executed
 EOF
   return 0
