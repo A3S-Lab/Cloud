@@ -447,6 +447,9 @@ boundary.
    (`*=not_run`); CI harness `run_bx0_clean_host_gate_ci.sh` certifies
    fail-closed behavior only (`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`). Complete
    Box-only conformance and the clean-host product release gate remain open.
+   Operator LOOP certification / exit-audit scripts now fail-close without
+   LOOP evidence or while Power is UNBOUND; they never fake
+   `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`.
 
 Cloud now delegates provider certification to the exact A3S Box revision and
 uses Box-hosted fixtures for local development and the C0 PostgreSQL gates. The

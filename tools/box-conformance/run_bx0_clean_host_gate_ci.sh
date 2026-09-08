@@ -1112,5 +1112,105 @@ if [[ $os_name == Linux ]]; then
   forbid_exit_certified_claim "$match_evidence/09-stop_cleanup.txt"
 fi
 
+echo "===== LOOP certification validator refuse-to-fake ====="
+validator="$tools/validate_bx0_clean_host_certification.sh"
+collector="$tools/collect_bx0_clean_host_evidence.sh"
+exit_audit="$tools/run_bx0_clean_host_exit_audit.sh"
+example="$tools/bx0-clean-host-certification.example.txt"
+[[ -f $validator && -f $collector && -f $exit_audit && -f $example ]]
+bash -n "$validator"
+bash -n "$collector"
+bash -n "$exit_audit"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$validator"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$exit_audit"
+grep -Fq 'power_unbound' "$exit_audit"
+# EXIT_CERTIFIED may appear in exit_audit source as the success path, but CI
+# must prove it is never emitted without Power+LOOP. Collector must never claim it.
+if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$collector"; then
+  printf '%s\n' "collector must not printf/echo product EXIT_CERTIFIED" >&2
+  exit 1
+fi
+
+cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
+set +e
+bash "$validator" "$example" "$cloud_revision" "$runtime_revision" "$revision" "$gateway_revision" \
+  >"$evidence_directory/validator-example.out" 2>"$evidence_directory/validator-example.err"
+example_status=$?
+set -e
+if ((example_status == 0)); then
+  printf '%s\n' "expected PLACEHOLDER example certification to FAIL" >&2
+  exit 1
+fi
+forbid_exit_certified_claim "$evidence_directory/validator-example.out"
+forbid_exit_certified_claim "$evidence_directory/validator-example.err"
+
+good_loop="$evidence_directory/good-loop-certification.txt"
+printf '%s\n' \
+  "A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED cloud_revision=$cloud_revision runtime_revision=$runtime_revision box_revision=$revision gateway_revision=$gateway_revision host=ci-host-1 service_id=svc-1 node_id=node-1 artifact_digest=sha256:deadbeef" \
+  >"$good_loop"
+bash "$validator" "$good_loop" "$cloud_revision" "$runtime_revision" "$revision" "$gateway_revision" \
+  >"$evidence_directory/validator-good.out" 2>"$evidence_directory/validator-good.err"
+forbid_exit_certified_claim "$evidence_directory/validator-good.out"
+forbid_exit_certified_claim "$evidence_directory/validator-good.err"
+
+echo "===== collector writes LOOP only (never EXIT) ====="
+collect_dir="$evidence_directory/collector"
+bash "$collector" \
+  --host ci-host-1 \
+  --service-id svc-1 \
+  --node-id node-1 \
+  --artifact-digest sha256:deadbeef \
+  --evidence-dir "$collect_dir" \
+  >"$evidence_directory/collector.out" 2>"$evidence_directory/collector.err"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_COLLECTED' "$evidence_directory/collector.out"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$collect_dir/bx0-clean-host-certification.txt"
+grep -Fq 'product_exit=not_claimed' "$evidence_directory/collector.out"
+forbid_exit_certified_claim "$evidence_directory/collector.out"
+forbid_exit_certified_claim "$evidence_directory/collector.err"
+forbid_exit_certified_claim "$collect_dir/bx0-clean-host-certification.txt"
+forbid_exit_certified_claim "$collect_dir/checklist.txt"
+
+echo "===== exit audit without LOOP must exit 2 EXIT_BLOCKED ====="
+unset A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION || true
+unset A3S_CLOUD_BX0_POWER_REVISION_FILE || true
+audit_dir="$evidence_directory/exit-audit-no-loop"
+set +e
+bash "$exit_audit" "$audit_dir" \
+  >"$evidence_directory/exit-audit-no-loop.out" 2>"$evidence_directory/exit-audit-no-loop.err"
+no_loop_status=$?
+set -e
+if ((no_loop_status != 2)); then
+  printf '%s\n' "expected exit audit without LOOP to exit 2, got $no_loop_status" >&2
+  cat "$evidence_directory/exit-audit-no-loop.out" >&2 || true
+  cat "$evidence_directory/exit-audit-no-loop.err" >&2 || true
+  exit 1
+fi
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$audit_dir/bx0-exit-certification.txt"
+grep -Fq 'loop_certification_unavailable' "$audit_dir/bx0-exit-certification.txt"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-loop.out"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-loop.err"
+forbid_exit_certified_claim "$audit_dir/bx0-exit-certification.txt"
+
+echo "===== exit audit with LOOP but Power UNBOUND must exit 2 ====="
+audit_dir_power="$evidence_directory/exit-audit-no-power"
+set +e
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+  env -u A3S_CLOUD_BX0_POWER_REVISION_FILE \
+  bash "$exit_audit" "$audit_dir_power" \
+  >"$evidence_directory/exit-audit-no-power.out" 2>"$evidence_directory/exit-audit-no-power.err"
+no_power_status=$?
+set -e
+if ((no_power_status != 2)); then
+  printf '%s\n' "expected exit audit with LOOP but no Power to exit 2, got $no_power_status" >&2
+  cat "$evidence_directory/exit-audit-no-power.out" >&2 || true
+  cat "$evidence_directory/exit-audit-no-power.err" >&2 || true
+  exit 1
+fi
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$audit_dir_power/bx0-exit-certification.txt"
+grep -Fq 'power_unbound' "$audit_dir_power/bx0-exit-certification.txt"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.out"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.err"
+forbid_exit_certified_claim "$audit_dir_power/bx0-exit-certification.txt"
+
 printf '%s\n' \
   "A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED revision=$revision host_os=$os_name fail_closed=1"

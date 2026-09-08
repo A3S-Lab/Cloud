@@ -1,0 +1,32 @@
+# Example operator certification for BX0.5 clean-host LOOP evidence.
+# Prefer the operator collector instead of hand-editing this example:
+#   bash tools/box-conformance/collect_bx0_clean_host_evidence.sh \
+#     --host HOST --service-id ID --node-id ID --artifact-digest DIGEST \
+#     [--evidence-dir DIR]
+# Then point A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION at the collector's
+# bx0-clean-host-certification.txt (never at this PLACEHOLDER example).
+#
+# IMPORTANT: This example itself must NOT unlock the exit gate. Validation
+# rejects any PLACEHOLDER_* field value. Pointing
+# A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION at this file fails closed.
+#
+# Required non-comment line shape (exact marker + eight fields):
+#   A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED cloud_revision=<40hex> runtime_revision=<40hex> box_revision=<40hex> gateway_revision=<40hex> host=<nonempty> service_id=<nonempty> node_id=<nonempty> artifact_digest=<nonempty>
+#
+# Field requirements enforced by validate_bx0_clean_host_certification.sh:
+# - cloud/runtime/box/gateway revisions must be 40 lowercase hex and match pin files
+# - host=, service_id=, node_id=, artifact_digest= must be nonempty
+# - no field may use a PLACEHOLDER_* value
+# - unknown fields are rejected; comment lines (#) are ignored
+#
+# LOOP_CERTIFIED is operator evidence only. Product
+# A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED additionally requires a bound Power
+# pin (PW0) via run_bx0_clean_host_exit_audit.sh.
+#
+# Documentation-only example (PLACEHOLDER_* → FAIL when used as gate input):
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED cloud_revision=PLACEHOLDER_CLOUD_REVISION runtime_revision=PLACEHOLDER_RUNTIME_REVISION box_revision=PLACEHOLDER_BOX_REVISION gateway_revision=PLACEHOLDER_GATEWAY_REVISION host=PLACEHOLDER_HOST service_id=PLACEHOLDER_SERVICE_ID node_id=PLACEHOLDER_NODE_ID artifact_digest=PLACEHOLDER_ARTIFACT_DIGEST
+#
+# Evidence checklist the operator run must retain elsewhere:
+# - enroll → OCI → deploy → health → HTTPS → logs → update → rollback → stop/cleanup
+# - Exact Cloud/Runtime/Box/Gateway pins; Power remains UNBOUND until PW0
+# - Empty Box + host inventory after cleanup (no residue)

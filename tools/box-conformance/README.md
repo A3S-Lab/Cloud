@@ -145,3 +145,14 @@ Darwin-safe enroll…stop/cleanup preflight library cases, unarmed /
 armed-without-box paths, Linux stub pin missing/mismatch/match, Runtime
 pin-missing, and missing-dependency fail-closed behavior, then emits
 `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
+
+### BX0.5 operator LOOP certification (exit audit)
+
+`validate_bx0_clean_host_certification.sh` validates an operator
+`A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED` line (exact Cloud/Runtime/Box/Gateway
+pins plus host/service_id/node_id/artifact_digest; rejects `PLACEHOLDER_*`).
+`collect_bx0_clean_host_evidence.sh` writes that line and never claims product
+EXIT. `run_bx0_clean_host_exit_audit.sh` fail-closes with
+`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` when LOOP evidence is missing or when
+Power remains UNBOUND (PW0); it emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
+only with LOOP + a bound Power pin. See `OPERATOR_CLEAN_HOST.md`.

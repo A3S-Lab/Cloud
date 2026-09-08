@@ -806,6 +806,16 @@ those refuse paths (including stub pin missing/mismatch/match and all nine
 step preflights) and may emit `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only; it
 never unlocks product EXIT.
 
+Operator LOOP certification
+(`validate_bx0_clean_host_certification.sh` /
+`collect_bx0_clean_host_evidence.sh` /
+`run_bx0_clean_host_exit_audit.sh`) accepts only a non-placeholder
+`A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED` line matching exact Cloud/Runtime/Box/
+Gateway pins; without LOOP evidence or while Power remains UNBOUND the exit
+audit prints `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` and exits 2. Product
+`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` requires LOOP + a bound Power pin
+(PW0). See `tools/box-conformance/OPERATOR_CLEAN_HOST.md`.
+
 On a clean supported Linux host with no Docker or compatible daemon, install
 exact Cloud, Runtime, Box, Gateway, and Power revisions; enroll one outbound
 node; build and publish an OCI Artifact; deploy, route, observe, update, roll
