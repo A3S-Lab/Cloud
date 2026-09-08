@@ -149,7 +149,9 @@ hex), `A3S_CLOUD_BX0_SERVICE_ID`, `A3S_CLOUD_BX0_HEALTH_URL` (`http`/`https`),
 `A3S_CLOUD_BX0_ROLLBACK_DIGEST` (`sha256:` + 64 hex), and
 `A3S_CLOUD_BX0_CLEANUP_INSTANCE` are supplied (rejects `PLACEHOLDER_*`);
 missing execute inputs fail-closed. When all nine execute receipts land, OPEN
-prints `execute_receipts_complete=1` and still `loop_exit=not_certified` — not
+prints `execute_receipts_complete=1` only after re-verifying on-disk
+`*=executed` files, plus `next_loop` / `next_exit` /
+`product_exit=not_claimed`, and still `loop_exit=not_certified` — not
 product EXIT. The gate does not start the long-poll agent or
 publish/deploy/probe/route/read logs/update/rollback/stop. `run_bx0_clean_host_prep.sh`
 prints the operator enroll recipe without claiming LOOP or EXIT. See

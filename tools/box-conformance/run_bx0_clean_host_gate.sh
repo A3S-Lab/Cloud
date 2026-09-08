@@ -156,6 +156,9 @@ evidence_dir="${A3S_CLOUD_BX0_EVIDENCE_DIR:-}"
 if [[ -z $evidence_dir ]]; then
   evidence_dir="$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-bx0-clean-host.XXXXXX")"
 fi
+if [[ $evidence_dir != /* ]]; then
+  die "A3S_CLOUD_BX0_EVIDENCE_DIR must be an absolute path (got: $evidence_dir)"
+fi
 mkdir -p -- "$evidence_dir"
 
 if ! bx0_step_enroll_preflight "$evidence_dir"; then
@@ -457,6 +460,17 @@ fi
 
 execute_receipts_complete=0
 if [[ $step9_status == stop_cleanup_executed ]]; then
+  # Re-verify on-disk steps 1–9 *=executed before claiming complete (status
+  # alone is insufficient for LOOP/exit-audit consumers).
+  if ! bx0_require_execute_receipts_dir "$evidence_dir"; then
+    print_checklist
+    printf '%s\n' \
+      "BX0 clean-host gate: FAIL_CLOSED reason=execute_receipts_incomplete" \
+      "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=execute_receipts_incomplete" \
+      "evidence_dir=$evidence_dir" \
+      'EXECUTE claimed stop/cleanup but gate evidence is missing *=executed receipts.' >&2
+    exit 1
+  fi
   execute_receipts_complete=1
 fi
 
@@ -477,6 +491,14 @@ printf 'step8_rollback=%s rollback=%s\n' "$step8_status" "$step8_rollback"
 printf 'step9_stop_cleanup=%s stop_cleanup=%s\n' "$step9_status" "$step9_stop_cleanup"
 printf 'execute_receipts_complete=%s\n' "$execute_receipts_complete"
 printf 'evidence_dir=%s\n' "$evidence_dir"
+if ((execute_receipts_complete == 1)); then
+  printf '%s\n' \
+    'next_loop=collect_bx0_clean_host_evidence.sh' \
+    "next_loop_gate_evidence_dir=$evidence_dir" \
+    'next_exit=run_bx0_clean_host_exit_audit.sh' \
+    'next_exit_requires=LOOP+gate_evidence+Power' \
+    'product_exit=not_claimed'
+fi
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"
 printf 'install helper: %s\n' "$INSTALL_BOX_RELEASE"
 print_checklist

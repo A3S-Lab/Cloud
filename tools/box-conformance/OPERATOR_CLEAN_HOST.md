@@ -56,11 +56,12 @@ export A3S_CLOUD_BX0_ROLLBACK_DIGEST=sha256:<64-hex>
 export A3S_CLOUD_BX0_CLEANUP_INSTANCE=<stopped-removed-instance-id>
 export A3S_CLOUD_ENROLLMENT_TOKEN=...
 bash tools/box-conformance/run_bx0_clean_host_gate.sh
-# expected with all receipts: exit 3 OPEN execute_receipts_complete=1 loop_exit=not_certified
+# expected with all receipts: exit 3 OPEN execute_receipts_complete=1
+#   next_loop=… next_exit=… product_exit=not_claimed loop_exit=not_certified
 ```
 
 3. After receipts, collect LOOP evidence against exact Cloud/Runtime/Box/Gateway
-   pins. Retain Service/node/artifact identities.
+   pins using the gate `evidence_dir`. Retain Service/node/artifact identities.
 
 ## Collect LOOP evidence (never claims EXIT)
 
