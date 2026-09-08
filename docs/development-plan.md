@@ -808,8 +808,9 @@ validated node ACL/token/`A3S_CLOUD_BX0_ENROLL_NODE_ID`,
 `A3S_CLOUD_BX0_LOGS_CURSOR`, `A3S_CLOUD_BX0_UPDATE_DIGEST`,
 `A3S_CLOUD_BX0_ROLLBACK_DIGEST`, and `A3S_CLOUD_BX0_CLEANUP_INSTANCE` from real
 enroll/OCI/deploy/Ready/managed-TLS/log read/immutable update/cloned
-rollback/stop-remove (never PLACEHOLDER); all nine execute still print
-`execute_receipts_complete=1` only after re-verifying on-disk gate receipts,
+rollback/stop-remove (never PLACEHOLDER); health and HTTPS execute invoke the
+HTTP probe against the Ready/TLS URLs (`probe_ran=1`); all nine execute still
+print `execute_receipts_complete=1` only after re-verifying on-disk gate receipts,
 plus `next_loop` / `next_exit` / `product_exit=not_claimed` and
 `loop_exit=not_certified` without product EXIT. Prep
 `tools/box-conformance/run_bx0_clean_host_prep.sh` prints the recipe without

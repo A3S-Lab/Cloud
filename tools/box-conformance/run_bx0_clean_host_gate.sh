@@ -356,7 +356,7 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
       "BX0 clean-host gate: FAIL_CLOSED reason=$health_reason" \
       "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$health_reason" \
       "evidence=$evidence_dir/04-health.txt" \
-      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HEALTH_URL (http/https) from a real Ready probe.' >&2
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HEALTH_URL (http/https) that the health probe can reach.' >&2
     exit 1
   fi
   step4_status=health_executed
@@ -375,7 +375,7 @@ if [[ ${A3S_CLOUD_BX0_EXECUTE:-} == 1 ]]; then
       "BX0 clean-host gate: FAIL_CLOSED reason=$https_reason" \
       "A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=$https_reason" \
       "evidence=$evidence_dir/05-https.txt" \
-      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HTTPS_URL (https://) from a real managed-TLS reach.' >&2
+      'A3S_CLOUD_BX0_EXECUTE=1 requires A3S_CLOUD_BX0_HTTPS_URL (https://) that the HTTP probe can reach via managed TLS.' >&2
     exit 1
   fi
   step5_status=https_executed

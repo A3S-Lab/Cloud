@@ -137,6 +137,10 @@ grep -Fq 'oci_unavailable' "$steps"
 grep -Fq 'oci_runtime_revision_mismatch' "$steps"
 grep -Fq 'control_plane_unavailable' "$steps"
 grep -Fq 'health_probe_unavailable' "$steps"
+grep -Fq 'bx0_invoke_http_probe' "$steps"
+grep -Fq 'health_probe_failed' "$steps"
+grep -Fq 'https_probe_failed' "$steps"
+grep -Fq 'probe_ran=1' "$steps"
 grep -Fq 'gateway_unavailable' "$steps"
 grep -Fq 'gateway_revision_mismatch' "$steps"
 grep -Fq 'logs_probe_unavailable' "$steps"
@@ -493,8 +497,33 @@ A3S_CLOUD_BX0_EXECUTE=1 \
   bx0_step_health_execute "$steps_evidence/health-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/health-exec-ok/04-health.txt"
 grep -Fq 'health=executed' "$steps_evidence/health-exec-ok/04-health.txt"
+grep -Fq 'probe_ran=1' "$steps_evidence/health-exec-ok/04-health.txt"
 grep -Fq 'http://127.0.0.1:18080/ready' "$steps_evidence/health-exec-ok/04-health.txt"
 forbid_exit_certified_claim "$steps_evidence/health-exec-ok/04-health.txt"
+
+fail_probe="$steps_evidence/stub-health-probe-fail"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 7' >"$fail_probe"
+chmod +x "$fail_probe"
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_HEALTH_PROBE_BIN="$fail_probe" \
+  A3S_CLOUD_BX0_HEALTH_URL='http://127.0.0.1:18080/ready' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_health_execute "$1"
+  ' "$steps" "$steps_evidence/health-exec-fail"
+fail_health_exec=$?
+set -e
+if ((fail_health_exec != 1)); then
+  printf '%s\n' "expected health execute fail on probe exit 7, got $fail_health_exec" >&2
+  exit 1
+fi
+grep -Fq 'health_probe_failed' "$steps_evidence/health-exec-fail/04-health.txt"
+grep -Fq 'probe_exit=7' "$steps_evidence/health-exec-fail/04-health.txt"
+grep -Fq 'health=not_run' "$steps_evidence/health-exec-fail/04-health.txt"
+forbid_exit_certified_claim "$steps_evidence/health-exec-fail/04-health.txt"
 
 echo "===== step library: HTTPS / Gateway preflight (Darwin-safe) ====="
 set +e
@@ -558,6 +587,7 @@ echo "===== step library: HTTPS execute (Darwin-safe) ====="
 set +e
 A3S_CLOUD_BX0_EXECUTE=1 \
   A3S_CLOUD_GATEWAY_BIN="$gw_install/a3s-gateway" \
+  A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe" \
   env -u A3S_CLOUD_BX0_HTTPS_URL \
   bash -c '
     set -euo pipefail
@@ -576,12 +606,36 @@ grep -Fq 'https=not_run' "$steps_evidence/https-exec-missing/05-https.txt"
 
 A3S_CLOUD_BX0_EXECUTE=1 \
   A3S_CLOUD_GATEWAY_BIN="$gw_install/a3s-gateway" \
+  A3S_CLOUD_HEALTH_PROBE_BIN="$stub_probe" \
   A3S_CLOUD_BX0_HTTPS_URL='https://svc.example.test/' \
   bx0_step_https_execute "$steps_evidence/https-exec-ok"
 grep -Fq 'status=execute_ok' "$steps_evidence/https-exec-ok/05-https.txt"
 grep -Fq 'https=executed' "$steps_evidence/https-exec-ok/05-https.txt"
+grep -Fq 'probe_ran=1' "$steps_evidence/https-exec-ok/05-https.txt"
 grep -Fq 'https://svc.example.test/' "$steps_evidence/https-exec-ok/05-https.txt"
 forbid_exit_certified_claim "$steps_evidence/https-exec-ok/05-https.txt"
+
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_GATEWAY_BIN="$gw_install/a3s-gateway" \
+  A3S_CLOUD_HEALTH_PROBE_BIN="$fail_probe" \
+  A3S_CLOUD_BX0_HTTPS_URL='https://svc.example.test/' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_https_execute "$1"
+  ' "$steps" "$steps_evidence/https-exec-fail"
+fail_https_exec=$?
+set -e
+if ((fail_https_exec != 1)); then
+  printf '%s\n' "expected HTTPS execute fail on probe exit 7, got $fail_https_exec" >&2
+  exit 1
+fi
+grep -Fq 'https_probe_failed' "$steps_evidence/https-exec-fail/05-https.txt"
+grep -Fq 'probe_exit=7' "$steps_evidence/https-exec-fail/05-https.txt"
+grep -Fq 'https=not_run' "$steps_evidence/https-exec-fail/05-https.txt"
+forbid_exit_certified_claim "$steps_evidence/https-exec-fail/05-https.txt"
 
 echo "===== step library: logs preflight (Darwin-safe) ====="
 set +e

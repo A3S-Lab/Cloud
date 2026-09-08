@@ -465,6 +465,20 @@ bx0_resolve_health_probe() {
   return 1
 }
 
+# Invoke an HTTP(S) reachability probe against URL. Override bins receive the
+# URL as argv[1]. Bare curl uses -fsS. Returns 0 on success.
+bx0_invoke_http_probe() {
+  local probe=$1
+  local url=$2
+  local base
+  base=$(basename -- "$probe")
+  if [[ $base == curl ]]; then
+    "$probe" -fsS -o /dev/null --max-time 15 "$url"
+  else
+    "$probe" "$url"
+  fi
+}
+
 # Writes 04-health.txt. Returns 0 on preflight_ok, 1 on preflight_failed.
 # Requires a resolvable HTTP probe (curl or override); does not hit Ready.
 bx0_step_health_preflight() {
@@ -492,7 +506,7 @@ EOF
   return 0
 }
 
-# Operator Ready URL from a real health probe. Does not curl the Service.
+# Operator Ready URL: invoke HTTP probe against the URL (never PLACEHOLDER).
 # Returns 0 on health=executed, 1 on execute_failed. No-op when EXECUTE unset.
 bx0_step_health_execute() {
   local evidence_dir=$1
@@ -541,12 +555,32 @@ EOF
     return 1
   fi
 
+  local probe_rc=0
+  set +e
+  bx0_invoke_http_probe "$probe" "$health_url"
+  probe_rc=$?
+  set -e
+  if ((probe_rc != 0)); then
+    cat >"$evidence" <<EOF
+step=4
+name=health
+status=execute_failed
+reason=health_probe_failed
+health_probe=$probe
+health_url=$health_url
+probe_exit=$probe_rc
+health=not_run
+EOF
+    return 1
+  fi
+
   cat >"$evidence" <<EOF
 step=4
 name=health
 status=execute_ok
 health_probe=$probe
 health_url=$health_url
+probe_ran=1
 health=executed
 EOF
   return 0
@@ -668,8 +702,8 @@ EOF
   return 0
 }
 
-# Operator managed-TLS URL from a real Gateway route. Does not terminate TLS.
-# Returns 0 on https=executed, 1 on execute_failed. No-op when EXECUTE unset.
+# Operator managed-TLS URL: Gateway pin already preflighted; invoke HTTP probe
+# against the https URL (never PLACEHOLDER). Returns 0 on https=executed.
 bx0_step_https_execute() {
   local evidence_dir=$1
   local evidence="$evidence_dir/05-https.txt"
@@ -691,6 +725,18 @@ EOF
     return 1
   fi
 
+  local probe=
+  if ! probe="$(bx0_resolve_health_probe)"; then
+    cat >"$evidence" <<'EOF'
+step=5
+name=https
+status=execute_failed
+reason=https_probe_unavailable
+https=not_run
+EOF
+    return 1
+  fi
+
   local https_url=${A3S_CLOUD_BX0_HTTPS_URL:-}
   if [[ -z $https_url || $https_url == PLACEHOLDER_* ]]; then
     cat >"$evidence" <<EOF
@@ -699,6 +745,7 @@ name=https
 status=execute_failed
 reason=https_url_missing
 a3s_gateway=$gateway
+https_probe=$probe
 https=not_run
 hint=Reach the Service through managed Gateway TLS, then set A3S_CLOUD_BX0_HTTPS_URL
 EOF
@@ -711,7 +758,28 @@ name=https
 status=execute_failed
 reason=https_url_invalid
 a3s_gateway=$gateway
+https_probe=$probe
 https_url=$https_url
+https=not_run
+EOF
+    return 1
+  fi
+
+  local probe_rc=0
+  set +e
+  bx0_invoke_http_probe "$probe" "$https_url"
+  probe_rc=$?
+  set -e
+  if ((probe_rc != 0)); then
+    cat >"$evidence" <<EOF
+step=5
+name=https
+status=execute_failed
+reason=https_probe_failed
+a3s_gateway=$gateway
+https_probe=$probe
+https_url=$https_url
+probe_exit=$probe_rc
 https=not_run
 EOF
     return 1
@@ -722,7 +790,9 @@ step=5
 name=https
 status=execute_ok
 a3s_gateway=$gateway
+https_probe=$probe
 https_url=$https_url
+probe_ran=1
 https=executed
 EOF
   return 0
