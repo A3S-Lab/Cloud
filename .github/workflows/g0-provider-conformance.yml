@@ -203,6 +203,11 @@ jobs:
             "$A3S_HOME/bin/a3s-oci"
           install -m 0755 crates/oci-runtime/target/release/a3s-oci-agent \
             "$A3S_HOME/bin/a3s-oci-agent"
+          install -m 0755 crates/oci-runtime/target/release/a3s-oci \
+            "$A3S_HOME/bin/a3s-box-sandbox-oci-launcher"
+          sudo install -d -m 0755 /usr/local/libexec
+          sudo install -m 0755 crates/oci-runtime/target/release/a3s-oci \
+            /usr/local/libexec/a3s-box-sandbox-oci-launcher
           sudo install -d -m 0700 "$A3S_HOME/runtime-secrets"
           sudo mount -t tmpfs \
             -o size=16m,uid=0,gid=0,mode=0700,nosuid,nodev,noexec \
