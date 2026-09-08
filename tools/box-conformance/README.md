@@ -180,8 +180,10 @@ bash tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh
 
 Product clean-host LOOP still requires a supported Linux x86_64 host and the
 pinned Box fixture from `install_box_release.sh` (see `OPERATOR_CLEAN_HOST.md`).
-Power remains UNBOUND until PW0 lands `tools/power-conformance/power-revision`
-(see that directory's README; do not invent the pin).
+Armed clean-host refuses `DOCKER_HOST` and `/var/run/docker.sock` (zero-Docker;
+a3s-box only). Power remains UNBOUND until PW0 lands
+`tools/power-conformance/power-revision` (see that directory's README; do not
+invent the pin).
 
 ### BX0.5 operator LOOP certification (exit audit)
 

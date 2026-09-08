@@ -796,7 +796,8 @@ non-Linux, unarmed Linux (`A3S_CLOUD_BX0_CLEAN_HOST` unset / missing `a3s-box`
 → exit 2), armed install-tree pin missing/mismatch (exit 1), missing Runtime or
 Gateway pin files (exit 1), or armed-but-unautomated pin-matched runs (exit 3 /
 `A3S_CLOUD_BX0_CLEAN_HOST_OPEN`). Armed OPEN now binds Cloud+Runtime+Box+Gateway
-revisions, runs enroll…stop/cleanup steps 1–9 preflight only
+revisions, refuses `DOCKER_HOST` / `/var/run/docker.sock` (zero-Docker), runs
+enroll…stop/cleanup steps 1–9 preflight only
 (`enroll=not_run`, `oci=not_run`, `deploy=not_run`, `health=not_run`,
 `https=not_run`, `logs=not_run`, `update=not_run`, `rollback=not_run`,
 `stop_cleanup=not_run`), leaves Power `UNBOUND` until PW0; product `EXIT`

@@ -5,6 +5,13 @@ Product `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` stays open until:
 1. A validated LOOP certification exists for enroll→…→stop/cleanup, and
 2. A Power pin file is bound (PW0; currently UNBOUND).
 
+## Prerequisites
+
+- Supported **Linux** host (x86_64 for the pinned Box release fixture)
+- No `DOCKER_HOST` and no `/var/run/docker.sock` (a3s-box only)
+- Exact Cloud / Runtime / Box / Gateway pins from this checkout
+- `a3s-box` from `install_box_release.sh` (or matching pin)
+
 ## Linux CI stubs via a3s-box (not Docker)
 
 Darwin hosts can exercise the Linux-only armed stubs of

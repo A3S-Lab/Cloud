@@ -99,6 +99,24 @@ if [[ $armed != 1 ]]; then
   exit 2
 fi
 
+# Box is the sole Runtime path. Refuse Docker-compatible daemon presence.
+if [[ -n ${DOCKER_HOST:-} ]]; then
+  print_checklist
+  printf '%s\n' \
+    'BX0 clean-host gate: FAIL_CLOSED reason=docker_host_set' \
+    'A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=docker_host_set' \
+    'Unset DOCKER_HOST; clean-host requires a3s-box only (never Docker).' >&2
+  exit 1
+fi
+if [[ -e /var/run/docker.sock || -S /var/run/docker.sock ]]; then
+  print_checklist
+  printf '%s\n' \
+    'BX0 clean-host gate: FAIL_CLOSED reason=docker_sock_present' \
+    'A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=docker_sock_present' \
+    'Remove /var/run/docker.sock; clean-host requires a3s-box only (never Docker).' >&2
+  exit 1
+fi
+
 if [[ -z $box_binary || ! -x $box_binary ]]; then
   print_checklist
   printf '%s\n' \

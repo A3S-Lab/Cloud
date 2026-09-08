@@ -110,6 +110,21 @@ if grep -Eiq 'docker[[:space:]]+run|orbstack' "$via_box"; then
   printf '%s\n' "via-box must not invoke Docker/OrbStack" >&2
   exit 1
 fi
+grep -Fq 'docker_host_set' "$gate"
+grep -Fq 'docker_sock_present' "$gate"
+grep -Fq 'never Docker' "$gate"
+# Clean-host tooling must not import retired Docker client/runtime identifiers.
+# Portable across GNU and BusyBox grep (no --exclude).
+bollard_hits=$(
+  find "$tools" -type f ! -name '*.md' ! -name 'run_bx0_clean_host_gate_ci.sh' \
+    -print0 2>/dev/null \
+    | xargs -0 grep -In -E 'bollard|DockerRuntime' 2>/dev/null || true
+)
+if [[ -n $bollard_hits ]]; then
+  printf '%s\n' "box-conformance must not reference bollard/DockerRuntime" >&2
+  printf '%s\n' "$bollard_hits" >&2
+  exit 1
+fi
 
 power_readme="$repository_root/tools/power-conformance/README.md"
 [[ -f $power_readme ]]
@@ -1058,6 +1073,30 @@ if [[ $os_name == Linux ]]; then
   fi
   forbid_exit_certified_claim "$evidence_directory/armed-no-box.out"
   forbid_exit_certified_claim "$evidence_directory/armed-no-box.err"
+
+  echo "===== armed with DOCKER_HOST must exit 1 (zero-Docker) ====="
+  stub_docker_host="$evidence_directory/stub-box-docker-host"
+  mkdir -p -- "$stub_docker_host"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_docker_host/a3s-box"
+  chmod +x "$stub_docker_host/a3s-box"
+  printf '%s\n' "$revision" >"$stub_docker_host/BOX-REVISION"
+  set +e
+  DOCKER_HOST='unix:///var/run/docker.sock' \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_docker_host/a3s-box" \
+    bash "$gate" \
+    >"$evidence_directory/armed-docker-host.out" 2>"$evidence_directory/armed-docker-host.err"
+  docker_host_status=$?
+  set -e
+  if ((docker_host_status != 1)); then
+    printf '%s\n' "expected DOCKER_HOST refuse exit 1, got $docker_host_status" >&2
+    cat "$evidence_directory/armed-docker-host.out" >&2 || true
+    cat "$evidence_directory/armed-docker-host.err" >&2 || true
+    exit 1
+  fi
+  grep -Fq 'docker_host_set' "$evidence_directory/armed-docker-host.err"
+  forbid_exit_certified_claim "$evidence_directory/armed-docker-host.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-docker-host.err"
 
   echo "===== armed stub without BOX-REVISION must exit 1 ====="
   stub_root="$evidence_directory/stub-box-missing"
