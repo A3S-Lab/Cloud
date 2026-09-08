@@ -615,18 +615,27 @@ jobs:
               --locked -p a3s-box-runtime --lib \
               box_runtime_passes_all_advertised_profiles \
               -- --ignored --nocapture --exact \
-                box_runtime_passes_all_advertised_profiles --test-threads=1
+                a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles \
+                --test-threads=1
           ) 2>&1 | tee "$EVIDENCE_DIR/conformance.log"
           gate_status=${PIPESTATUS[0]}
           set -e
           if (( gate_status != 0 )); then
             exit "$gate_status"
           fi
-          grep --fixed-strings \
+          if ! grep --fixed-strings \
             'test a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles ... ok' \
             "$EVIDENCE_DIR/conformance.log" \
-            >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"
+            >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"; then
+            echo "advertised-profile certification marker missing; harness may have filtered the ignored test" >&2
+            exit 1
+          fi
           test "$(wc -l <"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt")" -eq 1
+          if grep -E 'running 0 tests|0 passed; 0 failed; 0 ignored' \
+            "$EVIDENCE_DIR/conformance.log"; then
+            echo "advertised-profile harness ran zero tests" >&2
+            exit 1
+          fi
 
       - name: Isolate the Cloud lifecycle rootfs cache
         env:
