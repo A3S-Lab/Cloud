@@ -54,6 +54,7 @@ use uuid::Uuid;
 
 mod artifacts;
 mod code_agent;
+mod inference_usage;
 
 #[tokio::test]
 async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
