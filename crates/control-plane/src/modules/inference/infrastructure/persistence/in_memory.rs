@@ -3,7 +3,7 @@ use crate::modules::inference::domain::{
     IInferenceUsageRepository, InferenceUsageDailyRollup, InferenceUsageDailyRollupKey,
     InferenceUsageLedgerError, InferenceUsageLedgerState, InferenceUsageRequestFact,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, RepositoryError};
 use a3s_cloud_contracts::InferenceUsageReceiptV1;
 use async_trait::async_trait;
 use chrono::NaiveDate;
@@ -72,6 +72,7 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
     async fn list_daily_rollups(
         &self,
         organization_id: OrganizationId,
+        environment_id: EnvironmentId,
         from_day: NaiveDate,
         to_day: NaiveDate,
     ) -> Result<Vec<InferenceUsageDailyRollup>, RepositoryError> {
@@ -86,10 +87,15 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         let Some(organization) = organizations.get(&organization_id.as_uuid()) else {
             return Ok(Vec::new());
         };
+        let environment_uuid = environment_id.as_uuid();
         let mut rows: Vec<_> = organization
             .rollups
             .values()
-            .filter(|rollup| rollup.key.day >= from_day && rollup.key.day <= to_day)
+            .filter(|rollup| {
+                rollup.key.environment_id == environment_uuid
+                    && rollup.key.day >= from_day
+                    && rollup.key.day <= to_day
+            })
             .cloned()
             .collect();
         rows.sort_by(|left, right| {
@@ -126,7 +132,7 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::shared_kernel::domain::NodeId;
+    use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId};
     use a3s_cloud_contracts::{
         InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
         InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
@@ -375,16 +381,27 @@ mod tests {
         assert_eq!(fact.total_tokens, Some(11));
 
         let day = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+        let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(101));
         let rollups = repo
-            .list_daily_rollups(organization_id, day, day)
+            .list_daily_rollups(organization_id, environment_id, day, day)
             .await
             .unwrap();
         assert_eq!(rollups.len(), 1);
         assert_eq!(rollups[0].request_count, 1);
         assert_eq!(rollups[0].succeeded_count, 1);
         assert_eq!(rollups[0].total_tokens, 11);
+        assert!(repo
+            .list_daily_rollups(
+                organization_id,
+                EnvironmentId::from_uuid(Uuid::from_u128(999)),
+                day,
+                day,
+            )
+            .await
+            .unwrap()
+            .is_empty());
 
-        // Redeliver the terminal event: rollup must not double-count.
+        // Exact redelivery of the same contiguous batch must not double-count.
         repo.accept_usage_batch(
             AcceptInferenceUsageBatchWrite::new(
                 organization_id,
@@ -393,18 +410,25 @@ mod tests {
                     schema: InferenceUsageBatchV1::SCHEMA.into(),
                     gateway_id,
                     batch_id: Uuid::from_u128(4),
-                    after: Some(InferenceUsageCursorV1 {
-                        boot_epoch: epoch,
-                        sequence: 2,
-                    }),
-                    records: vec![record(
-                        InferenceUsageCursorV1 {
-                            boot_epoch: epoch,
-                            sequence: 3,
-                        },
-                        Uuid::from_u128(11),
-                        &finished,
-                    )],
+                    after: None,
+                    records: vec![
+                        record(
+                            InferenceUsageCursorV1 {
+                                boot_epoch: epoch,
+                                sequence: 1,
+                            },
+                            Uuid::from_u128(10),
+                            &started,
+                        ),
+                        record(
+                            InferenceUsageCursorV1 {
+                                boot_epoch: epoch,
+                                sequence: 2,
+                            },
+                            Uuid::from_u128(11),
+                            &finished,
+                        ),
+                    ],
                 },
                 Utc::now(),
             )
@@ -412,25 +436,11 @@ mod tests {
         )
         .await
         .unwrap();
-        // Same event_id with same digest is idempotent at ledger layer: cursor
-        // advances only for new events. Redelivery of event 11 alone with after=2
-        // and sequence=3 would be a gap or new event - use exact redelivery via
-        // wrong path: accept batch that re-includes event 11 as inserted? 
-        // Actually inserted_event_ids empty for exact digest match on same id
-        // when after matches and event already known - sequence 3 with event 11
-        // would advance watermark incorrectly. Better: re-submit after=None hold
-        // or re-submit contiguous with only already-known event as sequence 2
-        // after sequence 1 tip... Simpler assert: second full start+terminal
-        // batch with NEW event ids would be wrong. Just re-call projection by
-        // accepting a batch whose after is tip and record is exact redelivery
-        // of event 11 at sequence 2 - wait watermark is already 2, so after=Some(2)
-        // with new sequence 3 new event. Skip double-count test via redelivery of
-        // already-inserted: accept batch after=1 with records [seq2 event11]
-        // when watermark is 2 - wrong after hold, no insert. 
         let rollups = repo
-            .list_daily_rollups(organization_id, day, day)
+            .list_daily_rollups(organization_id, environment_id, day, day)
             .await
             .unwrap();
+        assert_eq!(rollups.len(), 1);
         assert_eq!(rollups[0].request_count, 1);
     }
 }

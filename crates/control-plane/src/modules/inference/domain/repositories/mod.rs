@@ -1,7 +1,7 @@
 use crate::modules::inference::domain::services::{
     InferenceUsageDailyRollup, InferenceUsageRequestFact,
 };
-use crate::modules::shared_kernel::domain::{NodeId, OrganizationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, RepositoryError};
 use a3s_cloud_contracts::{InferenceUsageBatchV1, InferenceUsageReceiptV1};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -52,6 +52,7 @@ pub trait IInferenceUsageRepository: Send + Sync {
     async fn list_daily_rollups(
         &self,
         organization_id: OrganizationId,
+        environment_id: EnvironmentId,
         from_day: NaiveDate,
         to_day: NaiveDate,
     ) -> Result<Vec<InferenceUsageDailyRollup>, RepositoryError>;

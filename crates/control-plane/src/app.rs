@@ -714,6 +714,9 @@ async fn build_api_worker_application(
     let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
     let resource_claims = adapters.workloads.resource_claims;
     let routes = adapters.edge.routes;
+    let inference_usage: Arc<dyn crate::modules::inference::IInferenceUsageRepository> = Arc::new(
+        crate::modules::inference::PostgresInferenceUsageRepository::new(executor.clone()),
+    );
     let mcp_credentials = adapters.edge.mcp_credentials;
     let mcp_credential_reader = adapters.edge.mcp_credential_reader;
     let mcp_route_policy_repository = adapters.edge.mcp_route_policies;
@@ -1506,9 +1509,7 @@ async fn build_api_worker_application(
             Arc::clone(&node_control),
             Arc::clone(&node_protocol_sessions),
             Arc::clone(&agents),
-            Arc::new(crate::modules::inference::PostgresInferenceUsageRepository::new(
-                executor.clone(),
-            )),
+            Arc::clone(&inference_usage),
             Arc::clone(&node_artifacts),
             Arc::clone(&management.gateway_projector),
             Arc::clone(&routes),
@@ -1998,6 +1999,7 @@ async fn build_api_worker_application(
                 agent_checkpoint_objects,
                 agent_execution_providers,
                 routes,
+                inference_usage,
                 mcp_credentials,
                 secrets,
                 user_files,
@@ -2244,6 +2246,7 @@ struct ManagementApplicationDependencies {
     agent_checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     agent_execution_providers: Arc<dyn AgentExecutionProviderRegistry>,
     routes: Arc<dyn IEdgeRepository>,
+    inference_usage: Arc<dyn crate::modules::inference::IInferenceUsageRepository>,
     mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     secrets: Arc<dyn ISecretRepository>,
     user_files: Arc<dyn IUserFileRepository>,
@@ -2342,6 +2345,7 @@ fn build_management_application_with_health(
         agent_checkpoint_objects,
         agent_execution_providers,
         routes,
+        inference_usage,
         mcp_credentials,
         secrets,
         user_files,
@@ -2790,6 +2794,8 @@ fn build_management_application_with_health(
     let list_gateway_certificates = Arc::clone(&routes);
     let list_gateway_scopes = Arc::clone(&routes);
     let list_routes = Arc::clone(&routes);
+    let list_daily_usage_rollups = Arc::clone(&inference_usage);
+    let get_usage_request_fact = Arc::clone(&inference_usage);
     let get_routes = routes;
     let create_mcp_credentials = Arc::clone(&mcp_credentials);
     let rotate_mcp_credentials = Arc::clone(&mcp_credentials);
@@ -4214,6 +4220,16 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::edge::ListRoutes, _>(ListRoutesHandler::new(
                     list_routes,
                 ))
+                .query_handler::<crate::modules::inference::ListDailyUsageRollups, _>(
+                    crate::modules::inference::ListDailyUsageRollupsHandler::new(
+                        list_daily_usage_rollups,
+                    ),
+                )
+                .query_handler::<crate::modules::inference::GetUsageRequestFact, _>(
+                    crate::modules::inference::GetUsageRequestFactHandler::new(
+                        get_usage_request_fact,
+                    ),
+                )
                 .query_handler::<crate::modules::edge::ListDomainClaims, _>(
                     ListDomainClaimsHandler::new(list_domain_claims),
                 )
@@ -4303,6 +4319,7 @@ fn build_management_application_with_health(
         .import(FleetModule::new(heartbeat_timeout)?)
         .import(WorkloadsModule)
         .import(EdgeModule)
+        .import(crate::modules::inference::InferenceModule)
         .import(PlatformModule::new(&config))
         .import(ManagementMcpModule)
         .import(ApiContractModule)

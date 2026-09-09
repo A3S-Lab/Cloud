@@ -1,0 +1,54 @@
+use crate::modules::inference::domain::{
+    IInferenceUsageRepository, InferenceUsageRequestFact,
+};
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId};
+use a3s_boot::{CqrsContext, Query, QueryHandler};
+use std::sync::Arc;
+use uuid::Uuid;
+
+#[derive(Debug, Clone)]
+pub struct GetUsageRequestFact {
+    pub organization_id: OrganizationId,
+    pub environment_id: EnvironmentId,
+    pub request_id: Uuid,
+}
+
+impl Query for GetUsageRequestFact {
+    type Output = ApplicationResult<InferenceUsageRequestFact>;
+}
+
+pub struct GetUsageRequestFactHandler {
+    usage: Arc<dyn IInferenceUsageRepository>,
+}
+
+impl GetUsageRequestFactHandler {
+    pub fn new(usage: Arc<dyn IInferenceUsageRepository>) -> Self {
+        Self { usage }
+    }
+}
+
+impl QueryHandler<GetUsageRequestFact> for GetUsageRequestFactHandler {
+    fn execute(
+        &self,
+        query: GetUsageRequestFact,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<InferenceUsageRequestFact>>>
+    {
+        let usage = Arc::clone(&self.usage);
+        Box::pin(async move {
+            match usage
+                .get_request_fact(query.organization_id, query.request_id)
+                .await
+            {
+                Ok(Some(fact)) if fact.environment_id == query.environment_id.as_uuid() => {
+                    Ok(Ok(fact))
+                }
+                Ok(_) => Ok(Err(ApplicationError::NotFound(
+                    "inference usage request fact not found".into(),
+                ))),
+                Err(error) => Ok(Err(error.into())),
+            }
+        })
+    }
+}

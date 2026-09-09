@@ -6,7 +6,7 @@ use crate::modules::inference::domain::{
     IInferenceUsageRepository, InferenceUsageDailyRollup, InferenceUsageDailyRollupKey,
     InferenceUsageLedgerError, InferenceUsageLedgerState, InferenceUsageRequestFact,
 };
-use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, RepositoryError};
 use a3s_cloud_contracts::{
     InferenceUsageCursorV1, InferenceUsageEndpointV1, InferenceUsageMeasurementCompletenessV1,
     InferenceUsageReceiptV1, InferenceUsageTerminalOutcomeV1,
@@ -260,6 +260,7 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
     async fn list_daily_rollups(
         &self,
         organization_id: OrganizationId,
+        environment_id: EnvironmentId,
         from_day: NaiveDate,
         to_day: NaiveDate,
     ) -> Result<Vec<InferenceUsageDailyRollup>, RepositoryError> {
@@ -275,6 +276,8 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
                     "select day, environment_id, model_id, endpoint, request_count, succeeded_count, failed_count, fallback_count, cancelled_count, disconnected_count, unknown_measurement_count, upstream_usage_count, total_tokens from inference_usage_daily_rollups where organization_id = ",
                 )
                 .bind(organization_uuid)
+                .append(" and environment_id = ")
+                .bind(environment_id.as_uuid())
                 .append(" and day >= ")
                 .bind(from_day)
                 .append(" and day <= ")

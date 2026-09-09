@@ -2225,6 +2225,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 BuiltInAgentExecutionProviderRegistry::new().map_err(BootError::Internal)?,
             ),
             routes,
+            inference_usage: Arc::new(
+                crate::modules::inference::InMemoryInferenceUsageRepository::new(),
+            ),
             mcp_credentials,
             secrets,
             user_files: user_files
