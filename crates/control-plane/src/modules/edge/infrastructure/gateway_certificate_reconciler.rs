@@ -634,7 +634,8 @@ impl GatewayCertificateReconciler {
                         reused_certificate_request: Some(target.certificate.request.clone()),
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
-                    },
+                    
+            inference_credentials: Vec::new(),},
                 ) {
                 Ok(candidate)
                     if candidate
@@ -658,7 +659,8 @@ impl GatewayCertificateReconciler {
                                 reused_certificate_request: None,
                                 retained_routes: retained_versions.clone(),
                                 rejected_routes: rejected_versions.clone(),
-                            },
+                            
+            inference_credentials: Vec::new(),},
                         )
                         .map_err(RepositoryError::Conflict)?
                 }
@@ -679,7 +681,8 @@ impl GatewayCertificateReconciler {
                         reused_certificate_request: None,
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
-                    },
+                    
+            inference_credentials: Vec::new(),},
                 )
                 .map_err(RepositoryError::Conflict)?
         };

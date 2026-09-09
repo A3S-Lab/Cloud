@@ -371,7 +371,8 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
                     .expect("first empty projection"),
             )
             .expect("first node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("first complete snapshot");
     let second = compiler()
         .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
@@ -395,7 +396,8 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
                     .expect("second empty projection"),
             )
             .expect("second node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("second complete snapshot");
 
     assert_eq!(first.desired_state_digest(), second.desired_state_digest());

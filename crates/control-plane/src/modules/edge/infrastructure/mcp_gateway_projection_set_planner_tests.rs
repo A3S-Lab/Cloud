@@ -228,7 +228,8 @@ async fn plans_the_complete_active_set_for_one_receiving_gateway() {
             active_routes: Vec::new(),
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("complete MCP snapshot");
     let snapshot = compiled.snapshot();
     a3s_acl::parse_acl(&snapshot.acl).expect("complete Gateway ACL");
@@ -333,7 +334,8 @@ async fn revoked_credential_keeps_cas_evidence_but_removes_the_gateway_route() {
             active_routes: Vec::new(),
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("credential cleanup snapshot");
     assert_eq!(compiled.domain_claim_versions().len(), 1);
     assert!(compiled.certificate_domain_claim_ids().is_empty());
@@ -477,7 +479,8 @@ async fn represents_an_empty_active_set_without_resolving_runtime() {
             active_routes: Vec::new(),
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("complete empty MCP snapshot");
     assert!(!compiled.snapshot().acl.contains("mcp {"));
     assert!(!compiled.snapshot().acl.contains("mcp-route-"));
@@ -569,7 +572,8 @@ async fn composes_ordinary_and_mcp_routes_with_all_cas_evidence() {
             }],
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("mixed complete snapshot");
 
     assert!(compiled.snapshot().acl.contains(&format!(
@@ -668,7 +672,8 @@ async fn ordinary_publication_composes_the_current_mcp_projection_in_the_same_sn
             certificate_id,
             snapshot_routes: vec![ordinary_route],
             additional_domain_claims: vec![ordinary_claim],
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect("ordinary-plus-MCP managed snapshot");
 
     assert_eq!(candidate.ordinary_route_ids(), &[ordinary_route_id]);
@@ -812,7 +817,8 @@ async fn complete_snapshot_rejects_an_ordinary_prefix_overlapping_mcp_ingress() 
             }],
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
-        })
+        
+            inference_credentials: Vec::new(),})
         .expect_err("overlapping ingress")
         .contains("PathPrefix"));
 }

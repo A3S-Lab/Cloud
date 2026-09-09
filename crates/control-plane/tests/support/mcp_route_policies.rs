@@ -1363,7 +1363,8 @@ async fn plan_gateway_snapshot(
             certificate_id: Some(GatewayCertificateId::new()),
             active_routes,
             mcp: PlannedMcpGatewayNodeProjection::single(planned)?,
-        },
+        
+            inference_credentials: Vec::new(),},
     )?;
     Ok(StageMcpGatewaySnapshot::new(
         candidate,

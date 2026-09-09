@@ -385,7 +385,8 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         certificate_id,
                         snapshot_routes: complete_routes.clone(),
                         additional_domain_claims: Vec::new(),
-                    })
+                    
+            inference_credentials: Vec::new(),})
                     .map_err(RepositoryError::Conflict)?;
                 (candidate.snapshot().clone(), Some(candidate))
             }

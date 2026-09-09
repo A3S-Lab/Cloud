@@ -321,7 +321,8 @@ impl GatewayRolloutRollbackCompiler {
                         desired_state: context.desired_state.clone(),
                         certificate_id: Some(certificate.id),
                         reused_certificate_request: Some(certificate.request.clone()),
-                    })
+                    
+            inference_credentials: Vec::new(),})
                     .ok()?;
                 let expected_claims = candidate
                     .certificate_domain_claim_ids()
@@ -346,7 +347,8 @@ impl GatewayRolloutRollbackCompiler {
                                 desired_state: context.desired_state,
                                 certificate_id: None,
                                 reused_certificate_request: None,
-                            },
+                            
+            inference_credentials: Vec::new(),},
                         )?,
                         None,
                         None,
@@ -368,7 +370,8 @@ impl GatewayRolloutRollbackCompiler {
                                     desired_state: context.desired_state,
                                     certificate_id: Some(certificate_id),
                                     reused_certificate_request: None,
-                                },
+                                
+            inference_credentials: Vec::new(),},
                             )?,
                             None,
                             Some(certificate_id),

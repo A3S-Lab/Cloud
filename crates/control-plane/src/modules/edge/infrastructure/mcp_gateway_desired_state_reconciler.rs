@@ -307,7 +307,8 @@ impl McpGatewayDesiredStateReconciler {
                         certificate_id,
                         active_routes: inputs.active_routes,
                         mcp: planned,
-                    }) {
+                    
+            inference_credentials: Vec::new(),}) {
                     Ok(candidate) => candidate,
                     Err(_) => {
                         report.failures.push(failure(

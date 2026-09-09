@@ -52,6 +52,7 @@ pub struct CompileMcpGatewaySnapshot {
     pub certificate_id: Option<GatewayCertificateId>,
     pub active_routes: Vec<GatewaySnapshotRouteInput>,
     pub mcp: PlannedMcpGatewayNodeProjection,
+    pub inference_credentials: Vec<InferenceCredentialAclProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -61,6 +62,7 @@ pub struct CompileManagedGatewayRouteSnapshot {
     pub certificate_id: GatewayCertificateId,
     pub snapshot_routes: Vec<Route>,
     pub additional_domain_claims: Vec<DomainClaim>,
+    pub inference_credentials: Vec<InferenceCredentialAclProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -69,6 +71,7 @@ pub struct CompileManagedGatewayRetainedSnapshot {
     pub desired_state: PlannedGatewayNodeDesiredState,
     pub certificate_id: Option<GatewayCertificateId>,
     pub reused_certificate_request: Option<GatewayCertificateRequest>,
+    pub inference_credentials: Vec<InferenceCredentialAclProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,6 +82,7 @@ pub struct CompileManagedGatewayCertificateConvergenceSnapshot {
     pub reused_certificate_request: Option<GatewayCertificateRequest>,
     pub retained_routes: Vec<GatewayRouteVersion>,
     pub rejected_routes: Vec<GatewayRouteVersion>,
+    pub inference_credentials: Vec<InferenceCredentialAclProjection>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -230,6 +234,7 @@ impl GatewaySnapshotCompiler {
             certificate_id,
             active_routes,
             mcp,
+            inference_credentials,
         } = request;
         for planned in mcp.scope_sets() {
             planned.scope().validate()?;
@@ -371,7 +376,15 @@ impl GatewaySnapshotCompiler {
             projection,
         });
         let snapshot =
-            self.compile_snapshot(metadata, certificate_id, &routes, false, None, content, &[])?;
+            self.compile_snapshot(
+                metadata,
+                certificate_id,
+                &routes,
+                false,
+                None,
+                content,
+                &inference_credentials,
+            )?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
             desired_state_digest,
@@ -406,6 +419,7 @@ impl GatewaySnapshotCompiler {
             desired_state,
             certificate_id,
             reused_certificate_request,
+            inference_credentials,
         } = request;
         if reused_certificate_request
             .as_ref()
@@ -423,6 +437,7 @@ impl GatewaySnapshotCompiler {
             certificate_id,
             active_routes: active_routes.clone(),
             mcp: mcp.clone(),
+            inference_credentials: inference_credentials.clone(),
         })?;
         if let Some(certificate_request) = reused_certificate_request {
             let routes = active_routes
@@ -440,7 +455,7 @@ impl GatewaySnapshotCompiler {
                 false,
                 Some(certificate_request),
                 content,
-                &[],
+                &inference_credentials,
             )?;
         }
         Ok(candidate)
@@ -461,6 +476,7 @@ impl GatewaySnapshotCompiler {
             reused_certificate_request,
             retained_routes,
             rejected_routes,
+            inference_credentials,
         } = request;
         if reused_certificate_request
             .as_ref()
@@ -531,6 +547,7 @@ impl GatewaySnapshotCompiler {
             certificate_id,
             active_routes: retained_inputs.clone(),
             mcp: mcp.clone(),
+            inference_credentials: inference_credentials.clone(),
         })?;
         candidate.active_route_versions = observed_versions.into_values().collect();
         if let Some(certificate_request) = reused_certificate_request {
@@ -549,7 +566,7 @@ impl GatewaySnapshotCompiler {
                 false,
                 Some(certificate_request),
                 content,
-                &[],
+                &inference_credentials,
             )?;
             candidate.snapshot = GatewaySnapshot::new_with_certificate(
                 metadata.node_id.as_uuid(),
@@ -578,6 +595,7 @@ impl GatewaySnapshotCompiler {
             certificate_id,
             snapshot_routes,
             additional_domain_claims,
+            inference_credentials,
         } = request;
         let (physical_scope, active_routes, mcp) = desired_state.into_parts();
         for planned in mcp.scope_sets() {
@@ -796,7 +814,7 @@ impl GatewaySnapshotCompiler {
             true,
             None,
             content,
-            &[],
+            &inference_credentials,
         )?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,

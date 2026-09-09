@@ -411,7 +411,8 @@ impl GatewayRouteRolloutCompiler {
                     certificate_id,
                     snapshot_routes: complete_routes,
                     additional_domain_claims: vec![request.domain_claim.clone()],
-                },
+                
+            inference_credentials: Vec::new(),},
             )?;
             let command_id = NodeCommandId::new();
             route.stage(

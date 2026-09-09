@@ -12,6 +12,7 @@ mod gateway_rollout_rollback_reconciler;
 mod gateway_route_rollout_compiler;
 mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
+mod inference_credential_scope;
 mod local_gateway_certificate_authority;
 mod mcp_credential_issuer;
 mod mcp_gateway_desired_state_reconciler;
@@ -89,6 +90,7 @@ pub use gateway_snapshot_compiler::{
     GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
+pub use inference_credential_scope::inference_credential_scopes_from_routes;
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::McpCredentialIssuer;
 pub use mcp_gateway_desired_state_reconciler::{
