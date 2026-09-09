@@ -1,7 +1,14 @@
 //! Versioned distributed-inference observation contracts.
 
+mod lifecycle;
 mod usage;
 
+pub use lifecycle::{
+    InferenceUsageAttemptEvidenceV1, InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1,
+    InferenceUsageLifecycleKindV1, InferenceUsageMeasurementCompletenessV1,
+    InferenceUsageRequestEvidenceV1, InferenceUsageTerminalOutcomeV1,
+    INFERENCE_USAGE_LIFECYCLE_SCHEMA_V1,
+};
 pub use usage::{
     InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1, InferenceUsageRecordV1,
     INFERENCE_USAGE_BATCH_SCHEMA_V1, INFERENCE_USAGE_MAX_BATCH_BYTES,

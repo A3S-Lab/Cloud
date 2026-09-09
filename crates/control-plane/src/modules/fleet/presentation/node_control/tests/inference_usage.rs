@@ -93,7 +93,7 @@ async fn authenticated_node_accepts_usage_batch_and_holds_wrong_after() {
         gateway_id,
         batch_id: Uuid::from_u128(3),
         after: None,
-        records: vec![record(tip, Uuid::from_u128(10), b"a")],
+        records: vec![record(tip, Uuid::from_u128(10))],
     };
     let response = post_usage(&router, &first).await;
     assert_eq!(response.status(), axum::http::StatusCode::OK);
@@ -107,7 +107,7 @@ async fn authenticated_node_accepts_usage_batch_and_holds_wrong_after() {
         gateway_id,
         batch_id: Uuid::from_u128(4),
         after: None,
-        records: vec![record(tip, Uuid::from_u128(10), b"a")],
+        records: vec![record(tip, Uuid::from_u128(10))],
     };
     let held = post_usage(&router, &wrong_after).await;
     assert_eq!(held.status(), axum::http::StatusCode::OK);
@@ -182,7 +182,6 @@ async fn unauthenticated_peer_cannot_post_usage_batches() {
                 sequence: 1,
             },
             Uuid::from_u128(4),
-            b"x",
         )],
     };
     let response = post_usage(&router, &batch).await;
@@ -296,7 +295,7 @@ async fn enrolled_node_mtls_posts_usage_batches_over_live_node_control_https() {
         gateway_id,
         batch_id: Uuid::from_u128(21),
         after: None,
-        records: vec![record(tip, Uuid::from_u128(31), b"live-1")],
+        records: vec![record(tip, Uuid::from_u128(31))],
     };
     let endpoint = format!(
         "https://localhost:{}/v1/inference-control/usage-batches",
@@ -323,7 +322,7 @@ async fn enrolled_node_mtls_posts_usage_batches_over_live_node_control_https() {
         gateway_id,
         batch_id: Uuid::from_u128(22),
         after: Some(tip),
-        records: vec![record(second, Uuid::from_u128(32), b"live-2")],
+        records: vec![record(second, Uuid::from_u128(32))],
     };
     let continued = client
         .post(&endpoint)
@@ -346,7 +345,7 @@ async fn enrolled_node_mtls_posts_usage_batches_over_live_node_control_https() {
         gateway_id,
         batch_id: Uuid::from_u128(23),
         after: Some(tip),
-        records: vec![record(second, Uuid::from_u128(32), b"live-2")],
+        records: vec![record(second, Uuid::from_u128(32))],
     };
     let held = client
         .post(&endpoint)
@@ -367,14 +366,51 @@ async fn enrolled_node_mtls_posts_usage_batches_over_live_node_control_https() {
     let _ = server_task.await;
 }
 
-fn record(cursor: InferenceUsageCursorV1, event_id: Uuid, payload: &[u8]) -> InferenceUsageRecordV1 {
+
+fn lifecycle_payload() -> Vec<u8> {
+    use a3s_cloud_contracts::{
+        InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
+        InferenceUsageRequestEvidenceV1,
+    };
+    use chrono::{DateTime, Utc};
+    let event = InferenceUsageLifecycleEventV1 {
+        schema: InferenceUsageLifecycleEventV1::SCHEMA.into(),
+        kind: InferenceUsageLifecycleKindV1::RequestStarted,
+        occurred_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc),
+        request: InferenceUsageRequestEvidenceV1 {
+            request_id: Uuid::from_u128(100),
+            correlation_id: "corr".into(),
+            environment_id: Uuid::from_u128(101),
+            credential_id: Uuid::from_u128(102),
+            credential_generation: 1,
+            route_id: Uuid::from_u128(103),
+            route_policy_revision: 1,
+            endpoint: InferenceUsageEndpointV1::ChatCompletions,
+            model_alias: "alias".into(),
+            model_id: Uuid::from_u128(104),
+        },
+        attempt: None,
+        outcome: None,
+        http_status: None,
+        duration_ms: None,
+        measurement_completeness: None,
+        total_tokens: None,
+    };
+    serde_json::to_vec(&event).unwrap()
+}
+
+fn record(cursor: InferenceUsageCursorV1, event_id: Uuid) -> InferenceUsageRecordV1 {
+    let payload = lifecycle_payload();
     InferenceUsageRecordV1 {
         cursor,
         event_id,
-        payload_base64: base64::engine::general_purpose::STANDARD.encode(payload),
-        payload_sha256: format!("{:x}", Sha256::digest(payload)),
+        payload_base64: base64::engine::general_purpose::STANDARD.encode(&payload),
+        payload_sha256: format!("{:x}", Sha256::digest(&payload)),
     }
 }
+
 
 async fn post_usage(
     router: &axum::Router,

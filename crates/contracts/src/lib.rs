@@ -119,13 +119,16 @@ pub use function::{
     FUNCTION_PROFILE_MAX_ACL_BYTES, FUNCTION_PROFILE_SCHEMA_V1,
 };
 pub use inference::{
-    InferenceServingPhase, InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1,
-    InferenceUsageRecordV1, PowerAdmissionObservation, PowerPromptCacheObservation,
+    InferenceServingPhase, InferenceUsageAttemptEvidenceV1, InferenceUsageBatchV1,
+    InferenceUsageCursorV1, InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1,
+    InferenceUsageLifecycleKindV1, InferenceUsageMeasurementCompletenessV1,
+    InferenceUsageReceiptV1, InferenceUsageRecordV1, InferenceUsageRequestEvidenceV1,
+    InferenceUsageTerminalOutcomeV1, PowerAdmissionObservation, PowerPromptCacheObservation,
     PowerTransferHealth, PowerWorkerCapabilities, PowerWorkerObservation,
-    INFERENCE_USAGE_BATCH_SCHEMA_V1, INFERENCE_USAGE_MAX_BATCH_BYTES,
-    INFERENCE_USAGE_MAX_EVENT_BYTES, INFERENCE_USAGE_MAX_RECEIPT_BYTES,
-    INFERENCE_USAGE_MAX_RECORDS, INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
-    POWER_WORKER_OBSERVATION_SCHEMA,
+    INFERENCE_USAGE_BATCH_SCHEMA_V1, INFERENCE_USAGE_LIFECYCLE_SCHEMA_V1,
+    INFERENCE_USAGE_MAX_BATCH_BYTES, INFERENCE_USAGE_MAX_EVENT_BYTES,
+    INFERENCE_USAGE_MAX_RECEIPT_BYTES, INFERENCE_USAGE_MAX_RECORDS,
+    INFERENCE_USAGE_RECEIPT_SCHEMA_V1, POWER_WORKER_OBSERVATION_SCHEMA,
 };
 pub use mcp::{
     validate_mcp_allowed_origins, validate_mcp_telemetry_names, McpCredentialProjection,

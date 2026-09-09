@@ -172,10 +172,13 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
                         if !applied.inserted_event_ids.contains(&record.event_id) {
                             continue;
                         }
+                        let payload = record.payload().map_err(|error| {
+                            RepositoryError::Storage(error)
+                        })?;
                         execute(
                             transaction,
                             sql_query::<()>(
-                                "insert into inference_usage_events (organization_id, gateway_id, event_id, payload_sha256, boot_epoch, sequence, batch_id, accepted_at) values (",
+                                "insert into inference_usage_events (organization_id, gateway_id, event_id, payload_sha256, payload, boot_epoch, sequence, batch_id, accepted_at) values (",
                             )
                             .bind(organization_id)
                             .append(", ")
@@ -184,6 +187,8 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
                             .bind(record.event_id)
                             .append(", ")
                             .bind(record.payload_sha256.as_str())
+                            .append(", ")
+                            .bind(payload)
                             .append(", ")
                             .bind(record.cursor.boot_epoch)
                             .append(", ")

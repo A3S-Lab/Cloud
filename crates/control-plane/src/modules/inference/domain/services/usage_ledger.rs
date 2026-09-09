@@ -5,8 +5,8 @@
 //! `a3s.gateway.usage-batch.v1` so persistence adapters cannot drift.
 
 use a3s_cloud_contracts::{
-    InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1,
-    INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
+    InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageLifecycleEventV1,
+    InferenceUsageReceiptV1, INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -69,6 +69,13 @@ pub fn apply_inference_usage_batch(
     batch
         .validate()
         .map_err(InferenceUsageLedgerError::Contract)?;
+    for record in &batch.records {
+        let payload = record
+            .payload()
+            .map_err(InferenceUsageLedgerError::Contract)?;
+        InferenceUsageLifecycleEventV1::decode(&payload)
+            .map_err(InferenceUsageLedgerError::Contract)?;
+    }
 
     if batch.after != state.watermark {
         // Receipts may only acknowledge `after` or a cursor carried in this
@@ -158,16 +165,50 @@ pub fn apply_inference_usage_batch(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::InferenceUsageRecordV1;
+    use a3s_cloud_contracts::{
+        InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
+        InferenceUsageRecordV1, InferenceUsageRequestEvidenceV1,
+    };
     use base64::Engine;
+    use chrono::{DateTime, Utc};
     use sha2::{Digest, Sha256};
 
-    fn record(cursor: InferenceUsageCursorV1, event_id: Uuid, payload: &[u8]) -> InferenceUsageRecordV1 {
+    fn lifecycle_payload() -> Vec<u8> {
+        let event = InferenceUsageLifecycleEventV1 {
+            schema: InferenceUsageLifecycleEventV1::SCHEMA.into(),
+            kind: InferenceUsageLifecycleKindV1::RequestStarted,
+            occurred_at: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z")
+                .unwrap()
+                .with_timezone(&Utc),
+            request: InferenceUsageRequestEvidenceV1 {
+                request_id: Uuid::from_u128(100),
+                correlation_id: "corr".into(),
+                environment_id: Uuid::from_u128(101),
+                credential_id: Uuid::from_u128(102),
+                credential_generation: 1,
+                route_id: Uuid::from_u128(103),
+                route_policy_revision: 1,
+                endpoint: InferenceUsageEndpointV1::ChatCompletions,
+                model_alias: "alias".into(),
+                model_id: Uuid::from_u128(104),
+            },
+            attempt: None,
+            outcome: None,
+            http_status: None,
+            duration_ms: None,
+            measurement_completeness: None,
+            total_tokens: None,
+        };
+        serde_json::to_vec(&event).unwrap()
+    }
+
+    fn record(cursor: InferenceUsageCursorV1, event_id: Uuid) -> InferenceUsageRecordV1 {
+        let payload = lifecycle_payload();
         InferenceUsageRecordV1 {
             cursor,
             event_id,
-            payload_base64: base64::engine::general_purpose::STANDARD.encode(payload),
-            payload_sha256: format!("{:x}", Sha256::digest(payload)),
+            payload_base64: base64::engine::general_purpose::STANDARD.encode(&payload),
+            payload_sha256: format!("{:x}", Sha256::digest(&payload)),
         }
     }
 
@@ -188,7 +229,7 @@ mod tests {
             gateway_id,
             batch_id: Uuid::from_u128(3),
             after: None,
-            records: vec![record(tip, Uuid::from_u128(10), b"a")],
+            records: vec![record(tip, Uuid::from_u128(10))],
         };
         let applied = apply_inference_usage_batch(&state, &batch).unwrap();
         assert_eq!(applied.receipt.acknowledged_through, Some(tip));
@@ -218,7 +259,7 @@ mod tests {
             gateway_id,
             batch_id: Uuid::from_u128(3),
             after: None,
-            records: vec![record(tip, Uuid::from_u128(10), b"a")],
+            records: vec![record(tip, Uuid::from_u128(10))],
         };
         let applied = apply_inference_usage_batch(&state, &batch).unwrap();
         assert_eq!(applied.receipt.acknowledged_through, None);
@@ -247,7 +288,7 @@ mod tests {
             gateway_id,
             batch_id: Uuid::from_u128(4),
             after: Some(tip),
-            records: vec![record(ahead, Uuid::from_u128(11), b"b")],
+            records: vec![record(ahead, Uuid::from_u128(11))],
         };
         let applied = apply_inference_usage_batch(&state, &batch).unwrap();
         assert_eq!(applied.receipt.acknowledged_through, Some(ahead));
@@ -271,7 +312,6 @@ mod tests {
                     sequence: 1,
                 },
                 Uuid::from_u128(10),
-                b"a",
             )],
         };
         let applied = apply_inference_usage_batch(&state, &batch).unwrap();
@@ -293,18 +333,45 @@ mod tests {
             boot_epoch: epoch,
             sequence: 1,
         };
+        let first = record(cursor, event_id);
         let mut state = InferenceUsageLedgerState::default();
-        state
-            .events
-            .insert(event_id, format!("{:x}", Sha256::digest(b"one")));
+        state.events.insert(
+            event_id,
+            format!("{:x}", Sha256::digest(b"other-digest-payload")),
+        );
         let batch = InferenceUsageBatchV1 {
             schema: InferenceUsageBatchV1::SCHEMA.into(),
             gateway_id: Uuid::from_u128(2),
             batch_id: Uuid::from_u128(3),
             after: None,
-            records: vec![record(cursor, event_id, b"other")],
+            records: vec![first],
         };
         let err = apply_inference_usage_batch(&state, &batch).unwrap_err();
         assert!(matches!(err, InferenceUsageLedgerError::Conflict(_)));
+    }
+
+    #[test]
+    fn invalid_lifecycle_payload_is_rejected() {
+        let epoch = Uuid::from_u128(1);
+        let cursor = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 1,
+        };
+        let payload = br#"{"kind":"not-a-lifecycle"}"#;
+        let batch = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id: Uuid::from_u128(2),
+            batch_id: Uuid::from_u128(3),
+            after: None,
+            records: vec![InferenceUsageRecordV1 {
+                cursor,
+                event_id: Uuid::from_u128(10),
+                payload_base64: base64::engine::general_purpose::STANDARD.encode(payload),
+                payload_sha256: format!("{:x}", Sha256::digest(payload)),
+            }],
+        };
+        let err = apply_inference_usage_batch(&InferenceUsageLedgerState::default(), &batch)
+            .unwrap_err();
+        assert!(matches!(err, InferenceUsageLedgerError::Contract(_)));
     }
 }
