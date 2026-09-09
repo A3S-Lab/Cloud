@@ -1331,9 +1331,16 @@ evidence, and fenced release protocol.
   the H0.2 delivery path. Cloud contracts also render typed
   `InferenceCredentialAclProjection` blocks (`render_inference_policy_acl`,
   audience `cloud-inference`, prefix `a3s_inf_`, Argon2id PHC, unique/non-
-  overlapping prefixes) for the next credential-compiler step; durable
-  Identity inference-key storage and snapshot projection of live credentials
-  remain open. Full route/worker publication remains open.
+  overlapping prefixes). Identity owns durable inference credentials
+  (migration `196`, issuer, Postgres/in-memory repositories) and exposes
+  `IInferenceCredentialAclProjectionPort`; Edge managed publication paths
+  (cutover, certificate convergence, MCP desired-state, route rollout,
+  rollback) load those projections before compile and never store secrets.
+  Full route/worker publication and Cloud-certified billing tokenizer remain
+  open (they require Inference catalog/route authority, not credential
+  ownership). Joint Gateway revocation/expiry fail-closed already covers
+  projected `revoked = true` credentials; mixed-version conformance beyond
+  expiry remains open.
 
 ### I0.2c: durable usage and rollout
 
