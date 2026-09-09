@@ -623,13 +623,23 @@ jobs:
           if (( gate_status != 0 )); then
             exit "$gate_status"
           fi
+          # --nocapture can interleave mount/dmesg stderr onto the cargo progress
+          # line, so never require a contiguous "... ok" fixed string.
           if ! grep --fixed-strings \
-            'test a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles ... ok' \
-            "$EVIDENCE_DIR/conformance.log" \
-            >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"; then
+            'a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles' \
+            "$EVIDENCE_DIR/conformance.log" >/dev/null; then
             echo "advertised-profile certification marker missing; harness may have filtered the ignored test" >&2
             exit 1
           fi
+          if ! grep --fixed-strings \
+            'test result: ok. 1 passed; 0 failed; 0 ignored' \
+            "$EVIDENCE_DIR/conformance.log" >/dev/null; then
+            echo "advertised-profile suite did not report exactly one passed ignored test" >&2
+            exit 1
+          fi
+          printf '%s\n' \
+            'advertised-runtime-profiles: a3s_runtime_driver::conformance_tests::box_runtime_passes_all_advertised_profiles passed' \
+            >"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/advertised-runtime-profiles-certification.txt")" -eq 1
           if grep -E 'running 0 tests|0 passed; 0 failed; 0 ignored' \
             "$EVIDENCE_DIR/conformance.log"; then
