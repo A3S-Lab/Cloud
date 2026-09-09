@@ -17,7 +17,11 @@ mod workload_runtime_evidence_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
 pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstrapRepository};
-pub use inference_credential_repository::IInferenceCredentialRepository;
+pub use inference_credential_repository::{
+    CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
+    IInferenceCredentialRepository, InferenceCredentialWrite, InferenceCredentialWriteReference,
+    RevokeInferenceCredentialWrite,
+};
 pub use membership_invitation_repository::{
     AcceptMembershipInvitationWrite, CreateMembershipInvitationWrite,
     IMembershipInvitationRepository, MembershipInvitationAcceptance,

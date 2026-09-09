@@ -1,9 +1,11 @@
 pub mod get_api_token;
+pub mod get_inference_key;
 pub mod get_membership;
 pub mod get_membership_invitation;
 pub mod get_recipient_contact;
 pub mod get_resource_grant;
 pub mod list_api_tokens;
+pub mod list_inference_keys;
 pub mod list_membership_invitations;
 pub mod list_memberships;
 pub mod list_my_membership_invitations;

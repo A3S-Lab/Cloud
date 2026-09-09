@@ -28,7 +28,9 @@ impl InferenceCredentialEnvironmentScope {
             || project_id.as_uuid().is_nil()
             || environment_id.as_uuid().is_nil()
         {
-            return Err("inference credential environment scope requires non-nil identities".into());
+            return Err(
+                "inference credential environment scope requires non-nil identities".into(),
+            );
         }
         Ok(Self {
             organization_id,

@@ -2032,6 +2032,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let workload_port: Arc<dyn IWorkloadRepository> = workloads;
     let routes: Arc<dyn IEdgeRepository> = edge.clone();
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge;
+    let inference_credentials: Arc<
+        dyn crate::modules::identity::IInferenceCredentialLifecycleRepository,
+    > = Arc::new(crate::modules::identity::InMemoryInferenceCredentialRepository::default());
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
@@ -2163,6 +2166,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             tenant_support_grants: identity.clone(),
             trust_domains: identity.clone(),
             workload_identity_policies: identity,
+            inference_credentials,
             inference_credential_acl_projections: Arc::new(
                 crate::modules::identity::EmptyInferenceCredentialAclProjectionPort,
             ),

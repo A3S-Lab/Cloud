@@ -147,7 +147,7 @@ async fn list(
         .collect()
 }
 
-fn credential_query(
+pub(super) fn credential_query(
     organization_id: OrganizationId,
     credential_id: InferenceCredentialId,
 ) -> a3s_orm::query::SelectQuery<InferenceCredentials, InferenceCredentialRow> {
@@ -157,7 +157,7 @@ fn credential_query(
         .filter(InferenceCredentials::id().eq(credential_id.as_uuid()))
 }
 
-struct InferenceCredentialRow {
+pub(super) struct InferenceCredentialRow {
     id: Uuid,
     organization_id: Uuid,
     project_id: Uuid,
@@ -215,7 +215,7 @@ impl FromRow for InferenceCredentialRow {
 }
 
 impl InferenceCredentialRow {
-    fn credential(self) -> Result<InferenceCredential, RepositoryError> {
+    pub(super) fn credential(self) -> Result<InferenceCredential, RepositoryError> {
         InferenceCredential::restore(
             InferenceCredentialId::from_uuid(self.id),
             OrganizationId::from_uuid(self.organization_id),
@@ -234,7 +234,7 @@ impl InferenceCredentialRow {
     }
 }
 
-async fn insert_credential(
+pub(super) async fn insert_credential(
     transaction: &PostgresTransaction,
     credential: &InferenceCredential,
 ) -> Result<(), PostgresPersistenceError> {
@@ -284,7 +284,7 @@ async fn insert_credential(
     }
 }
 
-async fn update_credential_row(
+pub(super) async fn update_credential_row(
     transaction: &PostgresTransaction,
     credential: &InferenceCredential,
     expected_aggregate_version: u64,

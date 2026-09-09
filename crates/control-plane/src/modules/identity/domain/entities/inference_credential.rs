@@ -3,9 +3,7 @@
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
 };
-use a3s_cloud_contracts::{
-    InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-};
+use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 use chrono::{DateTime, Utc};
 use std::fmt;
 
@@ -107,7 +105,9 @@ impl InferenceCredential {
         let prefix = prefix.into();
         let verifier_hash = verifier_hash.into();
         if prefix == self.prefix || verifier_hash == self.verifier_hash {
-            return Err("inference credential rotation must replace its prefix and verifier".into());
+            return Err(
+                "inference credential rotation must replace its prefix and verifier".into(),
+            );
         }
         let rotated_at = canonical_timestamp(rotated_at);
         let expires_at = canonical_timestamp(expires_at);

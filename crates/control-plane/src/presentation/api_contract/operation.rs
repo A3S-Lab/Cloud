@@ -1458,6 +1458,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("resource-grants")
         || path.contains("recipient-contacts")
         || path.contains("/identity/oidc")
+        || path.contains("/inference/keys")
     {
         "Identity"
     } else if path.starts_with("/node-control")
@@ -1612,6 +1613,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || is_agent_approval_decision_path(path)
         || is_agent_execution_fork_path(path)
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
+        || (path.contains("/inference/keys/") && path.ends_with("/revoke"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
         || is_workflow_run_start_path(path)
@@ -1640,6 +1642,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/node-pools")
         || path.ends_with("/domain-claims")
         || path.ends_with("/gateway-scopes")
+        || path.ends_with("/inference/keys")
         || path.ends_with("/mcp-credentials")
         || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
         || path.ends_with("/mcp-route-policies")

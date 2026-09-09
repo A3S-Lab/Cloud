@@ -31,7 +31,8 @@ pub async fn load_inference_credential_projections_for_routes(
 ) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
     let scopes =
         inference_credential_scopes_from_routes(routes).map_err(RepositoryError::Conflict)?;
-    port.list_inference_credential_acl_projections(&scopes).await
+    port.list_inference_credential_acl_projections(&scopes)
+        .await
 }
 
 #[cfg(test)]
@@ -106,10 +107,7 @@ mod tests {
             &self,
             scopes: &[InferenceCredentialEnvironmentScope],
         ) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
-            self.seen
-                .lock()
-                .expect("seen scopes")
-                .push(scopes.to_vec());
+            self.seen.lock().expect("seen scopes").push(scopes.to_vec());
             Ok(vec![InferenceCredentialAclProjection::new(
                 uuid::Uuid::now_v7(),
                 scopes[0].environment_id().as_uuid(),

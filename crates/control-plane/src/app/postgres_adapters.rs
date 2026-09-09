@@ -58,8 +58,8 @@ use crate::modules::identity::domain::repositories::{
 };
 use crate::modules::identity::{
     IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
-    IInferenceCredentialRepository, InferenceCredentialAclProjectionAdapter,
-    PostgresIdentityRepository,
+    IInferenceCredentialLifecycleRepository, IInferenceCredentialRepository,
+    InferenceCredentialAclProjectionAdapter, PostgresIdentityRepository,
 };
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::notifications::{
@@ -68,9 +68,9 @@ use crate::modules::notifications::{
     IOutboundNotificationSmtpAttemptRepository, PostgresNotificationRepository,
 };
 use crate::modules::operations::{IOperationRepository, PostgresOperationRepository};
-use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::domain::repositories::IPluginAssignmentRepository;
 use crate::modules::plugins::domain::repositories::IPluginPlanProjectionRepository;
+use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::{
     PostgresPluginAssignmentRepository, PostgresPluginPlanProjectionRepository,
     PostgresPluginRegistryRepository,
@@ -402,17 +402,18 @@ pub(super) struct IdentityPostgresAdapters {
     pub(super) tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
     pub(super) trust_domains: Arc<dyn ITrustDomainRepository>,
     pub(super) workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
-    pub(super) inference_credentials: Arc<dyn IInferenceCredentialRepository>,
+    pub(super) inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     pub(super) inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
 }
 
 impl IdentityPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         let repository = Arc::new(PostgresIdentityRepository::new(executor));
-        let inference_credentials: Arc<dyn IInferenceCredentialRepository> = repository.clone();
+        let inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository> =
+            repository.clone();
         let inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort> =
             Arc::new(InferenceCredentialAclProjectionAdapter::new(
-                Arc::clone(&inference_credentials),
+                repository.clone() as Arc<dyn IInferenceCredentialRepository>,
             ));
         Self {
             active_human_memberships: repository.clone(),

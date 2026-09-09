@@ -10,6 +10,7 @@ mod in_memory_recipient_contacts;
 mod in_memory_resource_authorization_decisions;
 mod in_memory_resource_grants;
 mod postgres;
+mod postgres_inference_credential_lifecycle;
 mod postgres_inference_credentials;
 mod postgres_inference_credentials_schema;
 mod postgres_membership_invitations;

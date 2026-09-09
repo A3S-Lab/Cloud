@@ -6,16 +6,17 @@ pub use request::{
     AcceptPlatformRolePolicyRequest, AcceptTrustDomainRevisionRequest,
     AcceptWorkloadIdentityPolicyRevisionRequest, ApproveTenantSupportGrantRequest,
     BootstrapIdentityRequest, ChangeMembershipRoleRequest, ChangePlatformRoleBindingRequest,
-    CompleteRecipientContactVerificationRequest, CreateApiTokenRequest,
+    CompleteRecipientContactVerificationRequest, CreateApiTokenRequest, CreateInferenceKeyRequest,
     CreateMembershipInvitationRequest, CreateMembershipRequest, CreateOrganizationRequest,
     CreatePlatformRoleBindingRequest, CreateResourceGrantRequest, ExpectedVersionRequest,
     MembershipInvitationVersionRequest, ProposeTenantSupportGrantRequest,
-    RequestRecipientContactVerificationRequest, RevokeMembershipRequest,
+    RequestRecipientContactVerificationRequest, RevokeInferenceKeyRequest, RevokeMembershipRequest,
     RevokeRecipientContactRequest, RevokeResourceGrantRequest,
 };
 pub use resource_grant_scope::ResourceGrantScopeDto;
 pub use response::{
     ApiTokenReadResponse, ApiTokenResponse, BootstrapIdentityResponse,
+    InferenceKeyDeliveryResponse, InferenceKeyMutationResponse, InferenceKeyResponse,
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
     OrganizationListItemResponse, OrganizationResponse, PlatformRoleBindingMutationResponse,

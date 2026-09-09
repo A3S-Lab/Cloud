@@ -181,12 +181,12 @@ use crate::modules::forms::{
     PublishFormReleaseHandler, ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
-    IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
-    IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IResourceAuthorizationDecisionRepository,
-    IResourceGrantRepository, ITenantSupportGrantRepository, ITrustDomainRepository,
-    IWorkloadIdentityPolicyRepository,
+    IApiTokenRepository, IIdentityBootstrapRepository, IInferenceCredentialLifecycleRepository,
+    IInferenceCredentialRepository, IMembershipInvitationRepository, IMembershipRepository,
+    IOidcIdentityRepository, IOrganizationRepository, IPlatformRbacRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
+    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
 use crate::modules::identity::domain::services::{
     IOidcProviderService, IRecipientContactProofService, IWorkloadIdentityProviderService,
@@ -206,21 +206,23 @@ use crate::modules::identity::{
     AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
     BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
     ChangeMembershipRoleHandler, ChangePlatformRoleBindingHandler, CompleteOidcFlowHandler,
-    CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateMembershipHandler,
-    CreateMembershipInvitationHandler, CreateOrganizationHandler, CreatePlatformRoleBindingHandler,
-    CreateResourceGrantHandler, GetApiTokenHandler, GetCurrentPlatformRolePolicyHandler,
-    GetCurrentTrustDomainHandler, GetCurrentWorkloadIdentityPolicyForWorkloadHandler,
-    GetCurrentWorkloadIdentityPolicyHandler, GetMembershipHandler, GetMembershipInvitationHandler,
+    CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateInferenceKeyHandler,
+    CreateMembershipHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
+    CreatePlatformRoleBindingHandler, CreateResourceGrantHandler, GetApiTokenHandler,
+    GetCurrentPlatformRolePolicyHandler, GetCurrentTrustDomainHandler,
+    GetCurrentWorkloadIdentityPolicyForWorkloadHandler, GetCurrentWorkloadIdentityPolicyHandler,
+    GetInferenceKeyHandler, GetMembershipHandler, GetMembershipInvitationHandler,
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IInferenceCredentialAclProjectionPort, IdentityModule,
-    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler,
-    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
-    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
-    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
-    OpenIdConnectProviderService, ProposeTenantSupportGrantHandler,
-    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler, RevokeMembershipHandler,
+    GetWorkloadIdentityPolicyRevisionHandler, IInferenceCredentialAclProjectionPort,
+    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
+    ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
+    ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
+    ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
+    ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
+    ProposeTenantSupportGrantHandler, RecipientContactVerificationDeliveryDispatcher,
+    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RevokeMembershipHandler,
     RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
     RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
     SmtpRecipientContactVerificationDeliveryService,
@@ -639,6 +641,7 @@ async fn build_api_worker_application(
     let tenant_support_grants = adapters.identity.tenant_support_grants;
     let trust_domains = adapters.identity.trust_domains;
     let workload_identity_policies = adapters.identity.workload_identity_policies;
+    let inference_credentials = adapters.identity.inference_credentials;
     let inference_credential_acl_projections =
         adapters.identity.inference_credential_acl_projections;
     let projects = adapters.projects.projects;
@@ -1954,6 +1957,7 @@ async fn build_api_worker_application(
                 tenant_support_grants,
                 trust_domains,
                 workload_identity_policies,
+                inference_credentials,
                 inference_credential_acl_projections,
                 projects: projects.clone(),
                 environments,
@@ -2218,6 +2222,7 @@ struct ManagementApplicationDependencies {
     tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
     trust_domains: Arc<dyn ITrustDomainRepository>,
     workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
+    inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
@@ -2323,6 +2328,7 @@ fn build_management_application_with_health(
         tenant_support_grants,
         trust_domains,
         workload_identity_policies,
+        inference_credentials,
         inference_credential_acl_projections,
         projects,
         environments,
@@ -2828,6 +2834,11 @@ fn build_management_application_with_health(
     let revoke_mcp_credentials = Arc::clone(&mcp_credentials);
     let list_mcp_credentials = Arc::clone(&mcp_credentials);
     let get_mcp_credentials = mcp_credentials;
+    let create_inference_credentials = Arc::clone(&inference_credentials);
+    let revoke_inference_credentials = Arc::clone(&inference_credentials);
+    let list_inference_credentials: Arc<dyn IInferenceCredentialRepository> =
+        inference_credentials.clone();
+    let get_inference_credentials: Arc<dyn IInferenceCredentialRepository> = inference_credentials;
     let create_secrets = Arc::clone(&secrets);
     let rotate_secrets = Arc::clone(&secrets);
     let revoke_secret_versions = Arc::clone(&secrets);
@@ -2851,6 +2862,7 @@ fn build_management_application_with_health(
     );
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
+    let inference_key_environments = Arc::clone(&environments);
     let create_execution_template_projects = Arc::clone(&projects);
     let list_execution_template_projects = Arc::clone(&projects);
     let create_execution_templates = Arc::clone(&execution_templates);
@@ -2909,6 +2921,7 @@ fn build_management_application_with_health(
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = Arc::clone(&secret_encryption);
     let create_mcp_credential_encryption = Arc::clone(&secret_encryption);
+    let create_inference_key_encryption = Arc::clone(&secret_encryption);
     let rotate_mcp_credential_encryption = secret_encryption;
     let mcp_credential_issuer: Arc<dyn IMcpCredentialIssuer> = Arc::new(McpCredentialIssuer::new());
     let rotate_mcp_credential_issuer = Arc::clone(&mcp_credential_issuer);
@@ -2992,6 +3005,17 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeApiToken, _>(
                     RevokeApiTokenHandler::new(api_tokens),
+                )
+                .command_handler::<crate::modules::identity::CreateInferenceKey, _>(
+                    CreateInferenceKeyHandler::new(
+                        inference_key_environments,
+                        create_inference_credentials,
+                        InferenceCredentialIssuer::new(),
+                        create_inference_key_encryption,
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RevokeInferenceKey, _>(
+                    RevokeInferenceKeyHandler::new(revoke_inference_credentials),
                 )
                 .command_handler::<crate::modules::identity::CreateOrganization, _>(
                     CreateOrganizationHandler::new(organizations),
@@ -4280,6 +4304,12 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::edge::GetMcpCredential, _>(
                     GetMcpCredentialHandler::new(get_mcp_credentials),
+                )
+                .query_handler::<crate::modules::identity::ListInferenceKeys, _>(
+                    ListInferenceKeysHandler::new(list_inference_credentials),
+                )
+                .query_handler::<crate::modules::identity::GetInferenceKey, _>(
+                    GetInferenceKeyHandler::new(get_inference_credentials),
                 )
                 .query_handler::<crate::modules::edge::ListMcpRoutePolicies, _>(
                     ListMcpRoutePoliciesHandler::new(list_mcp_route_policies),

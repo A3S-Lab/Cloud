@@ -1,5 +1,6 @@
 use super::controllers::{
-    api_token_controller, bootstrap_controller, membership_controller,
+    api_token_controller, bootstrap_controller, inference_key_commands_controller,
+    inference_key_queries_controller, membership_controller,
     membership_invitation_acceptance_controller, membership_invitation_administration_controller,
     membership_invitation_self_query_controller, oidc_link_controller, oidc_public_controller,
     organization_controller, organizations_query_controller, platform_rbac_commands_controller,
@@ -39,6 +40,8 @@ impl Module for IdentityModule {
             )?,
             organization_controller(command_bus.clone())?,
             api_token_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
+            inference_key_commands_controller(command_bus.clone())?,
+            inference_key_queries_controller(module_ref.get::<QueryBus>()?)?,
             membership_controller(command_bus.clone(), module_ref.get::<QueryBus>()?)?,
             membership_invitation_administration_controller(
                 command_bus.clone(),

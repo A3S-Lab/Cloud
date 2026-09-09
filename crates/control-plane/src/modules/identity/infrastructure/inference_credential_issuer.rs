@@ -117,9 +117,12 @@ fn random_material(
     let mut prefix_random = Zeroizing::new([0_u8; PREFIX_RANDOM_BYTES]);
     let mut secret_random = Zeroizing::new([0_u8; SECRET_RANDOM_BYTES]);
     let mut salt_random = Zeroizing::new([0_u8; SALT_RANDOM_BYTES]);
-    getrandom::fill(&mut *prefix_random).map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
-    getrandom::fill(&mut *secret_random).map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
-    getrandom::fill(&mut *salt_random).map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
+    getrandom::fill(&mut *prefix_random)
+        .map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
+    getrandom::fill(&mut *secret_random)
+        .map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
+    getrandom::fill(&mut *salt_random)
+        .map_err(|_| InferenceCredentialIssuanceError::Unavailable)?;
 
     let mut prefix = String::with_capacity("a3s_inf_".len() + PREFIX_RANDOM_BYTES * 2);
     prefix.push_str("a3s_inf_");

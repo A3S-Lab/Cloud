@@ -20,6 +20,8 @@ impl ApiTokenScope {
     pub const SOURCE_WRITE: &'static str = "source:write";
     pub const ASSET_WRITE: &'static str = "asset:write";
     pub const MCP_WRITE: &'static str = "mcp:write";
+    pub const INFERENCE_READ: &'static str = "inference:read";
+    pub const INFERENCE_WRITE: &'static str = "inference:write";
     pub const ONTOLOGY_WRITE: &'static str = "ontology:write";
     pub const WORKFLOW_WRITE: &'static str = "workflow:write";
     pub const FORM_WRITE: &'static str = "form:write";
@@ -70,6 +72,8 @@ impl ApiTokenScope {
             Self::SOURCE_WRITE,
             Self::ASSET_WRITE,
             Self::MCP_WRITE,
+            Self::INFERENCE_READ,
+            Self::INFERENCE_WRITE,
             Self::ONTOLOGY_WRITE,
             Self::WORKFLOW_WRITE,
             Self::FORM_WRITE,

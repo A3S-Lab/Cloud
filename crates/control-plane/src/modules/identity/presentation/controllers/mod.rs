@@ -1,5 +1,6 @@
 mod api_token_controller;
 mod bootstrap_controller;
+mod inference_key_controller;
 mod membership_controller;
 mod membership_invitation_controller;
 mod oidc_controller;
@@ -11,6 +12,9 @@ mod resource_grant_controller;
 
 pub use api_token_controller::api_token_controller;
 pub use bootstrap_controller::bootstrap_controller;
+pub use inference_key_controller::{
+    inference_key_commands_controller, inference_key_queries_controller,
+};
 pub use membership_controller::membership_controller;
 pub use membership_invitation_controller::{
     membership_invitation_acceptance_controller, membership_invitation_administration_controller,

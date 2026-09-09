@@ -1,17 +1,33 @@
-use crate::modules::identity::domain::entities::InferenceCredential;
-use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
-use crate::modules::shared_kernel::domain::{
-    EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId, RepositoryError,
+use crate::modules::identity::domain::entities::{
+    InferenceCredential, InferenceCredentialDeliveryReceipt,
 };
+use crate::modules::identity::domain::repositories::{
+    CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
+    IInferenceCredentialRepository, InferenceCredentialWrite, RevokeInferenceCredentialWrite,
+};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, IdempotencyRequest, InferenceCredentialId, OrganizationId, ProjectId,
+    RepositoryError,
+};
+use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[derive(Clone)]
+struct WriteReference {
+    credential_id: InferenceCredentialId,
+    generation: u64,
+}
+
 #[derive(Default)]
 struct State {
     credentials: HashMap<InferenceCredentialId, InferenceCredential>,
     prefixes: HashMap<String, InferenceCredentialId>,
+    receipts: HashMap<InferenceCredentialId, InferenceCredentialDeliveryReceipt>,
+    idempotency: HashMap<(String, String), (String, WriteReference)>,
+    outbox: Vec<DomainEventEnvelope>,
 }
 
 /// Standalone in-memory authority for Identity inference credentials.
@@ -117,12 +133,165 @@ impl IInferenceCredentialRepository for InMemoryInferenceCredentialRepository {
     }
 }
 
+#[async_trait]
+impl IInferenceCredentialLifecycleRepository for InMemoryInferenceCredentialRepository {
+    async fn replay_inference_credential_write(
+        &self,
+        organization_id: OrganizationId,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<InferenceCredentialWrite>, RepositoryError> {
+        let state = self.state.read().await;
+        replay(&state, organization_id, idempotency)
+    }
+
+    async fn create_inference_credential_delivery(
+        &self,
+        bundle: CreateInferenceCredentialWrite,
+    ) -> Result<InferenceCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replayed) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replayed);
+        }
+        if state.credentials.contains_key(&bundle.credential.id)
+            || state.prefixes.contains_key(bundle.credential.prefix())
+        {
+            return Err(RepositoryError::Conflict(
+                "inference credential identity or lookup prefix is already in use".into(),
+            ));
+        }
+        state
+            .prefixes
+            .insert(bundle.credential.prefix().to_owned(), bundle.credential.id);
+        state
+            .credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state
+            .receipts
+            .insert(bundle.credential.id, bundle.receipt.clone());
+        remember(
+            &mut state,
+            bundle.idempotency,
+            WriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        state.outbox.push(bundle.event);
+        Ok(InferenceCredentialWrite {
+            credential: bundle.credential,
+            receipt: Some(bundle.receipt),
+            replayed: false,
+        })
+    }
+
+    async fn revoke_inference_credential(
+        &self,
+        bundle: RevokeInferenceCredentialWrite,
+    ) -> Result<InferenceCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replayed) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replayed);
+        }
+        let existing = state
+            .credentials
+            .get(&bundle.credential.id)
+            .filter(|existing| existing.organization_id == bundle.credential.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        if bundle.event.is_some() {
+            bundle
+                .credential
+                .validate_transition_from(&existing, bundle.expected_aggregate_version)
+                .map_err(RepositoryError::Conflict)?;
+        } else if existing != bundle.credential
+            || existing.aggregate_version() != bundle.expected_aggregate_version
+        {
+            return Err(RepositoryError::Conflict(
+                "inference credential changed while applying revocation".into(),
+            ));
+        }
+        state
+            .credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state.receipts.remove(&bundle.credential.id);
+        remember(
+            &mut state,
+            bundle.idempotency,
+            WriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        if let Some(event) = bundle.event {
+            state.outbox.push(event);
+        }
+        Ok(InferenceCredentialWrite {
+            credential: bundle.credential,
+            receipt: None,
+            replayed: false,
+        })
+    }
+}
+
+fn replay(
+    state: &State,
+    organization_id: OrganizationId,
+    idempotency: &IdempotencyRequest,
+) -> Result<Option<InferenceCredentialWrite>, RepositoryError> {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    let Some((digest, reference)) = state.idempotency.get(&key) else {
+        return Ok(None);
+    };
+    if digest != &idempotency.request_digest {
+        return Err(RepositoryError::Conflict(
+            "inference credential idempotency key was reused with a different request".into(),
+        ));
+    }
+    let credential = state
+        .credentials
+        .get(&reference.credential_id)
+        .filter(|credential| credential.organization_id == organization_id)
+        .cloned()
+        .ok_or(RepositoryError::NotFound)?;
+    if credential.generation() != reference.generation {
+        return Err(RepositoryError::Conflict(
+            "inference credential generation changed after the remembered write".into(),
+        ));
+    }
+    Ok(Some(InferenceCredentialWrite {
+        receipt: state.receipts.get(&credential.id).cloned(),
+        credential,
+        replayed: true,
+    }))
+}
+
+fn remember(state: &mut State, idempotency: IdempotencyRequest, reference: WriteReference) {
+    let key = (
+        idempotency.storage_key().0.to_owned(),
+        idempotency.storage_key().1.to_owned(),
+    );
+    state
+        .idempotency
+        .insert(key, (idempotency.request_digest, reference));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{
-        render_inference_policy_acl, require_inference_tokenizer_revision,
-    };
+    use a3s_cloud_contracts::{render_inference_policy_acl, require_inference_tokenizer_revision};
     use chrono::{Duration, Utc};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -150,11 +319,7 @@ mod tests {
             .await
             .unwrap();
         let listed = repo
-            .list_inference_credentials_by_environment(
-                organization_id,
-                project_id,
-                environment_id,
-            )
+            .list_inference_credentials_by_environment(organization_id, project_id, environment_id)
             .await
             .unwrap();
         assert_eq!(listed.len(), 1);

@@ -5,11 +5,11 @@ pub mod presentation;
 pub mod published;
 
 pub use application::{
-    ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
-    EmptyInferenceCredentialAclProjectionPort, IInferenceCredentialAclProjectionPort,
-    InferenceCredentialEnvironmentScope,
+    ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
+    IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
-    IWorkloadRuntimeExecutionAuthorizationQueryPort,
+    IWorkloadRuntimeExecutionAuthorizationQueryPort, InferenceCredentialDeliveryResult,
+    InferenceCredentialEnvironmentScope, InferenceCredentialMutationResult,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
     RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
     WorkloadRuntimeExecutionAuthorizationQuery, WorkloadRuntimeExecutionAuthorizationQueryService,
@@ -42,6 +42,9 @@ pub use application::commands::complete_recipient_contact_verification::{
 pub use application::commands::create_api_token::{
     CreateApiToken, CreateApiTokenHandler, CreateApiTokenResult,
 };
+pub use application::commands::create_inference_key::{
+    CreateInferenceKey, CreateInferenceKeyHandler,
+};
 pub use application::commands::create_membership::{CreateMembership, CreateMembershipHandler};
 pub use application::commands::create_membership_invitation::{
     CreateMembershipInvitation, CreateMembershipInvitationHandler,
@@ -68,6 +71,9 @@ pub use application::commands::manage_workload_trust::{
 pub use application::commands::revoke_api_token::{
     RevokeApiToken, RevokeApiTokenHandler, RevokeApiTokenResult,
 };
+pub use application::commands::revoke_inference_key::{
+    RevokeInferenceKey, RevokeInferenceKeyHandler,
+};
 pub use application::commands::revoke_membership::{RevokeMembership, RevokeMembershipHandler};
 pub use application::commands::revoke_membership_invitation::{
     RevokeMembershipInvitation, RevokeMembershipInvitationHandler,
@@ -79,6 +85,7 @@ pub use application::commands::revoke_resource_grant::{
     RevokeResourceGrant, RevokeResourceGrantHandler,
 };
 pub use application::queries::get_api_token::{GetApiToken, GetApiTokenHandler};
+pub use application::queries::get_inference_key::{GetInferenceKey, GetInferenceKeyHandler};
 pub use application::queries::get_membership::{GetMembership, GetMembershipHandler};
 pub use application::queries::get_membership_invitation::{
     GetMembershipInvitation, GetMembershipInvitationHandler,
@@ -88,6 +95,7 @@ pub use application::queries::get_recipient_contact::{
 };
 pub use application::queries::get_resource_grant::{GetResourceGrant, GetResourceGrantHandler};
 pub use application::queries::list_api_tokens::{ListApiTokens, ListApiTokensHandler};
+pub use application::queries::list_inference_keys::{ListInferenceKeys, ListInferenceKeysHandler};
 pub use application::queries::list_membership_invitations::{
     ListMembershipInvitations, ListMembershipInvitationsHandler,
 };
@@ -121,14 +129,14 @@ pub use application::queries::read_workload_trust::{
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisions,
     ListWorkloadIdentityPolicyRevisionsHandler,
 };
-pub use domain::repositories::{
-    IInferenceCredentialRepository, IOidcIdentityRepository, IPlatformRbacRepository,
-    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
-    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
-    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
-    IWorkloadRuntimeEvidenceRepository,
-};
 pub use domain::entities::InferenceCredential;
+pub use domain::repositories::{
+    IInferenceCredentialLifecycleRepository, IInferenceCredentialRepository,
+    IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
+    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
+    IResourceAuthorizationDecisionRepository, ITenantSupportGrantRepository,
+    ITrustDomainRepository, IWorkloadIdentityPolicyRepository, IWorkloadRuntimeEvidenceRepository,
+};
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,
     IWorkloadIdentityProviderService, OidcAuthorization, OidcAuthorizationRequest,

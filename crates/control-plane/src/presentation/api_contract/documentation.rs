@@ -801,6 +801,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke an MCP credential",
         ),
         (
+            "/inference/keys/{credential_id}/revoke",
+            "Revoke an inference key",
+        ),
+        (
             "/notification-alert-policies/{policy_id}/revoke",
             "Revoke a notification alert policy",
         ),
@@ -942,6 +946,7 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "forms" => ("form", "forms"),
         "gateway-certificates" => ("gateway certificate", "gateway certificates"),
         "human-tasks" => ("human task", "human tasks"),
+        "keys" => ("inference key", "inference keys"),
         "mcp-credentials" => ("MCP credential", "MCP credentials"),
         "mcp-route-policies" => ("MCP route policy", "MCP route policies"),
         "membership-invitations" => ("membership invitation", "membership invitations"),

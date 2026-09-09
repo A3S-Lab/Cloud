@@ -354,9 +354,11 @@ Initial management commands are:
 - `RegisterExternalModelProvider` and `BindExternalProviderSecretVersion`.
 
 `CreateInferenceKey` and `RevokeInferenceKey` are Identity-owned commands
-exposed through the Inference management facade. Inference stores grants that
-reference the resulting credential ID; it never stores the key verifier or
-plaintext secret.
+exposed through Identity management HTTP (`ENV/inference/keys`) and the
+Inference management facade. Create returns the bearer once through an
+encrypted delivery receipt (migration `197`); revoke flips the Gateway ACL
+projection to `revoked`. Inference stores grants that reference the resulting
+credential ID; it never stores the key verifier or plaintext secret.
 
 Queries compose authoritative readers:
 

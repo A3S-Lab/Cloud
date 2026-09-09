@@ -64,8 +64,14 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/gateway-scopes" => {
             gateway_scope_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys" => {
+            credential_expiry_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/revoke" => {
+            expected_version_schema("expectedAggregateVersion")
+        }
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials" => {
-            create_mcp_credential_schema()
+            credential_expiry_schema()
         }
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/routes" => {
             route_schema()
@@ -496,7 +502,7 @@ fn expected_version_schema(field: &str) -> Value {
     schema
 }
 
-fn create_mcp_credential_schema() -> Value {
+fn credential_expiry_schema() -> Value {
     object(
         &["expiresAt"],
         json!({ "expiresAt": { "type": "string", "format": "date-time" } }),
