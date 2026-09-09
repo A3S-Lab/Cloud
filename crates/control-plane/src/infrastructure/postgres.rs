@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 190;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "190";
+pub const CLOUD_MIGRATION_COUNT: i64 = 192;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "192";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1737,6 +1737,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/191_plugin_plan_projection_confirmation.sql"
             )),
         ),
+        Migration::new(
+            "192",
+            "Inference usage ledger",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/192_inference_usage_ledger.sql"
+            )),
+        ),
     ]
 }
 
@@ -1786,6 +1794,10 @@ mod plugin_plan_projection_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/plugin_plan_projection_confirmation_migration.rs"]
 mod plugin_plan_projection_confirmation_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/inference_usage_ledger_migration.rs"]
+mod inference_usage_ledger_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/installation_scoped_facts_migration.rs"]

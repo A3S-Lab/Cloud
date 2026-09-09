@@ -1506,7 +1506,9 @@ async fn build_api_worker_application(
             Arc::clone(&node_control),
             Arc::clone(&node_protocol_sessions),
             Arc::clone(&agents),
-            Arc::new(crate::modules::inference::InMemoryInferenceUsageRepository::new()),
+            Arc::new(crate::modules::inference::PostgresInferenceUsageRepository::new(
+                executor.clone(),
+            )),
             Arc::clone(&node_artifacts),
             Arc::clone(&management.gateway_projector),
             Arc::clone(&routes),

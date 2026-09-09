@@ -1,122 +1,25 @@
 use crate::modules::inference::domain::{
-    AcceptInferenceUsageBatchWrite, IInferenceUsageRepository,
+    apply_inference_usage_batch, AcceptInferenceUsageBatchWrite, IInferenceUsageRepository,
+    InferenceUsageLedgerError, InferenceUsageLedgerState,
 };
 use crate::modules::shared_kernel::domain::RepositoryError;
-use a3s_cloud_contracts::{
-    InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1,
-    INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
-};
+use a3s_cloud_contracts::InferenceUsageReceiptV1;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Debug, Default)]
-struct GatewayLedgerState {
-    watermark: Option<InferenceUsageCursorV1>,
-    events: HashMap<Uuid, String>,
-}
-
-/// Process-local Inference usage ledger used until durable Postgres lands.
+/// Process-local Inference usage ledger used by tests and non-Postgres fixtures.
 ///
-/// Semantics match the Gateway/Cloud usage-batch receipt contract: highest
-/// contiguous acknowledgement, wrong-`after` gaps, and event-id digest conflicts.
+/// Production API/worker roles use [`super::PostgresInferenceUsageRepository`].
 #[derive(Debug, Default)]
 pub struct InMemoryInferenceUsageRepository {
-    gateways: Mutex<HashMap<(Uuid, Uuid), GatewayLedgerState>>,
+    gateways: Mutex<HashMap<(Uuid, Uuid), InferenceUsageLedgerState>>,
 }
 
 impl InMemoryInferenceUsageRepository {
     pub fn new() -> Self {
         Self::default()
-    }
-
-    fn apply_batch(
-        &self,
-        organization_id: Uuid,
-        batch: &InferenceUsageBatchV1,
-    ) -> Result<InferenceUsageReceiptV1, RepositoryError> {
-        batch
-            .validate()
-            .map_err(|error| RepositoryError::Storage(error))?;
-        let mut gateways = self.gateways.lock().map_err(|_| {
-            RepositoryError::Storage("inference usage ledger lock poisoned".into())
-        })?;
-        let state = gateways
-            .entry((organization_id, batch.gateway_id))
-            .or_default();
-
-        if batch.after != state.watermark {
-            // Caller is not continuing from the ledger tip. Hold the watermark
-            // and do not invent contiguity. Gaps must not include the
-            // acknowledgement cursor (contract invariant).
-            let receipt = InferenceUsageReceiptV1 {
-                schema: INFERENCE_USAGE_RECEIPT_SCHEMA_V1.into(),
-                gateway_id: batch.gateway_id,
-                batch_id: batch.batch_id,
-                acknowledged_through: state.watermark,
-                gaps: Vec::new(),
-            };
-            receipt
-                .validate_for(batch)
-                .map_err(|error| RepositoryError::Storage(error))?;
-            return Ok(receipt);
-        }
-
-        let mut acknowledged_through = state.watermark;
-        let mut gaps = Vec::new();
-        for record in &batch.records {
-            let expected = match acknowledged_through {
-                None => InferenceUsageCursorV1 {
-                    boot_epoch: record.cursor.boot_epoch,
-                    sequence: 1,
-                },
-                Some(cursor) if cursor.boot_epoch == record.cursor.boot_epoch => {
-                    InferenceUsageCursorV1 {
-                        boot_epoch: cursor.boot_epoch,
-                        sequence: cursor.sequence.saturating_add(1),
-                    }
-                }
-                Some(_) => record.cursor,
-            };
-
-            let new_epoch_start = acknowledged_through.is_some_and(|cursor| {
-                cursor.boot_epoch != record.cursor.boot_epoch && record.cursor.sequence == 1
-            });
-            if record.cursor != expected && !new_epoch_start {
-                gaps.push(expected);
-                break;
-            }
-
-            match state.events.get(&record.event_id) {
-                Some(digest) if digest != &record.payload_sha256 => {
-                    return Err(RepositoryError::Conflict(format!(
-                        "usage event {} payload digest conflicts with the ledger",
-                        record.event_id
-                    )));
-                }
-                Some(_) => {}
-                None => {
-                    state
-                        .events
-                        .insert(record.event_id, record.payload_sha256.clone());
-                }
-            }
-            acknowledged_through = Some(record.cursor);
-        }
-
-        state.watermark = acknowledged_through;
-        let receipt = InferenceUsageReceiptV1 {
-            schema: INFERENCE_USAGE_RECEIPT_SCHEMA_V1.into(),
-            gateway_id: batch.gateway_id,
-            batch_id: batch.batch_id,
-            acknowledged_through,
-            gaps,
-        };
-        receipt
-            .validate_for(batch)
-            .map_err(|error| RepositoryError::Storage(error))?;
-        Ok(receipt)
     }
 }
 
@@ -129,7 +32,22 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         write
             .validate()
             .map_err(|error| RepositoryError::Storage(error))?;
-        self.apply_batch(write.organization_id.as_uuid(), &write.batch)
+        let mut gateways = self.gateways.lock().map_err(|_| {
+            RepositoryError::Storage("inference usage ledger lock poisoned".into())
+        })?;
+        let key = (
+            write.organization_id.as_uuid(),
+            write.batch.gateway_id,
+        );
+        let state = gateways.entry(key).or_default();
+        let applied = apply_inference_usage_batch(state, &write.batch).map_err(|error| {
+            match error {
+                InferenceUsageLedgerError::Conflict(message) => RepositoryError::Conflict(message),
+                InferenceUsageLedgerError::Contract(message) => RepositoryError::Storage(message),
+            }
+        })?;
+        *state = applied.next;
+        Ok(applied.receipt)
     }
 }
 
@@ -137,7 +55,9 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
 mod tests {
     use super::*;
     use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
-    use a3s_cloud_contracts::InferenceUsageRecordV1;
+    use a3s_cloud_contracts::{
+        InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageRecordV1,
+    };
     use base64::Engine;
     use chrono::Utc;
     use sha2::{Digest, Sha256};
