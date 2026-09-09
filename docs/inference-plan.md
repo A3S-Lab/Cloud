@@ -1328,8 +1328,12 @@ evidence, and fenced release protocol.
   `require_inference_tokenizer_revision` guards compiler output. Managed Gateway
   snapshots from `GatewaySnapshotCompiler` now always append that shell before
   the `management` block so Edge receives joint expiry + tokenizer freeze on
-  the H0.2 delivery path. Full catalog/key/route/worker publication remains
-  open.
+  the H0.2 delivery path. Cloud contracts also render typed
+  `InferenceCredentialAclProjection` blocks (`render_inference_policy_acl`,
+  audience `cloud-inference`, prefix `a3s_inf_`, Argon2id PHC, unique/non-
+  overlapping prefixes) for the next credential-compiler step; durable
+  Identity inference-key storage and snapshot projection of live credentials
+  remain open. Full route/worker publication remains open.
 
 ### I0.2c: durable usage and rollout
 
