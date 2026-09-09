@@ -793,6 +793,14 @@ device-policy bootstrap used by Box Sandbox composition. `BX0.3` remains open
 for complete Sandbox plus hardware-backed MicroVM/TEE isolation certification
 on the joint gate.
 
+The eleventh `BX0.3` slice advances the A3S Box pin to
+`8b2804c585d2f31bce06f213990407606a475634` (`3.2.5`) and the OCI Runtime pin to
+`402949c2d73cabdf5b959113806db9108e918cf1` so Sandbox R17 owners migrate into
+delegated cgroup children, keep temporary real-UID peer auth under effective
+root, and skip detached `open_tree` / remount RO binds after device-policy drop.
+`BX0.3` remains open for complete Sandbox plus hardware-backed MicroVM/TEE
+isolation certification on the joint gate.
+
 The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 

@@ -120,7 +120,7 @@ observation readiness logic or invoke A3S Box outside Runtime.
 
 **Component status on 2026-09-09:** Cloud pins `a3s-runtime` `0.5.0` at
 `4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` and Box `3.2.5` at
-`09e5874b49d9f521321e1a09399a81cb36cddd8e`; Box resolves that exact Runtime
+`8b2804c585d2f31bce06f213990407606a475634`; Box resolves that exact Runtime
 source identity. Runtime preserves one opaque Identity attachment across Unit
 Spec and provider evidence and now separates Service readiness, liveness, and
 graceful-shutdown intent. Confidential Box attestation binds the attachment to
@@ -132,7 +132,7 @@ back to weaker isolation. The exact
 [Box 3.2.5 release](https://github.com/A3S-Lab/Box/releases/tag/v3.2.5) passes a
 checksummed release-layout installation and product startup on x86_64 and
 aarch64 against OCI Runtime commit
-`fb517c6fe7793911c860f07143f6f1b4cb37eae7`, the complete Rust, Python,
+`402949c2d73cabdf5b959113806db9108e918cf1`, the complete Rust, Python,
 TypeScript, and Go Sandbox suites with `/dev/kvm` absent and with a mode-000
 wrong-type path, owner-replacement and cleanup evidence, Linux and macOS build
 checks, Windows WHPX, Clippy, and unit tests. Execution Tasks, ordinary and
