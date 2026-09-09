@@ -1326,6 +1326,12 @@ evidence, and fenced release protocol.
 - Prove a failed model/backend revision leaves the prior healthy revision
   serving and every response/attempt has a terminal or visible unknown usage
   outcome after crash and replay.
+- Shipped so far: Cloud accepts `POST /v1/inference-control/usage-batches` on
+  node-control mTLS, persists watermark + event digests in PostgreSQL
+  (migration `192`), holds wrong-`after` without advertising out-of-batch tips,
+  and proves enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
+  Retention/rollup/showback queries and provisioned-deployment recovery remain
+  open.
 
 ### I0.2d: external provider targets
 
