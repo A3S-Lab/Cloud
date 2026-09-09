@@ -1327,9 +1327,11 @@ evidence, and fenced release protocol.
   serving and every response/attempt has a terminal or visible unknown usage
   outcome after crash and replay.
 - Shipped so far: Cloud accepts `POST /v1/inference-control/usage-batches` on
-  node-control mTLS, persists watermark + event digests in PostgreSQL
-  (migration `192`), holds wrong-`after` without advertising out-of-batch tips,
-  and proves enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
+  node-control mTLS, persists watermark + event digests and prompt-free
+  `a3s.gateway.usage-lifecycle.v1` payload bytes in PostgreSQL (migrations
+  `192`/`193`), validates lifecycle facts fail-closed (no prompts/secrets),
+  holds wrong-`after` without advertising out-of-batch tips, and proves
+  enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
   Retention/rollup/showback queries and provisioned-deployment recovery remain
   open.
 
