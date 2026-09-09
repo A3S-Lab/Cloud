@@ -42,12 +42,6 @@ impl InferenceUsageLedgerError {
     }
 }
 
-/// Apply `batch` to `state` without side effects.
-///
-/// Wrong-`after` holds the watermark and never invents contiguity. Gaps never
-/// include the acknowledgement cursor. Matching event-id redelivery is
-/// idempotent; digest mismatch is a conflict.
-///
 /// Choose a wrong-`after` acknowledgement that satisfies
 /// [`InferenceUsageReceiptV1::validate_for`].
 fn contract_valid_hold_ack(
