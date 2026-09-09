@@ -98,7 +98,7 @@ one exact OCI Runtime generation.
 | `BOX-R4` | Add node-pressure, image/weight cache accounting, drain, warm-pool primitives, and upgrade safety without cluster policy | Cloud can make placement decisions from fresh capacity evidence; Box never chooses another node or desired replica count |
 
 The `BOX-R3` identity-evidence and Service-lifecycle sub-slices are verified at
-`09e5874b49d9f521321e1a09399a81cb36cddd8e`: only the confidential provider
+`8b2804c585d2f31bce06f213990407606a475634`: only the confidential provider
 advertises `IdentityAttachment`, restart/replay preserves the attachment in
 provider evidence and attestation, and readiness, liveness-triggered restart,
 graceful shutdown, and cleanup retain exact generation evidence. Non-snapshot
@@ -109,7 +109,7 @@ and cannot fall back to weaker isolation. The exact
 [Box 3.2.5 release](https://github.com/A3S-Lab/Box/releases/tag/v3.2.5)
 passes a checksummed release-layout installation and product startup on
 x86_64 and aarch64 against OCI Runtime commit
-`fb517c6fe7793911c860f07143f6f1b4cb37eae7`, plus all four SDKs with
+`402949c2d73cabdf5b959113806db9108e918cf1`, plus all four SDKs with
 `/dev/kvm` absent and with a mode-000 wrong-type path. Both lanes retain
 owner-replacement, exact-generation, and cleanup evidence. This does not
 complete Box networking, pressure, hardware-provider, recovery, or upgrade
