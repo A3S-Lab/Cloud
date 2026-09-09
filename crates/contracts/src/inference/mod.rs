@@ -1,9 +1,13 @@
 //! Versioned distributed-inference observation contracts.
 
+mod credential_acl;
 mod lifecycle;
 mod tokenizer_revision;
 mod usage;
 
+pub use credential_acl::{
+    render_inference_policy_acl, InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+};
 pub use lifecycle::{
     InferenceUsageAttemptEvidenceV1, InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1,
     InferenceUsageLifecycleKindV1, InferenceUsageMeasurementCompletenessV1,
