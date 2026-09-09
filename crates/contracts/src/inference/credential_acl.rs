@@ -4,6 +4,7 @@
 //! must emit the same bytes before catalog/route compilers land. Plaintext
 //! secrets never belong in this projection.
 
+use super::route_acl::{render_inference_route_acl_blocks, InferenceRouteAclProjection};
 use super::tokenizer_revision::{
     inference_tokenizer_revision_acl_attr, require_inference_tokenizer_revision,
     INFERENCE_TOKENIZER_REVISION_V1,
@@ -86,7 +87,9 @@ impl InferenceCredentialAclProjection {
         }
         validate_credential_prefix(&self.prefix)?;
         if self.generation == 0 || self.generation > MAX_SAFE_ACL_INTEGER {
-            return Err("inference credential generation must be a positive ACL-safe integer".into());
+            return Err(
+                "inference credential generation must be a positive ACL-safe integer".into(),
+            );
         }
         if self.expires_at.timestamp_millis() <= 0 {
             return Err("inference credential expires_at must be a positive UTC timestamp".into());
@@ -114,10 +117,21 @@ impl fmt::Debug for InferenceCredentialAclProjection {
 /// Render a managed `inference` ACL block with optional credential projections.
 ///
 /// Credentials are sorted by `credential_id` for deterministic snapshot digests.
-/// Routes and workers remain omitted until those compilers land.
+/// Routes default to empty; use [`render_inference_policy_acl_with_routes`] when
+/// Inference catalog authority supplies route projections. Workers remain
+/// omitted until that compiler lands.
 pub fn render_inference_policy_acl(
     expires_at: DateTime<Utc>,
     credentials: &[InferenceCredentialAclProjection],
+) -> Result<String, String> {
+    render_inference_policy_acl_with_routes(expires_at, credentials, &[])
+}
+
+/// Render credentials plus route/grant projections into one inference policy.
+pub fn render_inference_policy_acl_with_routes(
+    expires_at: DateTime<Utc>,
+    credentials: &[InferenceCredentialAclProjection],
+    routes: &[InferenceRouteAclProjection],
 ) -> Result<String, String> {
     if expires_at.timestamp_millis() <= 0 {
         return Err("inference policy expires_at must be a positive UTC timestamp".into());
@@ -147,6 +161,32 @@ pub fn render_inference_policy_acl(
         return Err("inference credential prefixes must not overlap".into());
     }
 
+    let credential_by_id = ordered
+        .iter()
+        .map(|credential| (credential.credential_id, *credential))
+        .collect::<std::collections::HashMap<_, _>>();
+    for route in routes {
+        for grant in &route.grants {
+            let Some(credential) = credential_by_id.get(&grant.credential_id) else {
+                return Err(format!(
+                    "inference grant credential_id {} is not projected in credentials",
+                    grant.credential_id
+                ));
+            };
+            if credential.generation != grant.credential_generation {
+                return Err(format!(
+                    "inference grant credential_generation {} does not match projected credential generation {}",
+                    grant.credential_generation, credential.generation
+                ));
+            }
+            if credential.environment_id != route.environment_id {
+                return Err(
+                    "inference grant environment must match the route environment_id".into(),
+                );
+            }
+        }
+    }
+
     let expires = expires_at.to_rfc3339_opts(SecondsFormat::Micros, true);
     let mut acl = format!(
         "inference {{\n  {}\n  expires_at = \"{expires}\"\n",
@@ -167,6 +207,7 @@ pub fn render_inference_policy_acl(
             if credential.revoked { "true" } else { "false" },
         ));
     }
+    acl.push_str(&render_inference_route_acl_blocks(routes)?);
     acl.push_str("}\n");
     require_inference_tokenizer_revision(&acl)?;
     debug_assert_eq!(INFERENCE_TOKENIZER_REVISION_V1, "a3s.gateway.tokenizer.v1");
@@ -277,7 +318,8 @@ mod tests {
     #[test]
     fn renders_credentials_inside_frozen_inference_shell() {
         let expires_at = Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap();
-        let acl = render_inference_policy_acl(expires_at, &[credential("a3s_inf_abc12345")]).unwrap();
+        let acl =
+            render_inference_policy_acl(expires_at, &[credential("a3s_inf_abc12345")]).unwrap();
         require_inference_tokenizer_revision(&acl).unwrap();
         assert!(acl.contains("credentials \"33333333-3333-4333-8333-333333333333\""));
         assert!(acl.contains("audience = \"cloud-inference\""));
@@ -285,6 +327,83 @@ mod tests {
         assert!(acl.contains(&format!("verifier_hash = \"{VERIFIER}\"")));
         assert!(!acl.contains("routes "));
         assert!(!acl.contains("workers "));
+    }
+
+    #[test]
+    fn renders_routes_only_when_generation_and_environment_match() {
+        let expires_at = Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap();
+        let mut credential = credential("a3s_inf_abc12345");
+        credential.generation = 3;
+        let route = crate::inference::InferenceRouteAclProjection {
+            route_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+            router: "inference".into(),
+            environment_id: credential.environment_id,
+            policy_revision: 11,
+            models: vec![crate::inference::InferenceModelAclProjection {
+                alias: "chat-model".into(),
+                model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+                targets: vec![crate::inference::InferenceTargetAclProjection {
+                    target_id: Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap(),
+                    service: "model-service".into(),
+                    upstream_model: "internal/model-v1".into(),
+                    priority: 0,
+                    weight: 100,
+                }],
+            }],
+            grants: vec![crate::inference::InferenceGrantAclProjection {
+                credential_id: credential.credential_id,
+                credential_generation: 3,
+                models: vec!["chat-model".into()],
+                endpoints: vec![crate::inference::InferenceEndpointAcl::Models],
+                limits: crate::inference::InferenceLimitsAclProjection {
+                    max_concurrent_requests: 2,
+                    requests_per_minute: 60,
+                    request_burst: 2,
+                    tokens_per_minute: 10_000,
+                },
+            }],
+        };
+        let acl =
+            render_inference_policy_acl_with_routes(expires_at, &[credential.clone()], &[route])
+                .unwrap();
+        assert!(acl.contains("routes \"44444444-4444-4444-8444-444444444444\""));
+        assert!(acl.contains("grants \"33333333-3333-4333-8333-333333333333\""));
+        assert!(!acl.contains("workers "));
+
+        let mut mismatched = credential.clone();
+        mismatched.generation = 9;
+        let route = crate::inference::InferenceRouteAclProjection {
+            route_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+            router: "inference".into(),
+            environment_id: mismatched.environment_id,
+            policy_revision: 11,
+            models: vec![crate::inference::InferenceModelAclProjection {
+                alias: "chat-model".into(),
+                model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+                targets: vec![crate::inference::InferenceTargetAclProjection {
+                    target_id: Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap(),
+                    service: "model-service".into(),
+                    upstream_model: "internal/model-v1".into(),
+                    priority: 0,
+                    weight: 100,
+                }],
+            }],
+            grants: vec![crate::inference::InferenceGrantAclProjection {
+                credential_id: mismatched.credential_id,
+                credential_generation: 3,
+                models: vec!["chat-model".into()],
+                endpoints: vec![crate::inference::InferenceEndpointAcl::Models],
+                limits: crate::inference::InferenceLimitsAclProjection {
+                    max_concurrent_requests: 2,
+                    requests_per_minute: 60,
+                    request_burst: 2,
+                    tokens_per_minute: 10_000,
+                },
+            }],
+        };
+        let error = render_inference_policy_acl_with_routes(expires_at, &[mismatched], &[route])
+            .unwrap_err();
+        assert!(error.contains("credential_generation"));
     }
 
     #[test]

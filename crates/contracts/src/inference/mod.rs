@@ -2,17 +2,24 @@
 
 mod credential_acl;
 mod lifecycle;
+mod route_acl;
 mod tokenizer_revision;
 mod usage;
 
 pub use credential_acl::{
-    render_inference_policy_acl, InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    render_inference_policy_acl, render_inference_policy_acl_with_routes,
+    InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
 };
 pub use lifecycle::{
     InferenceUsageAttemptEvidenceV1, InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1,
     InferenceUsageLifecycleKindV1, InferenceUsageMeasurementCompletenessV1,
     InferenceUsageRequestEvidenceV1, InferenceUsageTerminalOutcomeV1,
     INFERENCE_USAGE_LIFECYCLE_SCHEMA_V1,
+};
+pub use route_acl::{
+    render_inference_route_acl_blocks, InferenceEndpointAcl, InferenceGrantAclProjection,
+    InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+    InferenceTargetAclProjection,
 };
 pub use tokenizer_revision::{
     inference_tokenizer_revision_acl_attr, render_inference_policy_shell_acl,

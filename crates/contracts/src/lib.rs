@@ -120,8 +120,11 @@ pub use function::{
 };
 pub use inference::{
     inference_tokenizer_revision_acl_attr, render_inference_policy_acl,
-    render_inference_policy_shell_acl, require_inference_tokenizer_revision,
-    InferenceCredentialAclProjection, InferenceServingPhase, InferenceUsageAttemptEvidenceV1,
+    render_inference_policy_acl_with_routes, render_inference_policy_shell_acl,
+    render_inference_route_acl_blocks, require_inference_tokenizer_revision,
+    InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
+    InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+    InferenceServingPhase, InferenceTargetAclProjection, InferenceUsageAttemptEvidenceV1,
     InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
     InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
     InferenceUsageMeasurementCompletenessV1, InferenceUsageReceiptV1, InferenceUsageRecordV1,

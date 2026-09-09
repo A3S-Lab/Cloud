@@ -1340,13 +1340,19 @@ evidence, and fenced release protocol.
   rollback) load those projections before compile and never store secrets.
   Full route/worker publication and Cloud-certified billing tokenizer remain
   open (they require Inference catalog/route authority, not credential
-  ownership). Joint Gateway revocation/expiry fail-closed already covers
-  projected `revoked = true` credentials. Gateway also proves
-  credential-projection snapshot succession locally (revoke/rotate successors,
-  expected-revision CAS rejection, unknown-tokenizer retention with prior
-  runtime ready; `docs/first-principles-test-plan.md` §I0.2b item 5). Broader
-  joint mixed-version / fallback conformance beyond that succession brick
-  remains open.
+  ownership). Cloud contracts now own the typed route/grant ACL projection
+  compiler (`InferenceRouteAclProjection`,
+  `render_inference_policy_acl_with_routes`) that emits Gateway-compatible
+  `routes` / `models` / `targets` / `grants` / `limits` bytes with
+  generation+environment matching against projected credentials; Edge must
+  not invent catalog facts—Inference must supply the projections. Workers
+  remain omitted until that compiler lands. Joint Gateway revocation/expiry
+  fail-closed already covers projected `revoked = true` credentials. Gateway
+  also proves credential-projection snapshot succession locally (revoke/rotate
+  successors, expected-revision CAS rejection, unknown-tokenizer retention
+  with prior runtime ready; `docs/first-principles-test-plan.md` §I0.2b
+  item 5). Broader joint mixed-version / fallback conformance beyond that
+  succession brick remains open.
 
 ### I0.2c: durable usage and rollout
 
