@@ -50,6 +50,7 @@ async fn node_artifact_transport_streams_exact_bytes_and_enforces_command_author
         commands,
         sessions,
         agents,
+        Arc::new(crate::modules::inference::InMemoryInferenceUsageRepository::new()),
         artifact_binding,
         Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
         edge,

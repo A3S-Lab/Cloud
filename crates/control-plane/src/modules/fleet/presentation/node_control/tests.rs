@@ -94,6 +94,7 @@ async fn node_control_requires_real_mtls_and_authenticates_the_peer_leaf() {
         commands,
         sessions,
         agents,
+        Arc::new(crate::modules::inference::InMemoryInferenceUsageRepository::new()),
         Arc::new(
             NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
                 .expect("artifact store"),

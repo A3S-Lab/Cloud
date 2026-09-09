@@ -26,6 +26,10 @@ use crate::modules::fleet::domain::repositories::{
 };
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::domain::value_objects::NodeProtocolPolicy;
+use crate::modules::inference::application::{
+    AcceptInferenceUsageBatch, AcceptInferenceUsageBatchHandler,
+};
+use crate::modules::inference::domain::IInferenceUsageRepository;
 use crate::modules::secrets::application::{ResolveSecretMaterial, ResolveSecretMaterialHandler};
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeId, RepositoryError};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
@@ -82,6 +86,7 @@ struct NodeControlApiInner {
     observations: RecordNodeObservationsHandler,
     code_agent_events: AcceptAgentCodeEventBatchHandler,
     agent_provider_events: AcceptAgentProviderEventBatchHandler,
+    inference_usage: AcceptInferenceUsageBatchHandler,
     resource_inventory: RecordNodeResourceInventoryHandler,
     logs: RecordNodeLogChunksHandler,
     gateway: RecordGatewayAcknowledgementHandler,
@@ -104,6 +109,7 @@ impl NodeControlApi {
         commands: Arc<dyn INodeControlRepository>,
         sessions: Arc<dyn INodeProtocolSessionRepository>,
         agents: Arc<dyn IAgentRepository>,
+        inference_usage: Arc<dyn IInferenceUsageRepository>,
         artifacts: Arc<dyn INodeArtifactStore>,
         gateway_projector: Arc<dyn IGatewayAcknowledgementProjector>,
         gateway_certificates: Arc<dyn IEdgeRepository>,
@@ -154,6 +160,7 @@ impl NodeControlApi {
                 observations: RecordNodeObservationsHandler::new(Arc::clone(&commands)),
                 code_agent_events: AcceptAgentCodeEventBatchHandler::new(Arc::clone(&agents)),
                 agent_provider_events: AcceptAgentProviderEventBatchHandler::new(agents),
+                inference_usage: AcceptInferenceUsageBatchHandler::new(inference_usage),
                 resource_inventory: RecordNodeResourceInventoryHandler::new(Arc::clone(&commands)),
                 logs: RecordNodeLogChunksHandler::new(Arc::clone(&commands), logs),
                 gateway: RecordGatewayAcknowledgementHandler::new(commands, gateway_projector),
@@ -203,6 +210,10 @@ impl NodeControlApi {
             .route(
                 "/v1/node-control/agent-provider-events",
                 post(record_agent_provider_events),
+            )
+            .route(
+                "/v1/inference-control/usage-batches",
+                post(record_inference_usage_batches),
             )
             .route(
                 "/v1/node-control/inventories",
@@ -693,6 +704,32 @@ async fn record_code_agent_events(
         .code_agent_events
         .execute(
             AcceptAgentCodeEventBatch {
+                authenticated_organization_id: node.organization_id,
+                authenticated_node_id: node.id,
+                batch,
+                received_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .map_err(|error| NodeControlHttpError::internal(request_id, error.to_string()))?
+        .map_err(|error| NodeControlHttpError::from_application(request_id, error))?;
+    json_response(request_id, StatusCode::OK, &receipt)
+}
+
+async fn record_inference_usage_batches(
+    State(api): State<NodeControlApi>,
+    Extension(peer): Extension<PeerCertificate>,
+    request: Request,
+) -> Result<Response, NodeControlHttpError> {
+    let request_id = Uuid::now_v7();
+    let node = api.authenticate_node(request_id, &peer).await?;
+    let batch: a3s_cloud_contracts::InferenceUsageBatchV1 = api.body(request_id, request).await?;
+    let receipt = api
+        .inner
+        .inference_usage
+        .execute(
+            AcceptInferenceUsageBatch {
                 authenticated_organization_id: node.organization_id,
                 authenticated_node_id: node.id,
                 batch,

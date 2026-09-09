@@ -57,6 +57,7 @@ async fn authenticated_node_accepts_legacy_and_provider_event_batches_with_exact
         commands,
         sessions,
         agents.clone(),
+        Arc::new(crate::modules::inference::InMemoryInferenceUsageRepository::new()),
         Arc::new(
             NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
                 .expect("artifact store"),

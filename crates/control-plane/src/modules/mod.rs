@@ -14,6 +14,7 @@ pub mod files;
 pub mod fleet;
 pub mod forms;
 pub mod identity;
+pub mod inference;
 pub mod integration_events;
 pub mod notifications;
 pub mod operations;
