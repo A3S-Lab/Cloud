@@ -775,6 +775,9 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
           install -d -m 0755 "$EVIDENCE_DIR"
+          sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
+          sudo chown root:root "$A3S_HOME/runtime-secrets"
+          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
           bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-node-agent --lib \
               box_runtime::tests::artifact_storage::real_box_materializes_skill_bundle_mount_read_only_and_cleans \
