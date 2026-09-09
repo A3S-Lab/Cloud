@@ -1318,6 +1318,13 @@ evidence, and fenced release protocol.
   model/endpoint grants, typed limits, TLS, and streaming.
 - Prove filtered model listing, non-enumerating denial, revocation, request
   bounds, SSE framing, pre-first-byte fallback, and exact route acknowledgement.
+- Shared Edge ACL contract: managed `inference` policy must declare
+  `tokenizer_revision = "a3s.gateway.tokenizer.v1"`
+  (`a3s_cloud_contracts::INFERENCE_TOKENIZER_REVISION_V1`, mirrored by Gateway
+  `INFERENCE_TOKENIZER_REVISION`). Missing or unknown revisions fail closed on
+  Gateway parse/validate. Cloud's future inference policy compiler must emit
+  this attribute via `require_inference_tokenizer_revision` / the ACL attr
+  helper; full catalog/key/compiler publication remains open.
 
 ### I0.2c: durable usage and rollout
 

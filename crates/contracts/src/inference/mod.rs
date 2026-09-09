@@ -1,6 +1,7 @@
 //! Versioned distributed-inference observation contracts.
 
 mod lifecycle;
+mod tokenizer_revision;
 mod usage;
 
 pub use lifecycle::{
@@ -8,6 +9,10 @@ pub use lifecycle::{
     InferenceUsageLifecycleKindV1, InferenceUsageMeasurementCompletenessV1,
     InferenceUsageRequestEvidenceV1, InferenceUsageTerminalOutcomeV1,
     INFERENCE_USAGE_LIFECYCLE_SCHEMA_V1,
+};
+pub use tokenizer_revision::{
+    inference_tokenizer_revision_acl_attr, require_inference_tokenizer_revision,
+    INFERENCE_TOKENIZER_REVISION_V1,
 };
 pub use usage::{
     InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1, InferenceUsageRecordV1,
