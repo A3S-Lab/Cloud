@@ -47,6 +47,27 @@ impl InferenceUsageLedgerError {
 /// Wrong-`after` holds the watermark and never invents contiguity. Gaps never
 /// include the acknowledgement cursor. Matching event-id redelivery is
 /// idempotent; digest mismatch is a conflict.
+///
+/// Choose a wrong-`after` acknowledgement that satisfies
+/// [`InferenceUsageReceiptV1::validate_for`].
+fn contract_valid_hold_ack(
+    watermark: Option<InferenceUsageCursorV1>,
+    batch: &InferenceUsageBatchV1,
+) -> Option<InferenceUsageCursorV1> {
+    if watermark == batch.after
+        || watermark.is_some_and(|tip| batch.records.iter().any(|record| record.cursor == tip))
+    {
+        watermark
+    } else {
+        batch.after
+    }
+}
+
+/// Apply `batch` to `state` without side effects.
+///
+/// Wrong-`after` holds the watermark and never invents contiguity. Gaps never
+/// include the acknowledgement cursor. Matching event-id redelivery is
+/// idempotent; digest mismatch is a conflict.
 pub fn apply_inference_usage_batch(
     state: &InferenceUsageLedgerState,
     batch: &InferenceUsageBatchV1,
@@ -56,11 +77,15 @@ pub fn apply_inference_usage_batch(
         .map_err(InferenceUsageLedgerError::Contract)?;
 
     if batch.after != state.watermark {
+        // Receipts may only acknowledge `after` or a cursor carried in this
+        // batch. When the durable tip is ahead of the submitted window, hold
+        // without advertising an out-of-batch watermark (Gateway rejects that).
+        let acknowledged_through = contract_valid_hold_ack(state.watermark, batch);
         let receipt = InferenceUsageReceiptV1 {
             schema: INFERENCE_USAGE_RECEIPT_SCHEMA_V1.into(),
             gateway_id: batch.gateway_id,
             batch_id: batch.batch_id,
-            acknowledged_through: state.watermark,
+            acknowledged_through,
             gaps: Vec::new(),
         };
         receipt
@@ -175,6 +200,64 @@ mod tests {
         assert_eq!(applied.receipt.acknowledged_through, Some(tip));
         assert!(applied.receipt.gaps.is_empty());
         assert!(applied.inserted_event_ids.is_empty());
+        assert_eq!(applied.next, state);
+    }
+
+    #[test]
+    fn wrong_after_does_not_advertise_tip_outside_batch() {
+        let epoch = Uuid::from_u128(1);
+        let gateway_id = Uuid::from_u128(2);
+        let tip = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 1,
+        };
+        let ahead = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 2,
+        };
+        let state = InferenceUsageLedgerState {
+            watermark: Some(ahead),
+            events: HashMap::new(),
+        };
+        let batch = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id,
+            batch_id: Uuid::from_u128(3),
+            after: None,
+            records: vec![record(tip, Uuid::from_u128(10), b"a")],
+        };
+        let applied = apply_inference_usage_batch(&state, &batch).unwrap();
+        assert_eq!(applied.receipt.acknowledged_through, None);
+        assert!(applied.receipt.gaps.is_empty());
+        assert_eq!(applied.next.watermark, Some(ahead));
+    }
+
+    #[test]
+    fn stale_after_with_tip_in_batch_returns_durable_watermark() {
+        let epoch = Uuid::from_u128(1);
+        let gateway_id = Uuid::from_u128(2);
+        let tip = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 1,
+        };
+        let ahead = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 2,
+        };
+        let state = InferenceUsageLedgerState {
+            watermark: Some(ahead),
+            events: HashMap::new(),
+        };
+        let batch = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id,
+            batch_id: Uuid::from_u128(4),
+            after: Some(tip),
+            records: vec![record(ahead, Uuid::from_u128(11), b"b")],
+        };
+        let applied = apply_inference_usage_batch(&state, &batch).unwrap();
+        assert_eq!(applied.receipt.acknowledged_through, Some(ahead));
+        assert!(applied.receipt.gaps.is_empty());
         assert_eq!(applied.next, state);
     }
 
