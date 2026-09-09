@@ -106,6 +106,7 @@ fn compiles_every_owned_route_into_one_deterministic_snapshot() {
         assert!(forward.acl.contains(&format!("unit_id = \"{unit_id}\"")));
         assert!(forward.acl.contains(&format!("generation = {generation}")));
     }
+    assert_inference_policy_shell(&forward.acl, expires_at);
 }
 
 #[test]
@@ -150,15 +151,10 @@ fn compiles_certificate_convergence_without_mutating_active_routes() {
 fn compiles_route_less_revocation_snapshot_without_a_certificate() {
     let node_id = NodeId::new();
     let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
     let snapshot = compiler()
         .compile_certificate_convergence(
-            GatewaySnapshotMetadata::new(
-                node_id,
-                2,
-                Some(1),
-                issued_at,
-                issued_at + Duration::minutes(10),
-            ),
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
             None,
             &[],
         )
@@ -167,6 +163,7 @@ fn compiles_route_less_revocation_snapshot_without_a_certificate() {
     assert!(snapshot.certificate_request.is_none());
     assert!(!snapshot.acl.contains("entrypoints \"a3s-cloud-https\""));
     assert!(snapshot.acl.contains("management {"));
+    assert_inference_policy_shell(&snapshot.acl, expires_at);
 }
 
 #[test]
@@ -255,4 +252,23 @@ fn installed_gateway_validates_compiled_snapshot() {
         "installed Gateway rejected compiled snapshot: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+}
+
+fn assert_inference_policy_shell(acl: &str, expires_at: chrono::DateTime<Utc>) {
+    use crate::modules::shared_kernel::domain::canonical_timestamp;
+    use a3s_cloud_contracts::{
+        render_inference_policy_shell_acl, require_inference_tokenizer_revision,
+    };
+
+    let expires_at = canonical_timestamp(expires_at);
+    require_inference_tokenizer_revision(acl).expect("frozen tokenizer_revision");
+    let expected = render_inference_policy_shell_acl(expires_at).expect("shell");
+    assert!(
+        acl.contains(expected.trim()),
+        "compiled ACL missing grant-empty inference shell aligned to snapshot expiry"
+    );
+    assert_eq!(acl.matches("inference {").count(), 1);
+    assert!(!acl.contains("credentials "));
+    assert!(!acl.contains("\n  routes "));
+    assert!(!acl.contains("\n  workers "));
 }

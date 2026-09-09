@@ -1322,11 +1322,14 @@ evidence, and fenced release protocol.
   `tokenizer_revision = "a3s.gateway.tokenizer.v1"`
   (`a3s_cloud_contracts::INFERENCE_TOKENIZER_REVISION_V1`, mirrored by Gateway
   `INFERENCE_TOKENIZER_REVISION`). Missing or unknown revisions fail closed on
-  Gateway parse/validate. Cloud contracts also expose
+  Gateway parse/validate.   Cloud contracts also expose
   `render_inference_policy_shell_acl` as the first policy-compiler brick (grant-
   empty shell with frozen revision + snapshot expiry);
-  `require_inference_tokenizer_revision` guards compiler output. Full
-  catalog/key/route/worker publication remains open.
+  `require_inference_tokenizer_revision` guards compiler output. Managed Gateway
+  snapshots from `GatewaySnapshotCompiler` now always append that shell before
+  the `management` block so Edge receives joint expiry + tokenizer freeze on
+  the H0.2 delivery path. Full catalog/key/route/worker publication remains
+  open.
 
 ### I0.2c: durable usage and rollout
 

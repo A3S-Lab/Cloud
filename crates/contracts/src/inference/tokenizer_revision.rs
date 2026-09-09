@@ -45,11 +45,15 @@ pub fn require_inference_tokenizer_revision(acl_fragment: &str) -> Result<(), St
 /// projection must start from a shell that already carries the frozen
 /// tokenizer revision and the snapshot-aligned expiry. Credentials, routes,
 /// and workers are omitted until catalog/key compilers land.
+///
+/// Expiry is emitted with microsecond RFC3339 precision so it round-trips to
+/// Cloud's canonical UTC timestamps and Gateway's exact
+/// `validate_managed_expiry` equality check.
 pub fn render_inference_policy_shell_acl(expires_at: DateTime<Utc>) -> Result<String, String> {
     if expires_at.timestamp_millis() <= 0 {
         return Err("inference policy expires_at must be a positive UTC timestamp".into());
     }
-    let expires = expires_at.to_rfc3339_opts(SecondsFormat::Millis, true);
+    let expires = expires_at.to_rfc3339_opts(SecondsFormat::Micros, true);
     let acl = format!(
         "inference {{\n  {}\n  expires_at = \"{expires}\"\n}}\n",
         inference_tokenizer_revision_acl_attr()
@@ -108,9 +112,30 @@ inference {
         let expires_at = Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap();
         let acl = render_inference_policy_shell_acl(expires_at).unwrap();
         require_inference_tokenizer_revision(&acl).unwrap();
-        assert!(acl.contains("expires_at = \"2099-01-01T00:00:00.000Z\""));
+        assert!(acl.contains("expires_at = \"2099-01-01T00:00:00.000000Z\""));
         assert!(!acl.contains("credentials"));
         assert!(!acl.contains("routes"));
         assert!(!acl.contains("workers"));
+    }
+
+    #[test]
+    fn policy_shell_expiry_round_trips_to_the_same_instant() {
+        let expires_at = Utc
+            .timestamp_opt(1_700_000_000, 123_456_000)
+            .single()
+            .unwrap();
+        let acl = render_inference_policy_shell_acl(expires_at).unwrap();
+        let rendered = acl
+            .lines()
+            .find_map(|line| {
+                line.trim()
+                    .strip_prefix("expires_at = \"")
+                    .and_then(|rest| rest.strip_suffix('"'))
+            })
+            .expect("expires_at attribute");
+        let parsed = DateTime::parse_from_rfc3339(rendered)
+            .unwrap()
+            .with_timezone(&Utc);
+        assert_eq!(parsed, expires_at);
     }
 }

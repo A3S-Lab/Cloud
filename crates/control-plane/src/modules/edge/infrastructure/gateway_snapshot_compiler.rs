@@ -9,7 +9,10 @@ use crate::modules::edge::infrastructure::{
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
 };
-use a3s_cloud_contracts::{GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection};
+use a3s_cloud_contracts::{
+    render_inference_policy_shell_acl, require_inference_tokenizer_revision,
+    GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection,
+};
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -1011,22 +1014,37 @@ impl GatewaySnapshotCompiler {
         if let Some(mcp) = mcp {
             append_mcp_snapshot_acl(&mut acl, &mcp, metadata.issued_at)?;
         }
+        append_inference_policy_shell_acl(&mut acl, metadata.expires_at)?;
         acl.push_str(&format!(
             "management {{\n  enabled = true\n  address = {}\n  path_prefix = {}\n  auth_token_env = {}\n  allowed_ips = [\"127.0.0.1\", \"::1\"]\n}}\n",
             acl_string(&self.config.management_address),
             acl_string(&self.config.management_path_prefix),
             acl_string(&self.config.management_auth_token_env),
         ));
+        let issued_at = canonical_timestamp(metadata.issued_at);
+        let expires_at = canonical_timestamp(metadata.expires_at);
         GatewaySnapshot::new_with_certificate(
             metadata.node_id.as_uuid(),
             metadata.revision,
             metadata.expected_revision,
-            metadata.issued_at,
-            metadata.expires_at,
+            issued_at,
+            expires_at,
             acl,
             certificate_request,
         )
     }
+}
+
+fn append_inference_policy_shell_acl(
+    acl: &mut String,
+    expires_at: DateTime<Utc>,
+) -> Result<(), String> {
+    let expires_at = canonical_timestamp(expires_at);
+    let shell = render_inference_policy_shell_acl(expires_at)?;
+    require_inference_tokenizer_revision(&shell)?;
+    acl.push_str(shell.trim_end_matches(['\r', '\n']));
+    acl.push_str("\n\n");
+    Ok(())
 }
 
 fn desired_state_digest(
