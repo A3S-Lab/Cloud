@@ -1,7 +1,10 @@
+use crate::modules::inference::domain::services::{
+    InferenceUsageDailyRollup, InferenceUsageRequestFact,
+};
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId, RepositoryError};
 use a3s_cloud_contracts::{InferenceUsageBatchV1, InferenceUsageReceiptV1};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 
 /// Authenticated write of one Gateway usage batch into the Inference ledger.
 #[derive(Debug, Clone)]
@@ -45,6 +48,19 @@ pub trait IInferenceUsageRepository: Send + Sync {
         &self,
         write: AcceptInferenceUsageBatchWrite,
     ) -> Result<InferenceUsageReceiptV1, RepositoryError>;
+
+    async fn list_daily_rollups(
+        &self,
+        organization_id: OrganizationId,
+        from_day: NaiveDate,
+        to_day: NaiveDate,
+    ) -> Result<Vec<InferenceUsageDailyRollup>, RepositoryError>;
+
+    async fn get_request_fact(
+        &self,
+        organization_id: OrganizationId,
+        request_id: uuid::Uuid,
+    ) -> Result<Option<InferenceUsageRequestFact>, RepositoryError>;
 }
 
 pub const INFERENCE_USAGE_REPOSITORY: &str = "INFERENCE_USAGE_REPOSITORY";

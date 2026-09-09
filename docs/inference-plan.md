@@ -1332,7 +1332,11 @@ evidence, and fenced release protocol.
   `192`/`193`), validates lifecycle facts fail-closed (no prompts/secrets),
   holds wrong-`after` without advertising out-of-batch tips, and proves
   enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
-  Retention/rollup/showback queries and provisioned-deployment recovery remain
+  Migration `194` plus domain projection persist request facts and
+  rebuildable daily rollups from newly inserted lifecycle events
+  (`project_inserted_usage_records` / `PostgresInferenceUsageRepository`
+  repository queries `list_daily_rollups` / `get_request_fact`). Authorized
+  showback HTTP surfaces (`I0.2e`) and provisioned-deployment recovery remain
   open.
 
 ### I0.2d: external provider targets
