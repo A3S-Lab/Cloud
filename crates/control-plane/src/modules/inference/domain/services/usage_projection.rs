@@ -96,7 +96,10 @@ impl InferenceUsageDailyRollup {
         }
     }
 
-    pub fn apply_terminal_request(&mut self, fact: &InferenceUsageRequestFact) -> Result<(), String> {
+    pub fn apply_terminal_request(
+        &mut self,
+        fact: &InferenceUsageRequestFact,
+    ) -> Result<(), String> {
         let outcome = fact
             .outcome
             .ok_or_else(|| "daily rollup requires a terminal request fact".to_string())?;
@@ -277,9 +280,7 @@ pub fn project_inserted_usage_records(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use a3s_cloud_contracts::{
-        InferenceUsageAttemptEvidenceV1, InferenceUsageRequestEvidenceV1,
-    };
+    use a3s_cloud_contracts::{InferenceUsageAttemptEvidenceV1, InferenceUsageRequestEvidenceV1};
 
     fn request() -> InferenceUsageRequestEvidenceV1 {
         InferenceUsageRequestEvidenceV1 {
@@ -342,9 +343,12 @@ mod tests {
         assert!(!newly);
         assert!(!fact.is_terminal());
 
-        let (fact, newly) =
-            project_lifecycle_event(Some(&fact), gateway_id, &terminal("2026-01-02T10:00:01Z", Some(7)))
-                .unwrap();
+        let (fact, newly) = project_lifecycle_event(
+            Some(&fact),
+            gateway_id,
+            &terminal("2026-01-02T10:00:01Z", Some(7)),
+        )
+        .unwrap();
         assert!(newly);
         assert!(fact.is_terminal());
 
@@ -356,9 +360,12 @@ mod tests {
         assert_eq!(rollup.total_tokens, 7);
         assert_eq!(rollup.key.day, NaiveDate::from_ymd_opt(2026, 1, 2).unwrap());
 
-        let (fact, newly) =
-            project_lifecycle_event(Some(&fact), gateway_id, &terminal("2026-01-02T10:00:02Z", Some(99)))
-                .unwrap();
+        let (fact, newly) = project_lifecycle_event(
+            Some(&fact),
+            gateway_id,
+            &terminal("2026-01-02T10:00:02Z", Some(99)),
+        )
+        .unwrap();
         assert!(!newly);
         assert_eq!(fact.total_tokens, Some(7));
     }

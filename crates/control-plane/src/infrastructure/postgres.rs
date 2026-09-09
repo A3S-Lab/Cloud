@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 194;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "194";
+pub const CLOUD_MIGRATION_COUNT: i64 = 195;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "195";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1759,6 +1759,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/194_inference_usage_request_facts_and_rollups.sql"
+            )),
+        ),
+        Migration::new(
+            "195",
+            "Inference usage retention authority",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/195_inference_usage_retention_authority.sql"
             )),
         ),
     ]

@@ -1,9 +1,9 @@
 use super::*;
 use crate::config::{
     ArtifactTransferConfig, AssetsConfig, AuditConfig, AuthConfig, BuildsConfig, DeploymentsConfig,
-    EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig,
-    NodeControlConfig, ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig,
-    PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
+    EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, InferenceConfig,
+    LogsConfig, NodeControlConfig, ObjectStorageConfig, ObjectStorageProviderKind,
+    OperationsConfig, PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SmtpConfig, SourcesConfig, WorkloadIdentityConfig,
 };
 use crate::modules::agents::{BuiltInAgentExecutionProviderRegistry, InMemoryAgentRepository};
@@ -1231,6 +1231,12 @@ fn config() -> CloudConfig {
             tombstone_compaction_batch_size: 64,
         },
         audit: AuditConfig {
+            retention_ms: 7_776_000_000,
+            retention_poll_ms: 60_000,
+            retention_organization_batch_size: 32,
+            retention_record_batch_size: 256,
+        },
+        inference: InferenceConfig {
             retention_ms: 7_776_000_000,
             retention_poll_ms: 60_000,
             retention_organization_batch_size: 32,

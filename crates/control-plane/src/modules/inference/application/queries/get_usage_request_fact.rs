@@ -1,7 +1,5 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::inference::domain::{
-    IInferenceUsageRepository, InferenceUsageRequestFact,
-};
+use crate::modules::inference::domain::{IInferenceUsageRepository, InferenceUsageRequestFact};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};

@@ -1,7 +1,5 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::inference::domain::{
-    IInferenceUsageRepository, InferenceUsageDailyRollup,
-};
+use crate::modules::inference::domain::{IInferenceUsageRepository, InferenceUsageDailyRollup};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -37,8 +35,10 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
         &self,
         query: ListDailyUsageRollups,
         _context: CqrsContext,
-    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<InferenceUsageDailyRollup>>>>
-    {
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<InferenceUsageDailyRollup>>>,
+    > {
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
             if !query
@@ -70,9 +70,9 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::inference::InMemoryInferenceUsageRepository;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::NodeId;
     use a3s_cloud_contracts::{
         InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
@@ -119,7 +119,11 @@ mod tests {
         serde_json::to_vec(&event).unwrap()
     }
 
-    fn record(cursor: InferenceUsageCursorV1, event_id: Uuid, payload: &[u8]) -> InferenceUsageRecordV1 {
+    fn record(
+        cursor: InferenceUsageCursorV1,
+        event_id: Uuid,
+        payload: &[u8],
+    ) -> InferenceUsageRecordV1 {
         InferenceUsageRecordV1 {
             cursor,
             event_id,

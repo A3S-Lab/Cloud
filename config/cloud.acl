@@ -186,6 +186,13 @@ audit {
   retention_record_batch_size = 256
 }
 
+inference {
+  retention_ms = 7776000000
+  retention_poll_ms = 60000
+  retention_organization_batch_size = 32
+  retention_record_batch_size = 256
+}
+
 logs {
   retention_ms = 604800000
   retention_poll_ms = 60000

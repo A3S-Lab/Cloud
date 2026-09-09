@@ -1,5 +1,5 @@
-use super::*;
 use super::super::api::PeerCertificate;
+use super::*;
 use crate::modules::agents::infrastructure::InMemoryAgentRepository;
 use crate::modules::artifacts::NodeArtifactObjectStore;
 use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
@@ -366,7 +366,6 @@ async fn enrolled_node_mtls_posts_usage_batches_over_live_node_control_https() {
     let _ = server_task.await;
 }
 
-
 fn lifecycle_payload() -> Vec<u8> {
     use a3s_cloud_contracts::{
         InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
@@ -411,7 +410,6 @@ fn record(cursor: InferenceUsageCursorV1, event_id: Uuid) -> InferenceUsageRecor
     }
 }
 
-
 async fn post_usage(
     router: &axum::Router,
     batch: &InferenceUsageBatchV1,
@@ -432,7 +430,9 @@ async fn post_usage(
         .expect("usage route")
 }
 
-async fn decode_receipt(response: axum::http::Response<axum::body::Body>) -> InferenceUsageReceiptV1 {
+async fn decode_receipt(
+    response: axum::http::Response<axum::body::Body>,
+) -> InferenceUsageReceiptV1 {
     let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .expect("usage receipt body");

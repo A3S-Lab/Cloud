@@ -406,6 +406,8 @@ pub enum ControlPlaneStartupError {
     LogMaintenance(String),
     #[error("could not initialize audit retention: {0}")]
     AuditMaintenance(String),
+    #[error("could not initialize inference usage retention: {0}")]
+    InferenceMaintenance(String),
     #[error("could not initialize shared object storage: {0}")]
     ObjectStorage(String),
     #[error("could not bind deployment infrastructure: {0}")]
@@ -1748,6 +1750,15 @@ async fn build_api_worker_application(
             config.audit.retention_record_batch_size,
         )
         .map_err(ControlPlaneStartupError::AuditMaintenance)?;
+        let inference_usage_retention_worker =
+            crate::modules::inference::InferenceUsageRetentionWorker::new(
+                Arc::clone(&inference_usage),
+                Duration::from_millis(config.inference.retention_ms),
+                Duration::from_millis(config.inference.retention_poll_ms),
+                config.inference.retention_organization_batch_size,
+                config.inference.retention_record_batch_size,
+            )
+            .map_err(ControlPlaneStartupError::InferenceMaintenance)?;
         let log_compaction_worker = LogCompactionWorker::new(
             log_retention_repository,
             Duration::from_millis(config.logs.tombstone_retention_ms),
@@ -1858,6 +1869,7 @@ async fn build_api_worker_application(
             replica_retirement_reconciler,
             workload_reconciler,
             audit_retention_worker,
+            inference_usage_retention_worker,
             log_retention_worker,
             log_compaction_worker,
             None,

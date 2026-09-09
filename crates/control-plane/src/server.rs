@@ -11,14 +11,15 @@ use crate::modules::edge::{
     GatewayRolloutRollbackReconciler, McpCredentialDeliveryReceiptSweeper,
     McpGatewayDesiredStateReconciler, McpGatewaySnapshotReconciler,
 };
-use crate::modules::plugins::PluginAssignmentReconciler;
 use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{
     LogCompactionWorker, LogRetentionWorker, NodeAvailabilityReconciler, NodeControlServer,
 };
 use crate::modules::identity::A3sEventRecipientContactVerificationConsumer;
+use crate::modules::inference::InferenceUsageRetentionWorker;
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::notifications::A3sEventOutboundNotificationConsumer;
+use crate::modules::plugins::PluginAssignmentReconciler;
 use crate::modules::sources::GithubConnectionAuthorityReconciler;
 use crate::modules::workflow::{
     HumanTaskCoordinator, HumanTaskResumeWorker, WorkflowRunReconciler,
@@ -70,6 +71,7 @@ struct WorkerProcesses {
     replica_retirement_reconciler: ReplicaRetirementReconciler,
     workload_reconciler: WorkloadRuntimeReconciler,
     audit_retention_worker: AuditRetentionWorker,
+    inference_usage_retention_worker: InferenceUsageRetentionWorker,
     log_retention_worker: LogRetentionWorker,
     log_compaction_worker: LogCompactionWorker,
     automation_schedule_worker: Option<AutomationScheduleWorker>,
@@ -113,6 +115,7 @@ impl ControlPlaneWorkers {
         replica_retirement_reconciler: ReplicaRetirementReconciler,
         workload_reconciler: WorkloadRuntimeReconciler,
         audit_retention_worker: AuditRetentionWorker,
+        inference_usage_retention_worker: InferenceUsageRetentionWorker,
         log_retention_worker: LogRetentionWorker,
         log_compaction_worker: LogCompactionWorker,
         automation_schedule_worker: Option<AutomationScheduleWorker>,
@@ -149,6 +152,7 @@ impl ControlPlaneWorkers {
                 replica_retirement_reconciler,
                 workload_reconciler,
                 audit_retention_worker,
+                inference_usage_retention_worker,
                 log_retention_worker,
                 log_compaction_worker,
                 automation_schedule_worker,
@@ -312,6 +316,7 @@ impl ControlPlane {
                 replica_retirement_reconciler,
                 workload_reconciler,
                 audit_retention_worker,
+                inference_usage_retention_worker,
                 log_retention_worker,
                 log_compaction_worker,
                 automation_schedule_worker,
@@ -465,6 +470,12 @@ impl ControlPlane {
                 "audit retention worker",
                 shutdown_receiver.clone(),
                 move |shutdown| audit_retention_worker.run(shutdown),
+            );
+            spawn_worker(
+                &mut workers,
+                "inference usage retention worker",
+                shutdown_receiver.clone(),
+                move |shutdown| inference_usage_retention_worker.run(shutdown),
             );
             spawn_worker(
                 &mut workers,

@@ -1,21 +1,47 @@
 use crate::modules::inference::domain::{
-    apply_inference_usage_batch, project_inserted_usage_records, AcceptInferenceUsageBatchWrite,
-    IInferenceUsageRepository, InferenceUsageDailyRollup, InferenceUsageDailyRollupKey,
-    InferenceUsageLedgerError, InferenceUsageLedgerState, InferenceUsageRequestFact,
+    apply_inference_usage_batch, project_inserted_usage_records, validate_showback_day_window,
+    validate_showback_fact_timestamp, AcceptInferenceUsageBatchWrite, IInferenceUsageRepository,
+    InferenceUsageDailyRollup, InferenceUsageDailyRollupKey, InferenceUsageLedgerError,
+    InferenceUsageLedgerState, InferenceUsageRequestFact, InferenceUsageRetentionReport,
+    InferenceUsageRetentionState, InferenceUsageRetentionSweep,
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, RepositoryError};
-use a3s_cloud_contracts::InferenceUsageReceiptV1;
+use a3s_cloud_contracts::{InferenceUsageCursorV1, InferenceUsageReceiptV1};
 use async_trait::async_trait;
-use chrono::NaiveDate;
-use std::collections::HashMap;
+use chrono::{DateTime, NaiveDate, Utc};
+use std::collections::{BTreeSet, HashMap};
 use std::sync::Mutex;
 use uuid::Uuid;
 
-#[derive(Debug, Default)]
+#[derive(Debug, Clone)]
+struct StoredUsageEvent {
+    #[allow(dead_code)]
+    digest: String,
+    accepted_at: DateTime<Utc>,
+    cursor: InferenceUsageCursorV1,
+}
+
+#[derive(Debug)]
 struct OrganizationUsageState {
     gateways: HashMap<Uuid, InferenceUsageLedgerState>,
+    event_meta: HashMap<Uuid, StoredUsageEvent>,
     facts: HashMap<Uuid, InferenceUsageRequestFact>,
     rollups: HashMap<InferenceUsageDailyRollupKey, InferenceUsageDailyRollup>,
+    retention: InferenceUsageRetentionState,
+}
+
+impl Default for OrganizationUsageState {
+    fn default() -> Self {
+        Self {
+            gateways: HashMap::new(),
+            event_meta: HashMap::new(),
+            facts: HashMap::new(),
+            rollups: HashMap::new(),
+            retention: InferenceUsageRetentionState::initial(
+                OrganizationId::from_uuid(Uuid::nil()),
+            ),
+        }
+    }
 }
 
 /// Process-local Inference usage ledger used by tests and non-Postgres fixtures.
@@ -41,22 +67,40 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         write
             .validate()
             .map_err(|error| RepositoryError::Storage(error))?;
-        let mut organizations = self.organizations.lock().map_err(|_| {
-            RepositoryError::Storage("inference usage ledger lock poisoned".into())
-        })?;
+        let mut organizations = self
+            .organizations
+            .lock()
+            .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
         let organization = organizations
             .entry(write.organization_id.as_uuid())
-            .or_default();
+            .or_insert_with(|| OrganizationUsageState {
+                gateways: HashMap::new(),
+                event_meta: HashMap::new(),
+                facts: HashMap::new(),
+                rollups: HashMap::new(),
+                retention: InferenceUsageRetentionState::initial(write.organization_id),
+            });
         let state = organization
             .gateways
             .entry(write.batch.gateway_id)
             .or_default();
-        let applied = apply_inference_usage_batch(state, &write.batch).map_err(|error| {
-            match error {
+        let applied =
+            apply_inference_usage_batch(state, &write.batch).map_err(|error| match error {
                 InferenceUsageLedgerError::Conflict(message) => RepositoryError::Conflict(message),
                 InferenceUsageLedgerError::Contract(message) => RepositoryError::Storage(message),
+            })?;
+        for record in &write.batch.records {
+            if applied.inserted_event_ids.contains(&record.event_id) {
+                organization.event_meta.insert(
+                    record.event_id,
+                    StoredUsageEvent {
+                        digest: record.payload_sha256.clone(),
+                        accepted_at: write.accepted_at,
+                        cursor: record.cursor.clone(),
+                    },
+                );
             }
-        })?;
+        }
         *state = applied.next;
         project_inserted_usage_records(
             &mut organization.facts,
@@ -76,14 +120,15 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         from_day: NaiveDate,
         to_day: NaiveDate,
     ) -> Result<Vec<InferenceUsageDailyRollup>, RepositoryError> {
-        if from_day > to_day {
-            return Err(RepositoryError::Storage(
-                "inference usage rollup from_day must be <= to_day".into(),
-            ));
-        }
-        let organizations = self.organizations.lock().map_err(|_| {
-            RepositoryError::Storage("inference usage ledger lock poisoned".into())
-        })?;
+        let organizations = self
+            .organizations
+            .lock()
+            .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
+        let available_from = organizations
+            .get(&organization_id.as_uuid())
+            .and_then(|organization| organization.retention.records_available_from);
+        validate_showback_day_window(available_from, from_day, to_day)
+            .map_err(RepositoryError::Conflict)?;
         let Some(organization) = organizations.get(&organization_id.as_uuid()) else {
             return Ok(Vec::new());
         };
@@ -120,12 +165,165 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         organization_id: OrganizationId,
         request_id: Uuid,
     ) -> Result<Option<InferenceUsageRequestFact>, RepositoryError> {
-        let organizations = self.organizations.lock().map_err(|_| {
-            RepositoryError::Storage("inference usage ledger lock poisoned".into())
-        })?;
+        let organizations = self
+            .organizations
+            .lock()
+            .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
+        let Some(organization) = organizations.get(&organization_id.as_uuid()) else {
+            return Ok(None);
+        };
+        let Some(fact) = organization.facts.get(&request_id).cloned() else {
+            return Ok(None);
+        };
+        if let Err(error) = validate_showback_fact_timestamp(
+            organization.retention.records_available_from,
+            fact.started_at,
+        ) {
+            return Err(RepositoryError::Conflict(error));
+        }
+        Ok(Some(fact))
+    }
+
+    async fn retention_available_from(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<DateTime<Utc>>, RepositoryError> {
+        let organizations = self
+            .organizations
+            .lock()
+            .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
         Ok(organizations
             .get(&organization_id.as_uuid())
-            .and_then(|organization| organization.facts.get(&request_id).cloned()))
+            .and_then(|organization| organization.retention.records_available_from))
+    }
+
+    async fn sweep_retention(
+        &self,
+        sweep: InferenceUsageRetentionSweep,
+    ) -> Result<InferenceUsageRetentionReport, RepositoryError> {
+        sweep.validate().map_err(RepositoryError::Storage)?;
+        let mut organizations = self
+            .organizations
+            .lock()
+            .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
+        let mut due: Vec<_> = organizations
+            .iter()
+            .filter(|(_, state)| state.retention.next_scan_at <= sweep.swept_at)
+            .map(|(organization_id, state)| (state.retention.next_scan_at, *organization_id))
+            .collect();
+        due.sort_unstable();
+        due.truncate(sweep.organization_batch_size);
+
+        let mut report = InferenceUsageRetentionReport::default();
+        let mut remaining = sweep.record_batch_size;
+        for (_, organization_uuid) in due {
+            if remaining == 0 {
+                break;
+            }
+            report.inspected_organizations += 1;
+            let organization = organizations
+                .get_mut(&organization_uuid)
+                .expect("selected retention organization");
+            let current_boundary = organization.retention.records_available_from;
+            let boundary =
+                current_boundary.map_or(sweep.cutoff, |current| current.max(sweep.cutoff));
+
+            let mut purge_event_ids = organization
+                .event_meta
+                .iter()
+                .filter_map(|(event_id, meta)| {
+                    if meta.accepted_at >= boundary {
+                        return None;
+                    }
+                    let Some(ledger) = organization
+                        .gateways
+                        .values()
+                        .find(|ledger| ledger.events.contains_key(event_id))
+                    else {
+                        return Some(*event_id);
+                    };
+                    let Some(watermark) = ledger.watermark else {
+                        return None;
+                    };
+                    if meta.cursor.boot_epoch != watermark.boot_epoch
+                        || meta.cursor.sequence <= watermark.sequence
+                    {
+                        Some(*event_id)
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            purge_event_ids.sort_unstable();
+            purge_event_ids.truncate(remaining);
+            let purge_set: BTreeSet<_> = purge_event_ids.iter().copied().collect();
+
+            for event_id in &purge_set {
+                organization.event_meta.remove(event_id);
+                for ledger in organization.gateways.values_mut() {
+                    ledger.events.remove(event_id);
+                }
+            }
+            remaining -= purge_set.len();
+            report.deleted_records += purge_set.len();
+
+            let before_facts = organization.facts.len();
+            organization
+                .facts
+                .retain(|_, fact| fact.started_at >= boundary);
+            let deleted_facts = before_facts - organization.facts.len();
+            report.deleted_records += deleted_facts;
+            remaining = remaining.saturating_sub(deleted_facts.min(remaining));
+
+            let boundary_day = boundary.date_naive();
+            let before_rollups = organization.rollups.len();
+            organization
+                .rollups
+                .retain(|key, _| key.day >= boundary_day);
+            let deleted_rollups = before_rollups - organization.rollups.len();
+            report.deleted_records += deleted_rollups;
+            remaining = remaining.saturating_sub(deleted_rollups.min(remaining));
+
+            let events_remaining = organization
+                .event_meta
+                .values()
+                .any(|meta| meta.accepted_at < boundary);
+            let facts_remaining = organization
+                .facts
+                .values()
+                .any(|fact| fact.started_at < boundary);
+            let rollups_remaining = organization
+                .rollups
+                .keys()
+                .any(|key| key.day < boundary_day);
+            let completed = !events_remaining && !facts_remaining && !rollups_remaining;
+
+            let state = &mut organization.retention;
+            let total_deleted_records = state
+                .total_deleted_records
+                .checked_add((purge_set.len() + deleted_facts + deleted_rollups) as u64)
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "inference usage retention deleted-record count overflowed".into(),
+                    )
+                })?;
+            let version = state.version.checked_add(1).ok_or_else(|| {
+                RepositoryError::Storage("inference usage retention version overflowed".into())
+            })?;
+            state.records_available_from = Some(boundary);
+            if completed {
+                state.records_deleted_before = Some(boundary);
+                state.last_completed_at = Some(sweep.swept_at);
+                report.completed_organizations += 1;
+            }
+            state.applied_policy_digest = Some(sweep.policy_digest.clone());
+            state.total_deleted_records = total_deleted_records;
+            state.last_swept_at = Some(sweep.swept_at);
+            state.next_scan_at = sweep.next_scan_at;
+            state.version = version;
+            state.validate().map_err(RepositoryError::Storage)?;
+        }
+        Ok(report)
     }
 }
 
@@ -158,11 +356,7 @@ mod tests {
         }
     }
 
-    fn lifecycle(
-        kind: InferenceUsageLifecycleKindV1,
-        at: &str,
-        terminal: bool,
-    ) -> Vec<u8> {
+    fn lifecycle(kind: InferenceUsageLifecycleKindV1, at: &str, terminal: bool) -> Vec<u8> {
         let event = InferenceUsageLifecycleEventV1 {
             schema: InferenceUsageLifecycleEventV1::SCHEMA.into(),
             kind,
@@ -181,7 +375,11 @@ mod tests {
         serde_json::to_vec(&event).unwrap()
     }
 
-    fn record(cursor: InferenceUsageCursorV1, event_id: Uuid, payload: &[u8]) -> InferenceUsageRecordV1 {
+    fn record(
+        cursor: InferenceUsageCursorV1,
+        event_id: Uuid,
+        payload: &[u8],
+    ) -> InferenceUsageRecordV1 {
         InferenceUsageRecordV1 {
             cursor,
             event_id,

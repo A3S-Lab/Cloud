@@ -1,6 +1,4 @@
-use crate::modules::inference::domain::{
-    InferenceUsageDailyRollup, InferenceUsageRequestFact,
-};
+use crate::modules::inference::domain::{InferenceUsageDailyRollup, InferenceUsageRequestFact};
 use a3s_cloud_contracts::{
     InferenceUsageEndpointV1, InferenceUsageMeasurementCompletenessV1,
     InferenceUsageTerminalOutcomeV1,

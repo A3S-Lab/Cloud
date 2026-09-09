@@ -1,5 +1,7 @@
 use super::AcceptInferenceUsageBatch;
-use crate::modules::inference::domain::{AcceptInferenceUsageBatchWrite, IInferenceUsageRepository};
+use crate::modules::inference::domain::{
+    AcceptInferenceUsageBatchWrite, IInferenceUsageRepository,
+};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_boot::{CommandHandler, CqrsContext};
 use a3s_cloud_contracts::InferenceUsageReceiptV1;

@@ -1341,8 +1341,13 @@ evidence, and fenced release protocol.
   `GET .../inference-usage/requests/{request_id}` via `InferenceModule`
   (`ListDailyUsageRollups` / `GetUsageRequestFact`) with
   `ResourceAccessEvaluator` environment visibility (ungranted environments
-  fail closed as NotFound). Retention purge HTTP and provisioned-deployment
-  recovery remain open.
+  fail closed as NotFound). Migration `195` adds monotonic per-organization
+  retention authority (`inference_usage_retention_states`), hide-then-purge
+  sweeps that never delete watermarks, showback fail-closed before
+  `records_available_from`, and the worker-driven
+  `InferenceUsageRetentionWorker` configured by the required top-level
+  `inference { retention_* }` ACL. Retention status HTTP and
+  provisioned-deployment recovery remain open.
 
 ### I0.2d: external provider targets
 

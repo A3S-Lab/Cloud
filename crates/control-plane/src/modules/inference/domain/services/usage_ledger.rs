@@ -370,8 +370,8 @@ mod tests {
                 payload_sha256: format!("{:x}", Sha256::digest(payload)),
             }],
         };
-        let err = apply_inference_usage_batch(&InferenceUsageLedgerState::default(), &batch)
-            .unwrap_err();
+        let err =
+            apply_inference_usage_batch(&InferenceUsageLedgerState::default(), &batch).unwrap_err();
         assert!(matches!(err, InferenceUsageLedgerError::Contract(_)));
     }
 }

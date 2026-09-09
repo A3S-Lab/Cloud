@@ -11,6 +11,10 @@ use crate::modules::identity::domain::value_objects::{
     TrustDomainName, WorkloadIdentityProviderProfile, WorkloadIdentityProviderProfileSpec,
 };
 use crate::modules::identity::infrastructure::SpiffeHttpsWebWorkloadIdentityProviderOptions;
+use crate::modules::inference::{
+    MAXIMUM_INFERENCE_USAGE_RETENTION_BATCH_SIZE, MAXIMUM_INFERENCE_USAGE_RETENTION_MS,
+    MINIMUM_INFERENCE_USAGE_RETENTION_MS,
+};
 use crate::modules::shared_kernel::domain::Sha256Digest;
 use crate::modules::sources::domain::{GitProvider, GitRepository, SourceRepositoryPolicy};
 use a3s_acl::{Block, Document, Value};
@@ -436,6 +440,14 @@ pub struct AuditConfig {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InferenceConfig {
+    pub retention_ms: u64,
+    pub retention_poll_ms: u64,
+    pub retention_organization_batch_size: usize,
+    pub retention_record_batch_size: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EdgeConfig {
     pub entrypoint_address: String,
     pub management_address: String,
@@ -544,6 +556,7 @@ pub struct CloudConfig {
     pub registry: RegistryConfig,
     pub sources: SourcesConfig,
     pub audit: AuditConfig,
+    pub inference: InferenceConfig,
     pub logs: LogsConfig,
     pub edge: EdgeConfig,
     pub fleet: FleetConfig,
@@ -798,6 +811,16 @@ impl CloudConfig {
         let audit = one_block(&document, "audit")?;
         validate_block(
             audit,
+            &[
+                "retention_ms",
+                "retention_poll_ms",
+                "retention_organization_batch_size",
+                "retention_record_batch_size",
+            ],
+        )?;
+        let inference = one_block(&document, "inference")?;
+        validate_block(
+            inference,
             &[
                 "retention_ms",
                 "retention_poll_ms",
@@ -1076,6 +1099,15 @@ impl CloudConfig {
                     "retention_organization_batch_size",
                 )?,
                 retention_record_batch_size: integer(audit, "retention_record_batch_size")?,
+            },
+            inference: InferenceConfig {
+                retention_ms: integer(inference, "retention_ms")?,
+                retention_poll_ms: integer(inference, "retention_poll_ms")?,
+                retention_organization_batch_size: integer(
+                    inference,
+                    "retention_organization_batch_size",
+                )?,
+                retention_record_batch_size: integer(inference, "retention_record_batch_size")?,
             },
             edge: EdgeConfig {
                 entrypoint_address: string(edge, "entrypoint_address")?,
@@ -1688,6 +1720,23 @@ impl CloudConfig {
                     .into(),
             ));
         }
+        if !(MINIMUM_INFERENCE_USAGE_RETENTION_MS..=MAXIMUM_INFERENCE_USAGE_RETENTION_MS)
+            .contains(&self.inference.retention_ms)
+            || self.inference.retention_poll_ms == 0
+            || self.inference.retention_poll_ms > 86_400_000
+            || self.inference.retention_poll_ms > self.inference.retention_ms
+            || self.inference.retention_organization_batch_size == 0
+            || self.inference.retention_organization_batch_size
+                > MAXIMUM_INFERENCE_USAGE_RETENTION_BATCH_SIZE
+            || self.inference.retention_record_batch_size == 0
+            || self.inference.retention_record_batch_size
+                > MAXIMUM_INFERENCE_USAGE_RETENTION_BATCH_SIZE
+        {
+            return Err(ConfigError::Invalid(
+                "inference usage retention must be 1 day to 10 years with a bounded poll interval and organization/record batches of 1 to 10000"
+                    .into(),
+            ));
+        }
         if !(60_000..=315_576_000_000).contains(&self.logs.tombstone_retention_ms)
             || self.logs.tombstone_compaction_poll_ms == 0
             || self.logs.tombstone_compaction_poll_ms > 86_400_000
@@ -2084,6 +2133,7 @@ fn validate_root(document: &Document) -> Result<(), ConfigError> {
         "edge",
         "fleet",
         "human_tasks",
+        "inference",
         "logs",
         "node_control",
         "objects",
@@ -2825,6 +2875,12 @@ audit {
   retention_organization_batch_size = 32
   retention_record_batch_size = 256
 }
+inference {
+  retention_ms = 7776000000
+  retention_poll_ms = 60000
+  retention_organization_batch_size = 32
+  retention_record_batch_size = 256
+}
 logs {
   retention_ms = 604800000
   retention_poll_ms = 60000
@@ -2980,6 +3036,10 @@ security {
         assert_eq!(config.audit.retention_poll_ms, 60_000);
         assert_eq!(config.audit.retention_organization_batch_size, 32);
         assert_eq!(config.audit.retention_record_batch_size, 256);
+        assert_eq!(config.inference.retention_ms, 7_776_000_000);
+        assert_eq!(config.inference.retention_poll_ms, 60_000);
+        assert_eq!(config.inference.retention_organization_batch_size, 32);
+        assert_eq!(config.inference.retention_record_batch_size, 256);
         assert_eq!(config.logs.retention_batch_size, 256);
         assert_eq!(config.logs.tombstone_compaction_batch_size, 1000);
         assert_eq!(config.edge.domain_verification_timeout_ms, 5_000);

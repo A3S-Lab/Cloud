@@ -1,7 +1,10 @@
 use crate::modules::inference::domain::services::{
-    InferenceUsageDailyRollup, InferenceUsageRequestFact,
+    InferenceUsageDailyRollup, InferenceUsageRequestFact, InferenceUsageRetentionReport,
+    InferenceUsageRetentionSweep,
 };
-use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, RepositoryError};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, NodeId, OrganizationId, RepositoryError,
+};
 use a3s_cloud_contracts::{InferenceUsageBatchV1, InferenceUsageReceiptV1};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
@@ -62,6 +65,16 @@ pub trait IInferenceUsageRepository: Send + Sync {
         organization_id: OrganizationId,
         request_id: uuid::Uuid,
     ) -> Result<Option<InferenceUsageRequestFact>, RepositoryError>;
+
+    async fn retention_available_from(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<Option<DateTime<Utc>>, RepositoryError>;
+
+    async fn sweep_retention(
+        &self,
+        sweep: InferenceUsageRetentionSweep,
+    ) -> Result<InferenceUsageRetentionReport, RepositoryError>;
 }
 
 pub const INFERENCE_USAGE_REPOSITORY: &str = "INFERENCE_USAGE_REPOSITORY";
