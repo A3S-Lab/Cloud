@@ -1,4 +1,5 @@
 mod api_token_verifier;
+mod inference_credential_acl_projection_adapter;
 mod inference_credential_issuer;
 mod openid_connect_provider;
 pub mod persistence;
@@ -10,6 +11,7 @@ mod vault_recipient_contact_proof;
 mod workload_runtime_evidence;
 
 pub use api_token_verifier::ApiTokenVerifier;
+pub use inference_credential_acl_projection_adapter::InferenceCredentialAclProjectionAdapter;
 pub use inference_credential_issuer::{
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
     IssuedInferenceCredential,

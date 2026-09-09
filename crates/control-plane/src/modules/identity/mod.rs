@@ -6,6 +6,7 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
+    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
     IWorkloadRuntimeExecutionAuthorizationQueryPort,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
@@ -126,6 +127,7 @@ pub use domain::repositories::{
     ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
     IWorkloadRuntimeEvidenceRepository,
 };
+pub use domain::entities::InferenceCredential;
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,
     IWorkloadIdentityProviderService, OidcAuthorization, OidcAuthorizationRequest,
@@ -137,10 +139,10 @@ pub use infrastructure::persistence::{
 };
 pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
-    A3sEventRecipientContactVerificationConsumer, InferenceCredentialIssuanceError,
-    InferenceCredentialIssueRequest, InferenceCredentialIssuer, IssuedInferenceCredential,
-    OwnerWorkloadRuntimeEvidenceAdapter, SmtpRecipientContactVerificationCredentials,
-    SmtpRecipientContactVerificationDeliveryOptions,
+    A3sEventRecipientContactVerificationConsumer, InferenceCredentialAclProjectionAdapter,
+    InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
+    IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
+    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,

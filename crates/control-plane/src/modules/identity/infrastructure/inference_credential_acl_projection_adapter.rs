@@ -1,0 +1,113 @@
+//! Adapts Identity inference credential storage into Edge ACL projections.
+
+use crate::modules::identity::application::{
+    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+};
+use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
+use crate::modules::shared_kernel::domain::RepositoryError;
+use a3s_cloud_contracts::InferenceCredentialAclProjection;
+use async_trait::async_trait;
+use std::collections::BTreeSet;
+use std::sync::Arc;
+
+#[derive(Clone)]
+pub struct InferenceCredentialAclProjectionAdapter {
+    credentials: Arc<dyn IInferenceCredentialRepository>,
+}
+
+impl InferenceCredentialAclProjectionAdapter {
+    pub fn new(credentials: Arc<dyn IInferenceCredentialRepository>) -> Self {
+        Self { credentials }
+    }
+}
+
+#[async_trait]
+impl IInferenceCredentialAclProjectionPort for InferenceCredentialAclProjectionAdapter {
+    async fn list_inference_credential_acl_projections(
+        &self,
+        scopes: &[InferenceCredentialEnvironmentScope],
+    ) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
+        let unique = scopes.iter().copied().collect::<BTreeSet<_>>();
+        let mut projections = Vec::new();
+        for scope in unique {
+            let credentials = self
+                .credentials
+                .list_inference_credentials_by_environment(
+                    scope.organization_id(),
+                    scope.project_id(),
+                    scope.environment_id(),
+                )
+                .await?;
+            for credential in credentials {
+                projections.push(
+                    credential
+                        .gateway_projection()
+                        .map_err(RepositoryError::Storage)?,
+                );
+            }
+        }
+        projections.sort_by_key(|projection| projection.credential_id);
+        Ok(projections)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::identity::domain::entities::InferenceCredential;
+    use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
+    };
+    use chrono::{Duration, Utc};
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    #[tokio::test]
+    async fn projects_unique_environment_credentials_sorted_by_id() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let now = Utc::now();
+        let first = InferenceCredential::issue(
+            InferenceCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_inf_aaaaaaaaaaaaaaaa",
+            VERIFIER,
+            now + Duration::hours(2),
+            now,
+        )
+        .unwrap();
+        let second = InferenceCredential::issue(
+            InferenceCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_inf_bbbbbbbbbbbbbbbb",
+            VERIFIER,
+            now + Duration::hours(2),
+            now,
+        )
+        .unwrap();
+        repo.create_inference_credential(second.clone())
+            .await
+            .unwrap();
+        repo.create_inference_credential(first.clone())
+            .await
+            .unwrap();
+        let adapter = InferenceCredentialAclProjectionAdapter::new(repo);
+        let scope =
+            InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
+                .unwrap();
+        let projections = adapter
+            .list_inference_credential_acl_projections(&[scope, scope])
+            .await
+            .unwrap();
+        assert_eq!(projections.len(), 2);
+        assert!(projections[0].credential_id < projections[1].credential_id);
+        assert_eq!(projections[0].audience, "cloud-inference");
+    }
+}
