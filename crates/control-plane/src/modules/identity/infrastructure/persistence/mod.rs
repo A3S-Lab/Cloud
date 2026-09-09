@@ -1,4 +1,5 @@
 mod in_memory;
+mod in_memory_inference_credentials;
 mod in_memory_membership_invitations;
 mod in_memory_memberships;
 mod in_memory_oidc_identity;
@@ -25,4 +26,5 @@ mod postgres_workload_runtime_evidence_schema;
 mod postgres_workload_trust;
 
 pub use in_memory::InMemoryIdentityRepository;
+pub use in_memory_inference_credentials::InMemoryInferenceCredentialRepository;
 pub use postgres::PostgresIdentityRepository;

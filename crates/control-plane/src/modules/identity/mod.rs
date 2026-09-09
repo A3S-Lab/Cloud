@@ -120,10 +120,11 @@ pub use application::queries::read_workload_trust::{
     ListWorkloadIdentityPolicyRevisionsHandler,
 };
 pub use domain::repositories::{
-    IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
-    IResourceAuthorizationDecisionRepository, ITenantSupportGrantRepository,
-    ITrustDomainRepository, IWorkloadIdentityPolicyRepository, IWorkloadRuntimeEvidenceRepository,
+    IInferenceCredentialRepository, IOidcIdentityRepository, IPlatformRbacRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    IWorkloadRuntimeEvidenceRepository,
 };
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,
@@ -131,11 +132,15 @@ pub use domain::services::{
     OidcCodeVerificationRequest, OidcProviderError, ResourceAuthorizationDecision,
     ResourceAuthorizationDecisionRequest, VerifiedOidcIdentity,
 };
-pub use infrastructure::persistence::{InMemoryIdentityRepository, PostgresIdentityRepository};
+pub use infrastructure::persistence::{
+    InMemoryIdentityRepository, InMemoryInferenceCredentialRepository, PostgresIdentityRepository,
+};
 pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
-    A3sEventRecipientContactVerificationConsumer, OwnerWorkloadRuntimeEvidenceAdapter,
-    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
+    A3sEventRecipientContactVerificationConsumer, InferenceCredentialIssuanceError,
+    InferenceCredentialIssueRequest, InferenceCredentialIssuer, IssuedInferenceCredential,
+    OwnerWorkloadRuntimeEvidenceAdapter, SmtpRecipientContactVerificationCredentials,
+    SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,

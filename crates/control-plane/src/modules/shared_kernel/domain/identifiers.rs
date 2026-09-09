@@ -109,6 +109,7 @@ identifier!(RouteId);
 identifier!(DomainClaimId);
 identifier!(GatewayCertificateId);
 identifier!(McpCredentialId);
+identifier!(InferenceCredentialId);
 identifier!(SecretId);
 identifier!(SourceRevisionId);
 identifier!(BuildPlanId);

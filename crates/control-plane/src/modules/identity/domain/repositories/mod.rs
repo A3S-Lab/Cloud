@@ -1,5 +1,6 @@
 mod api_token_repository;
 mod identity_bootstrap_repository;
+mod inference_credential_repository;
 mod membership_invitation_repository;
 mod membership_repository;
 mod oidc_identity_repository;
@@ -16,6 +17,7 @@ mod workload_runtime_evidence_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
 pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstrapRepository};
+pub use inference_credential_repository::IInferenceCredentialRepository;
 pub use membership_invitation_repository::{
     AcceptMembershipInvitationWrite, CreateMembershipInvitationWrite,
     IMembershipInvitationRepository, MembershipInvitationAcceptance,

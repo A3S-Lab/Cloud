@@ -10,8 +10,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
 };
 use a3s_cloud_contracts::{
-    render_inference_policy_shell_acl, require_inference_tokenizer_revision,
-    GatewayCertificateRequest, GatewaySnapshot, McpGatewayProjection,
+    render_inference_policy_acl, require_inference_tokenizer_revision,
+    GatewayCertificateRequest, GatewaySnapshot, InferenceCredentialAclProjection,
+    McpGatewayProjection,
 };
 use chrono::{DateTime, Utc};
 use serde_json::json;
@@ -370,7 +371,7 @@ impl GatewaySnapshotCompiler {
             projection,
         });
         let snapshot =
-            self.compile_snapshot(metadata, certificate_id, &routes, false, None, content)?;
+            self.compile_snapshot(metadata, certificate_id, &routes, false, None, content, &[])?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
             desired_state_digest,
@@ -439,6 +440,7 @@ impl GatewaySnapshotCompiler {
                 false,
                 Some(certificate_request),
                 content,
+                &[],
             )?;
         }
         Ok(candidate)
@@ -547,6 +549,7 @@ impl GatewaySnapshotCompiler {
                 false,
                 Some(certificate_request),
                 content,
+                &[],
             )?;
             candidate.snapshot = GatewaySnapshot::new_with_certificate(
                 metadata.node_id.as_uuid(),
@@ -793,6 +796,7 @@ impl GatewaySnapshotCompiler {
             true,
             None,
             content,
+            &[],
         )?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
@@ -820,7 +824,29 @@ impl GatewaySnapshotCompiler {
         certificate_id: GatewayCertificateId,
         routes: &[Route],
     ) -> Result<GatewaySnapshot, String> {
-        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None, None)
+        self.compile_snapshot(metadata, Some(certificate_id), routes, true, None, None, &[])
+    }
+
+    /// Compile a managed snapshot that includes Identity-projected inference credentials.
+    ///
+    /// Uses the same route/certificate rules as [`Self::compile`]. Empty credentials
+    /// preserve the grant-empty inference shell.
+    pub fn compile_with_inference_credentials(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        certificate_id: GatewayCertificateId,
+        routes: &[Route],
+        inference_credentials: &[InferenceCredentialAclProjection],
+    ) -> Result<GatewaySnapshot, String> {
+        self.compile_snapshot(
+            metadata,
+            Some(certificate_id),
+            routes,
+            true,
+            None,
+            None,
+            inference_credentials,
+        )
     }
 
     pub fn compile_certificate_convergence(
@@ -835,7 +861,7 @@ impl GatewaySnapshotCompiler {
                     .into(),
             );
         }
-        self.compile_snapshot(metadata, certificate_id, routes, false, None, None)
+        self.compile_snapshot(metadata, certificate_id, routes, false, None, None, &[])
     }
 
     pub fn compile_certificate_reuse(
@@ -852,6 +878,33 @@ impl GatewaySnapshotCompiler {
             false,
             Some(certificate_request),
             None,
+            &[],
+        )
+    }
+
+    /// Compile certificate-convergence snapshot ACL with Identity-projected
+    /// inference credentials (Active routes only; same rules as convergence).
+    pub fn compile_certificate_convergence_with_inference_credentials(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        certificate_id: Option<GatewayCertificateId>,
+        routes: &[Route],
+        inference_credentials: &[InferenceCredentialAclProjection],
+    ) -> Result<GatewaySnapshot, String> {
+        if routes.is_empty() != certificate_id.is_none() {
+            return Err(
+                "Gateway certificate convergence requires one certificate for non-empty routes"
+                    .into(),
+            );
+        }
+        self.compile_snapshot(
+            metadata,
+            certificate_id,
+            routes,
+            false,
+            None,
+            None,
+            inference_credentials,
         )
     }
 
@@ -879,6 +932,7 @@ impl GatewaySnapshotCompiler {
         require_pending_route: bool,
         certificate_request_override: Option<GatewayCertificateRequest>,
         mcp: Option<McpSnapshotContent<'_>>,
+        inference_credentials: &[InferenceCredentialAclProjection],
     ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
@@ -1014,7 +1068,7 @@ impl GatewaySnapshotCompiler {
         if let Some(mcp) = mcp {
             append_mcp_snapshot_acl(&mut acl, &mcp, metadata.issued_at)?;
         }
-        append_inference_policy_shell_acl(&mut acl, metadata.expires_at)?;
+        append_inference_policy_acl(&mut acl, metadata.expires_at, inference_credentials)?;
         acl.push_str(&format!(
             "management {{\n  enabled = true\n  address = {}\n  path_prefix = {}\n  auth_token_env = {}\n  allowed_ips = [\"127.0.0.1\", \"::1\"]\n}}\n",
             acl_string(&self.config.management_address),
@@ -1035,14 +1089,15 @@ impl GatewaySnapshotCompiler {
     }
 }
 
-fn append_inference_policy_shell_acl(
+fn append_inference_policy_acl(
     acl: &mut String,
     expires_at: DateTime<Utc>,
+    credentials: &[InferenceCredentialAclProjection],
 ) -> Result<(), String> {
     let expires_at = canonical_timestamp(expires_at);
-    let shell = render_inference_policy_shell_acl(expires_at)?;
-    require_inference_tokenizer_revision(&shell)?;
-    acl.push_str(shell.trim_end_matches(['\r', '\n']));
+    let block = render_inference_policy_acl(expires_at, credentials)?;
+    require_inference_tokenizer_revision(&block)?;
+    acl.push_str(block.trim_end_matches(['\r', '\n']));
     acl.push_str("\n\n");
     Ok(())
 }

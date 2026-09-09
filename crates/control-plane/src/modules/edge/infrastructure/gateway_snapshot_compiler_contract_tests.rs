@@ -167,6 +167,74 @@ fn compiles_route_less_revocation_snapshot_without_a_certificate() {
 }
 
 #[test]
+fn projects_identity_inference_credentials_into_managed_snapshot_acl() {
+    use a3s_cloud_contracts::{
+        render_inference_policy_acl, InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    };
+    use crate::modules::shared_kernel::domain::canonical_timestamp;
+    use uuid::Uuid;
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Active;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let credential = InferenceCredentialAclProjection::new(
+        Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        "a3s_inf_abc12345",
+        VERIFIER,
+        7,
+        expires_at + Duration::hours(1),
+        false,
+    )
+    .expect("credential projection");
+    let revoked = InferenceCredentialAclProjection::new(
+        Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        "a3s_inf_revoked001",
+        VERIFIER,
+        1,
+        expires_at + Duration::hours(1),
+        true,
+    )
+    .expect("revoked credential projection");
+
+    let snapshot = compiler()
+        .compile_certificate_convergence_with_inference_credentials(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            Some(certificate_id),
+            &[owned],
+            &[credential.clone(), revoked.clone()],
+        )
+        .expect("credential-aware snapshot");
+
+    let expected = render_inference_policy_acl(canonical_timestamp(expires_at), &[
+        credential,
+        revoked,
+    ])
+    .expect("expected inference ACL");
+    assert!(
+        snapshot.acl.contains(expected.trim()),
+        "compiled ACL missing Identity-projected inference credentials"
+    );
+    assert!(snapshot.acl.contains("audience = \"cloud-inference\""));
+    assert!(snapshot.acl.contains("prefix = \"a3s_inf_abc12345\""));
+    assert!(snapshot.acl.contains("prefix = \"a3s_inf_revoked001\""));
+    assert!(snapshot.acl.contains("revoked = true"));
+    assert!(snapshot.acl.contains("revoked = false"));
+    assert_eq!(snapshot.acl.matches("inference {").count(), 1);
+    assert!(!snapshot.acl.contains("\n  routes "));
+    assert!(!snapshot.acl.contains("\n  workers "));
+}
+
+#[test]
 fn rejects_cross_scope_and_duplicate_route_ownership() {
     let node_id = NodeId::new();
     let first = route(node_id, "api.example.com", "/v1", 49152);

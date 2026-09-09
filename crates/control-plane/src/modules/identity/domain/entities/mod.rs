@@ -2,6 +2,7 @@ mod api_token;
 mod external_identity_link;
 mod identity_bootstrap;
 mod identity_principal;
+mod inference_credential;
 mod membership;
 mod membership_invitation;
 mod oidc_flow;
@@ -22,6 +23,7 @@ pub use api_token::{
 pub use external_identity_link::ExternalIdentityLink;
 pub use identity_bootstrap::IdentityBootstrap;
 pub use identity_principal::{IdentityPrincipal, IdentityPrincipalKind};
+pub use inference_credential::InferenceCredential;
 pub use membership::Membership;
 pub use membership_invitation::{
     MembershipInvitation, MembershipInvitationStatus, MAX_MEMBERSHIP_INVITATION_LIFETIME,
