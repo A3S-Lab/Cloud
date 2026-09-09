@@ -4,15 +4,19 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayScope, RouteHostname, RoutePath, RoutePortName,
 };
 use crate::modules::edge::infrastructure::{
-    CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout,
-    GatewayMemberSnapshotContext, GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler,
-    PlanGatewayNodeDesiredState,
+    inference_credential_scopes_from_routes, CompileGatewayRouteRollout,
+    CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,
+    GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler, PlanGatewayNodeDesiredState,
+};
+use crate::modules::identity::application::{
+    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
 };
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, GatewayRolloutId, RepositoryError, RouteId, WorkloadRevisionId,
+    DomainClaimId, GatewayRolloutId, NodeId, RepositoryError, RouteId, WorkloadRevisionId,
 };
 use chrono::{DateTime, Utc};
 use futures_util::future::try_join_all;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -53,6 +57,7 @@ pub struct GatewayRouteRolloutPlanner {
     targets: Arc<dyn IRouteTargetReader>,
     compiler: GatewayRouteRolloutCompiler,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
+    inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
 }
 
 impl GatewayRouteRolloutPlanner {
@@ -66,6 +71,7 @@ impl GatewayRouteRolloutPlanner {
             targets,
             compiler,
             desired_state: None,
+            inference_credentials: None,
         }
     }
 
@@ -74,12 +80,14 @@ impl GatewayRouteRolloutPlanner {
         targets: Arc<dyn IRouteTargetReader>,
         compiler: GatewayRouteRolloutCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
+        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
     ) -> Self {
         Self {
             routes,
             targets,
             compiler,
             desired_state: Some(desired_state),
+            inference_credentials: Some(inference_credentials),
         }
     }
 
@@ -197,6 +205,36 @@ impl GatewayRouteRolloutPlanner {
                 })
             }))
             .await?;
+        let inference_port = self.inference_credentials.as_ref().ok_or_else(|| {
+            RepositoryError::Storage(
+                "managed Gateway inference credential projection is not configured".into(),
+            )
+        })?;
+        let mut member_inference_credentials = BTreeMap::<NodeId, _>::new();
+        for desired in &member_desired_states {
+            let ordinary_routes = desired
+                .active_routes()
+                .iter()
+                .map(|input| input.route.clone())
+                .collect::<Vec<_>>();
+            let mut scopes = inference_credential_scopes_from_routes(&ordinary_routes)
+                .map_err(RepositoryError::Conflict)?;
+            let claim_scope = InferenceCredentialEnvironmentScope::new(
+                request.domain_claim.organization_id,
+                request.domain_claim.project_id,
+                request.domain_claim.environment_id,
+            )
+            .map_err(RepositoryError::Conflict)?;
+            if !scopes.contains(&claim_scope) {
+                scopes.push(claim_scope);
+                scopes.sort();
+            }
+            let credentials = inference_port
+                .list_inference_credential_acl_projections(&scopes)
+                .await?;
+            member_inference_credentials
+                .insert(desired.physical_scope().node_id, credentials);
+        }
         self.compiler
             .compile_managed(CompileManagedGatewayRouteRollout {
                 scope: request.scope,
@@ -209,6 +247,7 @@ impl GatewayRouteRolloutPlanner {
                 domain_claim: request.domain_claim,
                 target_set,
                 member_desired_states,
+                member_inference_credentials,
                 issued_at: request.issued_at,
             })
             .map_err(RepositoryError::Conflict)

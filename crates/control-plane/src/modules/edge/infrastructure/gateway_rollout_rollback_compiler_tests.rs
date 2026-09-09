@@ -147,6 +147,7 @@ fn managed_rollback_carries_one_complete_composition_for_every_member() {
         contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
             desired_state,
             reusable_certificate: Some(certificate),
+            inference_credentials: Vec::new(),
         });
     }
 

@@ -56,7 +56,11 @@ use crate::modules::identity::domain::repositories::{
     IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
     ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
 };
-use crate::modules::identity::{IActiveHumanMembershipQueryPort, PostgresIdentityRepository};
+use crate::modules::identity::{
+    IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
+    IInferenceCredentialRepository, InferenceCredentialAclProjectionAdapter,
+    PostgresIdentityRepository,
+};
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
@@ -398,11 +402,18 @@ pub(super) struct IdentityPostgresAdapters {
     pub(super) tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
     pub(super) trust_domains: Arc<dyn ITrustDomainRepository>,
     pub(super) workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
+    pub(super) inference_credentials: Arc<dyn IInferenceCredentialRepository>,
+    pub(super) inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
 }
 
 impl IdentityPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
         let repository = Arc::new(PostgresIdentityRepository::new(executor));
+        let inference_credentials: Arc<dyn IInferenceCredentialRepository> = repository.clone();
+        let inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort> =
+            Arc::new(InferenceCredentialAclProjectionAdapter::new(
+                Arc::clone(&inference_credentials),
+            ));
         Self {
             active_human_memberships: repository.clone(),
             identity_bootstrap: repository.clone(),
@@ -420,6 +431,8 @@ impl IdentityPostgresAdapters {
             tenant_support_grants: repository.clone(),
             trust_domains: repository.clone(),
             workload_identity_policies: repository,
+            inference_credentials,
+            inference_credential_acl_projections,
         }
     }
 }

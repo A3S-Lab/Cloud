@@ -6,7 +6,8 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort,
-    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+    EmptyInferenceCredentialAclProjectionPort, IInferenceCredentialAclProjectionPort,
+    InferenceCredentialEnvironmentScope,
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
     IWorkloadRuntimeExecutionAuthorizationQueryPort,
     RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,

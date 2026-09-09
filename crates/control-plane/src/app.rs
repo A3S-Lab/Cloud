@@ -214,7 +214,7 @@ use crate::modules::identity::{
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IdentityModule,
+    GetWorkloadIdentityPolicyRevisionHandler, IInferenceCredentialAclProjectionPort, IdentityModule,
     InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler,
     ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
     ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
@@ -639,6 +639,8 @@ async fn build_api_worker_application(
     let tenant_support_grants = adapters.identity.tenant_support_grants;
     let trust_domains = adapters.identity.trust_domains;
     let workload_identity_policies = adapters.identity.workload_identity_policies;
+    let inference_credential_acl_projections =
+        adapters.identity.inference_credential_acl_projections;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -987,6 +989,7 @@ async fn build_api_worker_application(
             Arc::clone(&route_commands),
             deployment_route_compiler.clone(),
             gateway_node_desired_state_planner.clone(),
+            Arc::clone(&inference_credential_acl_projections),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -1600,6 +1603,7 @@ async fn build_api_worker_application(
                 Arc::clone(&routes),
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
+                Arc::clone(&inference_credential_acl_projections),
                 Arc::clone(&route_commands),
                 Arc::clone(&gateway_certificate_authority),
                 deployment_route_compiler.clone(),
@@ -1614,6 +1618,7 @@ async fn build_api_worker_application(
                 Arc::clone(&mcp_gateway_snapshots),
                 Arc::clone(&mcp_node_projection_planner),
                 deployment_route_compiler.clone(),
+                Arc::clone(&inference_credential_acl_projections),
                 Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
                 chrono_duration(config.edge.command_ttl_ms)?,
                 chrono::Duration::hours(24),
@@ -1654,6 +1659,7 @@ async fn build_api_worker_application(
                 Arc::clone(&routes),
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
+                Arc::clone(&inference_credential_acl_projections),
                 GatewayRolloutRollbackCompiler::new(
                     deployment_route_compiler.clone(),
                     chrono_duration(config.edge.command_ttl_ms)?,
@@ -1948,6 +1954,7 @@ async fn build_api_worker_application(
                 tenant_support_grants,
                 trust_domains,
                 workload_identity_policies,
+                inference_credential_acl_projections,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2211,6 +2218,7 @@ struct ManagementApplicationDependencies {
     tenant_support_grants: Arc<dyn ITenantSupportGrantRepository>,
     trust_domains: Arc<dyn ITrustDomainRepository>,
     workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
+    inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2315,6 +2323,7 @@ fn build_management_application_with_health(
         tenant_support_grants,
         trust_domains,
         workload_identity_policies,
+        inference_credential_acl_projections,
         projects,
         environments,
         ontologies,
@@ -2945,6 +2954,7 @@ fn build_management_application_with_health(
                 route_commands,
                 route_compiler,
                 gateway_node_desired_state_planner,
+                Arc::clone(&inference_credential_acl_projections),
                 chrono_duration(config.edge.command_ttl_ms)?,
             )
         }

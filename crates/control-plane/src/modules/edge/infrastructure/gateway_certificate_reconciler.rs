@@ -1,8 +1,9 @@
 use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
+    load_inference_credential_projections_for_routes,
     CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
-    IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
     StageManagedGatewayCertificateConvergence,
 };
 use crate::modules::edge::domain::events::{
@@ -18,12 +19,14 @@ use crate::modules::edge::domain::services::{
 use crate::modules::edge::domain::{
     DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateState, GatewayPublication,
-    GatewayRouteVersion,
+    GatewayRouteVersion, Route,
 };
+use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, NodeCommandId, NodeId, RepositoryError,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -58,6 +61,7 @@ pub struct GatewayCertificateReconciler {
     repository: Arc<dyn IEdgeRepository>,
     managed_repository: Option<Arc<dyn IMcpGatewaySnapshotRepository>>,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
+    inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
     commands: Arc<dyn IGatewayCommandQueue>,
     certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     compiler: super::GatewaySnapshotCompiler,
@@ -98,6 +102,7 @@ impl GatewayCertificateReconciler {
             repository,
             managed_repository: None,
             desired_state: None,
+            inference_credentials: None,
             commands,
             certificate_authority,
             compiler,
@@ -114,6 +119,7 @@ impl GatewayCertificateReconciler {
         repository: Arc<dyn IEdgeRepository>,
         managed_repository: Arc<dyn IMcpGatewaySnapshotRepository>,
         desired_state: GatewayNodeDesiredStatePlanner,
+        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         commands: Arc<dyn IGatewayCommandQueue>,
         certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         compiler: super::GatewaySnapshotCompiler,
@@ -136,6 +142,7 @@ impl GatewayCertificateReconciler {
         )?;
         reconciler.managed_repository = Some(managed_repository);
         reconciler.desired_state = Some(desired_state);
+        reconciler.inference_credentials = Some(inference_credentials);
         Ok(reconciler)
     }
 
@@ -623,6 +630,19 @@ impl GatewayCertificateReconciler {
         let reuse = reason == GatewayCertificateConvergenceReason::SnapshotRenewal;
         let mut replacement_certificate_id = (!reuse && has_traffic)
             .then(|| deterministic_certificate_id(target.scope.node_id, revision));
+        let inference_credentials = {
+            let port = self.inference_credentials.as_ref().ok_or_else(|| {
+                RepositoryError::Storage(
+                    "managed Gateway certificate convergence missing inference credential projection port"
+                        .into(),
+                )
+            })?;
+            let load_routes = ordinary_routes_for_inference_projection(
+                &retained_routes,
+                desired_state.active_routes(),
+            );
+            load_inference_credential_projections_for_routes(port.as_ref(), &load_routes).await?
+        };
         let candidate = if reuse {
             match self
                 .compiler
@@ -634,8 +654,8 @@ impl GatewayCertificateReconciler {
                         reused_certificate_request: Some(target.certificate.request.clone()),
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
-                    
-            inference_credentials: Vec::new(),},
+                        inference_credentials: inference_credentials.clone(),
+                    },
                 ) {
                 Ok(candidate)
                     if candidate
@@ -659,8 +679,8 @@ impl GatewayCertificateReconciler {
                                 reused_certificate_request: None,
                                 retained_routes: retained_versions.clone(),
                                 rejected_routes: rejected_versions.clone(),
-                            
-            inference_credentials: Vec::new(),},
+                                inference_credentials: inference_credentials.clone(),
+                            },
                         )
                         .map_err(RepositoryError::Conflict)?
                 }
@@ -681,8 +701,8 @@ impl GatewayCertificateReconciler {
                         reused_certificate_request: None,
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
-                    
-            inference_credentials: Vec::new(),},
+                        inference_credentials,
+                    },
                 )
                 .map_err(RepositoryError::Conflict)?
         };
@@ -852,6 +872,22 @@ fn projection_is_current(target: &GatewayCertificateConvergenceTarget) -> bool {
                 == Some(target.publication.snapshot_digest.as_str())
             && status.route.gateway_certificate_id == Some(target.certificate.id)
     })
+}
+
+fn ordinary_routes_for_inference_projection(
+    retained_routes: &[Route],
+    active_routes: &[GatewaySnapshotRouteInput],
+) -> Vec<Route> {
+    let mut by_id = BTreeMap::new();
+    for route in retained_routes {
+        by_id.insert(route.id, route.clone());
+    }
+    for input in active_routes {
+        by_id
+            .entry(input.route.id)
+            .or_insert_with(|| input.route.clone());
+    }
+    by_id.into_values().collect()
 }
 
 pub(super) fn deterministic_command_id(node_id: NodeId, revision: u64) -> NodeCommandId {

@@ -21,6 +21,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -401,6 +402,7 @@ fn managed_rollout_composes_every_ordinary_route_under_one_publication_owner() {
             domain_claim,
             target_set: target_set(workload_id, revision_id, &members, issued_at),
             member_desired_states,
+            member_inference_credentials: BTreeMap::new(),
             issued_at,
         })
         .expect("managed rollout");

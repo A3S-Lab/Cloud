@@ -1,10 +1,12 @@
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::infrastructure::{
-    CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
-    GatewayNodeDesiredStatePlanner, GatewayRollbackMemberSnapshotContext,
-    GatewayRolloutRollbackCompiler, IMcpGatewaySnapshotRepository,
-    ManagedGatewayRollbackMemberSnapshotContext, PlanGatewayNodeDesiredState,
+    load_inference_credential_projections_for_routes, CompileGatewayRolloutRollback,
+    CompileManagedGatewayRolloutRollback, GatewayNodeDesiredStatePlanner,
+    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler,
+    IMcpGatewaySnapshotRepository, ManagedGatewayRollbackMemberSnapshotContext,
+    PlanGatewayNodeDesiredState,
 };
+use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayRolloutId, NodeId, RepositoryError,
 };
@@ -42,6 +44,7 @@ pub struct GatewayRolloutRollbackReconciler {
 struct ManagedGatewayRollback {
     snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
     desired_state: GatewayNodeDesiredStatePlanner,
+    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
 }
 
 impl GatewayRolloutRollbackReconciler {
@@ -70,6 +73,7 @@ impl GatewayRolloutRollbackReconciler {
         repository: Arc<dyn IEdgeRepository>,
         snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
         desired_state: GatewayNodeDesiredStatePlanner,
+        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         compiler: GatewayRolloutRollbackCompiler,
         interval: Duration,
         batch_size: usize,
@@ -88,6 +92,7 @@ impl GatewayRolloutRollbackReconciler {
             managed: Some(ManagedGatewayRollback {
                 snapshots,
                 desired_state,
+                inference_credentials,
             }),
         })
     }
@@ -389,9 +394,27 @@ impl GatewayRolloutRollbackReconciler {
                 }
                 _ => None,
             };
+            let ordinary_routes = desired_state
+                .active_routes()
+                .iter()
+                .map(|input| input.route.clone())
+                .collect::<Vec<_>>();
+            let inference_credentials = load_inference_credential_projections_for_routes(
+                managed.inference_credentials.as_ref(),
+                &ordinary_routes,
+            )
+            .await
+            .map_err(|_| {
+                (
+                    Some(*node_id),
+                    "restore",
+                    "Identity inference credential projection failed",
+                )
+            })?;
             contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
                 desired_state,
                 reusable_certificate,
+                inference_credentials,
             });
         }
         Ok(contexts)

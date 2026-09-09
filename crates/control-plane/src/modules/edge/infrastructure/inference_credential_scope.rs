@@ -1,7 +1,11 @@
 //! Collect Identity inference-credential scopes from ordinary Gateway routes.
 
 use crate::modules::edge::domain::Route;
-use crate::modules::identity::application::InferenceCredentialEnvironmentScope;
+use crate::modules::identity::application::{
+    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+};
+use crate::modules::shared_kernel::domain::RepositoryError;
+use a3s_cloud_contracts::InferenceCredentialAclProjection;
 use std::collections::BTreeSet;
 
 /// Deduplicate environment scopes carried by ordinary Routes for Identity
@@ -18,6 +22,16 @@ pub fn inference_credential_scopes_from_routes(
         )?);
     }
     Ok(scopes.into_iter().collect())
+}
+
+/// Load Identity-owned inference ACL projections for the environments on `routes`.
+pub async fn load_inference_credential_projections_for_routes(
+    port: &dyn IInferenceCredentialAclProjectionPort,
+    routes: &[Route],
+) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
+    let scopes =
+        inference_credential_scopes_from_routes(routes).map_err(RepositoryError::Conflict)?;
+    port.list_inference_credential_acl_projections(&scopes).await
 }
 
 #[cfg(test)]
@@ -80,5 +94,59 @@ mod tests {
         ])
         .unwrap();
         assert_eq!(scopes.len(), 1);
+    }
+
+    struct RecordingProjectionPort {
+        seen: std::sync::Mutex<Vec<Vec<InferenceCredentialEnvironmentScope>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl IInferenceCredentialAclProjectionPort for RecordingProjectionPort {
+        async fn list_inference_credential_acl_projections(
+            &self,
+            scopes: &[InferenceCredentialEnvironmentScope],
+        ) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
+            self.seen
+                .lock()
+                .expect("seen scopes")
+                .push(scopes.to_vec());
+            Ok(vec![InferenceCredentialAclProjection::new(
+                uuid::Uuid::now_v7(),
+                scopes[0].environment_id().as_uuid(),
+                "cloud-inference",
+                "a3s_inf_aaaaaaaaaaaaaaaa",
+                "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                1,
+                Utc::now() + chrono::Duration::hours(1),
+                false,
+            )
+            .expect("projection")])
+        }
+    }
+
+    #[tokio::test]
+    async fn loader_queries_identity_port_with_route_derived_scopes() {
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let first_environment = EnvironmentId::new();
+        let second_environment = EnvironmentId::new();
+        let routes = [
+            route(organization_id, project_id, first_environment),
+            route(organization_id, project_id, second_environment),
+            route(organization_id, project_id, first_environment),
+        ];
+        let expected = inference_credential_scopes_from_routes(&routes).unwrap();
+        let port = RecordingProjectionPort {
+            seen: std::sync::Mutex::new(Vec::new()),
+        };
+        let projections = load_inference_credential_projections_for_routes(&port, &routes)
+            .await
+            .unwrap();
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].audience, "cloud-inference");
+        let seen = port.seen.lock().expect("seen scopes");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0], expected);
+        assert_eq!(expected.len(), 2);
     }
 }

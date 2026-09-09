@@ -8,12 +8,13 @@ use crate::modules::edge::domain::{
     RouteState, RouteTarget,
 };
 use crate::modules::edge::infrastructure::{
-    CompileManagedGatewayRouteSnapshot, GatewayManagedSnapshotComposition,
-    GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
-    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
-    StageManagedGatewayRouteCutover,
+    load_inference_credential_projections_for_routes, CompileManagedGatewayRouteSnapshot,
+    GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository,
+    PlanGatewayNodeDesiredState, StageManagedGatewayRouteCutover,
 };
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
+use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, IdempotencyRequest, NodeCommandId, RepositoryError,
 };
@@ -43,6 +44,7 @@ pub struct EdgeDeploymentRouteUpdater {
 struct ManagedGatewayRouteCutover {
     snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
     desired_state: GatewayNodeDesiredStatePlanner,
+    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
 }
 
 impl EdgeDeploymentRouteUpdater {
@@ -66,6 +68,7 @@ impl EdgeDeploymentRouteUpdater {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_managed(
         routes: Arc<dyn IEdgeRepository>,
         snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
@@ -73,6 +76,7 @@ impl EdgeDeploymentRouteUpdater {
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
+        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         command_ttl: Duration,
     ) -> Result<Self, String> {
         if command_ttl <= Duration::zero() {
@@ -87,6 +91,7 @@ impl EdgeDeploymentRouteUpdater {
             managed: Some(ManagedGatewayRouteCutover {
                 snapshots,
                 desired_state,
+                inference_credentials,
             }),
         })
     }
@@ -377,6 +382,17 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
         );
         let (snapshot, managed_candidate) = match managed_desired_state {
             Some(desired_state) => {
+                let managed = self.managed.as_ref().ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "managed Gateway route cutover missing inference credential projection port"
+                            .into(),
+                    )
+                })?;
+                let inference_credentials = load_inference_credential_projections_for_routes(
+                    managed.inference_credentials.as_ref(),
+                    &complete_routes,
+                )
+                .await?;
                 let candidate = self
                     .compiler
                     .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
@@ -385,8 +401,8 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         certificate_id,
                         snapshot_routes: complete_routes.clone(),
                         additional_domain_claims: Vec::new(),
-                    
-            inference_credentials: Vec::new(),})
+                        inference_credentials,
+                    })
                     .map_err(RepositoryError::Conflict)?;
                 (candidate.snapshot().clone(), Some(candidate))
             }

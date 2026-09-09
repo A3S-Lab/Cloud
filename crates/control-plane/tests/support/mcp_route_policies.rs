@@ -36,6 +36,7 @@ use a3s_cloud_control_plane::modules::edge::{
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
+use a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
@@ -1000,6 +1001,7 @@ pub async fn exercise(
         desired_edge.clone(),
         desired_planner,
         fixture_gateway_snapshot_compiler()?,
+        Arc::new(EmptyInferenceCredentialAclProjectionPort),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
@@ -1363,8 +1365,8 @@ async fn plan_gateway_snapshot(
             certificate_id: Some(GatewayCertificateId::new()),
             active_routes,
             mcp: PlannedMcpGatewayNodeProjection::single(planned)?,
-        
-            inference_credentials: Vec::new(),},
+            inference_credentials: Vec::new(),
+        },
     )?;
     Ok(StageMcpGatewaySnapshot::new(
         candidate,

@@ -1,5 +1,6 @@
 mod active_human_membership;
 pub mod commands;
+mod empty_inference_credential_acl_projection;
 mod inference_credential_projection;
 mod membership_invitation_result;
 mod membership_result;
@@ -14,6 +15,7 @@ mod workload_runtime_evidence_recorder;
 mod workload_runtime_execution_authorization;
 
 pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort};
+pub use empty_inference_credential_acl_projection::EmptyInferenceCredentialAclProjectionPort;
 pub use inference_credential_projection::{
     IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
 };

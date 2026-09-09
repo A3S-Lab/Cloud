@@ -90,7 +90,9 @@ pub use gateway_snapshot_compiler::{
     GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
-pub use inference_credential_scope::inference_credential_scopes_from_routes;
+pub use inference_credential_scope::{
+    inference_credential_scopes_from_routes, load_inference_credential_projections_for_routes,
+};
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
 pub use mcp_credential_issuer::McpCredentialIssuer;
 pub use mcp_gateway_desired_state_reconciler::{

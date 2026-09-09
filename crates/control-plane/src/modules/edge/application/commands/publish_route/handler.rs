@@ -9,6 +9,7 @@ use crate::modules::edge::infrastructure::{
     GatewaySnapshotCompiler, IMcpGatewaySnapshotRepository, PlanGatewayRouteRollout,
     PlanManagedGatewayRouteRollout, StageManagedRoutePublication,
 };
+use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     GatewayRolloutId, IdempotencyRequest, NodeId, RepositoryError, RouteId,
@@ -52,6 +53,7 @@ impl PublishRouteHandler {
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
+        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         command_ttl: Duration,
     ) -> Result<Self, String> {
         let rollout_compiler =
@@ -61,6 +63,7 @@ impl PublishRouteHandler {
             targets,
             rollout_compiler,
             desired_state,
+            inference_credentials,
         );
         Ok(Self {
             routes,

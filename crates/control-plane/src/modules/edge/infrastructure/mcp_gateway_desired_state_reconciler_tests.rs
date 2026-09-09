@@ -14,6 +14,7 @@ use crate::modules::edge::domain::{
     GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, GatewayPublicationState,
     GatewayScope, GatewayScopeState,
 };
+use crate::modules::identity::application::EmptyInferenceCredentialAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
@@ -324,6 +325,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         repository.clone(),
         Arc::new(EmptyProjectionPlanner::default()),
         compiler(),
+        Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
@@ -371,8 +373,8 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
                     .expect("first empty projection"),
             )
             .expect("first node projection"),
-        
-            inference_credentials: Vec::new(),})
+            inference_credentials: Vec::new(),
+        })
         .expect("first complete snapshot");
     let second = compiler()
         .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
@@ -396,8 +398,8 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
                     .expect("second empty projection"),
             )
             .expect("second node projection"),
-        
-            inference_credentials: Vec::new(),})
+            inference_credentials: Vec::new(),
+        })
         .expect("second complete snapshot");
 
     assert_eq!(first.desired_state_digest(), second.desired_state_digest());
@@ -621,6 +623,7 @@ fn reconciler(
         repository,
         planner,
         compiler(),
+        Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),

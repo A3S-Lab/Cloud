@@ -53,6 +53,8 @@ pub struct CompileManagedGatewayRouteRollout {
     pub domain_claim: DomainClaim,
     pub target_set: ResolvedRouteTargetSet,
     pub member_desired_states: Vec<PlannedGatewayNodeDesiredState>,
+    pub member_inference_credentials:
+        BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceCredentialAclProjection>>,
     pub issued_at: DateTime<Utc>,
 }
 
@@ -411,8 +413,12 @@ impl GatewayRouteRolloutCompiler {
                     certificate_id,
                     snapshot_routes: complete_routes,
                     additional_domain_claims: vec![request.domain_claim.clone()],
-                
-            inference_credentials: Vec::new(),},
+                    inference_credentials: request
+                        .member_inference_credentials
+                        .get(&node_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                },
             )?;
             let command_id = NodeCommandId::new();
             route.stage(
