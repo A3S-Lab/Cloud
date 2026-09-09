@@ -11,8 +11,8 @@ pub use lifecycle::{
     INFERENCE_USAGE_LIFECYCLE_SCHEMA_V1,
 };
 pub use tokenizer_revision::{
-    inference_tokenizer_revision_acl_attr, require_inference_tokenizer_revision,
-    INFERENCE_TOKENIZER_REVISION_V1,
+    inference_tokenizer_revision_acl_attr, render_inference_policy_shell_acl,
+    require_inference_tokenizer_revision, INFERENCE_TOKENIZER_REVISION_V1,
 };
 pub use usage::{
     InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageReceiptV1, InferenceUsageRecordV1,
