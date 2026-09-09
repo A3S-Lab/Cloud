@@ -16,7 +16,7 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_node_agent::FileNodeIdentityStore;
 use base64::Engine;
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use std::time::Duration as StdDuration;
