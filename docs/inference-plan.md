@@ -1341,8 +1341,12 @@ evidence, and fenced release protocol.
   Full route/worker publication and Cloud-certified billing tokenizer remain
   open (they require Inference catalog/route authority, not credential
   ownership). Joint Gateway revocation/expiry fail-closed already covers
-  projected `revoked = true` credentials; mixed-version conformance beyond
-  expiry remains open.
+  projected `revoked = true` credentials. Gateway also proves
+  credential-projection snapshot succession locally (revoke/rotate successors,
+  expected-revision CAS rejection, unknown-tokenizer retention with prior
+  runtime ready; `docs/first-principles-test-plan.md` §I0.2b item 5). Broader
+  joint mixed-version / fallback conformance beyond that succession brick
+  remains open.
 
 ### I0.2c: durable usage and rollout
 
