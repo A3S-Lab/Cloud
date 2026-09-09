@@ -1,3 +1,5 @@
 mod response;
 
-pub use response::{DailyUsageRollupResponse, UsageRequestFactResponse};
+pub use response::{
+    DailyUsageRollupResponse, InferenceUsageRetentionStatusResponse, UsageRequestFactResponse,
+};

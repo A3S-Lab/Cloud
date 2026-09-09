@@ -2292,6 +2292,11 @@ fn build_management_application_with_health(
     let audit_retention_policy =
         AuditRetentionPolicy::new(Duration::from_millis(config.audit.retention_ms))
             .map_err(BootError::Internal)?;
+    let inference_usage_retention_policy =
+        crate::modules::inference::InferenceUsageRetentionPolicy::new(Duration::from_millis(
+            config.inference.retention_ms,
+        ))
+        .map_err(BootError::Internal)?;
 
     let ManagementApplicationDependencies {
         management,
@@ -4234,12 +4239,18 @@ fn build_management_application_with_health(
                 ))
                 .query_handler::<crate::modules::inference::ListDailyUsageRollups, _>(
                     crate::modules::inference::ListDailyUsageRollupsHandler::new(
-                        list_daily_usage_rollups,
+                        Arc::clone(&list_daily_usage_rollups),
                     ),
                 )
                 .query_handler::<crate::modules::inference::GetUsageRequestFact, _>(
                     crate::modules::inference::GetUsageRequestFactHandler::new(
+                        Arc::clone(&get_usage_request_fact),
+                    ),
+                )
+                .query_handler::<crate::modules::inference::GetInferenceUsageRetentionStatus, _>(
+                    crate::modules::inference::GetInferenceUsageRetentionStatusHandler::new(
                         get_usage_request_fact,
+                        inference_usage_retention_policy,
                     ),
                 )
                 .query_handler::<crate::modules::edge::ListDomainClaims, _>(

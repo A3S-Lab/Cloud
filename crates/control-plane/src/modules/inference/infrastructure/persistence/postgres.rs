@@ -342,16 +342,29 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
         &self,
         organization_id: OrganizationId,
     ) -> Result<Option<DateTime<Utc>>, RepositoryError> {
+        Ok(self
+            .retention_state(organization_id)
+            .await?
+            .records_available_from)
+    }
+
+    async fn retention_state(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<InferenceUsageRetentionState, RepositoryError> {
         let row = Database::new(PostgresDialect, self.executor.clone())
             .fetch_optional_as(
-                sql_query::<RetentionAvailableRow>(
-                    "select records_available_from from inference_usage_retention_states where organization_id = ",
+                sql_query::<RetentionStateRow>(
+                    "select organization_id, records_available_from, records_deleted_before, applied_policy_digest, total_deleted_records, last_swept_at, last_completed_at, next_scan_at, version from inference_usage_retention_states where organization_id = ",
                 )
                 .bind(organization_id.as_uuid()),
             )
             .await
             .map_err(|error| RepositoryError::Storage(error.to_string()))?;
-        Ok(row.and_then(|row| row.records_available_from))
+        match row {
+            Some(row) => row.into_state(),
+            None => Ok(InferenceUsageRetentionState::initial(organization_id)),
+        }
     }
 
     async fn sweep_retention(
@@ -365,18 +378,6 @@ impl IInferenceUsageRepository for PostgresInferenceUsageRepository {
             })
             .await
             .map_err(transaction_error)
-    }
-}
-
-struct RetentionAvailableRow {
-    records_available_from: Option<DateTime<Utc>>,
-}
-
-impl FromRow for RetentionAvailableRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            records_available_from: decode(row, 0)?,
-        })
     }
 }
 

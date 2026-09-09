@@ -1,6 +1,6 @@
 use crate::modules::inference::domain::services::{
     InferenceUsageDailyRollup, InferenceUsageRequestFact, InferenceUsageRetentionReport,
-    InferenceUsageRetentionSweep,
+    InferenceUsageRetentionState, InferenceUsageRetentionSweep,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodeId, OrganizationId, RepositoryError,
@@ -70,6 +70,11 @@ pub trait IInferenceUsageRepository: Send + Sync {
         &self,
         organization_id: OrganizationId,
     ) -> Result<Option<DateTime<Utc>>, RepositoryError>;
+
+    async fn retention_state(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<InferenceUsageRetentionState, RepositoryError>;
 
     async fn sweep_retention(
         &self,

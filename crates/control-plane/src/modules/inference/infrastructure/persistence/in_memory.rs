@@ -188,13 +188,24 @@ impl IInferenceUsageRepository for InMemoryInferenceUsageRepository {
         &self,
         organization_id: OrganizationId,
     ) -> Result<Option<DateTime<Utc>>, RepositoryError> {
+        Ok(self
+            .retention_state(organization_id)
+            .await?
+            .records_available_from)
+    }
+
+    async fn retention_state(
+        &self,
+        organization_id: OrganizationId,
+    ) -> Result<InferenceUsageRetentionState, RepositoryError> {
         let organizations = self
             .organizations
             .lock()
             .map_err(|_| RepositoryError::Storage("inference usage ledger lock poisoned".into()))?;
         Ok(organizations
             .get(&organization_id.as_uuid())
-            .and_then(|organization| organization.retention.records_available_from))
+            .map(|organization| organization.retention.clone())
+            .unwrap_or_else(|| InferenceUsageRetentionState::initial(organization_id)))
     }
 
     async fn sweep_retention(

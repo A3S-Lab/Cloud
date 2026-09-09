@@ -1346,8 +1346,11 @@ evidence, and fenced release protocol.
   sweeps that never delete watermarks, showback fail-closed before
   `records_available_from`, and the worker-driven
   `InferenceUsageRetentionWorker` configured by the required top-level
-  `inference { retention_* }` ACL. Retention status HTTP and
-  provisioned-deployment recovery remain open.
+  `inference { retention_* }` ACL. Organization administrators can read
+  retention status at
+  `GET .../organizations/{organization_id}/inference-usage/retention`
+  (`GetInferenceUsageRetentionStatus`). Provisioned-deployment recovery
+  remains open.
 
 ### I0.2d: external provider targets
 

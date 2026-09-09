@@ -231,6 +231,46 @@ pub fn validate_showback_fact_timestamp(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InferenceUsageRetentionStatus {
+    pub organization_id: OrganizationId,
+    pub retention_ms: u64,
+    pub policy_digest: Sha256Digest,
+    pub applied_policy_digest: Option<Sha256Digest>,
+    pub current_policy_applied: bool,
+    pub records_available_from: Option<DateTime<Utc>>,
+    pub records_deleted_before: Option<DateTime<Utc>>,
+    pub total_deleted_records: u64,
+    pub last_swept_at: Option<DateTime<Utc>>,
+    pub last_completed_at: Option<DateTime<Utc>>,
+    pub next_scan_at: DateTime<Utc>,
+    pub version: u64,
+}
+
+impl InferenceUsageRetentionStatus {
+    pub fn from_state(
+        policy: &InferenceUsageRetentionPolicy,
+        state: InferenceUsageRetentionState,
+    ) -> Result<Self, String> {
+        state.validate()?;
+        let current_policy_applied = state.applied_policy_digest.as_ref() == Some(policy.digest());
+        Ok(Self {
+            organization_id: state.organization_id,
+            retention_ms: policy.retention_ms(),
+            policy_digest: policy.digest().clone(),
+            applied_policy_digest: state.applied_policy_digest,
+            current_policy_applied,
+            records_available_from: state.records_available_from,
+            records_deleted_before: state.records_deleted_before,
+            total_deleted_records: state.total_deleted_records,
+            last_swept_at: state.last_swept_at,
+            last_completed_at: state.last_completed_at,
+            next_scan_at: state.next_scan_at,
+            version: state.version,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

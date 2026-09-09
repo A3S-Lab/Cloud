@@ -12,7 +12,7 @@ pub use usage_projection::{
 };
 pub use usage_retention::{
     validate_showback_day_window, validate_showback_fact_timestamp, InferenceUsageRetentionPolicy,
-    InferenceUsageRetentionReport, InferenceUsageRetentionState, InferenceUsageRetentionSweep,
-    MAXIMUM_INFERENCE_USAGE_RETENTION_BATCH_SIZE, MAXIMUM_INFERENCE_USAGE_RETENTION_MS,
-    MINIMUM_INFERENCE_USAGE_RETENTION_MS,
+    InferenceUsageRetentionReport, InferenceUsageRetentionState, InferenceUsageRetentionStatus,
+    InferenceUsageRetentionSweep, MAXIMUM_INFERENCE_USAGE_RETENTION_BATCH_SIZE,
+    MAXIMUM_INFERENCE_USAGE_RETENTION_MS, MINIMUM_INFERENCE_USAGE_RETENTION_MS,
 };

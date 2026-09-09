@@ -1,4 +1,6 @@
-use crate::modules::inference::domain::{InferenceUsageDailyRollup, InferenceUsageRequestFact};
+use crate::modules::inference::domain::{
+    InferenceUsageDailyRollup, InferenceUsageRequestFact, InferenceUsageRetentionStatus,
+};
 use a3s_cloud_contracts::{
     InferenceUsageEndpointV1, InferenceUsageMeasurementCompletenessV1,
     InferenceUsageTerminalOutcomeV1,
@@ -92,6 +94,44 @@ impl From<InferenceUsageRequestFact> for UsageRequestFactResponse {
                 .map(str::to_owned),
             total_tokens: value.total_tokens,
             attempt_count: value.attempt_count,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceUsageRetentionStatusResponse {
+    pub organization_id: Uuid,
+    pub retention_ms: u64,
+    pub policy_digest: String,
+    pub applied_policy_digest: Option<String>,
+    pub current_policy_applied: bool,
+    pub records_available_from: Option<DateTime<Utc>>,
+    pub records_deleted_before: Option<DateTime<Utc>>,
+    pub total_deleted_records: u64,
+    pub last_swept_at: Option<DateTime<Utc>>,
+    pub last_completed_at: Option<DateTime<Utc>>,
+    pub next_scan_at: DateTime<Utc>,
+    pub version: u64,
+}
+
+impl From<InferenceUsageRetentionStatus> for InferenceUsageRetentionStatusResponse {
+    fn from(status: InferenceUsageRetentionStatus) -> Self {
+        Self {
+            organization_id: status.organization_id.as_uuid(),
+            retention_ms: status.retention_ms,
+            policy_digest: status.policy_digest.to_string(),
+            applied_policy_digest: status
+                .applied_policy_digest
+                .map(|digest| digest.to_string()),
+            current_policy_applied: status.current_policy_applied,
+            records_available_from: status.records_available_from,
+            records_deleted_before: status.records_deleted_before,
+            total_deleted_records: status.total_deleted_records,
+            last_swept_at: status.last_swept_at,
+            last_completed_at: status.last_completed_at,
+            next_scan_at: status.next_scan_at,
+            version: status.version,
         }
     }
 }
