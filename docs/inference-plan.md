@@ -1339,9 +1339,10 @@ evidence, and fenced release protocol.
   environment-scoped showback reads are exposed as
   `GET .../environments/{environment_id}/inference-usage/daily-rollups` and
   `GET .../inference-usage/requests/{request_id}` via `InferenceModule`
-  (`ListDailyUsageRollups` / `GetUsageRequestFact`). Fine-grained
-  environment visibility grants beyond org-tenant guard, retention purge
-  HTTP, and provisioned-deployment recovery remain open.
+  (`ListDailyUsageRollups` / `GetUsageRequestFact`) with
+  `ResourceAccessEvaluator` environment visibility (ungranted environments
+  fail closed as NotFound). Retention purge HTTP and provisioned-deployment
+  recovery remain open.
 
 ### I0.2d: external provider targets
 

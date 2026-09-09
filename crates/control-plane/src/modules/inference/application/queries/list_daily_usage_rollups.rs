@@ -1,8 +1,9 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::{
     IInferenceUsageRepository, InferenceUsageDailyRollup,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId};
+use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use chrono::NaiveDate;
 use std::sync::Arc;
@@ -10,9 +11,11 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct ListDailyUsageRollups {
     pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub from_day: NaiveDate,
     pub to_day: NaiveDate,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for ListDailyUsageRollups {
@@ -38,6 +41,14 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
     {
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
+            if !query
+                .resource_access
+                .environment_is_visible(query.project_id, query.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found in organization".into(),
+                )));
+            }
             if query.from_day > query.to_day {
                 return Ok(Err(ApplicationError::Invalid(
                     "inference usage rollup from_day must be <= to_day".into(),
@@ -61,6 +72,7 @@ mod tests {
     use super::*;
     use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::inference::InMemoryInferenceUsageRepository;
+    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::NodeId;
     use a3s_cloud_contracts::{
         InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
@@ -72,6 +84,10 @@ mod tests {
     use chrono::{DateTime, Utc};
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
+
+    fn org_wide() -> ResourceAccessEvaluator {
+        ResourceAccessEvaluator::organization_wide()
+    }
 
     fn lifecycle(kind: InferenceUsageLifecycleKindV1, at: &str, terminal: bool) -> Vec<u8> {
         let event = InferenceUsageLifecycleEventV1 {
@@ -116,6 +132,7 @@ mod tests {
     async fn lists_only_requested_environment_rollups() {
         let usage = Arc::new(InMemoryInferenceUsageRepository::new());
         let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
+        let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(101));
         let handler = ListDailyUsageRollupsHandler::new(usage.clone());
         let started = lifecycle(
@@ -170,9 +187,11 @@ mod tests {
             .execute(
                 ListDailyUsageRollups {
                     organization_id,
+                    project_id,
                     environment_id,
                     from_day: day,
                     to_day: day,
+                    resource_access: org_wide(),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
@@ -182,19 +201,26 @@ mod tests {
         assert_eq!(listed.len(), 1);
         assert_eq!(listed[0].total_tokens, 7);
 
-        let other = handler
+        let denied = handler
             .execute(
                 ListDailyUsageRollups {
                     organization_id,
-                    environment_id: EnvironmentId::from_uuid(Uuid::from_u128(999)),
+                    project_id,
+                    environment_id,
                     from_day: day,
                     to_day: day,
+                    resource_access: ResourceAccessEvaluator::restricted(vec![
+                        ResourceGrantScope::Environment {
+                            project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
+                            environment_id: EnvironmentId::from_uuid(Uuid::from_u128(999)),
+                        },
+                    ]),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
             .await
             .unwrap()
-            .unwrap();
-        assert!(other.is_empty());
+            .unwrap_err();
+        assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
 }

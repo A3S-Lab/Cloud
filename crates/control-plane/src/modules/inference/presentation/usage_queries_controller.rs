@@ -1,4 +1,4 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::inference::application::{GetUsageRequestFact, ListDailyUsageRollups};
 use crate::modules::inference::presentation::dto::{
     DailyUsageRollupResponse, UsageRequestFactResponse,
@@ -27,19 +27,23 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let _project_id =
-                        ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     let parameters: DailyRollupsQuery = request.query()?;
                     match bus
                         .execute(ListDailyUsageRollups {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             from_day: parameters.from_day,
                             to_day: parameters.to_day,
+                            resource_access,
                         })
                         .await?
                     {
@@ -60,17 +64,21 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id_header = request_id(&request)?;
-                    let _project_id =
-                        ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     match bus
                         .execute(GetUsageRequestFact {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             request_id: request.param_as::<Uuid>("request_id")?,
+                            resource_access,
                         })
                         .await?
                     {

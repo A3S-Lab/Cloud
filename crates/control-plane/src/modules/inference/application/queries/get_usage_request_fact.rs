@@ -1,8 +1,9 @@
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::{
     IInferenceUsageRepository, InferenceUsageRequestFact,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId};
+use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -10,8 +11,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct GetUsageRequestFact {
     pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub request_id: Uuid,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for GetUsageRequestFact {
@@ -37,6 +40,14 @@ impl QueryHandler<GetUsageRequestFact> for GetUsageRequestFactHandler {
     {
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
+            if !query
+                .resource_access
+                .environment_is_visible(query.project_id, query.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found in organization".into(),
+                )));
+            }
             match usage
                 .get_request_fact(query.organization_id, query.request_id)
                 .await
