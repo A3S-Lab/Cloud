@@ -1406,9 +1406,12 @@ evidence, and fenced release protocol.
   First-principles admission tests also cover pending DomainClaim rejection,
   zero `binding_generation`, empty `path_prefix`, cross-organization claim
   rejection, and the honesty case that a missing GatewayScope row does not
-  invent membership (verified claim still required). Grant admission tests
-  cover missing, wrong-environment, revoked, and stale-generation credentials
-  on both publish and revise. Edge also loads workers only through Inference-owned
+  invent membership (verified claim still required). Binding admission is
+  certified on revise as well (pending DomainClaim fails closed before any
+  catalog write). Grant admission tests cover missing, wrong-environment,
+  revoked, and stale-generation credentials on both publish and revise.
+  HTTP revise rejects stale grant generation and unverified Edge bindings with
+  `422` and does not advance `aggregateVersion`. Edge also loads workers only through Inference-owned
   `IInferenceWorkerAclProjectionPort` (Empty until Power observation delivery)
   on every managed publication path (cutover, certificate convergence, MCP
   desired-state, route rollout, rollback) and compiles managed snapshots via

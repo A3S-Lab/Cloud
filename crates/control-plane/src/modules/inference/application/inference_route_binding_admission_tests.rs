@@ -12,7 +12,8 @@ use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::inference::application::{
     InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
     IInferenceRouteAclProjectionPort, PermitInferenceGrantCredentialAdmission,
-    PublishInferenceRoute, PublishInferenceRouteHandler, EDGE_ROUTE_BINDING_INVALID,
+    PublishInferenceRoute, PublishInferenceRouteHandler, ReviseInferenceRoute,
+    ReviseInferenceRouteHandler, EDGE_ROUTE_BINDING_INVALID,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -207,6 +208,18 @@ fn publish_handler(
     routes: Arc<InMemoryInferenceRouteRepository>,
 ) -> PublishInferenceRouteHandler {
     PublishInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes,
+        Arc::new(EdgeInferenceRouteBindingAdmissionAdapter::new(edge)),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
+    )
+}
+
+fn revise_handler(
+    edge: Arc<InMemoryEdgeRepository>,
+    routes: Arc<InMemoryInferenceRouteRepository>,
+) -> ReviseInferenceRouteHandler {
+    ReviseInferenceRouteHandler::new(
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
         Arc::new(EdgeInferenceRouteBindingAdmissionAdapter::new(edge)),
@@ -598,5 +611,75 @@ async fn missing_gateway_scope_does_not_invent_membership_and_still_admits() {
         ))
         .await
         .expect("missing scope must not invent membership or reject a verified claim");
+}
+
+#[tokio::test]
+async fn revise_also_enforces_edge_binding_admission() {
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = verified_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let scope_id = gateway_scope(&edge, organization_id, project_id, environment_id).await;
+    let publish = publish_handler(Arc::clone(&edge), Arc::clone(&routes));
+    let published = publish
+        .execute(
+            PublishInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![sample_grant()],
+                binding: binding(claim_id, scope_id, "api.example.com", "/v1"),
+                idempotency_key: "publish-before-revise-binding".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let pending_claim_id = pending_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "pending.example.com",
+    )
+    .await;
+    let revise = revise_handler(edge, routes);
+    let error = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![sample_grant()],
+                binding: binding(pending_claim_id, scope_id, "pending.example.com", "/v1"),
+                idempotency_key: "revise-pending-binding".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_binding_invalid(error);
 }
 

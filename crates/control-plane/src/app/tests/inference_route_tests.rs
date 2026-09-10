@@ -810,6 +810,282 @@ async fn inference_route_revise_requires_write_scope_cas_and_idempotency() -> Re
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_revise_rejects_stale_grant_credential_generation() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-revise-grant-http",
+        "Inference revise grant admission",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-revise-grant-project",
+        "Inference Revise Grant",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-revise-grant-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-revise-grant-write-token",
+        "inference-route-revise-grant-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "revise-grant.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:revise-grant-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:revise-grant-publish",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-grant.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let published_json = response_json(&published)?;
+    let route_id = published_json["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing route id".into()))?;
+    let aggregate_version = published_json["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing aggregateVersion".into()))?;
+
+    let revise_path = format!("{routes_path}/{route_id}/revisions");
+    let rejected = app
+        .call(post_json_as(
+            &revise_path,
+            "inference-route:revise-grant-stale-generation",
+            revise_body(
+                aggregate_version,
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-grant.example.com",
+                credential_id,
+                credential_generation + 1,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 422);
+    let body = response_json(&rejected)?;
+    let serialized = body.to_string();
+    assert!(
+        serialized.contains("INFERENCE_GRANT_CREDENTIAL_INVALID"),
+        "expected revise grant credential admission fail-closed, got {body}"
+    );
+
+    let fetched = app
+        .call(
+            BootRequest::new(HttpMethod::Get, format!("{routes_path}/{route_id}")).with_header(
+                "authorization",
+                format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+            ),
+        )
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    assert_eq!(
+        response_json(&fetched)?["data"]["aggregateVersion"],
+        json!(aggregate_version),
+        "failed revise must not advance aggregate version"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inference_route_revise_rejects_unverified_edge_binding() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-revise-binding-http",
+        "Inference revise binding admission",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-revise-binding-project",
+        "Inference Revise Binding",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-revise-binding-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-revise-binding-write-token",
+        "inference-route-revise-binding-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "revise-binding.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:revise-binding-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:revise-binding-publish",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-binding.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let published_json = response_json(&published)?;
+    let route_id = published_json["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing route id".into()))?;
+    let aggregate_version = published_json["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing aggregateVersion".into()))?;
+
+    let now = Utc::now();
+    let pending = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse("revise-pending.example.com").map_err(BootError::Internal)?,
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .map_err(BootError::Internal)?;
+    let created = DomainClaimChanged::envelope(&pending, Uuid::now_v7())
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: pending.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claims",
+            pending.id.to_string(),
+            pending.pattern.as_str().as_bytes(),
+        )
+        .map_err(BootError::Internal)?,
+        event: created,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let revise_path = format!("{routes_path}/{route_id}/revisions");
+    let rejected = app
+        .call(post_json_as(
+            &revise_path,
+            "inference-route:revise-pending-binding",
+            revise_body(
+                aggregate_version,
+                pending.id,
+                gateway_scope_id,
+                "revise-pending.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 422);
+    let body = response_json(&rejected)?;
+    let serialized = body.to_string();
+    assert!(
+        serialized.contains("EDGE_ROUTE_BINDING_INVALID"),
+        "expected revise Edge binding admission fail-closed, got {body}"
+    );
+
+    let fetched = app
+        .call(
+            BootRequest::new(HttpMethod::Get, format!("{routes_path}/{route_id}")).with_header(
+                "authorization",
+                format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+            ),
+        )
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    assert_eq!(
+        response_json(&fetched)?["data"]["aggregateVersion"],
+        json!(aggregate_version),
+        "failed revise must not advance aggregate version"
+    );
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,

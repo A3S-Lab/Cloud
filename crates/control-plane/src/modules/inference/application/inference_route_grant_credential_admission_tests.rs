@@ -456,6 +456,69 @@ async fn revise_also_enforces_grant_credential_admission() {
 }
 
 #[tokio::test]
+async fn revise_rejects_stale_credential_generation() {
+    let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let first = issue_credential(
+        &credentials,
+        organization_id,
+        project_id,
+        environment_id,
+        "ffffffffffffaaaa",
+    )
+    .await;
+    let publish = publish_handler(Arc::clone(&credentials), Arc::clone(&routes));
+    let published = publish
+        .execute(
+            PublishInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![grant_for(&first)],
+                binding: sample_binding(),
+                idempotency_key: "publish-before-revise-stale".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let mut stale = grant_for(&first);
+    stale.credential_generation = first.generation() + 1;
+    let revise = revise_handler(credentials, routes);
+    let error = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![stale],
+                binding: sample_binding(),
+                idempotency_key: "revise-stale-grant".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert_grant_invalid(error);
+}
+
+#[tokio::test]
 async fn port_admits_empty_grants() {
     let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
     let admission = IdentityInferenceGrantCredentialAdmissionAdapter::new(credentials);
