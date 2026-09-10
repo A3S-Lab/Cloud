@@ -8177,6 +8177,73 @@ fn connectors_create_profile_isolates_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn connectors_profile_commands_isolate_secrets_behind_published_exact_version_access() {
+    let root = module_root();
+
+    let commands =
+        std::fs::read_to_string(root.join("connectors/application/commands.rs")).expect("commands");
+    let production_commands = production_source(&commands);
+    for required in [
+        "Arc<dyn IExactSecretVersionAccess>",
+        "validate_definition_secret_references(",
+    ] {
+        assert!(
+            production_commands.contains(required),
+            "Connectors profile commands lost Secrets published boundary {required}"
+        );
+    }
+    for forbidden in [
+        "ISecretRepository",
+        "ExactSecretVersionAccess::new",
+        "modules::secrets::domain",
+        "modules::secrets::application::ExactSecretVersionAccess",
+    ] {
+        assert!(
+            !production_commands.contains(forbidden),
+            "Connectors profile commands regained Secrets implementation authority {forbidden}"
+        );
+    }
+
+    let references = std::fs::read_to_string(root.join("connectors/application/secret_references.rs"))
+        .expect("secret references");
+    let production_references = production_source(&references);
+    assert!(
+        production_references.contains("&dyn IExactSecretVersionAccess"),
+        "secret_references lost published IExactSecretVersionAccess wiring"
+    );
+    for forbidden in ["ISecretRepository", "ExactSecretVersionAccess::"] {
+        assert!(
+            !production_references.contains(forbidden),
+            "secret_references regained Secrets implementation authority {forbidden}"
+        );
+    }
+    assert!(
+        !production_references
+            .replace("IExactSecretVersionAccess", "")
+            .contains("ExactSecretVersionAccess"),
+        "secret_references must not construct ExactSecretVersionAccess"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert!(
+        app.contains("exact_secret_version_access(Arc::clone(&secrets))")
+            || app.contains("exact_secret_version_access(Arc::clone(&create_connector_secrets))"),
+        "root composition must wire Connectors through exact_secret_version_access"
+    );
+    let create_site = app
+        .lines()
+        .filter(|line| {
+            line.contains("create_connector_secrets") && line.contains("exact_secret_version_access")
+        })
+        .count();
+    assert_eq!(
+        create_site, 1,
+        "root composition must construct Connectors Secrets access exactly once"
+    );
+}
+
+#[test]
 fn agents_environment_queries_isolate_projects_behind_one_environment_port() {
     let root = module_root();
 

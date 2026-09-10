@@ -2665,8 +2665,8 @@ fn build_management_application_with_health(
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
     let get_application_releases = applications;
-    let create_connector_secrets = Arc::clone(&secrets);
-    let revise_connector_secrets = Arc::clone(&secrets);
+    let create_connector_secrets = exact_secret_version_access(Arc::clone(&secrets));
+    let revise_connector_secrets = Arc::clone(&create_connector_secrets);
     let create_durable_cell_environments: Arc<dyn IDurableCellsEnvironmentAccess> = Arc::new(
         ProjectsDurableCellsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );

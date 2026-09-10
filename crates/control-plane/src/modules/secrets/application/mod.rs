@@ -16,9 +16,7 @@ pub use commands::{
 pub(crate) use encryption::encryption_error;
 pub use environment_access::{ISecretEnvironmentAccess, SecretEnvironmentScope};
 pub use materialization::exact_secret_version_access;
-pub(crate) use materialization::{
-    exact_secret_materializer, ExactSecretMaterializer, ExactSecretVersionAccess,
-};
+pub(crate) use materialization::{exact_secret_materializer, ExactSecretMaterializer};
 pub use materialization::{IExactSecretMaterializer, IExactSecretVersionAccess};
 pub use materialization_authorization::{
     ISecretMaterializationAuthorizer, SecretMaterializationAuthorization,

@@ -19,6 +19,7 @@ use crate::modules::secrets::domain::{
     TransitionSecretVersion,
 };
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+use crate::modules::secrets::exact_secret_version_access;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName,
@@ -68,10 +69,11 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
     )
     .await;
     let connectors = Arc::new(InMemoryConnectorProfileRepository::new());
+    let secret_access = exact_secret_version_access(secrets.clone());
     let create_handler = CreateConnectorProfileHandler::new(
         Arc::new(ProjectsConnectorsEnvironmentAccessAdapter::new(projects)),
         connectors.clone(),
-        secrets.clone(),
+        Arc::clone(&secret_access),
     );
     let create = CreateConnectorProfile {
         organization_id,
@@ -177,7 +179,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
         Err(ApplicationError::Invalid(_))
     ));
 
-    let revise_handler = ReviseConnectorProfileHandler::new(connectors.clone(), secrets);
+    let revise_handler = ReviseConnectorProfileHandler::new(connectors.clone(), secret_access);
     let revise = ReviseConnectorProfile {
         organization_id,
         project_id,

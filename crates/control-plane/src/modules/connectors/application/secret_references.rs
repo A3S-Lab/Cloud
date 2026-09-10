@@ -1,10 +1,10 @@
 use crate::modules::connectors::domain::ConnectorDefinition;
-use crate::modules::secrets::application::ExactSecretVersionAccess;
+use crate::modules::secrets::IExactSecretVersionAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 
 pub(super) async fn validate_definition_secret_references(
-    access: &ExactSecretVersionAccess,
+    access: &dyn IExactSecretVersionAccess,
     organization_id: OrganizationId,
     project_id: ProjectId,
     environment_id: EnvironmentId,

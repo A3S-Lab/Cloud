@@ -10,8 +10,7 @@ use crate::modules::connectors::domain::{
     ReviseConnectorProfileWrite,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::secrets::application::ExactSecretVersionAccess;
-use crate::modules::secrets::domain::ISecretRepository;
+use crate::modules::secrets::IExactSecretVersionAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -43,19 +42,19 @@ impl Command for CreateConnectorProfile {
 pub struct CreateConnectorProfileHandler {
     environments: Arc<dyn IConnectorsEnvironmentAccess>,
     connectors: Arc<dyn IConnectorProfileRepository>,
-    secret_access: ExactSecretVersionAccess,
+    secret_access: Arc<dyn IExactSecretVersionAccess>,
 }
 
 impl CreateConnectorProfileHandler {
     pub fn new(
         environments: Arc<dyn IConnectorsEnvironmentAccess>,
         connectors: Arc<dyn IConnectorProfileRepository>,
-        secrets: Arc<dyn ISecretRepository>,
+        secret_access: Arc<dyn IExactSecretVersionAccess>,
     ) -> Self {
         Self {
             environments,
             connectors,
-            secret_access: ExactSecretVersionAccess::new(secrets),
+            secret_access,
         }
     }
 }
@@ -71,7 +70,7 @@ impl CommandHandler<CreateConnectorProfile> for CreateConnectorProfileHandler {
     > {
         let environments = Arc::clone(&self.environments);
         let connectors = Arc::clone(&self.connectors);
-        let secret_access = self.secret_access.clone();
+        let secret_access = Arc::clone(&self.secret_access);
         Box::pin(async move {
             if let Err(error) = environment(
                 command.project_id,
@@ -146,7 +145,7 @@ impl CommandHandler<CreateConnectorProfile> for CreateConnectorProfileHandler {
                 Err(error) => return Ok(Err(error.into())),
             }
             if let Err(error) = validate_definition_secret_references(
-                &secret_access,
+                secret_access.as_ref(),
                 command.organization_id,
                 command.project_id,
                 command.environment_id,
@@ -219,17 +218,17 @@ impl Command for ReviseConnectorProfile {
 
 pub struct ReviseConnectorProfileHandler {
     connectors: Arc<dyn IConnectorProfileRepository>,
-    secret_access: ExactSecretVersionAccess,
+    secret_access: Arc<dyn IExactSecretVersionAccess>,
 }
 
 impl ReviseConnectorProfileHandler {
     pub fn new(
         connectors: Arc<dyn IConnectorProfileRepository>,
-        secrets: Arc<dyn ISecretRepository>,
+        secret_access: Arc<dyn IExactSecretVersionAccess>,
     ) -> Self {
         Self {
             connectors,
-            secret_access: ExactSecretVersionAccess::new(secrets),
+            secret_access,
         }
     }
 }
@@ -244,7 +243,7 @@ impl CommandHandler<ReviseConnectorProfile> for ReviseConnectorProfileHandler {
         a3s_boot::Result<ApplicationResult<ConnectorProfileMutationResult>>,
     > {
         let connectors = Arc::clone(&self.connectors);
-        let secret_access = self.secret_access.clone();
+        let secret_access = Arc::clone(&self.secret_access);
         Box::pin(async move {
             if let Err(error) = environment(
                 command.project_id,
@@ -349,7 +348,7 @@ impl CommandHandler<ReviseConnectorProfile> for ReviseConnectorProfileHandler {
                 Err(error) => return Ok(Err(error.into())),
             };
             if let Err(error) = validate_definition_secret_references(
-                &secret_access,
+                secret_access.as_ref(),
                 command.organization_id,
                 command.project_id,
                 command.environment_id,
