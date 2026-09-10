@@ -2117,6 +2117,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     > = Arc::new(crate::modules::inference::InferenceRouteAclProjectionAdapter::new(
         Arc::clone(&inference_routes),
     ));
+    let inference_worker_acl_projections: Arc<
+        dyn crate::modules::inference::IInferenceWorkerAclProjectionPort,
+    > = Arc::new(crate::modules::inference::EmptyInferenceWorkerAclProjectionPort);
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -2180,6 +2183,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             ),
             inference_routes,
             inference_route_acl_projections,
+            inference_worker_acl_projections,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),

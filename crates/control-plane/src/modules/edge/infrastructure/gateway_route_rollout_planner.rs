@@ -13,7 +13,8 @@ use crate::modules::identity::application::{
     IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
 };
 use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
+    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
+    InferenceRouteEnvironmentScope,
 };
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayRolloutId, NodeId, RepositoryError, RouteId, WorkloadRevisionId,
@@ -63,6 +64,7 @@ pub struct GatewayRouteRolloutPlanner {
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
     inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
     inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
+    inference_workers: Option<Arc<dyn IInferenceWorkerAclProjectionPort>>,
 }
 
 impl GatewayRouteRolloutPlanner {
@@ -78,6 +80,7 @@ impl GatewayRouteRolloutPlanner {
             desired_state: None,
             inference_credentials: None,
             inference_routes: None,
+            inference_workers: None,
         }
     }
 
@@ -88,6 +91,7 @@ impl GatewayRouteRolloutPlanner {
         desired_state: GatewayNodeDesiredStatePlanner,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
+        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
     ) -> Self {
         Self {
             routes,
@@ -96,6 +100,7 @@ impl GatewayRouteRolloutPlanner {
             desired_state: Some(desired_state),
             inference_credentials: Some(inference_credentials),
             inference_routes: Some(inference_routes),
+            inference_workers: Some(inference_workers),
         }
     }
 
@@ -223,8 +228,14 @@ impl GatewayRouteRolloutPlanner {
                 "managed Gateway inference route projection is not configured".into(),
             )
         })?;
+        let inference_worker_port = self.inference_workers.as_ref().ok_or_else(|| {
+            RepositoryError::Storage(
+                "managed Gateway inference worker projection is not configured".into(),
+            )
+        })?;
         let mut member_inference_credentials = BTreeMap::<NodeId, _>::new();
         let mut member_inference_routes = BTreeMap::<NodeId, _>::new();
+        let mut member_inference_workers = BTreeMap::<NodeId, _>::new();
         for desired in &member_desired_states {
             let ordinary_routes = desired
                 .active_routes()
@@ -265,6 +276,11 @@ impl GatewayRouteRolloutPlanner {
                 .list_inference_route_acl_projections(&route_scopes)
                 .await?;
             member_inference_routes.insert(desired.physical_scope().node_id, routes);
+
+            let workers = inference_worker_port
+                .list_inference_worker_acl_projections(&route_scopes, request.issued_at)
+                .await?;
+            member_inference_workers.insert(desired.physical_scope().node_id, workers);
         }
         self.compiler
             .compile_managed(CompileManagedGatewayRouteRollout {
@@ -280,6 +296,7 @@ impl GatewayRouteRolloutPlanner {
                 member_desired_states,
                 member_inference_credentials,
                 member_inference_routes,
+                member_inference_workers,
                 issued_at: request.issued_at,
             })
             .map_err(RepositoryError::Conflict)

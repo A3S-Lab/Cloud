@@ -57,6 +57,8 @@ pub struct CompileManagedGatewayRouteRollout {
         BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceCredentialAclProjection>>,
     pub member_inference_routes:
         BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceRouteAclProjection>>,
+    pub member_inference_workers:
+        BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceWorkerAclProjection>>,
     pub issued_at: DateTime<Utc>,
 }
 
@@ -425,7 +427,11 @@ impl GatewayRouteRolloutCompiler {
                         .get(&node_id)
                         .cloned()
                         .unwrap_or_default(),
-                    inference_workers: Vec::new(),
+                    inference_workers: request
+                        .member_inference_workers
+                        .get(&node_id)
+                        .cloned()
+                        .unwrap_or_default(),
                 },
             )?;
             let command_id = NodeCommandId::new();

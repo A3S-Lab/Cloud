@@ -15,7 +15,9 @@ use crate::modules::edge::domain::{
     GatewayScope, GatewayScopeState,
 };
 use crate::modules::identity::application::EmptyInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::EmptyInferenceRouteAclProjectionPort;
+use crate::modules::inference::application::{
+    EmptyInferenceRouteAclProjectionPort, EmptyInferenceWorkerAclProjectionPort,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
@@ -328,6 +330,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         compiler(),
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Arc::new(EmptyInferenceRouteAclProjectionPort),
+        Arc::new(EmptyInferenceWorkerAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
@@ -631,6 +634,7 @@ fn reconciler(
         compiler(),
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Arc::new(EmptyInferenceRouteAclProjectionPort),
+        Arc::new(EmptyInferenceWorkerAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),

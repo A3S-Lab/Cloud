@@ -404,6 +404,7 @@ fn managed_rollout_composes_every_ordinary_route_under_one_publication_owner() {
             member_desired_states,
             member_inference_credentials: BTreeMap::new(),
             member_inference_routes: BTreeMap::new(),
+            member_inference_workers: BTreeMap::new(),
             issued_at,
         })
         .expect("managed rollout");

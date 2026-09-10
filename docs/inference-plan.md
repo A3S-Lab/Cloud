@@ -1371,11 +1371,11 @@ evidence, and fenced release protocol.
   rejecting with `ApplicationError::Invalid` / `EDGE_ROUTE_BINDING_INVALID`.
   Edge also loads workers only through Inference-owned
   `IInferenceWorkerAclProjectionPort` (Empty until Power observation delivery)
-  and compiles managed snapshots via
+  on every managed publication path (cutover, certificate convergence, MCP
+  desired-state, route rollout, rollback) and compiles managed snapshots via
   `render_inference_policy_acl_with_routes_and_workers` with
-  `projected_at = snapshot issued_at`. Edge loaders on managed publication
-  paths (cutover, certificate convergence, MCP desired-state, route rollout,
-  rollback) accept and forward those projections into
+  `projected_at = snapshot issued_at`. Edge loaders on those paths accept and
+  forward those projections into
   `GatewaySnapshotCompiler` without inventing catalog or worker facts. Durable
   worker publication remains open (Power observation delivery). Joint Gateway revocation/expiry
   fail-closed already covers projected `revoked = true` credentials. Gateway

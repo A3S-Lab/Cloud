@@ -1,10 +1,10 @@
 use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
     load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
-    GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
-    GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
-    StageManagedGatewayCertificateConvergence,
+    load_inference_worker_projections_for_routes, CompileManagedGatewayCertificateConvergenceSnapshot,
+    GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata,
+    GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository,
+    PlanGatewayNodeDesiredState, StageManagedGatewayCertificateConvergence,
 };
 use crate::modules::edge::domain::events::{
     GatewayCertificateConvergenceStaged, GatewayCertificateExpiryChanged,
@@ -22,7 +22,9 @@ use crate::modules::edge::domain::{
     GatewayRouteVersion, Route,
 };
 use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::IInferenceRouteAclProjectionPort;
+use crate::modules::inference::application::{
+    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, NodeCommandId, NodeId, RepositoryError,
 };
@@ -64,6 +66,7 @@ pub struct GatewayCertificateReconciler {
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
     inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
     inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
+    inference_workers: Option<Arc<dyn IInferenceWorkerAclProjectionPort>>,
     commands: Arc<dyn IGatewayCommandQueue>,
     certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     compiler: super::GatewaySnapshotCompiler,
@@ -106,6 +109,7 @@ impl GatewayCertificateReconciler {
             desired_state: None,
             inference_credentials: None,
             inference_routes: None,
+            inference_workers: None,
             commands,
             certificate_authority,
             compiler,
@@ -124,6 +128,7 @@ impl GatewayCertificateReconciler {
         desired_state: GatewayNodeDesiredStatePlanner,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
+        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
         commands: Arc<dyn IGatewayCommandQueue>,
         certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         compiler: super::GatewaySnapshotCompiler,
@@ -148,6 +153,7 @@ impl GatewayCertificateReconciler {
         reconciler.desired_state = Some(desired_state);
         reconciler.inference_credentials = Some(inference_credentials);
         reconciler.inference_routes = Some(inference_routes);
+        reconciler.inference_workers = Some(inference_workers);
         Ok(reconciler)
     }
 
@@ -661,7 +667,19 @@ impl GatewayCertificateReconciler {
             );
             load_inference_route_projections_for_routes(port.as_ref(), &load_routes).await?
         };
-        let inference_workers = Vec::new();
+        let inference_workers = {
+            let port = self.inference_workers.as_ref().ok_or_else(|| {
+                RepositoryError::Storage(
+                    "managed Gateway certificate convergence missing inference worker projection port"
+                        .into(),
+                )
+            })?;
+            let load_routes = ordinary_routes_for_inference_projection(
+                &retained_routes,
+                desired_state.active_routes(),
+            );
+            load_inference_worker_projections_for_routes(port.as_ref(), &load_routes, now).await?
+        };
         let candidate = if reuse {
             match self
                 .compiler

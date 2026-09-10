@@ -1004,6 +1004,7 @@ pub async fn exercise(
         fixture_gateway_snapshot_compiler()?,
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Arc::new(EmptyInferenceRouteAclProjectionPort),
+        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),

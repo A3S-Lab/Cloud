@@ -192,6 +192,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         fixture_gateway_snapshot_compiler()?,
         Arc::new(a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort),
         Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort),
+        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
@@ -309,6 +310,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         desired_state,
         Arc::new(a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort),
         Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort),
+        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
     );
     let ordinary_at = node_wide_failed_at + Duration::milliseconds(1);
     let domain_claim = fixture

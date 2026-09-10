@@ -1613,6 +1613,7 @@ async fn build_api_worker_application(
                 gateway_node_desired_state_planner.clone(),
                 Arc::clone(&inference_credential_acl_projections),
                 Arc::clone(&inference_route_acl_projections),
+                Arc::clone(&inference_worker_acl_projections),
                 Arc::clone(&route_commands),
                 Arc::clone(&gateway_certificate_authority),
                 deployment_route_compiler.clone(),
@@ -1629,6 +1630,7 @@ async fn build_api_worker_application(
                 deployment_route_compiler.clone(),
                 Arc::clone(&inference_credential_acl_projections),
                 Arc::clone(&inference_route_acl_projections),
+                Arc::clone(&inference_worker_acl_projections),
                 Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
                 chrono_duration(config.edge.command_ttl_ms)?,
                 chrono::Duration::hours(24),
@@ -1671,6 +1673,7 @@ async fn build_api_worker_application(
                 gateway_node_desired_state_planner.clone(),
                 Arc::clone(&inference_credential_acl_projections),
                 Arc::clone(&inference_route_acl_projections),
+                Arc::clone(&inference_worker_acl_projections),
                 GatewayRolloutRollbackCompiler::new(
                     deployment_route_compiler.clone(),
                     chrono_duration(config.edge.command_ttl_ms)?,
@@ -1969,6 +1972,7 @@ async fn build_api_worker_application(
                 inference_credential_acl_projections,
                 inference_routes,
                 inference_route_acl_projections,
+                inference_worker_acl_projections,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2237,6 +2241,8 @@ struct ManagementApplicationDependencies {
     inference_routes: Arc<dyn crate::modules::inference::IInferenceRouteRepository>,
     inference_route_acl_projections:
         Arc<dyn crate::modules::inference::IInferenceRouteAclProjectionPort>,
+    inference_worker_acl_projections:
+        Arc<dyn crate::modules::inference::IInferenceWorkerAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2345,6 +2351,7 @@ fn build_management_application_with_health(
         inference_credential_acl_projections,
         inference_routes,
         inference_route_acl_projections,
+        inference_worker_acl_projections,
         projects,
         environments,
         ontologies,
@@ -2994,6 +3001,7 @@ fn build_management_application_with_health(
                 gateway_node_desired_state_planner,
                 Arc::clone(&inference_credential_acl_projections),
                 Arc::clone(&inference_route_acl_projections),
+                Arc::clone(&inference_worker_acl_projections),
                 chrono_duration(config.edge.command_ttl_ms)?,
             )
         }
