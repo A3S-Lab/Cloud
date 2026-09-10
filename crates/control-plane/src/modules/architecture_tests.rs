@@ -8204,8 +8204,9 @@ fn connectors_profile_commands_isolate_secrets_behind_published_exact_version_ac
         );
     }
 
-    let references = std::fs::read_to_string(root.join("connectors/application/secret_references.rs"))
-        .expect("secret references");
+    let references =
+        std::fs::read_to_string(root.join("connectors/application/secret_references.rs"))
+            .expect("secret references");
     let production_references = production_source(&references);
     assert!(
         production_references.contains("&dyn IExactSecretVersionAccess"),
@@ -8234,7 +8235,8 @@ fn connectors_profile_commands_isolate_secrets_behind_published_exact_version_ac
     let create_site = app
         .lines()
         .filter(|line| {
-            line.contains("create_connector_secrets") && line.contains("exact_secret_version_access")
+            line.contains("create_connector_secrets")
+                && line.contains("exact_secret_version_access")
         })
         .count();
     assert_eq!(
@@ -8446,6 +8448,136 @@ fn executions_isolate_projects_behind_owner_ports() {
             .count(),
         1,
         "root composition must construct the Executions project adapter exactly once"
+    );
+}
+
+#[test]
+fn executions_isolate_operations_behind_owner_port() {
+    let root = module_root();
+
+    let port_path = "executions/application/execution_operation_scheduler.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Executions operation scheduling port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIExecutionOperationScheduler:Send+Sync",
+        "asyncfnschedule(&self,request:ExecutionOperationRequest,)->Result<ExecutionOperationScheduleOutcome,RepositoryError>;",
+        "operation_id:OperationId",
+        "organization_id:OrganizationId",
+        "execution_id:ExecutionId",
+        "requested_at:DateTime<Utc>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Executions operation port lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Executions operation port leaked Operations authority {forbidden}"
+        );
+    }
+
+    let adapter_path = "executions/infrastructure/execution_operation_scheduler.rs";
+    let mut operation_sites = BTreeSet::new();
+    let mut boundary_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("executions") {
+            return;
+        }
+        if source.contains("crate::modules::operations") {
+            operation_sites.insert(display(relative));
+        }
+        if matches!(
+            layer(relative),
+            Some("application" | "domain" | "presentation")
+        ) {
+            for forbidden in [
+                "crate::modules::operations",
+                "IOperationRepository",
+                "OperationSubject",
+                "WorkflowIdentity",
+            ] {
+                if source.contains(forbidden) {
+                    boundary_violations.insert(format!(
+                        "{} contains foreign authority {forbidden}",
+                        display(relative)
+                    ));
+                }
+            }
+        }
+    });
+    assert!(
+        boundary_violations.is_empty(),
+        "Executions bypassed its bounded Operations contract:\n{}",
+        boundary_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        operation_sites,
+        lines(adapter_path),
+        "Executions must reach Operations through one Infrastructure adapter module"
+    );
+
+    let reconciler =
+        std::fs::read_to_string(root.join("executions/application/execution_reconciler.rs"))
+            .expect("read Executions reconciler");
+    let production_reconciler = production_source(&reconciler);
+    let compact_reconciler = production_reconciler.split_whitespace().collect::<String>();
+    for required in [
+        "operation_scheduler:Arc<dynIExecutionOperationScheduler>",
+        "ExecutionOperationRequest::new(",
+        ".operation_scheduler.schedule(request).await",
+    ] {
+        assert!(
+            compact_reconciler.contains(required),
+            "Executions reconciler lost inward scheduling boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_reconciler.contains(forbidden),
+            "Executions reconciler rebuilt Operations authority {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Executions operation adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIExecutionOperationSchedulerforOperationsExecutionOperationScheduler",
+        "operations:Arc<dynIOperationRepository>",
+        "OperationSubject::new(\"execution\",request.execution_id().as_uuid())",
+        "WorkflowIdentity::new(EXECUTION_WORKFLOW_NAME,EXECUTION_WORKFLOW_VERSION)",
+        "Self::from_operation_scheduler(",
+        "Self::with_operation_scheduler_and_schedule(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Executions operation adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".enqueue(").count(),
+        1,
+        "Executions operation adapter must have one enqueue mechanism"
     );
 }
 

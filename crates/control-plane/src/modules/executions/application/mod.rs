@@ -4,6 +4,7 @@ pub mod queries;
 mod environment_access;
 mod execution_cancellation;
 mod execution_creator;
+mod execution_operation_scheduler;
 mod execution_reconciler;
 mod project_access;
 pub(crate) mod resource_access;
@@ -20,6 +21,9 @@ pub use commands::{
     CreateExecutionTemplateHandler, CreateExecutionTemplateResult,
 };
 pub use environment_access::{ExecutionsEnvironmentScope, IExecutionsEnvironmentAccess};
+pub use execution_operation_scheduler::{
+    ExecutionOperationRequest, ExecutionOperationScheduleOutcome, IExecutionOperationScheduler,
+};
 pub use execution_reconciler::{
     ExecutionReconcileReport, ExecutionReconciler, EXECUTION_WORKFLOW_NAME,
     EXECUTION_WORKFLOW_VERSION,

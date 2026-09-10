@@ -1,9 +1,8 @@
+use crate::modules::executions::application::{
+    ExecutionOperationRequest, IExecutionOperationScheduler,
+};
 use crate::modules::executions::domain::IExecutionRepository;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::repositories::IOperationRepository;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::RepositoryError;
-use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -20,27 +19,27 @@ pub struct ExecutionReconcileReport {
 
 pub struct ExecutionReconciler {
     executions: Arc<dyn IExecutionRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    operation_scheduler: Arc<dyn IExecutionOperationScheduler>,
     interval: Duration,
     batch_size: usize,
 }
 
 impl ExecutionReconciler {
-    pub fn new(
+    pub fn from_operation_scheduler(
         executions: Arc<dyn IExecutionRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IExecutionOperationScheduler>,
     ) -> Self {
         Self {
             executions,
-            operations,
+            operation_scheduler,
             interval: Duration::from_secs(1),
             batch_size: 100,
         }
     }
 
-    pub fn with_schedule(
+    pub fn with_operation_scheduler_and_schedule(
         executions: Arc<dyn IExecutionRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IExecutionOperationScheduler>,
         interval: Duration,
         batch_size: usize,
     ) -> Result<Self, String> {
@@ -51,7 +50,7 @@ impl ExecutionReconciler {
         }
         Ok(Self {
             executions,
-            operations,
+            operation_scheduler,
             interval,
             batch_size,
         })
@@ -67,21 +66,14 @@ impl ExecutionReconciler {
             .await?;
         let mut report = ExecutionReconcileReport::default();
         for execution in pending {
-            let operation = OperationRequest::new(
+            let request = ExecutionOperationRequest::new(
                 execution.operation_id,
                 execution.organization_id,
-                OperationSubject::new("execution", execution.id.as_uuid())
-                    .map_err(RepositoryError::Storage)?,
-                WorkflowIdentity::new(EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION)
-                    .map_err(RepositoryError::Storage)?,
-                json!({
-                    "organizationId": execution.organization_id,
-                    "executionId": execution.id,
-                }),
+                execution.id,
                 execution.requested_at,
             );
-            match self.operations.enqueue(operation).await {
-                Ok(write) if write.replayed => report.replayed += 1,
+            match self.operation_scheduler.schedule(request).await {
+                Ok(outcome) if outcome.replayed() => report.replayed += 1,
                 Ok(_) => report.started += 1,
                 Err(error) => report.failures.push(format!(
                     "could not enqueue execution {} operation: {error}",
