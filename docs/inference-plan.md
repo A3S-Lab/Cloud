@@ -1400,6 +1400,8 @@ evidence, and fenced release protocol.
   HTTP list/get for routes and keys also fail closed for restricted principals
   without an environment grant (`403`/`404`, no secret leakage). Create with a
   missing environment UUID fails closed as `404` without persisting a credential.
+  Publish likewise fails closed as `404` for a missing environment path before
+  binding/grant admission and without persisting a route head.
   `PublishInferenceRoute`
   and `ReviseInferenceRoute`
   now fail-closes through Inference-owned

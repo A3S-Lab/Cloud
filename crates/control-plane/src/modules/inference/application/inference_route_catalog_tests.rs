@@ -1364,3 +1364,96 @@ async fn revise_rejects_missing_environment_as_not_found() {
         .expect("route");
     assert_eq!(still_live.aggregate_version(), published.aggregate_version());
 }
+
+#[tokio::test]
+async fn publish_rejects_missing_environment_as_not_found_before_admission() {
+    use crate::modules::inference::application::{
+        IInferenceEdgeRouteBindingAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
+    };
+    use crate::modules::shared_kernel::application::ApplicationResult;
+
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct RejectBindingAdmission;
+
+    #[async_trait]
+    impl IInferenceEdgeRouteBindingAdmissionPort for RejectBindingAdmission {
+        async fn admit(
+            &self,
+            _request: InferenceEdgeRouteBindingAdmissionRequest,
+        ) -> ApplicationResult<()> {
+            Err(ApplicationError::Invalid(
+                "binding admission must not run before environment resolution".into(),
+            ))
+        }
+    }
+
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = PublishInferenceRouteHandler::new(
+        Arc::new(MissingEnvironmentRepository),
+        routes.clone(),
+        Arc::new(RejectBindingAdmission),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
+    );
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+
+    let denied = publish
+        .execute(
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-missing-env",
+            ),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(
+        matches!(denied, ApplicationError::NotFound(_)),
+        "missing environment publish must NotFound before binding admission, got {denied:?}"
+    );
+    assert!(
+        routes
+            .list_inference_routes_by_environment(organization_id, project_id, environment_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "failed publish must not persist a route"
+    );
+}

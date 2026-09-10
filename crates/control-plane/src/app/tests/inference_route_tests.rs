@@ -1531,6 +1531,103 @@ async fn inference_route_revise_rejects_wrong_environment_path_as_not_found() ->
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_publish_rejects_missing_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-publish-missing-env",
+        "Inference publish missing env",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-publish-missing-env-project",
+        "Inference Publish Missing Env",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-publish-missing-env-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-publish-missing-env-write",
+        "inference-route-publish-missing-env-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "publish-missing.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:publish-missing-env-create-key",
+    )
+    .await?;
+
+    let missing_environment = Uuid::now_v7();
+    let missing_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/routes"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &missing_path,
+            "inference-route:publish-missing-environment",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "publish-missing.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 404);
+
+    let listed = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    assert!(
+        response_json(&listed)?["data"]["items"]
+            .as_array()
+            .map(Vec::is_empty)
+            .unwrap_or(false),
+        "missing-environment publish must not persist a route in the real environment"
+    );
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,
