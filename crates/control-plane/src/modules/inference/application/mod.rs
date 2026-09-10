@@ -13,7 +13,9 @@ pub use edge_route_binding_admission::{
     PermitInferenceEdgeRouteBindingAdmission, EDGE_ROUTE_BINDING_INVALID,
 };
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
-pub use empty_inference_worker_acl_projection::EmptyInferenceWorkerAclProjectionPort;
+pub use empty_inference_worker_acl_projection::{
+    postgres_inference_worker_acl_projections, EmptyInferenceWorkerAclProjectionPort,
+};
 pub use inference_usage_retention_worker::InferenceUsageRetentionWorker;
 pub use queries::*;
 pub use route_acl_projection::{IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope};
@@ -30,3 +32,7 @@ mod inference_route_binding_admission_tests;
 #[cfg(test)]
 #[path = "inference_route_query_tests.rs"]
 mod inference_route_query_tests;
+
+#[cfg(test)]
+#[path = "empty_inference_worker_acl_projection_tests.rs"]
+mod empty_inference_worker_acl_projection_tests;

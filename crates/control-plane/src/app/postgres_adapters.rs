@@ -62,7 +62,7 @@ use crate::modules::identity::{
     InferenceCredentialAclProjectionAdapter, PostgresIdentityRepository,
 };
 use crate::modules::inference::{
-    EmptyInferenceWorkerAclProjectionPort, IInferenceRouteAclProjectionPort,
+    postgres_inference_worker_acl_projections, IInferenceRouteAclProjectionPort,
     IInferenceRouteRepository, IInferenceUsageRepository, IInferenceWorkerAclProjectionPort,
     InferenceRouteAclProjectionAdapter, PostgresInferenceRouteRepository,
     PostgresInferenceUsageRepository,
@@ -460,8 +460,7 @@ impl InferencePostgresAdapters {
             Arc::new(InferenceRouteAclProjectionAdapter::new(
                 routes.clone() as Arc<dyn IInferenceRouteRepository>
             ));
-        let worker_acl_projections: Arc<dyn IInferenceWorkerAclProjectionPort> =
-            Arc::new(EmptyInferenceWorkerAclProjectionPort);
+        let worker_acl_projections = postgres_inference_worker_acl_projections();
         Self {
             usage: Arc::new(PostgresInferenceUsageRepository::new(executor)),
             routes,

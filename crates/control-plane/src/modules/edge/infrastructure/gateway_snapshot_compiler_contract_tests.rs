@@ -331,6 +331,102 @@ fn projects_inference_route_grants_into_managed_snapshot_acl_without_workers() {
     assert_eq!(snapshot.acl.matches("inference {").count(), 1);
 }
 
+#[tokio::test]
+async fn empty_worker_port_keeps_managed_route_grants_without_inventing_workers() {
+    use crate::modules::inference::application::{
+        EmptyInferenceWorkerAclProjectionPort, IInferenceWorkerAclProjectionPort,
+        InferenceRouteEnvironmentScope,
+    };
+    use a3s_cloud_contracts::{
+        InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
+        InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+        InferenceTargetAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    };
+    use uuid::Uuid;
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let scope = InferenceRouteEnvironmentScope::new(organization_id, project_id, environment_id)
+        .expect("worker scope");
+    let inference_workers = EmptyInferenceWorkerAclProjectionPort
+        .list_inference_worker_acl_projections(std::slice::from_ref(&scope), issued_at)
+        .await
+        .expect("intentional empty workers");
+    assert!(inference_workers.is_empty());
+
+    let environment_uuid = environment_id.as_uuid();
+    let credential = InferenceCredentialAclProjection::new(
+        Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        environment_uuid,
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        "a3s_inf_abc12345",
+        VERIFIER,
+        3,
+        expires_at + Duration::hours(1),
+        false,
+    )
+    .expect("credential projection");
+    let inference_route = InferenceRouteAclProjection {
+        route_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        router: "inference".into(),
+        environment_id: environment_uuid,
+        policy_revision: 11,
+        models: vec![InferenceModelAclProjection {
+            alias: "chat-model".into(),
+            model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+            targets: vec![InferenceTargetAclProjection {
+                target_id: Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap(),
+                service: "model-service".into(),
+                upstream_model: "internal/model-v1".into(),
+                priority: 0,
+                weight: 100,
+            }],
+        }],
+        grants: vec![InferenceGrantAclProjection {
+            credential_id: credential.credential_id,
+            credential_generation: 3,
+            models: vec!["chat-model".into()],
+            endpoints: vec![InferenceEndpointAcl::Models],
+            limits: InferenceLimitsAclProjection {
+                max_concurrent_requests: 2,
+                requests_per_minute: 60,
+                request_burst: 2,
+                tokens_per_minute: 10_000,
+            },
+        }],
+    };
+
+    let snapshot = compiler()
+        .compile_with_inference_policy_and_workers(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[credential],
+            &[inference_route],
+            &inference_workers,
+        )
+        .expect("routes without workers");
+
+    assert!(snapshot
+        .acl
+        .contains("routes \"44444444-4444-4444-8444-444444444444\""));
+    assert!(snapshot.acl.contains(&format!(
+        "tokenizer_revision = \"{}\"",
+        a3s_cloud_contracts::INFERENCE_TOKENIZER_REVISION_V1
+    )));
+    assert!(!snapshot.acl.contains("\n  workers "));
+}
+
 #[test]
 fn projects_inference_owned_workers_through_managed_compiler() {
     use a3s_cloud_contracts::{

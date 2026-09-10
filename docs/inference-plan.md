@@ -1374,7 +1374,11 @@ evidence, and fenced release protocol.
   on every managed publication path (cutover, certificate convergence, MCP
   desired-state, route rollout, rollback) and compiles managed snapshots via
   `render_inference_policy_acl_with_routes_and_workers` with
-  `projected_at = snapshot issued_at`. Edge loaders on those paths accept and
+  `projected_at = snapshot issued_at`. Postgres composition wires Empty through
+  `postgres_inference_worker_acl_projections()`; first-principles tests certify
+  Empty returns no workers for any scopes and that managed snapshots with
+  route grants still omit the `workers` block (intentional fail-closed, not a
+  missing adapter). Edge loaders on those paths accept and
   forward those projections into
   `GatewaySnapshotCompiler` without inventing catalog or worker facts. Durable
   worker publication remains open (Power observation delivery). Joint Gateway revocation/expiry
