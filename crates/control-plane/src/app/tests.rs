@@ -721,6 +721,8 @@ struct TestRuntimeRepositories {
     user_files: Option<Arc<InMemoryUserFileRepository>>,
     user_file_objects: Option<Arc<dyn IUserFileObjectStore>>,
     inference_usage: Option<Arc<crate::modules::inference::InMemoryInferenceUsageRepository>>,
+    inference_credentials:
+        Option<Arc<crate::modules::identity::InMemoryInferenceCredentialRepository>>,
 }
 
 #[async_trait::async_trait]
@@ -1660,6 +1662,33 @@ fn build_test_application_with_inference_usage(
     )
 }
 
+fn build_test_application_with_inference_credentials(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    inference_credentials: Arc<crate::modules::identity::InMemoryInferenceCredentialRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            inference_credentials: Some(inference_credentials),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
 fn build_test_application_with_security_investigations(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -2057,6 +2086,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         user_files,
         user_file_objects,
         inference_usage,
+        inference_credentials,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -2066,7 +2096,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let mcp_credentials: Arc<dyn IMcpCredentialLifecycleRepository> = edge;
     let inference_credentials: Arc<
         dyn crate::modules::identity::IInferenceCredentialLifecycleRepository,
-    > = Arc::new(crate::modules::identity::InMemoryInferenceCredentialRepository::default());
+    > = inference_credentials
+        .map(|credentials| credentials as Arc<_>)
+        .unwrap_or_else(|| {
+            Arc::new(crate::modules::identity::InMemoryInferenceCredentialRepository::default())
+        });
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );

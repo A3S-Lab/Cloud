@@ -213,6 +213,119 @@ async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Resu
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer(
+) -> Result<()> {
+    use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
+    use crate::modules::identity::InMemoryInferenceCredentialRepository;
+    use std::time::Duration as StdDuration;
+
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+    let app = build_test_application_with_inference_credentials(
+        identity,
+        projects,
+        Arc::clone(&credentials),
+    )?;
+    let organization =
+        bootstrap_organization(&app, "inference-key-sweep-http", "Inference key sweep").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-sweep-project",
+        "Inference Keys Sweep",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-sweep-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-sweep-write-token",
+        "inference-key-sweep-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let collection_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let create_body = json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() });
+    let create_request = || {
+        post_json_as(
+            &collection_path,
+            "inference-key:create-then-sweep",
+            create_body.clone(),
+            INFERENCE_KEY_WRITE_TOKEN,
+        )
+    };
+
+    let created = app.call(create_request()).await?;
+    assert_eq!(created.status(), 201);
+    let created_json = response_json(&created)?;
+    let bearer = created_json["data"]["bearerCredential"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no bearer".into()))?
+        .to_owned();
+    let delivery_expires_at = created_json["data"]["deliveryExpiresAt"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no deliveryExpiresAt".into()))?;
+    let delivery_expires_at = chrono::DateTime::parse_from_rfc3339(delivery_expires_at)
+        .map_err(|error| BootError::Internal(error.to_string()))?
+        .with_timezone(&Utc);
+
+    let live_replay = app.call(create_request()).await?;
+    assert_eq!(live_replay.status(), 200);
+    assert_eq!(
+        response_json(&live_replay)?["data"]["bearerCredential"],
+        bearer
+    );
+
+    let sweeper = InferenceCredentialDeliveryReceiptSweeper::new(
+        credentials as Arc<dyn crate::modules::identity::IInferenceCredentialLifecycleRepository>,
+        StdDuration::from_secs(60),
+        100,
+    )
+    .map_err(|error| BootError::Internal(error))?;
+    assert_eq!(
+        sweeper
+            .run_once(delivery_expires_at)
+            .await
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+        1
+    );
+
+    let after_sweep = app.call(create_request()).await?;
+    assert_eq!(after_sweep.status(), 409);
+    assert_delivery_is_not_cacheable(&after_sweep);
+    let after_sweep_json = response_json(&after_sweep)?;
+    let message = after_sweep_json["message"]
+        .as_str()
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+    assert!(
+        message.contains("no longer recoverable") || message.contains("expired"),
+        "expected delivery fail-closed conflict, got {message}"
+    );
+    assert_response_has_no_bearer(&after_sweep, &[&bearer]);
+    assert!(
+        after_sweep_json["data"].get("bearerCredential").is_none(),
+        "swept receipt must not reissue bearer in Conflict body"
+    );
+    Ok(())
+}
+
 fn replayed_revoke_json_replayed(response: &BootResponse) -> Result<bool> {
     response_json(response)?["data"]["replayed"]
         .as_bool()
