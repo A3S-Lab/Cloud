@@ -800,30 +800,14 @@ jobs:
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
           install -d -m 0755 "$EVIDENCE_DIR"
-          cargo_bin=$(command -v cargo)
-          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
-          rustup_home=$(rustup show home)
+          # Sandbox identity: euid 0 / non-root ruid for device-policy bootstrap.
+          test -n "${A3S_BOX_CI_SANDBOX_UID:-}"
+          test -n "${A3S_BOX_CI_SANDBOX_GID:-}"
+          sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
+          sudo chown root:root "$A3S_HOME/runtime-secrets"
+          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
           set +e
-          sudo env \
-            PATH="$PATH" \
-            HOME="$HOME" \
-            CARGO_HOME="$cargo_home" \
-            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
-            RUSTUP_HOME="$rustup_home" \
-            A3S_HOME="$A3S_HOME" \
-            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
-            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
-            A3S_BOX_SANDBOX_OCI_LAUNCHER="$A3S_BOX_SANDBOX_OCI_LAUNCHER" \
-            A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT="$A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES="$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
-            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
-            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
-            RUST_MIN_STACK=33554432 \
-            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+          bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_skill_workload_binding_rebind_unbind_and_rollback_run_through_real_box \
               -- --ignored --exact --nocapture --test-threads=1 \
@@ -866,30 +850,13 @@ jobs:
             "$EVIDENCE_DIR/agent-runtime.template.Containerfile"
           cp apps/cloud/tools/box-conformance/agent-runtime/config.acl \
             "$EVIDENCE_DIR/agent-runtime-config.acl"
-          cargo_bin=$(command -v cargo)
-          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
-          rustup_home=$(rustup show home)
+          test -n "${A3S_BOX_CI_SANDBOX_UID:-}"
+          test -n "${A3S_BOX_CI_SANDBOX_GID:-}"
+          sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
+          sudo chown root:root "$A3S_HOME/runtime-secrets"
+          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
           set +e
-          sudo env \
-            PATH="$PATH" \
-            HOME="$HOME" \
-            CARGO_HOME="$cargo_home" \
-            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
-            RUSTUP_HOME="$rustup_home" \
-            A3S_HOME="$A3S_HOME" \
-            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
-            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
-            A3S_BOX_SANDBOX_OCI_LAUNCHER="$A3S_BOX_SANDBOX_OCI_LAUNCHER" \
-            A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT="$A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE="$A3S_CLOUD_A0_4_AGENT_RUNTIME_MEDIA_TYPE" \
-            A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES="$A3S_CLOUD_A0_4_AGENT_RUNTIME_SIZE_BYTES" \
-            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_CLOUD_TEST_POSTGRES_URL="$A3S_CLOUD_TEST_POSTGRES_URL" \
-            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
-            A3S_REGISTRY_PROTOCOL="$A3S_REGISTRY_PROTOCOL" \
-            RUST_MIN_STACK=33554432 \
-            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+          bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-control-plane --test postgres_integration \
               postgres_published_agent_release_runs_recovers_and_cleans_through_real_box \
               -- --ignored --exact --nocapture --test-threads=1 \
@@ -1059,29 +1026,18 @@ jobs:
           A3S_DEPS_STUB: "1"
           EVIDENCE_DIR: ${{ runner.temp }}/a3s-box-provider-evidence
         run: |
-          cargo_bin=$(command -v cargo)
-          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
-          rustup_home=$(rustup show home)
+          install -d -m 0755 "$EVIDENCE_DIR"
+          test -n "${A3S_BOX_CI_SANDBOX_UID:-}"
+          test -n "${A3S_BOX_CI_SANDBOX_GID:-}"
+          sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
+          sudo chown root:root "$A3S_HOME/runtime-secrets"
+          sudo chmod 0700 "$A3S_HOME/runtime-secrets"
           cloud_revision=$(git -C apps/cloud rev-parse HEAD)
           box_revision=$(<apps/cloud/tools/box-conformance/box-revision)
-          sudo env \
-            PATH="$PATH" \
-            HOME="$HOME" \
-            CARGO_HOME="$cargo_home" \
-            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
-            RUSTUP_HOME="$rustup_home" \
-            A3S_HOME="$A3S_HOME" \
-            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
-            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
-            A3S_BOX_SANDBOX_OCI_LAUNCHER="$A3S_BOX_SANDBOX_OCI_LAUNCHER" \
-            A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT="$A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT" \
-            A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="$A3S_BOX_RUNTIME_CONFORMANCE_IMAGE" \
-            A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="$A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE" \
-            A3S_CLOUD_REFERENCE_ECHO_PROVIDER_PATH="$A3S_CLOUD_REFERENCE_ECHO_PROVIDER_PATH" \
-            A3S_CLOUD_TEST_BOX="$A3S_CLOUD_TEST_BOX" \
-            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
-            RUST_MIN_STACK=33554432 \
-            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+          run_box_cargo() {
+            bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" "$@"
+          }
+          run_box_cargo test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-node-agent --lib \
               box_runtime::tests::reference_echo_provider::real_box_hosts_restarts_and_cleans_the_reference_echo_provider \
               -- --ignored --exact --nocapture --test-threads=1 \
@@ -1091,6 +1047,9 @@ jobs:
             "$EVIDENCE_DIR/agent-non-code-box-provider.log" \
             >"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-non-code-box-provider-certification.txt")" -eq 1
+          cargo_bin=$(command -v cargo)
+          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
+          rustup_home=$(rustup show home)
           sudo env \
             PATH="$PATH" \
             HOME="$HOME" \
