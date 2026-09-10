@@ -8127,6 +8127,56 @@ fn notifications_alert_policies_isolate_projects_and_fleet_behind_owner_ports() 
 }
 
 #[test]
+fn connectors_create_profile_isolates_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("connectors/application/environment_access.rs"))
+            .expect("read Connectors environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructConnectorsEnvironmentScope",
+        "pubtraitIConnectorsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Connectors lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let handler =
+        std::fs::read_to_string(root.join("connectors/application/commands.rs")).expect("commands");
+    let production = production_source(&handler);
+    assert!(
+        production.contains("Arc<dyn IConnectorsEnvironmentAccess>"),
+        "CreateConnectorProfile lost IConnectorsEnvironmentAccess"
+    );
+    assert!(
+        production.contains(".environment_exists("),
+        "CreateConnectorProfile lost environment_exists admission"
+    );
+    for forbidden in ["IEnvironmentRepository", "crate::modules::projects"] {
+        assert!(
+            !production.contains(forbidden),
+            "CreateConnectorProfile regained foreign authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsConnectorsEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Connectors environment adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

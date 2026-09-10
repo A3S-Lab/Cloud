@@ -8,6 +8,7 @@ mod http_executor;
 mod profile_in_memory;
 mod profile_materializer;
 mod profile_postgres;
+mod project_environment_access;
 mod public_egress_authorizer;
 mod response_object_store;
 
@@ -22,6 +23,7 @@ pub use http_executor::{
 pub use profile_in_memory::InMemoryConnectorProfileRepository;
 pub use profile_materializer::ConnectorHttpRevisionMaterializer;
 pub use profile_postgres::PostgresConnectorProfileRepository;
+pub use project_environment_access::ProjectsConnectorsEnvironmentAccessAdapter;
 pub use public_egress_authorizer::PublicInternetConnectorEgressAuthorizer;
 pub use response_object_store::{
     ConnectorResponseObjectStore, CONNECTOR_RESPONSE_OBJECT_NAMESPACE,

@@ -1,6 +1,7 @@
 mod attempt_queries;
 mod attempt_resolution;
 mod commands;
+mod environment_access;
 mod evidence_queries;
 mod execution_service;
 mod queries;
@@ -15,6 +16,7 @@ pub use commands::{
     CreateConnectorProfile, CreateConnectorProfileHandler, ReviseConnectorProfile,
     ReviseConnectorProfileHandler,
 };
+pub use environment_access::{ConnectorsEnvironmentScope, IConnectorsEnvironmentAccess};
 pub use evidence_queries::{
     GetConnectorExecutionEvidence, GetConnectorExecutionEvidenceHandler,
     ListConnectorExecutionEvidence, ListConnectorExecutionEvidenceHandler,

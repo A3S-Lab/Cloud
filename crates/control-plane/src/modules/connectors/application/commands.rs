@@ -1,13 +1,15 @@
 use super::resource_access::{environment, environment_not_found, profile_not_found};
 use super::secret_references::validate_definition_secret_references;
 use super::ConnectorProfileMutationResult;
+use crate::modules::connectors::application::{
+    ConnectorsEnvironmentScope, IConnectorsEnvironmentAccess,
+};
 use crate::modules::connectors::domain::{
     ConnectorDefinition, ConnectorProfile, ConnectorRecord, ConnectorRevision,
     ConnectorRevisionPublished, CreateConnectorProfileWrite, IConnectorProfileRepository,
     ReviseConnectorProfileWrite,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::application::ExactSecretVersionAccess;
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -39,14 +41,14 @@ impl Command for CreateConnectorProfile {
 }
 
 pub struct CreateConnectorProfileHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IConnectorsEnvironmentAccess>,
     connectors: Arc<dyn IConnectorProfileRepository>,
     secret_access: ExactSecretVersionAccess,
 }
 
 impl CreateConnectorProfileHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IConnectorsEnvironmentAccess>,
         connectors: Arc<dyn IConnectorProfileRepository>,
         secrets: Arc<dyn ISecretRepository>,
     ) -> Self {
@@ -127,16 +129,17 @@ impl CommandHandler<CreateConnectorProfile> for CreateConnectorProfileHandler {
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None)
+            let environment_scope = match ConnectorsEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
                     return Ok(Err(environment_not_found()))
                 }

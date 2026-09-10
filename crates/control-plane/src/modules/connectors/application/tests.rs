@@ -4,7 +4,9 @@ use crate::modules::connectors::domain::{
     ConnectorHttpDestination, ConnectorHttpMethod, ConnectorHttpStatusPolicy,
     ConnectorSecretReference,
 };
-use crate::modules::connectors::infrastructure::InMemoryConnectorProfileRepository;
+use crate::modules::connectors::infrastructure::{
+    InMemoryConnectorProfileRepository, ProjectsConnectorsEnvironmentAccessAdapter,
+};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::projects::domain::entities::Environment;
@@ -66,8 +68,11 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
     )
     .await;
     let connectors = Arc::new(InMemoryConnectorProfileRepository::new());
-    let create_handler =
-        CreateConnectorProfileHandler::new(projects, connectors.clone(), secrets.clone());
+    let create_handler = CreateConnectorProfileHandler::new(
+        Arc::new(ProjectsConnectorsEnvironmentAccessAdapter::new(projects)),
+        connectors.clone(),
+        secrets.clone(),
+    );
     let create = CreateConnectorProfile {
         organization_id,
         project_id,

@@ -73,8 +73,9 @@ use crate::modules::connectors::{
     GetConnectorProfileHandler, GetConnectorRevisionHandler, GetConnectorRevisionRevocationHandler,
     IConnectorExecutionAttemptRepository, IConnectorExecutionAttemptResolutionRepository,
     IConnectorProfileRepository, IConnectorResponseObjectPort,
-    IConnectorRevisionRevocationRepository, ListConnectorProfilesHandler,
-    ListConnectorRevisionsHandler, ListUnresolvedConnectorExecutionAttemptsHandler,
+    IConnectorRevisionRevocationRepository, IConnectorsEnvironmentAccess,
+    ListConnectorProfilesHandler, ListConnectorRevisionsHandler,
+    ListUnresolvedConnectorExecutionAttemptsHandler, ProjectsConnectorsEnvironmentAccessAdapter,
     PublicInternetConnectorEgressAuthorizer, ResolveConnectorExecutionAttemptHandler,
     ReviseConnectorProfileHandler, RevokeConnectorRevisionHandler,
     WorkflowConnectorApplicationService,
@@ -2573,7 +2574,9 @@ fn build_management_application_with_health(
     let revoke_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let list_outbound_notification_subscriptions = Arc::clone(&outbound_notifications);
     let get_outbound_notification_subscriptions = outbound_notifications;
-    let create_connector_environments = Arc::clone(&environments);
+    let create_connector_environments: Arc<dyn IConnectorsEnvironmentAccess> = Arc::new(
+        ProjectsConnectorsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let outbound_notification_connector_profiles = Arc::clone(&connector_profiles);
     let outbound_notification_recipient_contacts = Arc::clone(&recipient_contacts);
     let create_connector_profiles = Arc::clone(&connector_profiles);
