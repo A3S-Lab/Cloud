@@ -11,7 +11,7 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
-    WorkloadsDurableCellWorkloadAdapter,
+    ProjectsDurableCellsEnvironmentAccessAdapter, WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -129,7 +129,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
             workloads.clone(),
         ));
     let create_handler = CreateDurableCellApplicationHandler::new(
-        projects,
+        Arc::new(ProjectsDurableCellsEnvironmentAccessAdapter::new(projects)),
         applications.clone(),
         build_artifacts.clone(),
     );

@@ -2,7 +2,10 @@ use super::build_artifact_port::IDurableCellBuildArtifactPort;
 use super::build_run_access::validate_definition_build_run;
 use super::resource_access::{application_not_found, environment, environment_not_found};
 use super::workload_port::{DurableCellWorkloadReconciliationRequest, IDurableCellWorkloadPort};
-use super::DurableCellApplicationMutationResult;
+use super::{
+    DurableCellApplicationMutationResult, DurableCellsEnvironmentScope,
+    IDurableCellsEnvironmentAccess,
+};
 use crate::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
     DurableCellApplicationDefinition, DurableCellApplicationDesiredState,
@@ -11,7 +14,6 @@ use crate::modules::durable_cells::domain::{
     ReviseDurableCellApplicationWrite,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
@@ -41,14 +43,14 @@ impl Command for CreateDurableCellApplication {
 }
 
 pub struct CreateDurableCellApplicationHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IDurableCellsEnvironmentAccess>,
     applications: Arc<dyn IDurableCellApplicationRepository>,
     builds: Arc<dyn IDurableCellBuildArtifactPort>,
 }
 
 impl CreateDurableCellApplicationHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IDurableCellsEnvironmentAccess>,
         applications: Arc<dyn IDurableCellApplicationRepository>,
         builds: Arc<dyn IDurableCellBuildArtifactPort>,
     ) -> Self {
@@ -130,16 +132,17 @@ impl CommandHandler<CreateDurableCellApplication> for CreateDurableCellApplicati
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) | Err(RepositoryError::NotFound) => {
+            let environment_scope = match DurableCellsEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(environment_not_found()))
                 }
                 Err(error) => return Ok(Err(error.into())),

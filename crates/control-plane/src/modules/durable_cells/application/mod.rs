@@ -3,6 +3,7 @@ mod build_run_access;
 mod bundle_publication;
 mod commands;
 mod deployment;
+mod environment_access;
 mod execution_port;
 mod node_pool_port;
 mod operation_port;
@@ -33,6 +34,7 @@ pub use deployment::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
     DurableCellDeploymentMutationResult,
 };
+pub use environment_access::{DurableCellsEnvironmentScope, IDurableCellsEnvironmentAccess};
 pub use execution_port::{
     DurableCellExecution, DurableCellExecutionArtifactMount, DurableCellExecutionAuthority,
     DurableCellExecutionCancellationRequest, DurableCellExecutionRequest,

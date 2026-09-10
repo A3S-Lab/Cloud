@@ -8,6 +8,7 @@ mod edge_route_publication;
 mod executions_bound_task;
 mod fleet_node_pool;
 mod operations;
+mod project_environment_access;
 mod secrets_binding;
 mod workload_reconciliation;
 
@@ -23,5 +24,6 @@ pub(crate) use executions_bound_task::materialize_bound_execution_for_conformanc
 pub(crate) use executions_bound_task::ExecutionsDurableCellExecutionAdapter;
 pub use fleet_node_pool::FleetDurableCellNodePoolAdapter;
 pub(crate) use operations::OperationsDurableCellOperationAdapter;
+pub use project_environment_access::ProjectsDurableCellsEnvironmentAccessAdapter;
 pub use secrets_binding::SecretsDurableCellBindingAdapter;
 pub use workload_reconciliation::WorkloadsDurableCellWorkloadAdapter;

@@ -117,8 +117,9 @@ use crate::modules::durable_cells::{
     IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
     IDurableCellNodePoolPort, IDurableCellOperationPort, IDurableCellRoutePublicationPort,
     IDurableCellSecretBindingPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
-    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
-    OperationsDurableCellOperationAdapter, PublishDurableCellApplicationRouteHandler,
+    IDurableCellsEnvironmentAccess, ListDurableCellApplicationRevisionsHandler,
+    ListDurableCellApplicationsHandler, OperationsDurableCellOperationAdapter,
+    ProjectsDurableCellsEnvironmentAccessAdapter, PublishDurableCellApplicationRouteHandler,
     ReviseDurableCellApplicationHandler, SecretsDurableCellBindingAdapter,
     StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
     WorkloadsDurableCellWorkloadAdapter,
@@ -2651,7 +2652,9 @@ fn build_management_application_with_health(
     let get_application_releases = applications;
     let create_connector_secrets = Arc::clone(&secrets);
     let revise_connector_secrets = Arc::clone(&secrets);
-    let create_durable_cell_environments = Arc::clone(&environments);
+    let create_durable_cell_environments: Arc<dyn IDurableCellsEnvironmentAccess> = Arc::new(
+        ProjectsDurableCellsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let create_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let revise_durable_cell_applications = Arc::clone(&durable_cell_applications);
     let start_durable_cell_applications = Arc::clone(&durable_cell_applications);

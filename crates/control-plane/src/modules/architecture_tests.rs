@@ -8231,6 +8231,56 @@ fn agents_environment_queries_isolate_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn durable_cells_create_application_isolates_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("durable_cells/application/environment_access.rs"))
+            .expect("read Durable Cells environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructDurableCellsEnvironmentScope",
+        "pubtraitIDurableCellsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Durable Cells lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let handler =
+        std::fs::read_to_string(root.join("durable_cells/application/commands.rs")).expect("cmds");
+    let production = production_source(&handler);
+    assert!(
+        production.contains("Arc<dyn IDurableCellsEnvironmentAccess>"),
+        "CreateDurableCellApplication lost IDurableCellsEnvironmentAccess"
+    );
+    assert!(
+        production.contains(".environment_exists("),
+        "CreateDurableCellApplication lost environment_exists admission"
+    );
+    for forbidden in ["IEnvironmentRepository", "crate::modules::projects"] {
+        assert!(
+            !production.contains(forbidden),
+            "CreateDurableCellApplication regained foreign authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsDurableCellsEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Durable Cells environment adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =
