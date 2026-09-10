@@ -233,6 +233,7 @@ mod developer_workflow_tests;
 mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
+mod inference_key_tests;
 mod inference_route_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
