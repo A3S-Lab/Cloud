@@ -364,7 +364,9 @@ leaving credential aggregates and idempotency records intact so plaintext
 cannot be recovered after expiry. First-principles create tests certify
 idempotent replay recovers plaintext while the receipt is live, and that
 replay after a receipt sweep fails closed as Conflict without reissuing the
-credential or regenerating a bearer. Revoke flips the Gateway ACL
+credential or regenerating a bearer; the same fail-closed Conflict is certified
+over HTTP (`409`, no bearer in the body) after an in-process receipt sweep.
+Revoke flips the Gateway ACL
 projection to `revoked`. Inference stores grants that reference the resulting
 credential ID; it never stores the key verifier or plaintext secret.
 
