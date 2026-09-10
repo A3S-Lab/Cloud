@@ -359,7 +359,10 @@ Inference management facade. Create returns the bearer once through an
 encrypted delivery receipt (migration `197`); a bounded
 `InferenceCredentialDeliveryReceiptSweeper` deletes expired receipts while
 leaving credential aggregates and idempotency records intact so plaintext
-cannot be recovered after expiry. Revoke flips the Gateway ACL
+cannot be recovered after expiry. First-principles create tests certify
+idempotent replay recovers plaintext while the receipt is live, and that
+replay after a receipt sweep fails closed as Conflict without reissuing the
+credential or regenerating a bearer. Revoke flips the Gateway ACL
 projection to `revoked`. Inference stores grants that reference the resulting
 credential ID; it never stores the key verifier or plaintext secret.
 
