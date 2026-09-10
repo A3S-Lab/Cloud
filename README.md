@@ -358,6 +358,7 @@ and the [pinned Gateway revision](tools/gateway-conformance/gateway-revision).
 | Start here | Purpose |
 | --- | --- |
 | [Product roadmap](ROADMAP.md) | Gate status, dependencies, evidence, delivery order |
+| [Architecture optimization roadmap](docs/architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity track |
 | [Technical architecture](docs/architecture.md) | Ownership, topology, consistency, failure behavior |
 | [AI service platform](docs/ai-service-platform-architecture.md) | AaaS / WaaS / FaaS / Cell / Inference composition |
 | [Inference plan](docs/inference-plan.md) | I0 contracts, Edge ACL, usage, Power/Box dependencies |

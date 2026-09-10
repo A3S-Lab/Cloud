@@ -2,7 +2,13 @@
 
 ## 1. Executive conclusion
 
-**Review baseline: 2026-08-28.**
+**Review baseline: 2026-09-10.**
+
+Execution order for closing these gaps lives in
+[architecture-optimization-roadmap.md](architecture-optimization-roadmap.md)
+(Wave 0 integrity, Wave 1 `BX0`/`PW0`, Wave 2 platform P0, Wave 3 verticals,
+and dual-track I0). This document remains the structural-versus-delivery gap
+authority; the optimization roadmap does not invent parallel gates.
 
 A3S Cloud no longer lacks a coherent product thesis. The target already covers
 AaaS, WaaS, FaaS, first-class Durable Cell collaboration, local/distributed
@@ -305,7 +311,8 @@ to finish the named conformance gates.
 ## 5. Priority recommendation
 
 ```text
-P0-A  Unified Runtime consumer contract landed; finish Box certification
+Wave 0 Architecture integrity (parallel; audit ratchets → zero debt)
+P0-A  Unified Runtime consumer contract landed; finish Box certification (BX0), then Power (PW0)
   -> P0-B  Establish workload identity and east-west trust
   -> P0-C  Deliver CD0 source-to-release-to-rollout
   -> P0-D  Close H0.3/H0.4/H0.5 cluster, upgrade and recovery
@@ -314,6 +321,11 @@ P0-A  Unified Runtime consumer contract landed; finish Box certification
   -> P1    Usage/cost, data governance, AI assurance and single-home multi-region
   -> P2    Optional dynamic feature delivery and ecosystem breadth
 ```
+
+Inference is dual-track: Cloud control-plane work (keys, routes, Edge ACL,
+usage) may continue with empty workers; the OpenAI data plane remains blocked
+on `BX0` + `PW0` and must not be claimed available early. See
+[architecture-optimization-roadmap.md](architecture-optimization-roadmap.md).
 
 The dependency order is deliberate. Shipping more product kinds before the
 trust, delivery, operations and compatibility foundations would multiply the

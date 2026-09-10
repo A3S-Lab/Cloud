@@ -16,6 +16,7 @@ shipped claim unless its gate is marked `Verified` in the product roadmap.
 | [README](../README.md) | Product introduction, current capabilities, and operator entry points |
 | This document | Stable target architecture and authority boundaries |
 | [Product roadmap](../ROADMAP.md) | Product gates, status, dependencies, and delivery order |
+| [Architecture optimization and execution roadmap](architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity parallel track, and near-term Cloud-only backlog; does not change ownership named here |
 | [Ecosystem project roadmaps](project-roadmaps/README.md) | Cross-repository missions, dependencies, delivery waves, evidence, and forbidden overlap |
 | [Platform completeness review](platform-gap-analysis.md) | Structural and delivery gaps plus closure priority |
 | [AI service platform architecture](ai-service-platform-architecture.md) | Canonical AaaS, WaaS, FaaS, Durable Cell, Inference, Gateway, Runtime, and Box composition |

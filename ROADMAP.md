@@ -2,7 +2,7 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-09-05.**
+**Status as of 2026-09-10.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
@@ -12,6 +12,7 @@ plans.
 | Document | Authority |
 | --- | --- |
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
+| [Architecture optimization and execution roadmap](docs/architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity parallel track, and near-term Cloud-only backlog |
 | [Ecosystem project roadmaps](docs/project-roadmaps/README.md) | Mission, ordered outcomes, dependencies, exit evidence, and negative boundary for every A3S subproject |
 | [Platform completeness review](docs/platform-gap-analysis.md) | Structural gaps versus delivery gaps, priority, owner, and proposed closure gates |
 | [AI service platform architecture](docs/ai-service-platform-architecture.md) | Canonical AaaS, WaaS, FaaS, Durable Cell, Inference, Gateway, Runtime, and Box product boundary |
@@ -817,6 +818,12 @@ process death, exact refs/object rollback, subsequent push, backup/restore, and
 manifest rejection without Redis or another coordinator.
 
 ## 4. Delivery horizons and dependencies
+
+Execution sequencing (Wave 0 architecture integrity → Wave 1 `BX0`/`PW0` →
+Wave 2 WI/`CD0`/`H0`/`OBS`/`COMP` → Wave 3 verticals, plus dual-track I0) is
+specified in
+[architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md).
+This section retains horizon outcomes; it does not duplicate wave checklists.
 
 | Horizon | Required gates | Product outcome |
 | --- | --- | --- |
