@@ -6,6 +6,8 @@ const INFERENCE_KEY_READ_TOKEN: &str =
     "a3s_5555555555555555555555555555555555555555555555555555555555555555";
 const INFERENCE_KEY_WRITE_TOKEN: &str =
     "a3s_6666666666666666666666666666666666666666666666666666666666666666";
+const INFERENCE_KEY_RESTRICTED_TOKEN: &str =
+    "a3s_7777777777777777777777777777777777777777777777777777777777777770";
 
 #[tokio::test]
 async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Result<()> {
@@ -323,6 +325,185 @@ async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_confli
         after_sweep_json["data"].get("bearerCredential").is_none(),
         "swept receipt must not reissue bearer in Conflict body"
     );
+    Ok(())
+}
+
+#[tokio::test]
+async fn inference_key_reads_fail_closed_for_ungranted_environment() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "inference-key-visibility", "Inference key visibility")
+            .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-visibility-project",
+        "Inference Key Visibility",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-visibility-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    let other_environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-visibility-other",
+            json!({"name": "Staging"}),
+        ))
+        .await?;
+    assert_eq!(other_environment.status(), 201);
+    let other_environment = response_id(&other_environment)?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-visibility-write",
+        "inference-key-visibility-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let collection_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let created = app
+        .call(post_json_as(
+            &collection_path,
+            "inference-key:visibility-create",
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created_json = response_json(&created)?;
+    let credential_id = created_json["data"]["credential"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing credential id".into()))?
+        .to_owned();
+    let bearer = created_json["data"]["bearerCredential"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing bearer".into()))?
+        .to_owned();
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "inference-key-visibility-membership",
+            json!({"name": "Restricted key reader", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted membership has no ID".into()))?;
+    let principal_id = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted principal has no ID".into()))?;
+    let restricted = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "inference-key-visibility-restricted-token",
+            json!({
+                "name": "Restricted key reader",
+                "token": INFERENCE_KEY_RESTRICTED_TOKEN,
+                "scopes": [ApiTokenScope::INFERENCE_READ],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(restricted.status(), 201);
+    let grant = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants"
+            ),
+            "inference-key-visibility-grant",
+            json!({
+                "scope": {
+                    "kind": "environment",
+                    "projectId": project,
+                    "environmentId": other_environment
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(grant.status(), 201);
+
+    let denied_list = app
+        .call(get_as(&collection_path, INFERENCE_KEY_RESTRICTED_TOKEN))
+        .await?;
+    assert_eq!(denied_list.status(), 403);
+    assert_response_has_no_bearer(&denied_list, &[&bearer]);
+
+    let denied_get = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/inference/keys/{credential_id}"),
+            INFERENCE_KEY_RESTRICTED_TOKEN,
+        ))
+        .await?;
+    assert!(
+        denied_get.status() == 403 || denied_get.status() == 404,
+        "ungranted key get must fail closed, got {}",
+        denied_get.status()
+    );
+    assert_response_has_no_bearer(&denied_get, &[&bearer]);
+    Ok(())
+}
+
+#[tokio::test]
+async fn inference_key_create_missing_environment_fails_closed_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "inference-key-missing-env", "Inference key missing env")
+            .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-missing-env-project",
+        "Inference Key Missing Env",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-missing-env-write",
+        "inference-key-missing-env-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let missing_environment = Uuid::now_v7();
+    let path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/keys"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &path,
+            "inference-key:missing-environment",
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 404);
+    assert_response_has_no_bearer(&rejected, &[]);
+    let body = response_json(&rejected)?;
+    assert!(body["data"].get("bearerCredential").is_none());
     Ok(())
 }
 

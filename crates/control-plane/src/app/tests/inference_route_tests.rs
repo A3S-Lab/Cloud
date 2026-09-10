@@ -1086,6 +1086,163 @@ async fn inference_route_revise_rejects_unverified_edge_binding() -> Result<()> 
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_reads_fail_closed_for_ungranted_environment() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-visibility-http",
+        "Inference route visibility",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-visibility-project",
+        "Inference Route Visibility",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-visibility-environment",
+        "Production",
+    )
+    .await?;
+    let other_environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-visibility-other",
+        "Staging",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-visibility-write-token",
+        "inference-route-visibility-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "visibility.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:visibility-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:visibility-publish",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "visibility.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let route_id = response_json(&published)?["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing route id".into()))?
+        .to_owned();
+
+    let membership = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/memberships"),
+            "inference-route-visibility-membership",
+            json!({"name": "Restricted route reader", "role": "restricted"}),
+        ))
+        .await?;
+    assert_eq!(membership.status(), 201);
+    let membership = response_json(&membership)?;
+    let membership_id = membership["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted membership has no ID".into()))?;
+    let principal_id = membership["data"]["principalId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("restricted principal has no ID".into()))?;
+    let restricted = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "inference-route-visibility-restricted-token",
+            json!({
+                "name": "Restricted route reader",
+                "token": INFERENCE_ROUTE_READ_TOKEN,
+                "scopes": [ApiTokenScope::INFERENCE_READ],
+                "principalId": principal_id,
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(restricted.status(), 201);
+    let grant = app
+        .call(post_json(
+            format!(
+                "/api/v1/organizations/{organization}/memberships/{membership_id}/resource-grants"
+            ),
+            "inference-route-visibility-grant",
+            json!({
+                "scope": {
+                    "kind": "environment",
+                    "projectId": project,
+                    "environmentId": other_environment
+                }
+            }),
+        ))
+        .await?;
+    assert_eq!(grant.status(), 201);
+
+    let denied_list = app
+        .call(get_as(&routes_path, INFERENCE_ROUTE_READ_TOKEN))
+        .await?;
+    assert_eq!(
+        denied_list.status(),
+        403,
+        "restricted tokens without environment grant must fail closed on route list"
+    );
+    let denied_get = app
+        .call(get_as(
+            format!("{routes_path}/{route_id}"),
+            INFERENCE_ROUTE_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        denied_get.status(),
+        403,
+        "restricted tokens without environment grant must fail closed on route get"
+    );
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,
