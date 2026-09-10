@@ -1,4 +1,7 @@
 use super::PublishInferenceRoute;
+use crate::modules::inference::application::{
+    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
+};
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
     PublishInferenceRouteWrite, IInferenceRouteRepository,
@@ -13,16 +16,19 @@ use std::sync::Arc;
 pub struct PublishInferenceRouteHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     routes: Arc<dyn IInferenceRouteRepository>,
+    edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
 }
 
 impl PublishInferenceRouteHandler {
     pub fn new(
         environments: Arc<dyn IEnvironmentRepository>,
         routes: Arc<dyn IInferenceRouteRepository>,
+        edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
     ) -> Self {
         Self {
             environments,
             routes,
+            edge_route_bindings,
         }
     }
 }
@@ -35,6 +41,7 @@ impl CommandHandler<PublishInferenceRoute> for PublishInferenceRouteHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<InferenceRoute>>> {
         let environments = Arc::clone(&self.environments);
         let routes = Arc::clone(&self.routes);
+        let edge_route_bindings = Arc::clone(&self.edge_route_bindings);
         Box::pin(async move {
             match environments
                 .find(
@@ -51,6 +58,19 @@ impl CommandHandler<PublishInferenceRoute> for PublishInferenceRouteHandler {
                     )))
                 }
                 Err(error) => return Ok(Err(error.into())),
+            }
+
+            match edge_route_bindings
+                .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.binding.clone(),
+                ))
+                .await
+            {
+                Ok(()) => {}
+                Err(error) => return Ok(Err(error)),
             }
 
             let canonical = serde_json::to_vec(&CanonicalPublishInferenceRoute {

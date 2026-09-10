@@ -1,8 +1,9 @@
 //! First-principles Inference route catalog authority tests (I0.2b brick).
 
 use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope, PublishInferenceRoute,
-    PublishInferenceRouteHandler, RetireInferenceRoute, RetireInferenceRouteHandler,
+    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
+    PermitInferenceEdgeRouteBindingAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
+    RetireInferenceRoute, RetireInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::{
@@ -133,13 +134,20 @@ fn publish_command(
     }
 }
 
+fn publish_handler(
+    routes: Arc<InMemoryInferenceRouteRepository>,
+) -> PublishInferenceRouteHandler {
+    PublishInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes,
+        Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+    )
+}
+
 #[tokio::test]
 async fn publish_lists_projection_with_models_and_grants_without_workers() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
-    let handler = PublishInferenceRouteHandler::new(
-        Arc::new(AlwaysPresentEnvironmentRepository),
-        routes.clone(),
-    );
+    let handler = publish_handler(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -197,10 +205,7 @@ async fn empty_repository_projects_nothing_so_edge_invents_no_catalog_facts() {
 #[tokio::test]
 async fn retire_removes_route_from_projection() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
-    let publish = PublishInferenceRouteHandler::new(
-        Arc::new(AlwaysPresentEnvironmentRepository),
-        routes.clone(),
-    );
+    let publish = publish_handler(routes.clone());
     let retire = RetireInferenceRouteHandler::new(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -242,10 +247,7 @@ async fn retire_removes_route_from_projection() {
 #[tokio::test]
 async fn publish_is_idempotent_for_same_key_and_body() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
-    let handler = PublishInferenceRouteHandler::new(
-        Arc::new(AlwaysPresentEnvironmentRepository),
-        routes,
-    );
+    let handler = publish_handler(routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -279,10 +281,7 @@ async fn publish_is_idempotent_for_same_key_and_body() {
 #[tokio::test]
 async fn adapter_sorts_projections_stably_by_route_id() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
-    let handler = PublishInferenceRouteHandler::new(
-        Arc::new(AlwaysPresentEnvironmentRepository),
-        routes.clone(),
-    );
+    let handler = publish_handler(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();

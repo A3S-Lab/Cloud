@@ -1357,9 +1357,15 @@ evidence, and fenced release protocol.
   through Boot CQRS (`PublishInferenceRoute` / `RetireInferenceRoute`) and
   `InferenceModule` presentation
   (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/retire`)
-  with `inference:write` and required `Idempotency-Key`. Edge also loads workers
-  only through Inference-owned `IInferenceWorkerAclProjectionPort` (Empty until
-  Power observation delivery) and compiles managed snapshots via
+  with `inference:write` and required `Idempotency-Key`. `PublishInferenceRoute`
+  now fail-closes through Inference-owned
+  `IInferenceEdgeRouteBindingAdmissionPort` (Edge
+  `EdgeInferenceRouteBindingAdmissionAdapter`) against same-environment
+  verified DomainClaim coverage and GatewayScope membership when available,
+  rejecting with `ApplicationError::Invalid` / `EDGE_ROUTE_BINDING_INVALID`.
+  Edge also loads workers only through Inference-owned
+  `IInferenceWorkerAclProjectionPort` (Empty until Power observation delivery)
+  and compiles managed snapshots via
   `render_inference_policy_acl_with_routes_and_workers` with
   `projected_at = snapshot issued_at`. Edge loaders on managed publication
   paths (cutover, certificate convergence, MCP desired-state, route rollout,

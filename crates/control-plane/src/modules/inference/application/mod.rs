@@ -1,4 +1,5 @@
 pub mod commands;
+mod edge_route_binding_admission;
 mod empty_inference_route_acl_projection;
 mod empty_inference_worker_acl_projection;
 mod inference_usage_retention_worker;
@@ -7,6 +8,10 @@ mod route_acl_projection;
 mod worker_acl_projection;
 
 pub use commands::*;
+pub use edge_route_binding_admission::{
+    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
+    PermitInferenceEdgeRouteBindingAdmission, EDGE_ROUTE_BINDING_INVALID,
+};
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
 pub use empty_inference_worker_acl_projection::EmptyInferenceWorkerAclProjectionPort;
 pub use inference_usage_retention_worker::InferenceUsageRetentionWorker;
@@ -17,3 +22,7 @@ pub use worker_acl_projection::IInferenceWorkerAclProjectionPort;
 #[cfg(test)]
 #[path = "inference_route_catalog_tests.rs"]
 mod inference_route_catalog_tests;
+
+#[cfg(test)]
+#[path = "inference_route_binding_admission_tests.rs"]
+mod inference_route_binding_admission_tests;

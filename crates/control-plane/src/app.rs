@@ -131,21 +131,22 @@ use crate::modules::edge::domain::services::{
 use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
     CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
-    EdgeGatewayAcknowledgementProjector, EdgeModule, FleetGatewayCommandQueue,
-    FleetGatewayObservationQueue, GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner,
-    GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
-    GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
-    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    PublishRouteHandler, ReviseMcpRoutePolicyHandler, RevokeDomainClaimHandler,
-    RevokeMcpCredentialHandler, RotateMcpCredentialHandler, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    EdgeGatewayAcknowledgementProjector, EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
+    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler,
+    GetMcpRoutePolicyHandler, GetRouteHandler, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
+    ListMcpRoutePoliciesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PublishRouteHandler,
+    ReviseMcpRoutePolicyHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
+    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
+    WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
@@ -2842,6 +2843,11 @@ fn build_management_application_with_health(
     let list_routes = Arc::clone(&routes);
     let list_daily_usage_rollups = Arc::clone(&inference_usage);
     let get_usage_request_fact = Arc::clone(&inference_usage);
+    let publish_inference_route_bindings: Arc<
+        dyn crate::modules::inference::IInferenceEdgeRouteBindingAdmissionPort,
+    > = Arc::new(EdgeInferenceRouteBindingAdmissionAdapter::new(Arc::clone(
+        &routes,
+    )));
     let get_routes = routes;
     let create_mcp_credentials = Arc::clone(&mcp_credentials);
     let rotate_mcp_credentials = Arc::clone(&mcp_credentials);
@@ -3039,6 +3045,7 @@ fn build_management_application_with_health(
                     crate::modules::inference::PublishInferenceRouteHandler::new(
                         publish_inference_route_environments,
                         publish_inference_routes,
+                        publish_inference_route_bindings,
                     ),
                 )
                 .command_handler::<crate::modules::inference::RetireInferenceRoute, _>(

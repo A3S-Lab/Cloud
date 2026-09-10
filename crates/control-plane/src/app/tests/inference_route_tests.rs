@@ -1,5 +1,15 @@
 use super::*;
+use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
+use crate::modules::edge::domain::repositories::{
+    CreateDomainClaimWrite, CreateGatewayScopeWrite, TransitionDomainClaim,
+};
+use crate::modules::edge::domain::{DomainClaim, DomainNamePattern, GatewayScope};
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
+use crate::modules::shared_kernel::domain::{
+    DomainClaimId, GatewayScopeId, IdempotencyRequest, NodeId,
+};
+use chrono::Duration;
 use uuid::Uuid;
 
 const INFERENCE_ROUTE_READ_TOKEN: &str =
@@ -9,10 +19,10 @@ const INFERENCE_ROUTE_WRITE_TOKEN: &str =
 
 #[tokio::test]
 async fn inference_route_publish_and_retire_require_write_scope_and_idempotency() -> Result<()> {
-    let app = build_test_application(
-        Arc::new(InMemoryIdentityRepository::new()),
-        Arc::new(InMemoryProjectsRepository::new()),
-    )?;
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
     let organization =
         bootstrap_organization(&app, "inference-route-http", "Inference route tenant").await?;
     let project = create_project(
@@ -51,10 +61,22 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     )
     .await?;
 
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await?;
+
     let routes_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
     );
-    let body = publish_body();
+    let body = publish_body(domain_claim_id, gateway_scope_id);
 
     assert_eq!(
         app.call(
@@ -137,7 +159,7 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     Ok(())
 }
 
-fn publish_body() -> Value {
+fn publish_body(domain_claim_id: DomainClaimId, gateway_scope_id: GatewayScopeId) -> Value {
     json!({
         "router": "inference",
         "models": [{
@@ -164,13 +186,90 @@ fn publish_body() -> Value {
             }
         }],
         "binding": {
-            "domainClaimId": Uuid::now_v7(),
-            "gatewayScopeId": Uuid::now_v7(),
+            "domainClaimId": domain_claim_id.as_uuid(),
+            "gatewayScopeId": gateway_scope_id.as_uuid(),
             "hostname": "api.example.com",
             "pathPrefix": "/v1",
             "bindingGeneration": 1
         }
     })
+}
+
+async fn seed_verified_binding(
+    edge: &Arc<InMemoryEdgeRepository>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    pattern: &str,
+) -> Result<(DomainClaimId, GatewayScopeId)> {
+    let now = Utc::now();
+    let mut claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse(pattern).map_err(BootError::Internal)?,
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .map_err(BootError::Internal)?;
+    let created = DomainClaimChanged::envelope(&claim, Uuid::now_v7())
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: claim.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claims",
+            claim.id.to_string(),
+            claim.pattern.as_str().as_bytes(),
+        )
+        .map_err(BootError::Internal)?,
+        event: created,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+    let expected_version = claim.aggregate_version;
+    claim
+        .verify(now + Duration::milliseconds(1))
+        .map_err(BootError::Internal)?;
+    let verified = DomainClaimChanged::envelope(&claim, Uuid::now_v7())
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    edge.transition_domain_claim(TransitionDomainClaim {
+        claim: claim.clone(),
+        expected_version,
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claim-verifications",
+            claim.id.to_string(),
+            b"verified",
+        )
+        .map_err(BootError::Internal)?,
+        event: verified,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        NodeId::new(),
+        now,
+    )
+    .map_err(BootError::Internal)?;
+    edge.create_gateway_scope(CreateGatewayScopeWrite {
+        scope: scope.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-gateway-scopes",
+            scope.id.to_string(),
+            scope.node_id.to_string().as_bytes(),
+        )
+        .map_err(BootError::Internal)?,
+        event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+    Ok((claim.id, scope.id))
 }
 
 async fn create_environment(
@@ -189,4 +288,9 @@ async fn create_environment(
         .await?;
     assert_eq!(response.status(), 201);
     response_id(&response)
+}
+
+fn parse_uuid(value: &str, label: &str) -> Result<Uuid> {
+    Uuid::parse_str(value)
+        .map_err(|error| BootError::Internal(format!("invalid {label} ID: {error}")))
 }
