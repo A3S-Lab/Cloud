@@ -10680,6 +10680,112 @@ fn workloads_skill_release_admission_has_one_owner_port_and_one_cross_context_ad
 }
 
 #[test]
+fn workloads_source_build_admission_has_one_owner_port_and_one_cross_context_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("workloads/application/source_build_admission.rs"),
+    )
+    .expect("read Workloads source-build admission port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadSourceBuildAdmissionRequest",
+        "pubtraitIWorkloadSourceBuildAdmissionPort:Send+Sync",
+        "ApplicationResult<SourceBuildAdmission>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads source-build admission lost its consumer-owned contract {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::sources",
+        "crate::modules::artifacts",
+        "ISourceRevisionRepository",
+        "IBuildRunRepository",
+        "BuildRunStatus",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "the Workloads-owned source-build admission port imported foreign or concrete authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        module_root()
+            .join("workloads/application/commands/create_source_workload_deployment/handler.rs"),
+    )
+    .expect("read source Workload create handler");
+    let production = production_source(&handler);
+    let compact = production.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("Arc<dynIWorkloadSourceBuildAdmissionPort>")
+            && compact.contains(".admit(WorkloadSourceBuildAdmissionRequest{"),
+        "source Workload create stopped entering build admission through the one Workloads-owned port"
+    );
+    for forbidden in [
+        "crate::modules::sources",
+        "crate::modules::artifacts",
+        "ISourceRevisionRepository",
+        "IBuildRunRepository",
+        "BuildRunStatus",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "source Workload create bypassed build admission with foreign authority {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/source_build_admission.rs"),
+    )
+    .expect("read Workloads source-build admission adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "implIWorkloadSourceBuildAdmissionPortforSourcesArtifactsWorkloadSourceBuildAdmissionAdapter",
+        "sources:Arc<dynISourceRevisionRepository>",
+        "builds:Arc<dynIBuildRunRepository>",
+        "SourceBuildAdmission::new(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "the sole Workloads source-build admission adapter lost boundary behavior {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "the Workloads source-build admission adapter introduced concrete state or lifecycle mechanism {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("control-plane source root")
+            .join("app.rs"),
+    )
+    .expect("read control-plane composition root");
+    assert_eq!(
+        app.matches("SourcesArtifactsWorkloadSourceBuildAdmissionAdapter::new(")
+            .count(),
+        1,
+        "composition must construct the Workloads source-build admission adapter exactly once"
+    );
+}
+
+#[test]
 fn applications_enter_workflow_timeout_admission_through_one_owner_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("applications/application/workflow_run_port.rs"),

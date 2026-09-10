@@ -355,16 +355,17 @@ use crate::modules::workloads::{
     DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
     GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort,
     IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadSkillReleaseAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
-    IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
-    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
+    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
+    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
+    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
     ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
-    StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
-    UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
-    WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
-    WorkloadsModule,
+    SourcesArtifactsWorkloadSourceBuildAdmissionAdapter, StopWorkloadHandler,
+    UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeploymentHandler,
+    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler,
+    WorkloadSecretMaterializationAuthorizationQueryService, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -2968,7 +2969,12 @@ fn build_management_application_with_health(
     let agent_release_admissions: Arc<dyn IAgentReleaseAdmissionPort> = Arc::new(
         AssetsAgentReleaseAdmissionAdapter::new(agent_release_admission_assets, hosted_artifacts),
     );
-    let source_workload_builds = builds;
+    let workload_source_build_admissions: Arc<dyn IWorkloadSourceBuildAdmissionPort> =
+        Arc::new(SourcesArtifactsWorkloadSourceBuildAdmissionAdapter::new(
+            source_workload_sources,
+            Arc::clone(&builds),
+        ));
+    let _ = builds;
     let execution_environments: Arc<dyn IExecutionsEnvironmentAccess> = Arc::new(
         ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
@@ -3659,8 +3665,7 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::workloads::CreateSourceWorkloadDeployment, _>(
                     CreateSourceWorkloadDeploymentHandler::new(
                         source_workload_environments,
-                        source_workload_sources,
-                        source_workload_builds,
+                        workload_source_build_admissions,
                         source_create_workloads,
                         source_workload_secrets,
                         source_workload_node_pools,

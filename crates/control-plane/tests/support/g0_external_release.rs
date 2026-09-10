@@ -26,9 +26,10 @@ use a3s_cloud_control_plane::modules::sources::{
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
     FleetWorkloadsNodePoolAccessAdapter, HttpHealthCheck, IWorkloadRepository,
-    PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
-    SecretsWorkloadsSecretBindingAccessAdapter, ServicePort, ServiceProcess, ServiceResources,
-    SourceWorkloadTemplate,
+    IWorkloadSourceBuildAdmissionPort, PostgresWorkloadRepository,
+    ProjectsWorkloadsEnvironmentAccessAdapter, SecretsWorkloadsSecretBindingAccessAdapter,
+    ServicePort, ServiceProcess, ServiceResources, SourceWorkloadTemplate,
+    SourcesArtifactsWorkloadSourceBuildAdmissionAdapter,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -467,6 +468,11 @@ async fn create_workload_handoff(
     let sources: Arc<dyn ISourceRevisionRepository> =
         Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let builds: Arc<dyn IBuildRunRepository> = builds;
+    let source_builds: Arc<dyn IWorkloadSourceBuildAdmissionPort> =
+        Arc::new(SourcesArtifactsWorkloadSourceBuildAdmissionAdapter::new(
+            Arc::clone(&sources),
+            Arc::clone(&builds),
+        ));
     let workloads: Arc<dyn IWorkloadRepository> =
         Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let secrets: Arc<dyn ISecretRepository> =
@@ -476,8 +482,7 @@ async fn create_workload_handoff(
     )));
     let handler = CreateSourceWorkloadDeploymentHandler::new(
         environments,
-        sources,
-        builds,
+        source_builds,
         workloads,
         Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(secrets)),
         node_pools,

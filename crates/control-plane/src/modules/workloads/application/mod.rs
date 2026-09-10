@@ -11,6 +11,7 @@ mod runtime_projection;
 mod secret_binding_access;
 mod secret_materialization_authorization;
 mod skill_release_admission;
+mod source_build_admission;
 mod workflow;
 
 #[cfg(test)]
@@ -79,6 +80,9 @@ pub use secret_materialization_authorization::{
 };
 pub use skill_release_admission::{
     IWorkloadSkillReleaseAdmissionPort, WorkloadSkillReleaseAdmissionRequest,
+};
+pub use source_build_admission::{
+    IWorkloadSourceBuildAdmissionPort, WorkloadSourceBuildAdmissionRequest,
 };
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,

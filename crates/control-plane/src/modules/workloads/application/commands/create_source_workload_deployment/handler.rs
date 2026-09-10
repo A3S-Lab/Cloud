@@ -1,5 +1,4 @@
 use super::{CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentResult};
-use crate::modules::artifacts::{BuildRunStatus, IBuildRunRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -7,15 +6,14 @@ use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName, WorkloadId,
     WorkloadRevisionId,
 };
-use crate::modules::sources::domain::ISourceRevisionRepository;
 use crate::modules::workloads::application::{
     commands::{validate_node_pool_selection, validate_secret_bindings},
-    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
-    WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    IWorkloadSourceBuildAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
+    IWorkloadsSecretBindingAccess, WorkloadSourceBuildAdmissionRequest, WorkloadsEnvironmentScope,
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
-    Deployment, ExternalBuildReference, OciArtifact, Workload, WorkloadControlSpec,
-    WorkloadRevision,
+    Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
 };
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
@@ -26,8 +24,7 @@ use std::sync::Arc;
 
 pub struct CreateSourceWorkloadDeploymentHandler {
     environments: Arc<dyn IWorkloadsEnvironmentAccess>,
-    sources: Arc<dyn ISourceRevisionRepository>,
-    builds: Arc<dyn IBuildRunRepository>,
+    source_builds: Arc<dyn IWorkloadSourceBuildAdmissionPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
@@ -36,16 +33,14 @@ pub struct CreateSourceWorkloadDeploymentHandler {
 impl CreateSourceWorkloadDeploymentHandler {
     pub fn new(
         environments: Arc<dyn IWorkloadsEnvironmentAccess>,
-        sources: Arc<dyn ISourceRevisionRepository>,
-        builds: Arc<dyn IBuildRunRepository>,
+        source_builds: Arc<dyn IWorkloadSourceBuildAdmissionPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
         node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
     ) -> Self {
         Self {
             environments,
-            sources,
-            builds,
+            source_builds,
             workloads,
             secrets,
             node_pools,
@@ -63,8 +58,7 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
         a3s_boot::Result<ApplicationResult<CreateSourceWorkloadDeploymentResult>>,
     > {
         let environments = Arc::clone(&self.environments);
-        let sources = Arc::clone(&self.sources);
-        let builds = Arc::clone(&self.builds);
+        let source_builds = Arc::clone(&self.source_builds);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
@@ -86,62 +80,17 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
-            let source = match sources
-                .find(command.organization_id, command.source_revision_id)
+            let admission = match source_builds
+                .admit(WorkloadSourceBuildAdmissionRequest {
+                    organization_id: command.organization_id,
+                    project_id: command.project_id,
+                    environment_id: command.environment_id,
+                    source_revision_id: command.source_revision_id,
+                })
                 .await
             {
-                Ok(source)
-                    if source.organization_id == command.organization_id
-                        && source.project_id == command.project_id
-                        && source.environment_id == command.environment_id
-                        && source.id == command.source_revision_id =>
-                {
-                    source
-                }
-                Ok(_) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "source revision not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
-            let build = match builds
-                .find_by_source_revision(command.organization_id, source.id)
-                .await
-            {
-                Ok(Some(build))
-                    if build.organization_id == command.organization_id
-                        && build.project_id() == Some(command.project_id)
-                        && build.environment_id() == Some(command.environment_id)
-                        && build.source_revision_id() == Some(source.id) =>
-                {
-                    build
-                }
-                Ok(Some(_)) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "source revision build not found".into(),
-                    )))
-                }
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::Conflict(
-                        "source revision build is not ready for deployment".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
-            };
-            if build.status != BuildRunStatus::Succeeded {
-                return Ok(Err(ApplicationError::Conflict(
-                    "source revision build has not succeeded".into(),
-                )));
-            }
-            let published = match build.published_artifact.as_ref() {
-                Some(published) => published,
-                None => {
-                    return Ok(Err(ApplicationError::Internal(
-                        "successful source revision build omitted its published OCI artifact"
-                            .into(),
-                    )))
-                }
+                Ok(admission) => admission,
+                Err(error) => return Ok(Err(error)),
             };
             let name = match ResourceName::parse(command.name) {
                 Ok(name) => name,
@@ -160,9 +109,9 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 "organizationId": command.organization_id,
                 "projectId": command.project_id,
                 "environmentId": command.environment_id,
-                "sourceRevisionId": source.id,
-                "buildRunId": build.id,
-                "publishedArtifactDigest": published.digest,
+                "sourceRevisionId": admission.external_build().source_revision_id,
+                "buildRunId": admission.external_build().build_run_id,
+                "publishedArtifactDigest": admission.artifact().digest,
                 "name": name.as_str(),
                 "template": &command.template,
             });
@@ -174,18 +123,16 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
             let idempotency = match IdempotencyRequest::new(
                 format!(
                     "organizations/{}/projects/{}/environments/{}/source-revisions/{}/workloads",
-                    command.organization_id, command.project_id, command.environment_id, source.id,
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    admission.external_build().source_revision_id,
                 ),
                 command.idempotency_key,
                 &canonical,
             ) {
                 Ok(idempotency) => idempotency,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let artifact = OciArtifact {
-                uri: published.uri.clone(),
-                digest: published.digest.clone(),
-                media_type: published.media_type.clone(),
             };
             let workload = Workload::create(
                 WorkloadId::new(),
@@ -199,14 +146,8 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                 WorkloadRevisionId::new(),
                 workload.id,
                 1,
-                command.template.resolve(artifact),
-                ExternalBuildReference {
-                    organization_id: command.organization_id,
-                    project_id: command.project_id,
-                    environment_id: command.environment_id,
-                    source_revision_id: source.id,
-                    build_run_id: build.id,
-                },
+                command.template.resolve(admission.artifact().clone()),
+                admission.external_build().clone(),
                 command.requested_at,
             ) {
                 Ok(revision) => revision,
@@ -243,9 +184,9 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
                     "organizationId": workload.organization_id,
                     "revisionId": revision.id,
                     "workloadId": workload.id,
-                    "externalSourceRevisionId": source.id,
-                    "buildRunId": build.id,
-                    "publishedArtifactDigest": published.digest,
+                    "externalSourceRevisionId": admission.external_build().source_revision_id,
+                    "buildRunId": admission.external_build().build_run_id,
+                    "publishedArtifactDigest": admission.artifact().digest,
                 }),
                 command.requested_at,
             );

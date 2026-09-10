@@ -412,6 +412,44 @@ impl ExternalBuildReference {
     }
 }
 
+/// Workloads-owned external source build admission.
+///
+/// Sources and Artifacts remain authoritative for revision and BuildRun state.
+/// Workloads receives only the exact external-build reference and published
+/// OCI artifact needed by its revision invariants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SourceBuildAdmission {
+    external_build: ExternalBuildReference,
+    artifact: OciArtifact,
+}
+
+impl SourceBuildAdmission {
+    pub fn new(
+        external_build: ExternalBuildReference,
+        artifact: OciArtifact,
+    ) -> Result<Self, String> {
+        let admission = Self {
+            external_build,
+            artifact,
+        };
+        admission.validate()?;
+        Ok(admission)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        self.external_build.validate()?;
+        self.artifact.validate()
+    }
+
+    pub const fn external_build(&self) -> &ExternalBuildReference {
+        &self.external_build
+    }
+
+    pub const fn artifact(&self) -> &OciArtifact {
+        &self.artifact
+    }
+}
+
 /// Immutable Agent release identity attached to an ordinary Workload revision.
 ///
 /// Runtime consumes the resolved OCI artifact while Cloud retains the exact

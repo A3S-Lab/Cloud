@@ -45,7 +45,8 @@ pub use workload_revision::{
     AgentReleaseAdmission, AgentReleaseRuntimeContract, AgentWorkloadRevisionBinding,
     ExternalBuildReference, HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact,
     OciArtifactReference, RequestedServiceTemplate, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, SkillReleaseAdmission, SkillWorkloadRevisionBinding, WorkloadRevision,
+    ServiceTemplate, SkillReleaseAdmission, SkillWorkloadRevisionBinding, SourceBuildAdmission,
+    WorkloadRevision,
 };
 pub use workload_writer_fence::{
     WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
