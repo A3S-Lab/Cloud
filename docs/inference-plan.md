@@ -1484,7 +1484,9 @@ evidence, and fenced release protocol.
   A `revoked = true` and B `revoked = false`, without inventing `workers` or
   embedding either bearer.   Expired (non-revoked) credentials still project with
   their past `expires_at` and `revoked = false` so Gateway can fail closed on
-  expiry alone. Cloud also certifies grant withdrawal → Edge managed-snapshot ACL
+  expiry alone, including when a published route still projects matching
+  `grants`/`models` in the joint Edge managed-snapshot compile. Cloud also certifies
+  grant withdrawal → Edge managed-snapshot ACL
   succession: `ReviseInferenceRoute` with empty grants advances `policy_revision`,
   drops `grants` for the credential in the successor compile, and keeps the same
   Identity credential projection (`prefix`/`generation`, `revoked = false`) without

@@ -1188,6 +1188,149 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
 }
 
 #[tokio::test]
+async fn expired_credential_with_published_route_succeeds_joint_edge_managed_snapshot_acl() {
+    use crate::modules::edge::domain::{
+        DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+        UpstreamEndpoint,
+    };
+    use crate::modules::edge::infrastructure::{
+        GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    };
+    use crate::modules::shared_kernel::domain::{
+        GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
+    };
+    use a3s_cloud_contracts::{
+        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    };
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const PREFIX: &str = "a3s_inf_abc12345";
+
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish_handler(routes.clone())
+        .execute(
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-for-expired-joint-edge",
+            ),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let route_adapter = InferenceRouteAclProjectionAdapter::new(routes);
+    let route_scope =
+        InferenceRouteEnvironmentScope::new(organization_id, project_id, environment_id).unwrap();
+    let route_projections = route_adapter
+        .list_inference_route_acl_projections(&[route_scope])
+        .await
+        .unwrap();
+    assert_eq!(route_projections.len(), 1);
+    assert_eq!(route_projections[0].grants.len(), 1);
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let issued_at = Utc::now();
+    let snapshot_expires_at = issued_at + Duration::minutes(10);
+    let now = issued_at;
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let mut owned = Route::create(
+        RouteId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        GatewayScopeId::new(),
+        node_id,
+        RouteHostname::parse("api.example.com").unwrap(),
+        RoutePath::parse("/v1").unwrap(),
+        DomainClaimId::new(),
+        DomainNamePattern::parse("api.example.com").unwrap(),
+        certificate_id,
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").unwrap(),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").unwrap(),
+            now,
+        )
+        .unwrap(),
+        now,
+    )
+    .unwrap();
+    owned.state = RouteState::Active;
+    owned.gateway_certificate_id = Some(certificate_id);
+
+    let credential_expires_at = issued_at - Duration::hours(1);
+    let credential = InferenceCredentialAclProjection::new(
+        Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        environment_id.as_uuid(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        PREFIX,
+        VERIFIER,
+        3,
+        credential_expires_at,
+        false,
+    )
+    .unwrap();
+    assert!(credential.expires_at < issued_at);
+    assert!(!credential.revoked);
+
+    let compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: "0.0.0.0:8081".into(),
+        management_address: "127.0.0.1:9090".into(),
+        management_path_prefix: "/api/gateway".into(),
+        management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+        upstream_request_timeout_ms: 30_000,
+        certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+    })
+    .unwrap();
+
+    let snapshot = compiler
+        .compile_certificate_convergence_with_inference_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, snapshot_expires_at),
+            Some(certificate_id),
+            &[owned],
+            &[credential],
+            &route_projections,
+        )
+        .unwrap();
+    let credential_expires_acl = credential_expires_at.to_rfc3339_opts(
+        chrono::SecondsFormat::Micros,
+        true,
+    );
+    assert!(snapshot
+        .acl
+        .contains(&format!("prefix = \"{PREFIX}\"")));
+    assert!(snapshot.acl.contains(&format!(
+        "expires_at = \"{credential_expires_acl}\""
+    )));
+    assert!(snapshot.acl.contains("revoked = false"));
+    assert!(!snapshot.acl.contains("revoked = true"));
+    assert!(snapshot.acl.contains(&format!(
+        "routes \"{}\"",
+        published.id.as_uuid()
+    )));
+    assert!(snapshot.acl.contains("models \"chat-model\""));
+    assert!(snapshot
+        .acl
+        .contains("grants \"33333333-3333-4333-8333-333333333333\""));
+    assert!(snapshot.acl.contains("credential_generation = 3"));
+    assert!(!snapshot.acl.contains("\n  workers "));
+    assert_eq!(snapshot.acl.matches("inference {").count(), 1);
+}
+
+#[tokio::test]
 async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapshot_acl_succession() {
     use crate::modules::edge::domain::{
         DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
