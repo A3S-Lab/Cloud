@@ -508,4 +508,80 @@ mod tests {
             "missing environment must not leave a credential row"
         );
     }
+
+    #[tokio::test]
+    async fn idempotent_replay_after_receipt_sweep_fails_closed_without_reissue() {
+        use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
+        use crate::modules::shared_kernel::application::ApplicationError;
+        use std::time::Duration as StdDuration;
+
+        let (handler, credentials) = handler();
+        let cmd = command("create-then-sweep");
+        let first = handler
+            .execute(cmd.clone(), context())
+            .await
+            .expect("boot")
+            .expect("first create");
+        let bearer = first.bearer_credential().to_owned();
+        let delivery_expires_at = first.delivery_expires_at;
+
+        let sweeper = InferenceCredentialDeliveryReceiptSweeper::new(
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+            StdDuration::from_secs(60),
+            100,
+        )
+        .expect("bounded sweeper");
+        assert_eq!(
+            sweeper.run_once(delivery_expires_at).await.expect("sweep"),
+            1,
+            "expired delivery receipt must be swept exactly once"
+        );
+
+        let error = handler
+            .execute(
+                CreateInferenceKey {
+                    requested_at: delivery_expires_at + Duration::seconds(1),
+                    ..cmd
+                },
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect_err("swept receipt must not recover plaintext");
+        match error {
+            ApplicationError::Conflict(message) => assert!(
+                message.contains("no longer recoverable") || message.contains("expired"),
+                "expected delivery fail-closed conflict, got {message}"
+            ),
+            other => panic!("expected Conflict after receipt sweep, got {other:?}"),
+        }
+
+        let listed = credentials
+            .list_inference_credentials_by_environment(
+                first.credential.organization_id,
+                first.credential.project_id,
+                first.credential.environment_id,
+            )
+            .await
+            .expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, first.credential.id);
+        assert_eq!(
+            listed[0]
+                .gateway_projection()
+                .expect("projection")
+                .verifier_hash(),
+            first
+                .credential
+                .gateway_projection()
+                .expect("projection")
+                .verifier_hash(),
+            "sweep must not reissue or mutate the durable credential"
+        );
+        let debug = format!("{listed:?}");
+        assert!(
+            !debug.contains(&bearer),
+            "post-sweep state must not regenerate or leak the swept bearer"
+        );
+    }
 }
