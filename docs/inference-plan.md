@@ -1453,8 +1453,12 @@ evidence, and fenced release protocol.
   successors, expected-revision CAS rejection, unknown-tokenizer retention
   with prior runtime ready; Gateway
   `docs/first-principles-test-plan.md` §I0.2b
-  item 5). Cloud also certifies Inference revise → Edge managed-snapshot ACL
-  succession locally: publish projection compiles `chat-model`, revise advances
+  item 5). Cloud also certifies Inference publish → Edge managed-snapshot ACL
+  succession locally: empty route projections compile without `routes`/`models`,
+  then `PublishInferenceRoute` projects `chat-model`/`routes`/`grants` into the
+  successor compile without inventing `workers`. Cloud certifies Inference revise →
+  Edge managed-snapshot ACL succession locally: publish projection compiles
+  `chat-model`, revise advances
   `policy_revision` and the successor compile replaces models/targets without
   inventing `workers`. Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
