@@ -1489,6 +1489,13 @@ evidence, and fenced release protocol.
   publication ACL embeds `inference {`, the projected `prefix`, and route
   grants/models while omitting any `workers` block and bearer secret material
   (desired-state plan → port load → managed compile → stage, not compiler-only).
+  Cloud likewise certifies the live managed route-rollout planner path:
+  `GatewayRouteRolloutPlanner::new_managed` → `plan_managed`, with the same stub
+  Identity credential and Inference route ACL ports plus
+  `EmptyInferenceWorkerAclProjectionPort`, produces publication ACL(s) that embed
+  `inference {`, the projected `prefix`, and route grants/models while omitting
+  any `workers` block and bearer secret material (desired-state plan → port load
+  → managed compile, not compiler-only).
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips

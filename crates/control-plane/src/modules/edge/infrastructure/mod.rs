@@ -47,6 +47,8 @@ mod gateway_rollout_rollback_compiler_tests;
 #[cfg(test)]
 mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
+mod gateway_route_rollout_planner_tests;
+#[cfg(test)]
 mod gateway_snapshot_compiler_tests;
 #[cfg(test)]
 mod mcp_gateway_desired_state_reconciler_tests;
