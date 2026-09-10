@@ -27,6 +27,30 @@ impl PublishInferenceRouteWrite {
     }
 }
 
+/// Idempotent revision of one Inference route catalog head.
+#[derive(Debug, Clone)]
+pub struct ReviseInferenceRouteWrite {
+    pub route: InferenceRoute,
+    pub expected_aggregate_version: u64,
+    pub idempotency: IdempotencyRequest,
+}
+
+impl ReviseInferenceRouteWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        self.idempotency.validate()?;
+        if self.route.retired_at().is_some() {
+            return Err("revised inference route write must not be retired".into());
+        }
+        if self.route.policy_revision() < 2 {
+            return Err("revised inference route must advance policy_revision".into());
+        }
+        if self.route.aggregate_version() != self.expected_aggregate_version.saturating_add(1) {
+            return Err("revised inference route aggregate version is inconsistent".into());
+        }
+        self.route.gateway_projection().map(|_| ())
+    }
+}
+
 /// Idempotent retirement of one Inference route catalog head.
 #[derive(Debug, Clone)]
 pub struct RetireInferenceRouteWrite {
@@ -102,6 +126,11 @@ pub trait IInferenceRouteRepository: Send + Sync {
     async fn publish_inference_route(
         &self,
         write: PublishInferenceRouteWrite,
+    ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError>;
+
+    async fn revise_inference_route(
+        &self,
+        write: ReviseInferenceRouteWrite,
     ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError>;
 
     async fn retire_inference_route(

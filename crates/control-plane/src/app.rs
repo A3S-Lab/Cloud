@@ -2855,6 +2855,7 @@ fn build_management_application_with_health(
     > = Arc::new(EdgeInferenceRouteBindingAdmissionAdapter::new(Arc::clone(
         &routes,
     )));
+    let revise_inference_route_bindings = Arc::clone(&publish_inference_route_bindings);
     let get_routes = routes;
     let create_mcp_credentials = Arc::clone(&mcp_credentials);
     let rotate_mcp_credentials = Arc::clone(&mcp_credentials);
@@ -2891,7 +2892,9 @@ fn build_management_application_with_health(
     let execution_environments = Arc::clone(&environments);
     let inference_key_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
+    let revise_inference_route_environments = Arc::clone(&environments);
     let publish_inference_routes = Arc::clone(&inference_routes);
+    let revise_inference_routes = Arc::clone(&inference_routes);
     let list_inference_routes = Arc::clone(&inference_routes);
     let get_inference_routes = Arc::clone(&inference_routes);
     let retire_inference_routes = inference_routes;
@@ -3056,6 +3059,13 @@ fn build_management_application_with_health(
                         publish_inference_route_environments,
                         publish_inference_routes,
                         publish_inference_route_bindings,
+                    ),
+                )
+                .command_handler::<crate::modules::inference::ReviseInferenceRoute, _>(
+                    crate::modules::inference::ReviseInferenceRouteHandler::new(
+                        revise_inference_route_environments,
+                        revise_inference_routes,
+                        revise_inference_route_bindings,
                     ),
                 )
                 .command_handler::<crate::modules::inference::RetireInferenceRoute, _>(

@@ -11,7 +11,8 @@ use async_trait::async_trait;
 /// Stable Inference publication error code for rejected Edge bindings.
 pub const EDGE_ROUTE_BINDING_INVALID: &str = "EDGE_ROUTE_BINDING_INVALID";
 
-/// Same-environment binding admission request for `PublishInferenceRoute`.
+/// Same-environment binding admission request for `PublishInferenceRoute`
+/// and `ReviseInferenceRoute`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InferenceEdgeRouteBindingAdmissionRequest {
     pub organization_id: OrganizationId,

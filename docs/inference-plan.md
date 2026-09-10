@@ -350,7 +350,7 @@ Initial management commands are:
 - `PublishInferenceBackendRevision`;
 - `CreateInferenceDeployment`, `ReviseInferenceDeployment`,
   `ScaleInferenceDeployment`, `StopInferenceDeployment`, and rollback;
-- `PublishInferenceRoute` and `RetireInferenceRoute`; and
+- `PublishInferenceRoute`, `ReviseInferenceRoute`, and `RetireInferenceRoute`; and
 - `RegisterExternalModelProvider` and `BindExternalProviderSecretVersion`.
 
 `CreateInferenceKey` and `RevokeInferenceKey` are Identity-owned commands
@@ -1360,16 +1360,22 @@ evidence, and fenced release protocol.
   `IInferenceRouteAclProjectionPort` via `InferenceRouteAclProjectionAdapter`
   on Postgres composition; `EmptyInferenceRouteAclProjectionPort` remains only
   for unit fixtures and non-Postgres tests. REST publish/retire are composed
-  through Boot CQRS (`PublishInferenceRoute` / `RetireInferenceRoute`) and
+  through Boot CQRS (`PublishInferenceRoute` / `ReviseInferenceRoute` /
+  `RetireInferenceRoute`) and
   `InferenceModule` presentation
-  (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/retire`)
-  with `inference:write` and required `Idempotency-Key`. Authorized management
+  (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/revisions`,
+  `POST ENV/inference/routes/{route_id}/retire`)
+  with `inference:write` and required `Idempotency-Key`. Revise fail-closes on
+  missing environment/route, zero/stale `expected_aggregate_version`, retired
+  heads, and Edge binding admission, and advances immutable
+  `policy_revision` without inventing workers. Authorized management
   reads are composed as `ListInferenceRoutes` / `GetInferenceRoute` with
   `GET ENV/inference/routes` and `GET ENV/inference/routes/{route_id}` under
   `inference:read`: list returns non-retired heads only (cursor-paginated by
   `route_id`), while get-by-id still returns retired heads for inspection.
   Environment visibility fails closed as `NotFound` like usage showback.
   `PublishInferenceRoute`
+  and `ReviseInferenceRoute`
   now fail-closes through Inference-owned
   `IInferenceEdgeRouteBindingAdmissionPort` (Edge
   `EdgeInferenceRouteBindingAdmissionAdapter`) against same-environment

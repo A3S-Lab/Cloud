@@ -3,7 +3,8 @@
 use crate::modules::inference::application::{
     IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
     PermitInferenceEdgeRouteBindingAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
-    RetireInferenceRoute, RetireInferenceRouteHandler,
+    RetireInferenceRoute, RetireInferenceRouteHandler, ReviseInferenceRoute,
+    ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::{
@@ -13,9 +14,10 @@ use crate::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
+use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayScopeId, IdempotencyRequest, IdempotentWrite,
-    OrganizationId, ProjectId, RepositoryError,
+    InferenceRouteId, OrganizationId, ProjectId, RepositoryError,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
@@ -142,6 +144,46 @@ fn publish_handler(
         routes,
         Arc::new(PermitInferenceEdgeRouteBindingAdmission),
     )
+}
+
+fn revise_handler(routes: Arc<InMemoryInferenceRouteRepository>) -> ReviseInferenceRouteHandler {
+    ReviseInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes,
+        Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+    )
+}
+
+fn revised_model() -> InferenceModelAclProjection {
+    InferenceModelAclProjection {
+        alias: "chat-model-v2".into(),
+        model_id: Uuid::parse_str("77777777-7777-4777-8777-777777777777").unwrap(),
+        targets: vec![InferenceTargetAclProjection {
+            target_id: Uuid::parse_str("88888888-8888-4888-8888-888888888888").unwrap(),
+            service: "model-service-v2".into(),
+            upstream_model: "internal/model-v2".into(),
+            priority: 0,
+            weight: 100,
+        }],
+    }
+}
+
+fn revised_grant() -> InferenceGrantAclProjection {
+    InferenceGrantAclProjection {
+        credential_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        credential_generation: 3,
+        models: vec!["chat-model-v2".into()],
+        endpoints: vec![
+            InferenceEndpointAcl::Models,
+            InferenceEndpointAcl::ChatCompletions,
+        ],
+        limits: InferenceLimitsAclProjection {
+            max_concurrent_requests: 2,
+            requests_per_minute: 60,
+            request_burst: 2,
+            tokens_per_minute: 10_000,
+        },
+    }
 }
 
 #[tokio::test]
@@ -314,4 +356,251 @@ async fn adapter_sorts_projections_stably_by_route_id() {
     let ids = [first.id.as_uuid(), second.id.as_uuid()];
     assert!(ids.contains(&projections[0].route_id));
     assert!(ids.contains(&projections[1].route_id));
+}
+
+#[tokio::test]
+async fn revise_advances_policy_revision_and_updates_projection_without_workers() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let revise = revise_handler(routes.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-revise"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let revised = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                router: "inference".into(),
+                models: vec![revised_model()],
+                grants: vec![revised_grant()],
+                binding: sample_binding(),
+                idempotency_key: "revise-1".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(revised.id, published.id);
+    assert_eq!(revised.policy_revision(), 2);
+    assert_eq!(revised.aggregate_version(), published.aggregate_version() + 1);
+    assert_eq!(revised.models()[0].alias, "chat-model-v2");
+
+    let adapter = InferenceRouteAclProjectionAdapter::new(routes);
+    let scope =
+        InferenceRouteEnvironmentScope::new(organization_id, project_id, environment_id).unwrap();
+    let projections = adapter
+        .list_inference_route_acl_projections(&[scope])
+        .await
+        .unwrap();
+    assert_eq!(projections.len(), 1);
+    assert_eq!(projections[0].policy_revision, 2);
+    assert_eq!(projections[0].models[0].alias, "chat-model-v2");
+    let rendered =
+        a3s_cloud_contracts::render_inference_route_acl_blocks(&projections).unwrap();
+    assert!(rendered.contains("models \"chat-model-v2\""));
+    assert!(!rendered.contains("workers "));
+}
+
+#[tokio::test]
+async fn revise_retired_route_is_rejected() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let revise = revise_handler(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-then-retire"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                route_id: published.id,
+                idempotency_key: "retire-before-revise".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let error = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version() + 1,
+                router: "inference".into(),
+                models: vec![revised_model()],
+                grants: vec![sample_grant()],
+                binding: sample_binding(),
+                idempotency_key: "revise-retired".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(2),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(error, ApplicationError::Invalid(_)));
+}
+
+#[tokio::test]
+async fn revise_missing_route_fails_closed_as_not_found() {
+    let revise = revise_handler(Arc::new(InMemoryInferenceRouteRepository::default()));
+    let error = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+                route_id: InferenceRouteId::new(),
+                expected_aggregate_version: 1,
+                router: "inference".into(),
+                models: vec![revised_model()],
+                grants: vec![sample_grant()],
+                binding: sample_binding(),
+                idempotency_key: "revise-missing".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(error, ApplicationError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn revise_stale_and_zero_aggregate_version_fail_closed() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let revise = revise_handler(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-cas"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let zero = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: 0,
+                router: "inference".into(),
+                models: vec![revised_model()],
+                grants: vec![sample_grant()],
+                binding: sample_binding(),
+                idempotency_key: "revise-zero".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(zero, ApplicationError::Invalid(_)));
+
+    let stale = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version() + 1,
+                router: "inference".into(),
+                models: vec![revised_model()],
+                grants: vec![sample_grant()],
+                binding: sample_binding(),
+                idempotency_key: "revise-stale".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(stale, ApplicationError::Conflict(_)));
+}
+
+#[tokio::test]
+async fn revise_is_idempotent_for_same_key_and_body() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let revise = revise_handler(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-idempotent"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let command = ReviseInferenceRoute {
+        organization_id,
+        project_id,
+        environment_id,
+        route_id: published.id,
+        expected_aggregate_version: published.aggregate_version(),
+        router: "inference".into(),
+        models: vec![revised_model()],
+        grants: vec![revised_grant()],
+        binding: sample_binding(),
+        idempotency_key: "revise-same".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: Utc::now() + Duration::seconds(1),
+    };
+    let first = revise
+        .execute(command.clone(), context())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = revise.execute(command, context()).await.unwrap().unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.policy_revision(), second.policy_revision());
+    assert_eq!(first.aggregate_version(), second.aggregate_version());
 }

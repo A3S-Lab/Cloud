@@ -1,7 +1,7 @@
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
     IInferenceRouteRepository, InferenceRouteWriteReference, PublishInferenceRouteWrite,
-    RetireInferenceRouteWrite,
+    RetireInferenceRouteWrite, ReviseInferenceRouteWrite,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, InferenceRouteId, OrganizationId,
@@ -84,6 +84,37 @@ impl IInferenceRouteRepository for InMemoryInferenceRouteRepository {
                 "inference route identity is already in use".into(),
             ));
         }
+        state.routes.insert(write.route.id, write.route.clone());
+        remember(
+            &mut state,
+            write.idempotency,
+            InferenceRouteWriteReference::from_route(&write.route),
+        );
+        Ok(IdempotentWrite {
+            value: write.route,
+            replayed: false,
+        })
+    }
+
+    async fn revise_inference_route(
+        &self,
+        write: ReviseInferenceRouteWrite,
+    ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replayed) = replay(&state, write.route.organization_id, &write.idempotency)? {
+            return Ok(replayed);
+        }
+        let existing = state
+            .routes
+            .get(&write.route.id)
+            .filter(|existing| existing.organization_id == write.route.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        write
+            .route
+            .validate_transition_from(&existing, write.expected_aggregate_version)
+            .map_err(RepositoryError::Conflict)?;
         state.routes.insert(write.route.id, write.route.clone());
         remember(
             &mut state,

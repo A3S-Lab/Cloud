@@ -7,7 +7,7 @@ use crate::infrastructure::{
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
     IInferenceRouteRepository, InferenceRouteWriteReference, PublishInferenceRouteWrite,
-    RetireInferenceRouteWrite,
+    RetireInferenceRouteWrite, ReviseInferenceRouteWrite,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::shared_kernel::domain::{
@@ -127,6 +127,58 @@ impl IInferenceRouteRepository for PostgresInferenceRouteRepository {
                         return Ok(replayed);
                     }
                     insert_route(transaction, &write.route).await?;
+                    store_idempotency(
+                        transaction,
+                        &write.idempotency,
+                        &InferenceRouteWriteReference::from_route(&write.route),
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.route,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn revise_inference_route(
+        &self,
+        write: ReviseInferenceRouteWrite,
+    ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(replayed) =
+                        replay(transaction, write.route.organization_id, &write.idempotency).await?
+                    {
+                        return Ok(replayed);
+                    }
+                    let existing = fetch_optional::<InferenceRouteRow, _>(
+                        transaction,
+                        select_from::<InferenceRoutes>()
+                            .select(InferenceRouteSelection)
+                            .filter(
+                                InferenceRoutes::organization_id()
+                                    .eq(write.route.organization_id.as_uuid()),
+                            )
+                            .filter(InferenceRoutes::id().eq(write.route.id.as_uuid())),
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)?
+                    .into_route()?;
+                    write
+                        .route
+                        .validate_transition_from(&existing, write.expected_aggregate_version)
+                        .map_err(RepositoryError::Conflict)?;
+                    update_route_row(
+                        transaction,
+                        &write.route,
+                        write.expected_aggregate_version,
+                    )
+                    .await?;
                     store_idempotency(
                         transaction,
                         &write.idempotency,

@@ -120,3 +120,35 @@ impl PublishInferenceRouteRequest {
         Ok((self.router, models, grants, binding))
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReviseInferenceRouteRequest {
+    pub expected_aggregate_version: u64,
+    #[serde(flatten)]
+    pub policy: PublishInferenceRouteRequest,
+}
+
+impl ReviseInferenceRouteRequest {
+    pub fn into_parts(
+        self,
+    ) -> Result<
+        (
+            u64,
+            String,
+            Vec<InferenceModelAclProjection>,
+            Vec<InferenceGrantAclProjection>,
+            EdgeRouteBindingRef,
+        ),
+        String,
+    > {
+        let (router, models, grants, binding) = self.policy.into_parts()?;
+        Ok((
+            self.expected_aggregate_version,
+            router,
+            models,
+            grants,
+            binding,
+        ))
+    }
+}
