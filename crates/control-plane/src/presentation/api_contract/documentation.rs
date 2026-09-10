@@ -805,6 +805,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke an inference key",
         ),
         (
+            "/inference/routes/{route_id}/revisions",
+            "Revise an inference route",
+        ),
+        (
             "/inference/routes/{route_id}/retire",
             "Retire an inference route",
         ),
@@ -888,6 +892,9 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
     }
     if path.ends_with("/inference/routes") {
         return Some("Publish an inference route");
+    }
+    if path.contains("/inference/routes/") && path.ends_with("/revisions") {
+        return Some("Revise an inference route");
     }
     if path.ends_with("/routes") {
         return Some("Publish a route");

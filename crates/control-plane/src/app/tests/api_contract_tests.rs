@@ -2688,6 +2688,94 @@ async fn normal_api_responses_advertise_the_contract_version() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let base = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes";
+    let route = format!("{base}/{{route_id}}");
+    let revisions = format!("{base}/{{route_id}}/revisions");
+    let retire = format!("{base}/{{route_id}}/retire");
+
+    let collection = &document["paths"][base];
+    assert_eq!(collection["get"]["tags"], json!(["Inference"]));
+    assert!(collection["get"]["responses"]["200"].is_object());
+    assert_eq!(collection["post"]["tags"], json!(["Inference"]));
+    assert_eq!(
+        collection["post"]["summary"],
+        json!("Publish an inference route")
+    );
+    assert!(collection["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(collection["post"]["responses"]["202"].is_object());
+    let publish_schema =
+        &collection["post"]["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        publish_schema["required"],
+        json!(["router", "models", "grants", "binding"])
+    );
+    assert!(publish_schema["properties"]["grants"]["items"]["properties"]["credentialId"].is_object());
+
+    let get_route = &document["paths"][&route]["get"];
+    assert_eq!(get_route["tags"], json!(["Inference"]));
+    assert!(get_route["responses"]["200"].is_object());
+
+    let revise = &document["paths"][&revisions]["post"];
+    assert_eq!(revise["tags"], json!(["Inference"]));
+    assert_eq!(
+        revise["summary"],
+        json!("Revise an inference route")
+    );
+    assert!(revise["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(revise["responses"]["202"].is_object());
+    let revise_schema = &revise["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        revise_schema["required"][0],
+        json!("expectedAggregateVersion")
+    );
+    assert_eq!(
+        revise_schema["properties"]["expectedAggregateVersion"]["minimum"],
+        json!(1)
+    );
+
+    let retire_op = &document["paths"][&retire]["post"];
+    assert_eq!(retire_op["tags"], json!(["Inference"]));
+    assert_eq!(
+        retire_op["summary"],
+        json!("Retire an inference route")
+    );
+    assert!(retire_op["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(retire_op["responses"]["202"].is_object());
+    assert!(retire_op["requestBody"].is_object());
+    let retire_schema = &retire_op["requestBody"]["content"]["application/json"]["schema"];
+    assert_eq!(
+        retire_schema["required"],
+        json!(["expectedAggregateVersion"])
+    );
+    assert_eq!(
+        retire_schema["properties"]["expectedAggregateVersion"]["minimum"],
+        json!(1)
+    );
+    Ok(())
+}
+
 fn contract_test_application() -> Result<BootApplication> {
     build_test_application(
         Arc::new(InMemoryIdentityRepository::new()),

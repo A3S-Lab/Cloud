@@ -54218,6 +54218,33 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "example": {
+                "expectedAggregateVersion": 1
+              },
+              "schema": {
+                "additionalProperties": false,
+                "description": "Validated request payload for this operation.",
+                "properties": {
+                  "expectedAggregateVersion": {
+                    "description": "Current aggregate version used for optimistic concurrency control.",
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedAggregateVersion"
+                ],
+                "type": "object",
+                "x-a3s-contract-correction": "documents-existing-runtime-validation"
+              }
+            }
+          },
+          "description": "Inputs required to retire an inference route. Unknown fields are rejected when the schema is closed.",
+          "required": true
+        },
         "responses": {
           "200": {
             "$ref": "#/components/responses/Success200"
@@ -54271,7 +54298,7 @@
     },
     "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/revisions": {
       "post": {
-        "description": "Publish a new revision through the authoritative Inference REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. A stable idempotency key makes mutation retries replay-safe without duplicating side effects. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "description": "Revise an inference route through the authoritative Inference REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. A stable idempotency key makes mutation retries replay-safe without duplicating side effects. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
         "operationId": "post_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_inference_routes_by_route_id_revisions",
         "parameters": [
           {
@@ -54611,12 +54638,15 @@
               }
             }
           },
-          "description": "Inputs required to publish a new revision. Unknown fields are rejected when the schema is closed.",
+          "description": "Inputs required to revise an inference route. Unknown fields are rejected when the schema is closed.",
           "required": true
         },
         "responses": {
           "200": {
             "$ref": "#/components/responses/Success200"
+          },
+          "202": {
+            "$ref": "#/components/responses/Success202"
           },
           "400": {
             "$ref": "#/components/responses/Error400"
@@ -54651,7 +54681,7 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Publish a new revision",
+        "summary": "Revise an inference route",
         "tags": [
           "Inference"
         ],
