@@ -45,6 +45,8 @@ mod gateway_rollout_reconciler_tests;
 #[cfg(test)]
 mod gateway_rollout_rollback_compiler_tests;
 #[cfg(test)]
+mod gateway_rollout_rollback_reconciler_tests;
+#[cfg(test)]
 mod gateway_route_rollout_compiler_tests;
 #[cfg(test)]
 mod gateway_route_rollout_planner_tests;

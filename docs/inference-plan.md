@@ -1509,7 +1509,15 @@ evidence, and fenced release protocol.
   publication ACL(s) that embed `inference {`, the projected `prefix`, and route
   grants/models while omitting any `workers` block and bearer secret material, and
   `managed_stage_bundle` validates the managed stage composition (compile → stage
-  bundle; live reconciler succession remains open).
+  bundle). Cloud likewise certifies the live managed rollout-rollback reconciler
+  path: `GatewayRolloutRollbackReconciler::new_managed` → `run_once` over a
+  `Required` rollback left by a rejected rollout, with the same stub Identity
+  credential and Inference route ACL ports plus
+  `EmptyInferenceWorkerAclProjectionPort`, stages one exact rollback that reuses
+  the retained Ready certificate and whose publication ACL embeds `inference {`,
+  the projected `prefix`, and route grants/models while omitting any `workers`
+  block and bearer secret material (desired-state plan → port load → managed
+  compile → stage, not compiler-only).
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips
