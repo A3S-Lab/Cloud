@@ -60,9 +60,10 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
 };
 use a3s_cloud_control_plane::modules::workloads::{
     project_runtime_spec, CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
-    Deployment, DeploymentReplicaBinding, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
-    PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter, ServiceProcess,
-    ServiceResources, SourceWorkloadTemplate, Workload, WorkloadRevision,
+    Deployment, DeploymentReplicaBinding, FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository,
+    IWorkloadRuntimeTargetRepository, PostgresWorkloadRepository,
+    ProjectsWorkloadsEnvironmentAccessAdapter, ServiceProcess, ServiceResources,
+    SourceWorkloadTemplate, Workload, WorkloadRevision,
 };
 use a3s_flow::{FlowRuntime, StepInvocation};
 use a3s_orm::{

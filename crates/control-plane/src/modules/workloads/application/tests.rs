@@ -27,7 +27,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::domain::entities::{ServicePort, ServiceProcess, ServiceResources};
 use crate::modules::workloads::{
-    IWorkloadRepository, InMemoryWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
+    FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository, InMemoryWorkloadRepository,
+    ProjectsWorkloadsEnvironmentAccessAdapter,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -54,7 +55,9 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     )
     .expect("node pool");
     let node_pool_id = node_pool.id;
-    let node_pools = Arc::new(TestNodePoolRepository { pool: node_pool });
+    let node_pools = Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(Arc::new(
+        TestNodePoolRepository { pool: node_pool },
+    )));
     let asset = Asset::create(
         AssetId::new(),
         organization_id,
@@ -385,7 +388,9 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         artifacts.clone(),
         workloads.clone(),
         secrets.clone(),
-        Arc::new(TestNodePoolRepository { pool: node_pool }),
+        Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(Arc::new(
+            TestNodePoolRepository { pool: node_pool },
+        ))),
     )
     .execute(
         CreateAgentWorkloadDeployment {

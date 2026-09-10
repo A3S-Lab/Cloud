@@ -350,9 +350,10 @@ use crate::modules::workloads::{
     BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadsEnvironmentAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
+    DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
+    GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeExecutionAdmissionPort,
+    IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadsEnvironmentAccess,
+    IWorkloadsNodePoolAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
     ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
     ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
@@ -2792,9 +2793,11 @@ fn build_management_application_with_health(
     let create_workloads = Arc::clone(&workloads);
     let source_create_workloads = Arc::clone(&workloads);
     let agent_create_workloads = Arc::clone(&workloads);
-    let workload_node_pools = Arc::clone(&node_pools);
-    let source_workload_node_pools = Arc::clone(&node_pools);
-    let agent_workload_node_pools = Arc::clone(&node_pools);
+    let workload_node_pools: Arc<dyn IWorkloadsNodePoolAccess> = Arc::new(
+        FleetWorkloadsNodePoolAccessAdapter::new(Arc::clone(&node_pools)),
+    );
+    let source_workload_node_pools = Arc::clone(&workload_node_pools);
+    let agent_workload_node_pools = Arc::clone(&workload_node_pools);
     let agent_update_workloads = Arc::clone(&workloads);
     let bind_skill_workloads = Arc::clone(&workloads);
     let unbind_skill_workloads = Arc::clone(&workloads);

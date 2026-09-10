@@ -249,7 +249,7 @@ async fn prepare_started_provider_scenario_with_tools(
         artifacts.clone(),
         workloads.clone(),
         secrets,
-        nodes.clone(),
+        Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(nodes.clone())),
     )
     .execute(
         CreateAgentWorkloadDeployment {

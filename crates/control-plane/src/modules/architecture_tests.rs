@@ -8454,6 +8454,78 @@ fn workloads_create_deployments_isolate_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn workloads_create_deployments_isolate_fleet_behind_one_node_pool_port() {
+    let root = module_root();
+
+    let node_pool_port =
+        std::fs::read_to_string(root.join("workloads/application/node_pool_access.rs"))
+            .expect("read Workloads node-pool port");
+    let compact_node_pool_port = production_source(&node_pool_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadsNodePoolScope",
+        "pubtraitIWorkloadsNodePoolAccess:Send+Sync",
+        "node_pool_exists(",
+    ] {
+        assert!(
+            compact_node_pool_port.contains(required),
+            "Workloads lost its narrow Fleet node-pool boundary {required}"
+        );
+    }
+    assert!(!node_pool_port.contains("crate::modules::fleet"));
+
+    let selection =
+        std::fs::read_to_string(root.join("workloads/application/commands/node_pool_selection.rs"))
+            .expect("read Workloads node-pool selection");
+    let production_selection = production_source(&selection);
+    for required in [
+        "IWorkloadsNodePoolAccess",
+        "WorkloadsNodePoolScope::new",
+        ".node_pool_exists(",
+    ] {
+        assert!(
+            production_selection.contains(required),
+            "node_pool_selection lost owner-port wiring {required}"
+        );
+    }
+    for forbidden in ["INodePoolRepository", "crate::modules::fleet"] {
+        assert!(
+            !production_selection.contains(forbidden),
+            "node_pool_selection regained foreign authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workloads/application/commands/create_workload_deployment/handler.rs",
+        "workloads/application/commands/create_source_workload_deployment/handler.rs",
+        "workloads/application/commands/create_agent_workload_deployment/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read Workloads consumer");
+        let production = production_source(&source);
+        assert!(
+            production.contains("Arc<dyn IWorkloadsNodePoolAccess>"),
+            "{relative} lost IWorkloadsNodePoolAccess wiring"
+        );
+        for forbidden in ["INodePoolRepository", "crate::modules::fleet"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("FleetWorkloadsNodePoolAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads node-pool adapter exactly once"
+    );
+}
+
+#[test]
 fn workflow_isolates_projects_behind_owner_ports() {
     let root = module_root();
 

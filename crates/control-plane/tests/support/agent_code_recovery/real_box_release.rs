@@ -40,11 +40,12 @@ use a3s_cloud_control_plane::modules::workloads::application::{
 };
 use a3s_cloud_control_plane::modules::workloads::{
     CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver,
-    OciArtifact, OciArtifactReference, OciArtifactResolutionError, OciRegistryCredentialReference,
-    PostgresResourceClaimRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
-    RequestWorkloadStopBundle, SecretBinding, SecretBindingTarget, UnroutedDeploymentRouteUpdater,
-    WorkloadDesiredState, WorkloadStopRequested,
+    DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
+    FleetWorkloadsNodePoolAccessAdapter, IOciArtifactResolver, OciArtifact, OciArtifactReference,
+    OciArtifactResolutionError, OciRegistryCredentialReference, PostgresResourceClaimRepository,
+    ProjectsWorkloadsEnvironmentAccessAdapter, RequestWorkloadStopBundle, SecretBinding,
+    SecretBindingTarget, UnroutedDeploymentRouteUpdater, WorkloadDesiredState,
+    WorkloadStopRequested,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
@@ -246,7 +247,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         artifacts,
         workloads.clone(),
         secrets,
-        nodes.clone(),
+        Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(nodes.clone())),
     )
     .execute(
         CreateAgentWorkloadDeployment {

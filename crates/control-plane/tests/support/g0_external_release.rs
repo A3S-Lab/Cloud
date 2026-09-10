@@ -11,7 +11,6 @@ use a3s_cloud_control_plane::modules::artifacts::{
     IBuildRunRepository, NodeArtifactObjectStore, OciPublicationRequest,
     PostgresBuildRunRepository, VaultBuildEvidenceSigner,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{ISecretRepository, PostgresSecretRepository};
@@ -25,9 +24,10 @@ use a3s_cloud_control_plane::modules::sources::{
     ISourceBuildInputQueryPort, PostgresSourceRevisionRepository, SourceBuildInputQueryService,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler, HttpHealthCheck,
-    IWorkloadRepository, PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
-    ServicePort, ServiceProcess, ServiceResources, SourceWorkloadTemplate,
+    CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
+    FleetWorkloadsNodePoolAccessAdapter, HttpHealthCheck, IWorkloadRepository,
+    PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter, ServicePort,
+    ServiceProcess, ServiceResources, SourceWorkloadTemplate,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -470,8 +470,9 @@ async fn create_workload_handoff(
         Arc::new(PostgresWorkloadRepository::new(executor.clone()));
     let secrets: Arc<dyn ISecretRepository> =
         Arc::new(PostgresSecretRepository::new(executor.clone()));
-    let node_pools: Arc<dyn INodePoolRepository> =
-        Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let node_pools = Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(Arc::new(
+        PostgresNodeRepository::new(executor.clone()),
+    )));
     let handler = CreateSourceWorkloadDeploymentHandler::new(
         environments,
         sources,

@@ -1,22 +1,24 @@
-use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     NodePoolId, OrganizationId, RepositoryError, WorkloadId,
 };
+use crate::modules::workloads::application::{IWorkloadsNodePoolAccess, WorkloadsNodePoolScope};
 use crate::modules::workloads::domain::entities::WorkloadControlSpec;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 
 pub(crate) async fn validate_node_pool_selection(
-    node_pools: &dyn INodePoolRepository,
+    node_pools: &dyn IWorkloadsNodePoolAccess,
     organization_id: OrganizationId,
     node_pool_id: Option<NodePoolId>,
 ) -> ApplicationResult<()> {
     let Some(node_pool_id) = node_pool_id else {
         return Ok(());
     };
-    match node_pools.find(organization_id, node_pool_id).await {
-        Ok(pool) if pool.organization_id == organization_id && pool.id == node_pool_id => Ok(()),
-        Ok(_) | Err(RepositoryError::NotFound) => {
+    let scope = WorkloadsNodePoolScope::new(organization_id, node_pool_id)
+        .map_err(ApplicationError::Invalid)?;
+    match node_pools.node_pool_exists(scope).await {
+        Ok(true) => Ok(()),
+        Ok(false) | Err(RepositoryError::NotFound) => {
             Err(ApplicationError::NotFound("node pool not found".into()))
         }
         Err(error) => Err(error.into()),

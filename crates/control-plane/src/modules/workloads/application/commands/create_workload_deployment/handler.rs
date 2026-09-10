@@ -1,6 +1,5 @@
 use super::super::validate_secret_bindings;
 use super::{CreateWorkloadDeployment, CreateWorkloadDeploymentResult};
-use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::secrets::domain::ISecretRepository;
@@ -10,8 +9,8 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    commands::validate_node_pool_selection, IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope,
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    commands::validate_node_pool_selection, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
+    WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
@@ -27,7 +26,7 @@ pub struct CreateWorkloadDeploymentHandler {
     environments: Arc<dyn IWorkloadsEnvironmentAccess>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn ISecretRepository>,
-    node_pools: Arc<dyn INodePoolRepository>,
+    node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
 }
 
 impl CreateWorkloadDeploymentHandler {
@@ -35,7 +34,7 @@ impl CreateWorkloadDeploymentHandler {
         environments: Arc<dyn IWorkloadsEnvironmentAccess>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn ISecretRepository>,
-        node_pools: Arc<dyn INodePoolRepository>,
+        node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
     ) -> Self {
         Self {
             environments,
