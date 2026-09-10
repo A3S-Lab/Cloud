@@ -1,6 +1,5 @@
 use super::{
-    AssetsWorkloadAgentReleaseAdmissionAdapter, BindSkillWorkloadDeployment,
-    BindSkillWorkloadDeploymentHandler, CreateAgentWorkloadDeployment,
+    BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, CreateAgentWorkloadDeployment,
     CreateAgentWorkloadDeploymentHandler, SourceWorkloadTemplate, UnbindSkillWorkloadDeployment,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
@@ -19,6 +18,9 @@ use crate::modules::fleet::domain::repositories::{INodePoolRepository, NodePoolW
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
+use crate::modules::workloads::{
+    AssetsWorkloadAgentReleaseAdmissionAdapter, IWorkloadAgentReleaseAdmissionPort,
+};
 use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
@@ -93,10 +95,11 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let agent_releases = Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
-        assets.clone(),
-        artifacts.clone(),
-    ));
+    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> =
+        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
+            assets.clone(),
+            artifacts.clone(),
+        ));
     let create_handler = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         Arc::clone(&agent_releases),
@@ -389,10 +392,11 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let agent_releases = Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
-        agent_assets.clone(),
-        artifacts.clone(),
-    ));
+    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> =
+        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
+            agent_assets.clone(),
+            artifacts.clone(),
+        ));
     let created = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         Arc::clone(&agent_releases),
