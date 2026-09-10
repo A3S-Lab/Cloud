@@ -1406,7 +1406,8 @@ evidence, and fenced release protocol.
   without an environment grant (`403`/`404`, no secret leakage). Create with a
   missing environment UUID fails closed as `404` without persisting a credential.
   Org-wide `GetInferenceKey` also fail-closes as `NotFound` when the credential's
-  owning environment no longer exists, matching list missing-env behavior.
+  owning environment no longer exists, matching list missing-env behavior; the
+  same fail-closed path is certified over HTTP (`404`, no secret leakage).
   Publish likewise fails closed as `404` for a missing environment path before
   binding/grant admission and without persisting a route head.
   `PublishInferenceRoute`

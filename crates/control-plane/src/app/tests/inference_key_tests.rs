@@ -665,6 +665,86 @@ async fn inference_key_list_rejects_missing_environment_path_as_not_found() -> R
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_key_get_rejects_missing_owning_environment_as_not_found() -> Result<()> {
+    use crate::modules::identity::domain::entities::InferenceCredential;
+    use crate::modules::identity::InMemoryInferenceCredentialRepository;
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
+    };
+
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+    let app = build_test_application_with_inference_credentials(
+        identity,
+        projects,
+        Arc::clone(&credentials),
+    )?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-key-get-missing-owning-env",
+        "Inference key get missing owning env",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-get-missing-owning-env-project",
+        "Inference Key Get Missing Owning Env",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-get-missing-owning-env-read",
+        "inference-key-get-missing-owning-env-read",
+        INFERENCE_KEY_READ_TOKEN,
+        &[ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(
+        organization
+            .parse::<Uuid>()
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let project_id = ProjectId::from_uuid(
+        project
+            .parse::<Uuid>()
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let missing_environment_id = EnvironmentId::new();
+    let now = Utc::now();
+    let credential = InferenceCredential::issue(
+        InferenceCredentialId::new(),
+        organization_id,
+        project_id,
+        missing_environment_id,
+        "a3s_inf_cccccccccccccccc",
+        "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+        now + Duration::hours(1),
+        now,
+    )
+    .map_err(|error| BootError::Internal(error))?;
+    let credential_id = credential.id.as_uuid();
+    credentials
+        .create_inference_credential(credential)
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let fetched = app
+        .call(get_as(
+            format!("/api/v1/organizations/{organization}/inference/keys/{credential_id}"),
+            INFERENCE_KEY_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fetched.status(), 404);
+    assert_response_has_no_bearer(&fetched, &[]);
+    Ok(())
+}
+
 fn replayed_revoke_json_replayed(response: &BootResponse) -> Result<bool> {
     response_json(response)?["data"]["replayed"]
         .as_bool()
