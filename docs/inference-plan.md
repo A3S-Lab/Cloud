@@ -1369,7 +1369,10 @@ evidence, and fenced release protocol.
   `EdgeInferenceRouteBindingAdmissionAdapter`) against same-environment
   verified DomainClaim coverage and GatewayScope membership when available,
   rejecting with `ApplicationError::Invalid` / `EDGE_ROUTE_BINDING_INVALID`.
-  Edge also loads workers only through Inference-owned
+  First-principles admission tests also cover pending DomainClaim rejection,
+  zero `binding_generation`, empty `path_prefix`, cross-organization claim
+  rejection, and the honesty case that a missing GatewayScope row does not
+  invent membership (verified claim still required). Edge also loads workers only through Inference-owned
   `IInferenceWorkerAclProjectionPort` (Empty until Power observation delivery)
   on every managed publication path (cutover, certificate convergence, MCP
   desired-state, route rollout, rollback) and compiles managed snapshots via

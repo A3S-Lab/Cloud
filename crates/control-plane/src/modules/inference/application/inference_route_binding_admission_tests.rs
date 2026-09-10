@@ -418,3 +418,184 @@ async fn publish_handler_rejects_unknown_claim_before_persist() {
         .unwrap_err();
     assert_binding_invalid(error);
 }
+
+async fn pending_claim(
+    edge: &Arc<InMemoryEdgeRepository>,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    environment_id: EnvironmentId,
+    pattern: &str,
+) -> DomainClaimId {
+    let now = Utc::now();
+    let claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse(pattern).expect("pattern"),
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .expect("claim");
+    let created = DomainClaimChanged::envelope(&claim, Uuid::now_v7()).expect("created event");
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: claim.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claims",
+            claim.id.to_string(),
+            claim.pattern.as_str().as_bytes(),
+        )
+        .expect("create idempotency"),
+        event: created,
+    })
+    .await
+    .expect("create claim");
+    claim.id
+}
+
+#[tokio::test]
+async fn pending_domain_claim_is_rejected() {
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = pending_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let scope_id = gateway_scope(&edge, organization_id, project_id, environment_id).await;
+    let admission = EdgeInferenceRouteBindingAdmissionAdapter::new(edge);
+    let error = admission
+        .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            binding(claim_id, scope_id, "api.example.com", "/v1"),
+        ))
+        .await
+        .unwrap_err();
+    assert_binding_invalid(error);
+}
+
+#[tokio::test]
+async fn zero_binding_generation_is_rejected() {
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = verified_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let scope_id = gateway_scope(&edge, organization_id, project_id, environment_id).await;
+    let mut invalid = binding(claim_id, scope_id, "api.example.com", "/v1");
+    invalid.binding_generation = 0;
+    let admission = EdgeInferenceRouteBindingAdmissionAdapter::new(edge);
+    let error = admission
+        .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            invalid,
+        ))
+        .await
+        .unwrap_err();
+    assert_binding_invalid(error);
+}
+
+#[tokio::test]
+async fn empty_path_prefix_is_rejected() {
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = verified_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let scope_id = gateway_scope(&edge, organization_id, project_id, environment_id).await;
+    let mut invalid = binding(claim_id, scope_id, "api.example.com", "/v1");
+    invalid.path_prefix.clear();
+    let admission = EdgeInferenceRouteBindingAdmissionAdapter::new(edge);
+    let error = admission
+        .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            invalid,
+        ))
+        .await
+        .unwrap_err();
+    assert_binding_invalid(error);
+}
+
+#[tokio::test]
+async fn cross_organization_claim_is_rejected() {
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let organization_id = OrganizationId::new();
+    let other_organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = verified_claim(
+        &edge,
+        other_organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let scope_id = gateway_scope(&edge, organization_id, project_id, environment_id).await;
+    let admission = EdgeInferenceRouteBindingAdmissionAdapter::new(edge);
+    let error = admission
+        .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            binding(claim_id, scope_id, "api.example.com", "/v1"),
+        ))
+        .await
+        .unwrap_err();
+    assert_binding_invalid(error);
+}
+
+#[tokio::test]
+async fn missing_gateway_scope_does_not_invent_membership_and_still_admits() {
+    // Honesty: when Edge has no GatewayScope row, admission does not invent
+    // membership; a verified same-environment DomainClaim is still required.
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let claim_id = verified_claim(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "api.example.com",
+    )
+    .await;
+    let missing_scope_id = GatewayScopeId::new();
+    let admission = EdgeInferenceRouteBindingAdmissionAdapter::new(edge);
+    admission
+        .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+            organization_id,
+            project_id,
+            environment_id,
+            binding(claim_id, missing_scope_id, "api.example.com", "/v1"),
+        ))
+        .await
+        .expect("missing scope must not invent membership or reject a verified claim");
+}
+
