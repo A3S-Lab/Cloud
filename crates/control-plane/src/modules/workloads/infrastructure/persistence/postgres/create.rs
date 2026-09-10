@@ -7,6 +7,7 @@ use crate::infrastructure::{
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, PlacementTopology, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
+use crate::modules::workloads::infrastructure::compose_deployment_operation;
 use a3s_orm::{insert_into, select_from, PostgresExecutor, PostgresTransaction};
 
 pub(super) async fn deployment(
@@ -50,11 +51,13 @@ pub(super) async fn deployment_in_transaction(
         return Ok(response);
     }
     validate(&request)?;
+    let operation =
+        compose_deployment_operation(&request.operation).map_err(RepositoryError::Conflict)?;
     let workload = lock_or_insert_workload(transaction, &request.workload).await?;
     require_no_nonterminal_deployment(transaction, &workload).await?;
     require_next_generation(transaction, &request).await?;
     insert_revision(transaction, &request).await?;
-    insert_operation(transaction, &request).await?;
+    operation_requests::insert(transaction, &operation).await?;
     insert_deployment(transaction, &request.deployment).await?;
     replicas::record_generation(
         transaction,
@@ -69,7 +72,7 @@ pub(super) async fn deployment_in_transaction(
         workload,
         revision: request.revision,
         deployment: request.deployment,
-        operation: request.operation,
+        operation,
         replayed: false,
     };
     store_outbox(transaction, &request.event).await?;
@@ -132,10 +135,11 @@ fn validate(request: &CreateDeploymentBundle) -> Result<(), PostgresPersistenceE
         || deployment.organization_id != workload.organization_id
         || deployment.workload_id != workload.id
         || deployment.revision_id != revision.id
-        || deployment.operation_id != operation.id
+        || deployment.operation_id != operation.operation_id
         || operation.organization_id != workload.organization_id
-        || operation.subject.kind() != "deployment"
-        || operation.subject.id() != deployment.id.as_uuid()
+        || operation.deployment_id != deployment.id
+        || operation.revision_id != revision.id
+        || operation.workload_id != workload.id
         || operation.requested_at != deployment.requested_at
         || deployment.status != DeploymentStatus::Queued
         || deployment.node_id.is_some()
@@ -417,13 +421,6 @@ async fn insert_revision(
         )?;
     }
     Ok(())
-}
-
-async fn insert_operation(
-    transaction: &PostgresTransaction,
-    request: &CreateDeploymentBundle,
-) -> Result<(), PostgresPersistenceError> {
-    operation_requests::insert(transaction, &request.operation).await
 }
 
 pub(super) async fn insert_deployment(

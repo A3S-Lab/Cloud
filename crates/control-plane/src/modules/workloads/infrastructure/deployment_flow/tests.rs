@@ -24,8 +24,6 @@ use crate::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
 };
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, DomainClaimId, EnrollmentTokenId, EnvironmentId,
     GatewayCertificateId, GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, NodePoolId,
@@ -58,6 +56,7 @@ use crate::modules::workloads::domain::services::{
     IOciArtifactResolver, IWorkloadPrestartGate, OciArtifactResolutionError,
     WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
+use crate::modules::workloads::domain::WorkloadStopOperationIntent;
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, ReplicaDeploymentMaterializer,
 };
@@ -946,8 +945,8 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
     bundle.control = WorkloadControlSpec::unmanaged_replica_set(1, 3)?;
     let revision = bundle.revision.clone();
     let canonical_deployment = bundle.deployment.clone();
-    let canonical_operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let canonical_operation = created.operation;
 
     engine
         .start_with_id(
@@ -1438,8 +1437,8 @@ async fn v4_waits_for_the_prestart_gate_before_dispatching_runtime_apply(
         "pre-start-gate-v4",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
@@ -1534,8 +1533,8 @@ async fn persisted_v3_deployment_replay_does_not_adopt_the_v4_prestart_gate(
         "resource-claim-workflow-v3",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(
@@ -1601,8 +1600,8 @@ async fn cancellation_waits_for_prestart_cleanup_before_releasing_the_resource_c
         "pre-start-gate-cancellation",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
@@ -1734,8 +1733,8 @@ async fn legacy_deployment_workflow_remains_executable_for_persisted_v1_runs(
     )?;
     let revision = bundle.revision.clone();
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     engine
         .start_with_id(
             operation.id.to_string(),
@@ -1816,8 +1815,8 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
         "mutable-tag",
     )?;
     let revision_id = bundle.revision.id;
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(
@@ -1908,8 +1907,8 @@ async fn resolving_step_lends_only_the_bound_registry_secret_reference_to_the_re
             target: SecretBindingTarget::RegistryCredential,
         }],
     )?;
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
@@ -1964,8 +1963,8 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
         "active-stop-deploy",
     )?;
     let revision = bundle.revision.clone();
-    let deployment_operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let deployment_operation = created.operation;
     engine
         .start_with_id(
             deployment_operation.id.to_string(),
@@ -1998,21 +1997,19 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     let expected_version = workload.aggregate_version;
     workload.request_stop(requested_at)?;
     let stop_operation_id = OperationId::new();
-    let stop_operation = OperationRequest::new(
+    let stop_operation = WorkloadStopOperationIntent::new(
         stop_operation_id,
         organization_id,
-        OperationSubject::new("workload", workload.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.workload.stop", "1")?,
-        serde_json::json!({
-            "operationId": stop_operation_id,
-            "organizationId": organization_id,
-            "requestedAt": requested_at,
-            "workloadId": workload.id,
-        }),
+        workload.id,
         requested_at,
     );
     let stop_request = RequestWorkloadStopBundle {
-        event: WorkloadStopRequested::envelope(&workload, &stop_operation, Uuid::now_v7())?,
+        event: WorkloadStopRequested::envelope(
+            &workload,
+            stop_operation.operation_id,
+            stop_operation.requested_at,
+            Uuid::now_v7(),
+        )?,
         idempotency: IdempotencyRequest::new("test.workload.stop", "active-stop", b"active-stop")?,
         operation: stop_operation.clone(),
         workload,
@@ -2026,17 +2023,17 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     assert!(replayed.replayed);
     assert_eq!(accepted.operation.id, replayed.operation.id);
 
-    let stop_input = stop_operation.input.clone();
+    let stop_input = accepted.operation.input.clone();
     let failure = engine
         .start_with_id(
-            stop_operation.id.to_string(),
+            stop_operation.operation_id.to_string(),
             stop_workflow_spec(),
             stop_input.clone(),
         )
         .await
         .expect_err("injected crash must interrupt stop dispatch persistence");
     assert!(matches!(failure, FlowError::Store(_)));
-    let stop_history = store.list(&stop_operation.id.to_string()).await?;
+    let stop_history = store.list(&stop_operation.operation_id.to_string()).await?;
     assert!(stop_history.iter().any(|event| matches!(
         &event.event,
         FlowEvent::StepStarted { step_id, .. } if step_id == "stop-dispatch"
@@ -2046,7 +2043,7 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
         FlowEvent::StepCompleted { step_id, .. } if step_id == "stop-dispatch"
     )));
     let expected_stop_command_id = crate::modules::shared_kernel::domain::NodeCommandId::from_uuid(
-        stop_operation.id.as_uuid(),
+        stop_operation.operation_id.as_uuid(),
     );
     let command_before_restart = nodes
         .find_command(node_id, expected_stop_command_id)
@@ -2057,7 +2054,7 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     let engine = FlowEngine::new(store, Arc::new(runtime));
     engine
         .start_with_id(
-            stop_operation.id.to_string(),
+            stop_operation.operation_id.to_string(),
             stop_workflow_spec(),
             stop_input,
         )
@@ -2110,7 +2107,7 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     .await?;
     assert_eq!(
         engine
-            .snapshot(&stop_operation.id.to_string())
+            .snapshot(&stop_operation.operation_id.to_string())
             .await?
             .status,
         WorkflowRunStatus::Completed
@@ -2203,8 +2200,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     first.control = WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 1, Some(pool_id))?;
     let first_revision = first.revision.clone();
     let first_deployment = first.deployment.clone();
-    let first_operation = first.operation.clone();
-    workloads.create_deployment(first).await?;
+    let created = workloads.create_deployment(first).await?;
+    let first_operation = created.operation;
     let spec = workflow_spec();
     engine
         .start_with_id(
@@ -2339,8 +2336,8 @@ async fn healthy_observation_activates_once_and_unhealthy_update_preserves_previ
     let mut second = deployment_bundle(selected_workload, 2, 'b', Utc::now(), "unhealthy-update")?;
     second.control = WorkloadControlSpec::unmanaged_replica_set_in_pool(1, 1, Some(pool_id))?;
     let second_deployment = second.deployment.clone();
-    let second_operation = second.operation.clone();
-    workloads.create_deployment(second).await?;
+    let created = workloads.create_deployment(second).await?;
+    let second_operation = created.operation;
     engine
         .start_with_id(
             second_operation.id.to_string(),
@@ -2471,8 +2468,8 @@ async fn healthy_v4_update_retires_the_previous_runtime_before_releasing_its_cla
     let first = deployment_bundle(workload, 1, '3', base, "healthy-retirement-first")?;
     let first_revision = first.revision.clone();
     let first_deployment = first.deployment.clone();
-    let first_operation = first.operation.clone();
-    workloads.create_deployment(first).await?;
+    let created = workloads.create_deployment(first).await?;
+    let first_operation = created.operation;
     engine
         .start_with_id(
             first_operation.id.to_string(),
@@ -2519,8 +2516,8 @@ async fn healthy_v4_update_retires_the_previous_runtime_before_releasing_its_cla
     )?;
     let second_revision = second.revision.clone();
     let second_deployment = second.deployment.clone();
-    let second_operation = second.operation.clone();
-    workloads.create_deployment(second).await?;
+    let created = workloads.create_deployment(second).await?;
+    let second_operation = created.operation;
     engine
         .start_with_id(
             second_operation.id.to_string(),
@@ -2655,8 +2652,8 @@ async fn durable_reservation_recovers_a_crash_before_placement_persistence(
     )?;
     let revision = bundle.revision.clone();
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     let resolving = workloads
         .mark_resolving(deployment.id, deployment.aggregate_version, Utc::now())
         .await?;
@@ -2818,8 +2815,8 @@ async fn selected_node_pool_and_maintenance_are_hard_scheduler_filters(
     )?;
     bundle.control = WorkloadControlSpec::unmanaged_single_replica_in_pool(pool_id)?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
         .await?;
@@ -2920,8 +2917,8 @@ async fn capacity_exhaustion_on_the_first_node_falls_through_to_the_next_node(
         "capacity-fallthrough",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
         .await?;
@@ -2966,8 +2963,8 @@ async fn no_eligible_node_reaches_a_persisted_failure_without_dispatch(
         "no-node",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
         .await?;
@@ -3015,8 +3012,8 @@ async fn cancellation_before_dispatch_completes_without_creating_a_runtime_child
         "cancel-before-dispatch",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     workloads
         .mark_cancellation_requested(deployment.id, 1, Utc::now())
         .await?;
@@ -3078,8 +3075,8 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
         "cancel-resolving-artifact",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     engine
         .start_with_id(operation.id.to_string(), workflow_spec(), operation.input)
@@ -3152,8 +3149,8 @@ async fn cancellation_after_dispatch_retries_claim_release_after_durable_removal
         "cancel-dispatched-child",
     )?;
     let deployment = bundle.deployment.clone();
-    let operation = bundle.operation.clone();
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
     engine
         .start_with_id(
             operation.id.to_string(),

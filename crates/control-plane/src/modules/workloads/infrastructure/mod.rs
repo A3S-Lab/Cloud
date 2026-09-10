@@ -13,6 +13,7 @@ mod secret_rotation_reconciliation;
 mod secrets_binding_access;
 mod skill_release_admission;
 mod source_build_admission;
+mod workload_operation_composer;
 
 pub use agent_release_admission::AssetsWorkloadAgentReleaseAdmissionAdapter;
 pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
@@ -52,3 +53,6 @@ pub use secret_rotation_reconciliation::{
 pub use secrets_binding_access::SecretsWorkloadsSecretBindingAccessAdapter;
 pub use skill_release_admission::AssetsWorkloadSkillReleaseAdmissionAdapter;
 pub use source_build_admission::SourcesArtifactsWorkloadSourceBuildAdmissionAdapter;
+pub(crate) use workload_operation_composer::{
+    compose_deployment_operation, compose_stop_operation,
+};

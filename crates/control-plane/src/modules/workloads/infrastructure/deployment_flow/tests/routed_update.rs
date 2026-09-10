@@ -50,7 +50,7 @@ async fn route_cutover_rejects_an_observation_from_another_runtime_command(
                 },
                 issued_at: Utc::now(),
                 not_after: Utc::now() + Duration::minutes(1),
-                correlation_id: candidate.operation.id.as_uuid(),
+                correlation_id: candidate.operation.operation_id.as_uuid(),
             })
             .await?;
     }
@@ -84,7 +84,7 @@ async fn route_cutover_rejects_an_observation_from_another_runtime_command(
     let now = Utc::now() + Duration::milliseconds(1);
     let request = DeploymentRouteUpdateRequest {
         deployment_id: candidate.deployment.id,
-        operation_id: candidate.operation.id,
+        operation_id: candidate.operation.operation_id,
         organization_id,
         project_id: workload.project_id,
         environment_id: workload.environment_id,
@@ -230,8 +230,8 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     )?;
     let rejected_revision = rejected.revision.clone();
     let rejected_deployment = rejected.deployment.clone();
-    let rejected_operation = rejected.operation.clone();
-    workloads.create_deployment(rejected).await?;
+    let created = workloads.create_deployment(rejected).await?;
+    let rejected_operation = created.operation;
     engine
         .start_with_id(
             rejected_operation.id.to_string(),
@@ -344,8 +344,8 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     )?;
     let accepted_revision = accepted.revision.clone();
     let accepted_deployment = accepted.deployment.clone();
-    let accepted_operation = accepted.operation.clone();
-    workloads.create_deployment(accepted).await?;
+    let created = workloads.create_deployment(accepted).await?;
+    let accepted_operation = created.operation;
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
@@ -583,13 +583,13 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     )?;
     let rollback_revision = rollback.revision.clone();
     let rollback_deployment = rollback.deployment.clone();
-    let rollback_operation = rollback.operation.clone();
     assert_eq!(rollback_revision.template, first_revision.template);
     assert_eq!(
         rollback_revision.template_digest,
         first_revision.template_digest
     );
-    workloads.create_deployment(rollback).await?;
+    let created = workloads.create_deployment(rollback).await?;
+    let rollback_operation = created.operation;
     engine
         .start_with_id(
             rollback_operation.id.to_string(),

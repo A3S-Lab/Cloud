@@ -10,6 +10,9 @@ use crate::modules::workloads::domain::entities::{
     Workload, WorkloadControl, WorkloadControlSpec, WorkloadReplica, WorkloadReplicaMember,
     WorkloadRevision, WorkloadWriterFenceReceipt,
 };
+use crate::modules::workloads::domain::{
+    WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -21,7 +24,7 @@ pub struct CreateDeploymentBundle {
     pub control: WorkloadControlSpec,
     pub revision: WorkloadRevision,
     pub deployment: Deployment,
-    pub operation: OperationRequest,
+    pub operation: WorkloadDeploymentOperationIntent,
     pub idempotency: crate::modules::shared_kernel::domain::IdempotencyRequest,
     pub event: a3s_cloud_contracts::DomainEventEnvelope,
 }
@@ -38,7 +41,7 @@ pub struct RequestDeploymentCancellationBundle {
 pub struct RequestWorkloadStopBundle {
     pub workload: Workload,
     pub expected_version: u64,
-    pub operation: OperationRequest,
+    pub operation: WorkloadStopOperationIntent,
     pub idempotency: IdempotencyRequest,
     pub event: a3s_cloud_contracts::DomainEventEnvelope,
 }

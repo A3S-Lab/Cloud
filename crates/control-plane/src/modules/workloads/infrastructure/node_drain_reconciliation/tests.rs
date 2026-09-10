@@ -1,8 +1,6 @@
 use super::*;
 use crate::modules::fleet::domain::entities::{Node, NodePool};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeName, NodeState};
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, OperationId, OrganizationId,
     ProjectId, ResourceClaimId, ResourceName, WorkloadId, WorkloadReplicaId,
@@ -18,6 +16,7 @@ use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IResourceClaimRepository, IWorkloadRepository,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
 };
@@ -559,17 +558,12 @@ fn deployment_bundle(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        json!({
-            "deploymentId": deployment.id,
-            "organizationId": workload.organization_id,
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;

@@ -1,15 +1,12 @@
 use super::{StopWorkload, StopWorkloadResult};
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, OperationId};
-use crate::modules::workloads::application::{
-    WorkloadResourceResolver, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
-};
+use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::events::WorkloadStopRequested;
 use crate::modules::workloads::domain::repositories::{
     IWorkloadRepository, RequestWorkloadStopBundle,
 };
+use crate::modules::workloads::domain::WorkloadStopOperationIntent;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -64,23 +61,19 @@ impl CommandHandler<StopWorkload> for StopWorkloadHandler {
                 return Ok(Err(ApplicationError::Conflict(error)));
             }
             let operation_id = OperationId::new();
-            let operation = OperationRequest::new(
+            let operation = WorkloadStopOperationIntent::new(
                 operation_id,
                 workload.organization_id,
-                OperationSubject::new("workload", workload.id.as_uuid())
-                    .map_err(BootError::Internal)?,
-                WorkflowIdentity::new(STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION)
-                    .map_err(BootError::Internal)?,
-                serde_json::json!({
-                    "operationId": operation_id,
-                    "organizationId": workload.organization_id,
-                    "requestedAt": command.requested_at,
-                    "workloadId": workload.id,
-                }),
+                workload.id,
                 command.requested_at,
             );
-            let event = WorkloadStopRequested::envelope(&workload, &operation, command.request_id)
-                .map_err(|error| BootError::Internal(error.to_string()))?;
+            let event = WorkloadStopRequested::envelope(
+                &workload,
+                operation.operation_id,
+                operation.requested_at,
+                command.request_id,
+            )
+            .map_err(|error| BootError::Internal(error.to_string()))?;
             match workloads
                 .request_workload_stop(RequestWorkloadStopBundle {
                     workload,

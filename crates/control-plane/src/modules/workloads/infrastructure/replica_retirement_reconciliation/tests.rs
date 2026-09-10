@@ -13,6 +13,7 @@ use crate::modules::workloads::domain::entities::{
     ServiceResources, ServiceTemplate, Workload, WorkloadReplicaMember, WorkloadRevision,
     WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
 };
@@ -1234,17 +1235,12 @@ fn deployment_bundle(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "organizationId": workload.organization_id,
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;

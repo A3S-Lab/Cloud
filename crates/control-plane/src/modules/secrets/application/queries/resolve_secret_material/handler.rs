@@ -94,8 +94,6 @@ fn not_authorized() -> ApplicationError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::operations::domain::entities::OperationRequest;
-    use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
     use crate::modules::secrets::domain::{
         CreateSecretWrite, EncryptedSecretValue, Secret, SecretChanged, SecretEncryptionError,
     };
@@ -114,6 +112,7 @@ mod tests {
     use crate::modules::workloads::domain::repositories::{
         CreateDeploymentBundle, IWorkloadRepository,
     };
+    use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
     use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
     use crate::modules::workloads::{
         IWorkloadSecretMaterializationAuthorizationQueryPort,
@@ -214,13 +213,12 @@ mod tests {
             OperationId::new(),
             now,
         );
-        let operation = OperationRequest::new(
+        let operation = WorkloadDeploymentOperationIntent::new(
             deployment.operation_id,
             organization_id,
-            OperationSubject::new("deployment", deployment.id.as_uuid())
-                .expect("operation subject"),
-            WorkflowIdentity::new("cloud.deployment", "2").expect("workflow"),
-            serde_json::json!({}),
+            deployment.id,
+            revision.id,
+            workload.id,
             now,
         );
         let event = DeploymentRequested::envelope(&deployment, &revision, uuid::Uuid::now_v7())

@@ -54,6 +54,7 @@ use crate::modules::shared_kernel::domain::{
     PrincipalId, ProjectId, ResourceName, SecretId, SecretVersionReference, SourceRevisionId,
 };
 use crate::modules::workloads::application::project_runtime_secrets;
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaRetirementRepository,
@@ -343,17 +344,12 @@ async fn gate_creates_one_exact_replay_safe_node_bound_publication_execution(
         projection.operation_id,
         correlation.requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         projection.operation_id,
         organization_id,
-        OperationSubject::new("deployment", projection.deployment_id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        serde_json::json!({
-            "deploymentId": projection.deployment_id,
-            "organizationId": organization_id,
-            "revisionId": projection.workload_revision_id,
-            "workloadId": projection.workload_id,
-        }),
+        projection.deployment_id,
+        projection.workload_revision_id,
+        projection.workload_id,
         correlation.requested_at,
     );
     let deployment_event =

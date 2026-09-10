@@ -8,8 +8,6 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{
     ILogChunkStore, LogChunkStoreError, RetrievedLogChunk, StoredLogChunk,
 };
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeCommandId, NodeId,
@@ -27,6 +25,7 @@ use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
 use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
@@ -651,12 +650,12 @@ async fn seed_workload() -> SeededWorkload {
         OperationId::new(),
         now,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid()).expect("operation subject"),
-        WorkflowIdentity::new("cloud.deployment", "2").expect("workflow identity"),
-        serde_json::json!({}),
+        deployment.id,
+        revision.id,
+        workload.id,
         now,
     );
     let event =

@@ -10589,6 +10589,99 @@ fn data_recovery_operations_compose_behind_one_infrastructure_builder() {
 }
 
 #[test]
+fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() {
+    let root = module_root();
+
+    let intents =
+        std::fs::read_to_string(root.join("workloads/domain/workload_operation_intent.rs"))
+            .expect("read Workloads operation intents");
+    let production_intents = production_source(&intents);
+    let compact_intents = production_intents.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructWorkloadDeploymentOperationIntent",
+        "pubstructWorkloadStopOperationIntent",
+    ] {
+        assert!(
+            compact_intents.contains(required),
+            "Workloads lost owned operation intent {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "OperationRequest",
+        "OperationSubject",
+        "WorkflowIdentity",
+    ] {
+        assert!(
+            !production_intents.contains(forbidden),
+            "Workloads operation intents leaked Operations authority {forbidden}"
+        );
+    }
+
+    let mut command_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("workloads/application/commands/") {
+            return;
+        }
+        if !path.ends_with("handler.rs") {
+            return;
+        }
+        for forbidden in [
+            "crate::modules::operations",
+            "OperationRequest::new",
+            "OperationSubject",
+            "WorkflowIdentity",
+        ] {
+            if source.contains(forbidden) {
+                command_violations.insert(format!(
+                    "{path} contains foreign Operations construction {forbidden}"
+                ));
+            }
+        }
+        if path.contains("stop_workload") && !source.contains("WorkloadStopOperationIntent") {
+            command_violations.insert(format!(
+                "{path} stopped emitting WorkloadStopOperationIntent"
+            ));
+        }
+        if path.contains("workload_deployment")
+            && !path.contains("cancel")
+            && !source.contains("WorkloadDeploymentOperationIntent")
+        {
+            command_violations.insert(format!(
+                "{path} stopped emitting WorkloadDeploymentOperationIntent"
+            ));
+        }
+    });
+    assert!(
+        command_violations.is_empty(),
+        "Workloads Application commands regained Operations construction:\n{}",
+        command_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let composer = std::fs::read_to_string(
+        root.join("workloads/infrastructure/workload_operation_composer.rs"),
+    )
+    .expect("read Workloads operation composer");
+    let compact_composer = production_source(&composer)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "fncompose_deployment_operation(",
+        "fncompose_stop_operation(",
+        "OperationRequest::new(",
+    ] {
+        assert!(
+            compact_composer.contains(required),
+            "Workloads operation composer lost boundary behavior {required}"
+        );
+    }
+}
+
+#[test]
 fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("agents/application/agent_release_admission.rs"),

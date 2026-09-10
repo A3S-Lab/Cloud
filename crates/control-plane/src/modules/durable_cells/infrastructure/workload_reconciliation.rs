@@ -24,8 +24,6 @@ use crate::modules::durable_cells::domain::{
     DurableCellProviderWorkloadProjection, IDurableCellApplicationRepository,
     DURABLE_CELL_MANAGED_OWNER_KIND,
 };
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, RepositoryError, ResourceName, SecretVersionReference, Sha256Digest,
@@ -33,6 +31,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::application::{
     project_runtime_secrets, project_runtime_spec_with_digest,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::{
     CreateDeploymentBundle, Deployment, DeploymentRequested, DeploymentStatus, IWorkloadRepository,
     IWorkloadWriterFenceRepository, ManagedOwnerKind, ManagedOwnerReference,
@@ -44,10 +43,6 @@ use chrono::Utc;
 use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
-
-use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
-};
 
 /// Anti-corruption adapter from the Workloads owner to the Durable Cells
 /// consumer-owned reconciliation port.
@@ -668,19 +663,12 @@ impl IDurableCellWorkloadPort for WorkloadsDurableCellWorkloadAdapter {
             projection.operation_id,
             requested_at,
         );
-        let operation = OperationRequest::new(
+        let operation = WorkloadDeploymentOperationIntent::new(
             projection.operation_id,
             projection.organization_id,
-            OperationSubject::new("deployment", projection.deployment_id.as_uuid())
-                .map_err(ApplicationError::Internal)?,
-            WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
-                .map_err(ApplicationError::Internal)?,
-            serde_json::json!({
-                "deploymentId": projection.deployment_id,
-                "organizationId": projection.organization_id,
-                "revisionId": projection.workload_revision_id,
-                "workloadId": projection.workload_id,
-            }),
+            projection.deployment_id,
+            projection.workload_revision_id,
+            projection.workload_id,
             requested_at,
         );
         let event = DeploymentRequested::envelope(&deployment, &revision, projection.request_id)

@@ -93,9 +93,9 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     )?;
     let deployment = bundle.deployment.clone();
     let revision = bundle.revision.clone();
-    let operation = bundle.operation.clone();
     let spec = project_runtime_spec(&revision)?;
-    workloads.create_deployment(bundle).await?;
+    let created = workloads.create_deployment(bundle).await?;
+    let operation = created.operation;
 
     let journal = FileCommandJournal::new(node_state.path(), node_id.as_uuid())?;
     let inventory_authority = Arc::new(FixedInventory(inventory));

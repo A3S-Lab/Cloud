@@ -8,7 +8,8 @@ use crate::modules::workloads::domain::entities::{Workload, WorkloadDesiredState
 use crate::modules::workloads::domain::repositories::{
     RequestWorkloadStopBundle, WorkloadStopBundle,
 };
-use a3s_orm::{PostgresExecutor, PostgresTransaction};
+use crate::modules::workloads::infrastructure::compose_stop_operation;
+use a3s_orm::PostgresExecutor;
 use chrono::{DateTime, Utc};
 
 pub(super) async fn request(
@@ -44,6 +45,8 @@ pub(super) async fn request(
                     .into());
                 }
                 validate_request(&request, &current)?;
+                let operation = compose_stop_operation(&request.operation)
+                    .map_err(RepositoryError::Conflict)?;
                 if current != request.workload {
                     transitions::persist_workload(
                         transaction,
@@ -52,11 +55,11 @@ pub(super) async fn request(
                     )
                     .await?;
                 }
-                insert_operation(transaction, &request).await?;
+                operation_requests::insert(transaction, &operation).await?;
                 store_outbox(transaction, &request.event).await?;
                 let response = WorkloadStopBundle {
                     workload: request.workload,
-                    operation: request.operation,
+                    operation,
                     replayed: false,
                 };
                 store_idempotency(transaction, &request.idempotency, &response).await?;
@@ -123,10 +126,7 @@ fn validate_request(
         .map_err(RepositoryError::Conflict)?;
     if expected != request.workload
         || request.operation.organization_id != request.workload.organization_id
-        || request.operation.subject.kind() != "workload"
-        || request.operation.subject.id() != request.workload.id.as_uuid()
-        || request.operation.workflow.name() != "cloud.workload.stop"
-        || request.operation.workflow.version() != "1"
+        || request.operation.workload_id != request.workload.id
         || request.operation.requested_at < request.workload.updated_at
         || request.event.organization_id() != Some(request.workload.organization_id.as_uuid())
         || request.event.aggregate_id != request.workload.id.as_uuid()
@@ -138,11 +138,4 @@ fn validate_request(
         .into());
     }
     Ok(())
-}
-
-async fn insert_operation(
-    transaction: &PostgresTransaction,
-    request: &RequestWorkloadStopBundle,
-) -> Result<(), PostgresPersistenceError> {
-    operation_requests::insert(transaction, &request.operation).await
 }

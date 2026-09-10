@@ -1,9 +1,9 @@
-use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
     OperationId, OrganizationId, WorkloadId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::Workload;
 use a3s_cloud_contracts::DomainEventEnvelope;
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -18,7 +18,8 @@ pub struct WorkloadStopRequested {
 impl WorkloadStopRequested {
     pub fn envelope(
         workload: &Workload,
-        operation: &OperationRequest,
+        operation_id: OperationId,
+        requested_at: DateTime<Utc>,
         correlation_id: Uuid,
     ) -> Result<DomainEventEnvelope, serde_json::Error> {
         Ok(DomainEventEnvelope {
@@ -30,14 +31,14 @@ impl WorkloadStopRequested {
             },
             aggregate_id: workload.id.as_uuid(),
             aggregate_version: workload.aggregate_version,
-            occurred_at: operation.requested_at,
+            occurred_at: requested_at,
             correlation_id,
             causation_id: None,
             payload: serde_json::to_value(Self {
                 organization_id: workload.organization_id,
                 workload_id: workload.id,
                 active_revision_id: workload.active_revision_id,
-                operation_id: operation.id,
+                operation_id,
             })?,
         })
     }

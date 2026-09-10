@@ -260,7 +260,7 @@ async fn managed_route_cutover_stages_inference_credential_and_route_acl_without
             },
             issued_at: Utc::now(),
             not_after: Utc::now() + Duration::minutes(1),
-            correlation_id: candidate.operation.id.as_uuid(),
+            correlation_id: candidate.operation.operation_id.as_uuid(),
         })
         .await?;
     let leased = lease(&nodes, node_id, agent_instance_id, 0).await?;
@@ -383,7 +383,7 @@ async fn managed_route_cutover_stages_inference_credential_and_route_acl_without
     let now = Utc::now() + Duration::milliseconds(1);
     let request = DeploymentRouteUpdateRequest {
         deployment_id: candidate.deployment.id,
-        operation_id: candidate.operation.id,
+        operation_id: candidate.operation.operation_id,
         organization_id,
         project_id: workload.project_id,
         environment_id: workload.environment_id,

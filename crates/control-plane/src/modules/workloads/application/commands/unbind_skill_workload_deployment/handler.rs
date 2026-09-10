@@ -1,6 +1,4 @@
 use super::UnbindSkillWorkloadDeployment;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
@@ -8,13 +6,13 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::application::{
     commands::{load_direct_workload_control, validate_secret_bindings},
     IWorkloadsSecretBindingAccess, UpdateWorkloadDeploymentResult, WorkloadResourceResolver,
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -180,21 +178,12 @@ impl CommandHandler<UnbindSkillWorkloadDeployment> for UnbindSkillWorkloadDeploy
                 OperationId::new(),
                 command.requested_at,
             );
-            let operation = OperationRequest::new(
+            let operation = WorkloadDeploymentOperationIntent::new(
                 deployment.operation_id,
                 workload.organization_id,
-                OperationSubject::new("deployment", deployment.id.as_uuid())
-                    .map_err(BootError::Internal)?,
-                WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)
-                    .map_err(BootError::Internal)?,
-                serde_json::json!({
-                    "deploymentId": deployment.id,
-                    "organizationId": workload.organization_id,
-                    "revisionId": revision.id,
-                    "skillAssetId": command.skill_asset_id,
-                    "skillBindingAction": "unbind",
-                    "workloadId": workload.id,
-                }),
+                deployment.id,
+                revision.id,
+                workload.id,
                 command.requested_at,
             );
             let event = DeploymentRequested::envelope(&deployment, &revision, command.request_id)

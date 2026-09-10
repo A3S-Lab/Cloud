@@ -30,6 +30,9 @@ use crate::modules::workloads::domain::repositories::{
 use crate::modules::workloads::domain::services::{
     plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
 };
+use crate::modules::workloads::infrastructure::{
+    compose_deployment_operation, compose_stop_operation,
+};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
@@ -317,6 +320,8 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             return Ok(response);
         }
         validate_bundle(&request)?;
+        let operation =
+            compose_deployment_operation(&request.operation).map_err(RepositoryError::Conflict)?;
         let desired_replicas = request.control.placement_policy.desired_replicas();
         if desired_replicas == 0 {
             return Err(RepositoryError::Conflict(
@@ -472,7 +477,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             workload,
             revision: request.revision,
             deployment: request.deployment,
-            operation: request.operation,
+            operation,
             replayed: false,
         };
         state
@@ -603,8 +608,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             .map_err(RepositoryError::Conflict)?;
         if expected != request.workload
             || request.operation.organization_id != request.workload.organization_id
-            || request.operation.subject.kind() != "workload"
-            || request.operation.subject.id() != request.workload.id.as_uuid()
+            || request.operation.workload_id != request.workload.id
             || request.operation.requested_at < request.workload.updated_at
             || request.event.organization_id() != Some(request.workload.organization_id.as_uuid())
             || request.event.aggregate_id != request.workload.id.as_uuid()
@@ -614,13 +618,15 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 "workload stop bundle is inconsistent with stored state".into(),
             ));
         }
+        let operation =
+            compose_stop_operation(&request.operation).map_err(RepositoryError::Conflict)?;
         state
             .workloads
             .insert(request.workload.id, request.workload.clone());
         state.outbox.push(request.event);
         let response = WorkloadStopBundle {
             workload: request.workload,
-            operation: request.operation,
+            operation,
             replayed: false,
         };
         state
@@ -2779,10 +2785,11 @@ fn validate_bundle(request: &CreateDeploymentBundle) -> Result<(), RepositoryErr
         || request.deployment.organization_id != request.workload.organization_id
         || request.deployment.workload_id != request.workload.id
         || request.deployment.revision_id != request.revision.id
-        || request.deployment.operation_id != request.operation.id
+        || request.deployment.operation_id != request.operation.operation_id
         || request.operation.organization_id != request.workload.organization_id
-        || request.operation.subject.kind() != "deployment"
-        || request.operation.subject.id() != request.deployment.id.as_uuid()
+        || request.operation.deployment_id != request.deployment.id
+        || request.operation.revision_id != request.revision.id
+        || request.operation.workload_id != request.workload.id
         || request
             .revision
             .external_build

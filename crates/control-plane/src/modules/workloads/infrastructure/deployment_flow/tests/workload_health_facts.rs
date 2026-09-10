@@ -19,7 +19,7 @@ async fn workload_repository_emits_bounded_rollout_health_facts_once(
     let repository = InMemoryWorkloadRepository::new();
 
     let first = deployment_bundle(workload.clone(), 1, '1', now, "rollout-health-1")?;
-    let first_operation_id = first.operation.id;
+    let first_operation_id = first.operation.operation_id;
     let first_deployment_id = first.deployment.id;
     let first_revision_id = first.revision.id;
     repository.create_deployment(first).await?;
@@ -52,7 +52,7 @@ async fn workload_repository_emits_bounded_rollout_health_facts_once(
         now + Duration::seconds(2),
         "rollout-health-2",
     )?;
-    let second_operation_id = second.operation.id;
+    let second_operation_id = second.operation.operation_id;
     let second_deployment_id = second.deployment.id;
     let second_revision_id = second.revision.id;
     repository.create_deployment(second).await?;

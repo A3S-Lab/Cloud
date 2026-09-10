@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 
 pub(super) fn runtime(
     workloads: &Arc<InMemoryWorkloadRepository>,
@@ -597,17 +598,12 @@ pub(super) fn deployment_bundle_with_template(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "organizationId": workload.organization_id,
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
@@ -643,18 +639,12 @@ pub(super) fn rollback_deployment_bundle(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "organizationId": workload.organization_id,
-            "revisionId": revision.id,
-            "rollbackSourceRevisionId": source_revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;
@@ -714,17 +704,12 @@ pub(super) fn requested_deployment_bundle_with_secrets(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "4")?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "organizationId": workload.organization_id,
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;

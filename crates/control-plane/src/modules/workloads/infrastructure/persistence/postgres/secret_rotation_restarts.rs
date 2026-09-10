@@ -7,15 +7,10 @@ use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, transaction_error, OutboxEvents,
     PostgresPersistenceError,
 };
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::secrets::domain::SecretChanged;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, IdempotencyRequest, OperationId, OrganizationId,
     RepositoryError, SecretId, WorkloadId, WorkloadRevisionId,
-};
-use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
@@ -23,6 +18,7 @@ use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, DeploymentBundle, SecretRotation, SecretRotationCompletion,
     SecretRotationReconciliation,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use a3s_orm::{
     bound, cast, count_all, exists, insert_into, not, select_from, select_from_as, sql_function,
     Database, Expression, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
@@ -245,27 +241,12 @@ async fn reconcile_in_transaction(
             OperationId::new(),
             requested_at,
         );
-        let operation = OperationRequest::new(
+        let operation = WorkloadDeploymentOperationIntent::new(
             deployment.operation_id,
             workload.organization_id,
-            OperationSubject::new("deployment", deployment.id.as_uuid()).map_err(|error| {
-                PostgresPersistenceError::Invariant(format!(
-                    "could not create Secret rotation operation subject: {error}"
-                ))
-            })?,
-            WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION).map_err(
-                |error| {
-                    PostgresPersistenceError::Invariant(format!(
-                        "could not create Secret rotation workflow identity: {error}"
-                    ))
-                },
-            )?,
-            serde_json::json!({
-                "deploymentId": deployment.id,
-                "organizationId": workload.organization_id,
-                "revisionId": revision.id,
-                "workloadId": workload.id,
-            }),
+            deployment.id,
+            revision.id,
+            workload.id,
             requested_at,
         );
         let canonical = serde_json::to_vec(&serde_json::json!({
