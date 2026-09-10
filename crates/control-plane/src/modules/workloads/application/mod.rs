@@ -10,6 +10,7 @@ mod runtime_execution_admission;
 mod runtime_projection;
 mod secret_binding_access;
 mod secret_materialization_authorization;
+mod skill_release_admission;
 mod workflow;
 
 #[cfg(test)]
@@ -75,6 +76,9 @@ pub use secret_materialization_authorization::{
     IWorkloadSecretMaterializationAuthorizationQueryPort,
     WorkloadSecretMaterializationAuthorizationQuery,
     WorkloadSecretMaterializationAuthorizationQueryService,
+};
+pub use skill_release_admission::{
+    IWorkloadSkillReleaseAdmissionPort, WorkloadSkillReleaseAdmissionRequest,
 };
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,

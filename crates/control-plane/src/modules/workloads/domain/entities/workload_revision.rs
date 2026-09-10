@@ -1,7 +1,7 @@
 use super::{SecretBinding, SecretBindingTarget, Workload};
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, AssetState,
-    McpServiceProfile, McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
+    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, McpServiceProfile,
+    McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
@@ -659,6 +659,83 @@ impl AgentReleaseAdmission {
     }
 }
 
+/// Workloads-owned Skill release admission.
+///
+/// Assets remains authoritative for Skill Asset and published bundle state.
+/// Workloads receives only the exact binding facts needed by its revision
+/// invariants, without importing Assets aggregates into Application handlers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillReleaseAdmission {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    published_at: DateTime<Utc>,
+    artifact_digest: Sha256Digest,
+    artifact_size_bytes: u64,
+}
+
+impl SkillReleaseAdmission {
+    pub fn new(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        published_at: DateTime<Utc>,
+        artifact_digest: Sha256Digest,
+        artifact_size_bytes: u64,
+    ) -> Result<Self, String> {
+        let admission = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            published_at: canonical_timestamp(published_at),
+            artifact_digest,
+            artifact_size_bytes,
+        };
+        admission.validate()?;
+        Ok(admission)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || self.published_at != canonical_timestamp(self.published_at)
+            || self.artifact_size_bytes == 0
+        {
+            return Err("Skill release admission identity is invalid".into());
+        }
+        if Sha256Digest::parse(self.artifact_digest.as_str())? != self.artifact_digest {
+            return Err("Skill release admission digest is invalid".into());
+        }
+        artifact_uri(self.artifact_digest.as_str())?;
+        Ok(())
+    }
+
+    pub const fn organization_id(&self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    pub const fn asset_release_id(&self) -> AssetReleaseId {
+        self.asset_release_id
+    }
+
+    pub const fn published_at(&self) -> DateTime<Utc> {
+        self.published_at
+    }
+
+    pub const fn artifact_digest(&self) -> &Sha256Digest {
+        &self.artifact_digest
+    }
+
+    pub const fn artifact_size_bytes(&self) -> u64 {
+        self.artifact_size_bytes
+    }
+}
+
 fn agent_release_process(manifest: &AgentReleaseManifest) -> ServiceProcess {
     ServiceProcess {
         command: vec![manifest.entrypoint().command().into()],
@@ -881,26 +958,22 @@ impl SkillWorkloadRevisionBinding {
         Ok(binding)
     }
 
-    fn from_release(
+    fn from_admission(
         workload: &Workload,
-        asset: &Asset,
-        release: &AssetRelease,
+        admission: &SkillReleaseAdmission,
     ) -> Result<Self, String> {
-        let artifact = release
-            .artifact
-            .as_ref()
-            .ok_or_else(|| "published Skill release omitted its bundle artifact".to_owned())?;
-        if artifact.kind() != AssetReleaseArtifactKind::SkillBundle
-            || artifact.media_type() != SKILL_BUNDLE_MEDIA_TYPE
-        {
-            return Err("Skill Workload input requires a Skill bundle release".into());
+        admission.validate()?;
+        if workload.organization_id != admission.organization_id {
+            return Err(
+                "Skill Workload input does not match its tenant or published release".into(),
+            );
         }
         Self::restore(
             workload.organization_id,
-            asset.id,
-            release.id,
-            artifact.digest().clone(),
-            artifact.size_bytes(),
+            admission.asset_id,
+            admission.asset_release_id,
+            admission.artifact_digest.clone(),
+            admission.artifact_size_bytes,
         )
     }
 
@@ -1321,33 +1394,26 @@ impl WorkloadRevision {
         generation: u64,
         created_at: DateTime<Utc>,
         workload: &Workload,
-        asset: &Asset,
-        release: &AssetRelease,
+        admission: &SkillReleaseAdmission,
     ) -> Result<Self, String> {
         self.validate_skill_bindings_for_workload(workload)?;
-        asset.validate()?;
-        release.validate_for(asset)?;
+        admission.validate()?;
         if self.workload_id != workload.id
-            || workload.organization_id != asset.organization_id
-            || asset.kind != AssetKind::Skill
-            || asset.state != AssetState::Active
-            || release.organization_id != workload.organization_id
-            || release.asset_id != asset.id
-            || release.state != AssetReleaseState::Published
-            || created_at < release.updated_at
+            || workload.organization_id != admission.organization_id
+            || created_at < admission.published_at
         {
             return Err(
                 "Skill Workload input does not match its tenant or published release".into(),
             );
         }
-        let binding = SkillWorkloadRevisionBinding::from_release(workload, asset, release)?;
-        if self.skill_binding(asset.id) == Some(&binding) {
+        let binding = SkillWorkloadRevisionBinding::from_admission(workload, admission)?;
+        if self.skill_binding(admission.asset_id) == Some(&binding) {
             return Err("Skill release is already bound to the active Workload revision".into());
         }
         let mut revision = self.copy_as(id, generation, created_at)?;
         match revision
             .skill_bindings
-            .binary_search_by_key(&asset.id, SkillWorkloadRevisionBinding::asset_id)
+            .binary_search_by_key(&admission.asset_id, SkillWorkloadRevisionBinding::asset_id)
         {
             Ok(index) => revision.skill_bindings[index] = binding,
             Err(index) => revision.skill_bindings.insert(index, binding),

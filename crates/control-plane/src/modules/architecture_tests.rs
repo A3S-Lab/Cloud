@@ -8687,8 +8687,8 @@ fn agents_isolate_operations_behind_owner_port() {
         );
     }
 
-    let adapter = std::fs::read_to_string(root.join(adapter_path))
-        .expect("read Agents operation adapter");
+    let adapter =
+        std::fs::read_to_string(root.join(adapter_path)).expect("read Agents operation adapter");
     let production_adapter = production_source(&adapter);
     let compact_adapter = production_adapter.split_whitespace().collect::<String>();
     for required in [
@@ -8790,10 +8790,9 @@ fn plugins_isolate_operations_behind_owner_port() {
         "Plugins must reach Operations through one Infrastructure adapter module"
     );
 
-    let reconciler = std::fs::read_to_string(
-        root.join("plugins/application/plugin_assignment_reconciler.rs"),
-    )
-    .expect("read Plugins reconciler");
+    let reconciler =
+        std::fs::read_to_string(root.join("plugins/application/plugin_assignment_reconciler.rs"))
+            .expect("read Plugins reconciler");
     let production_reconciler = production_source(&reconciler);
     let compact_reconciler = production_reconciler.split_whitespace().collect::<String>();
     for required in [
@@ -8819,8 +8818,8 @@ fn plugins_isolate_operations_behind_owner_port() {
         );
     }
 
-    let adapter = std::fs::read_to_string(root.join(adapter_path))
-        .expect("read Plugins operation adapter");
+    let adapter =
+        std::fs::read_to_string(root.join(adapter_path)).expect("read Plugins operation adapter");
     let production_adapter = production_source(&adapter);
     let compact_adapter = production_adapter.split_whitespace().collect::<String>();
     for required in [
@@ -10271,8 +10270,8 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
     let root = module_root();
 
     let port_path = "edge/application/mcp_service_profile_access.rs";
-    let port = std::fs::read_to_string(root.join(port_path))
-        .expect("read Edge MCP Service profile port");
+    let port =
+        std::fs::read_to_string(root.join(port_path)).expect("read Edge MCP Service profile port");
     let production_port = production_source(&port);
     let compact_port = production_port.split_whitespace().collect::<String>();
     for required in [
@@ -10307,10 +10306,7 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
             "MCP route policy service lost Edge MCP profile boundary {required}"
         );
     }
-    for forbidden in [
-        "IMcpServiceProfileRepository",
-        "find_mcp_service_profile",
-    ] {
+    for forbidden in ["IMcpServiceProfileRepository", "find_mcp_service_profile"] {
         assert!(
             !production_service.contains(forbidden),
             "MCP route policy service regained Assets repository authority {forbidden}"
@@ -10318,8 +10314,8 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
     }
 
     let adapter_path = "edge/infrastructure/assets_mcp_service_profile_access.rs";
-    let adapter = std::fs::read_to_string(root.join(adapter_path))
-        .expect("read Edge MCP profile adapter");
+    let adapter =
+        std::fs::read_to_string(root.join(adapter_path)).expect("read Edge MCP profile adapter");
     let compact_adapter = production_source(&adapter)
         .split_whitespace()
         .collect::<String>();
@@ -10578,6 +10574,108 @@ fn workloads_agent_release_admission_has_one_owner_port_and_one_cross_context_ad
             .count(),
         1,
         "composition must construct the Workloads release-admission adapter exactly once"
+    );
+}
+
+#[test]
+fn workloads_skill_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("workloads/application/skill_release_admission.rs"),
+    )
+    .expect("read Workloads Skill release-admission port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadSkillReleaseAdmissionRequest",
+        "pubtraitIWorkloadSkillReleaseAdmissionPort:Send+Sync",
+        "ApplicationResult<SkillReleaseAdmission>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads Skill release admission lost its consumer-owned contract {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::assets",
+        "IAssetRepository",
+        "DeployableSkillRelease",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !port.contains(forbidden),
+            "the Workloads-owned Skill release-admission port imported foreign or concrete authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        module_root()
+            .join("workloads/application/commands/bind_skill_workload_deployment/handler.rs"),
+    )
+    .expect("read Skill bind handler");
+    let production = production_source(&handler);
+    let compact = production.split_whitespace().collect::<String>();
+    assert!(
+        compact.contains("Arc<dynIWorkloadSkillReleaseAdmissionPort>")
+            && compact.contains(".admit(WorkloadSkillReleaseAdmissionRequest{"),
+        "Skill bind handler stopped entering release admission through the one Workloads-owned port"
+    );
+    for forbidden in [
+        "crate::modules::assets",
+        "IAssetRepository",
+        "DeployableSkillRelease",
+        "load_deployable_skill_release",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "Skill bind handler bypassed release admission with foreign authority {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/skill_release_admission.rs"),
+    )
+    .expect("read Workloads Skill release-admission adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "implIWorkloadSkillReleaseAdmissionPortforAssetsWorkloadSkillReleaseAdmissionAdapter",
+        "assets:Arc<dynIAssetRepository>",
+        "SkillReleaseAdmission::new(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "the sole Workloads Skill release-admission adapter lost boundary behavior {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "IIntegrationEventProjector",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "the Workloads Skill release-admission adapter introduced concrete state or lifecycle mechanism {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(
+        module_root()
+            .parent()
+            .expect("control-plane source root")
+            .join("app.rs"),
+    )
+    .expect("read control-plane composition root");
+    assert_eq!(
+        app.matches("AssetsWorkloadSkillReleaseAdmissionAdapter::new(")
+            .count(),
+        1,
+        "composition must construct the Workloads Skill release-admission adapter exactly once"
     );
 }
 

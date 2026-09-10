@@ -1,15 +1,14 @@
 use super::BindSkillWorkloadDeployment;
-use crate::modules::assets::domain::IAssetRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::commands::skill_release::load_deployable_skill_release;
 use crate::modules::workloads::application::{
     commands::{load_direct_workload_control, validate_secret_bindings},
-    IWorkloadsSecretBindingAccess, UpdateWorkloadDeploymentResult, WorkloadResourceResolver,
+    IWorkloadSkillReleaseAdmissionPort, IWorkloadsSecretBindingAccess,
+    UpdateWorkloadDeploymentResult, WorkloadResourceResolver, WorkloadSkillReleaseAdmissionRequest,
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
@@ -21,19 +20,19 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct BindSkillWorkloadDeploymentHandler {
-    assets: Arc<dyn IAssetRepository>,
+    skill_releases: Arc<dyn IWorkloadSkillReleaseAdmissionPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
 }
 
 impl BindSkillWorkloadDeploymentHandler {
     pub fn new(
-        assets: Arc<dyn IAssetRepository>,
+        skill_releases: Arc<dyn IWorkloadSkillReleaseAdmissionPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     ) -> Self {
         Self {
-            assets,
+            skill_releases,
             workloads,
             secrets,
         }
@@ -49,7 +48,7 @@ impl CommandHandler<BindSkillWorkloadDeployment> for BindSkillWorkloadDeployment
         'static,
         a3s_boot::Result<ApplicationResult<UpdateWorkloadDeploymentResult>>,
     > {
-        let assets = Arc::clone(&self.assets);
+        let skill_releases = Arc::clone(&self.skill_releases);
         let workloads = Arc::clone(&self.workloads);
         let resource_resolver = WorkloadResourceResolver::new(Arc::clone(&workloads));
         let secrets = Arc::clone(&self.secrets);
@@ -149,15 +148,15 @@ impl CommandHandler<BindSkillWorkloadDeployment> for BindSkillWorkloadDeployment
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            let deployable = match load_deployable_skill_release(
-                assets.as_ref(),
-                command.organization_id,
-                command.skill_asset_id,
-                command.skill_asset_release_id,
-            )
-            .await
+            let admission = match skill_releases
+                .admit(WorkloadSkillReleaseAdmissionRequest {
+                    organization_id: command.organization_id,
+                    asset_id: command.skill_asset_id,
+                    asset_release_id: command.skill_asset_release_id,
+                })
+                .await
             {
-                Ok(deployable) => deployable,
+                Ok(admission) => admission,
                 Err(error) => return Ok(Err(error)),
             };
             let generation = match workloads
@@ -182,8 +181,7 @@ impl CommandHandler<BindSkillWorkloadDeployment> for BindSkillWorkloadDeployment
                 generation,
                 command.requested_at,
                 &workload,
-                &deployable.asset,
-                &deployable.release,
+                &admission,
             ) {
                 Ok(revision) => revision,
                 Err(error) => return Ok(Err(ApplicationError::Conflict(error))),

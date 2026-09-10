@@ -99,6 +99,22 @@ fn agent_release_admission(
     .expect("Agent release admission")
 }
 
+fn skill_release_admission(asset: &Asset, release: &AssetRelease) -> SkillReleaseAdmission {
+    let artifact = release
+        .artifact
+        .as_ref()
+        .expect("published Skill bundle artifact");
+    SkillReleaseAdmission::new(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        release.updated_at,
+        artifact.digest().clone(),
+        artifact.size_bytes(),
+    )
+    .expect("Skill release admission")
+}
+
 fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedServiceTemplate {
     let template = template('a');
     RequestedServiceTemplate {
@@ -1389,6 +1405,8 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
     };
     let release_one = published_skill(&skill, "1.0.0", 'c', 100);
     let release_two = published_skill(&skill, "2.0.0", 'd', 200);
+    let admission_one = skill_release_admission(&skill, &release_one);
+    let admission_two = skill_release_admission(&skill, &release_two);
 
     let bound = revision
         .with_skill_release_as(
@@ -1396,8 +1414,7 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
             2,
             created_at + Duration::seconds(2),
             &workload,
-            &skill,
-            &release_one,
+            &admission_one,
         )
         .expect("bind Skill");
     let binding = bound.skill_binding(skill.id).expect("Skill binding");
@@ -1414,14 +1431,14 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
     )
     .expect("other Skill Asset");
     let other_release = published_skill(&other_skill, "1.0.0", 'f', 300);
+    let other_admission = skill_release_admission(&other_skill, &other_release);
     let multiply_bound = bound
         .with_skill_release_as(
             WorkloadRevisionId::new(),
             3,
             created_at + Duration::seconds(3),
             &workload,
-            &other_skill,
-            &other_release,
+            &other_admission,
         )
         .expect("bind other Skill");
     assert_eq!(multiply_bound.skill_bindings().len(), 2);
@@ -1436,8 +1453,7 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
             4,
             created_at + Duration::seconds(4),
             &workload,
-            &skill,
-            &release_two,
+            &admission_two,
         )
         .expect("replace Skill release");
     assert_eq!(
@@ -1482,18 +1498,22 @@ fn agent_revision_rebinds_immutable_skill_inputs_and_preserves_prior_rollback_st
     assert!(unbound.skill_binding(other_skill.id).is_some());
     assert!(rebound.skill_binding(skill.id).is_some());
 
-    let mut yanked = release_two;
-    yanked
-        .yank(created_at + Duration::seconds(4))
-        .expect("yank Skill");
+    let future_admission = SkillReleaseAdmission::new(
+        organization_id,
+        skill.id,
+        release_two.id,
+        created_at + Duration::seconds(10),
+        admission_two.artifact_digest().clone(),
+        admission_two.artifact_size_bytes(),
+    )
+    .expect("future Skill admission");
     assert!(revision
         .with_skill_release_as(
             WorkloadRevisionId::new(),
             7,
             created_at + Duration::seconds(7),
             &workload,
-            &skill,
-            &yanked,
+            &future_admission,
         )
         .is_err());
 }

@@ -8,9 +8,10 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::application::{
     commands::{validate_node_pool_selection, validate_secret_bindings},
-    CreateWorkloadDeploymentResult, IWorkloadAgentReleaseAdmissionPort, IWorkloadsEnvironmentAccess,
-    IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess, WorkloadAgentReleaseAdmissionRequest,
-    WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    CreateWorkloadDeploymentResult, IWorkloadAgentReleaseAdmissionPort,
+    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
+    WorkloadAgentReleaseAdmissionRequest, WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME,
+    DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadControlSpec, WorkloadRevision,

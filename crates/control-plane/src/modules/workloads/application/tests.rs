@@ -18,9 +18,6 @@ use crate::modules::fleet::domain::repositories::{INodePoolRepository, NodePoolW
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
-use crate::modules::workloads::{
-    AssetsWorkloadAgentReleaseAdmissionAdapter, IWorkloadAgentReleaseAdmissionPort,
-};
 use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
@@ -29,6 +26,10 @@ use crate::modules::shared_kernel::domain::{
     ResourceName, Sha256Digest,
 };
 use crate::modules::workloads::domain::entities::{ServicePort, ServiceProcess, ServiceResources};
+use crate::modules::workloads::{
+    AssetsWorkloadAgentReleaseAdmissionAdapter, AssetsWorkloadSkillReleaseAdmissionAdapter,
+    IWorkloadAgentReleaseAdmissionPort, IWorkloadSkillReleaseAdmissionPort,
+};
 use crate::modules::workloads::{
     FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository, InMemoryWorkloadRepository,
     ProjectsWorkloadsEnvironmentAccessAdapter, SecretsWorkloadsSecretBindingAccessAdapter,
@@ -95,11 +96,9 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> =
-        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
-            assets.clone(),
-            artifacts.clone(),
-        ));
+    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> = Arc::new(
+        AssetsWorkloadAgentReleaseAdmissionAdapter::new(assets.clone(), artifacts.clone()),
+    );
     let create_handler = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         Arc::clone(&agent_releases),
@@ -392,11 +391,12 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> =
-        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
-            agent_assets.clone(),
-            artifacts.clone(),
-        ));
+    let agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort> = Arc::new(
+        AssetsWorkloadAgentReleaseAdmissionAdapter::new(agent_assets.clone(), artifacts.clone()),
+    );
+    let skill_releases: Arc<dyn IWorkloadSkillReleaseAdmissionPort> = Arc::new(
+        AssetsWorkloadSkillReleaseAdmissionAdapter::new(skill_assets.clone()),
+    );
     let created = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         Arc::clone(&agent_releases),
@@ -435,7 +435,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     .await;
 
     let bind_handler = BindSkillWorkloadDeploymentHandler::new(
-        skill_assets.clone(),
+        skill_releases.clone(),
         workloads.clone(),
         secrets.clone(),
     );

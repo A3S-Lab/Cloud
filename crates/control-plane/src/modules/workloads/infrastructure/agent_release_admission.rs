@@ -1,5 +1,7 @@
 use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, DeployableAgentRelease, IAssetRepository};
+use crate::modules::assets::{
+    load_deployable_agent_release, DeployableAgentRelease, IAssetRepository,
+};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::workloads::application::{
     IWorkloadAgentReleaseAdmissionPort, WorkloadAgentReleaseAdmissionRequest,

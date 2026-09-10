@@ -348,22 +348,23 @@ use crate::modules::workloads::domain::services::{
     IDeploymentRouteUpdater, IOciArtifactResolver, IWorkloadPrestartGate,
 };
 use crate::modules::workloads::{
-    AssetsWorkloadAgentReleaseAdmissionAdapter, BindSkillWorkloadDeploymentHandler,
-    CancelDeploymentHandler, CreateAgentWorkloadDeploymentHandler,
-    CreateSourceWorkloadDeploymentHandler, CreateWorkloadDeploymentHandler, DeploymentFlowConfig,
-    DeploymentFlowDependencies, DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter,
-    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
+    AssetsWorkloadAgentReleaseAdmissionAdapter, AssetsWorkloadSkillReleaseAdmissionAdapter,
+    BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
+    CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
+    CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
+    GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort,
     IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
-    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
-    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    IWorkloadSkillReleaseAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
+    IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
+    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
     ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
     StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
     WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
-    WorkloadsModule, IWorkloadAgentReleaseAdmissionPort,
+    WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -2883,7 +2884,7 @@ fn build_management_application_with_health(
     let get_mcp_route_policies = mcp_route_policies;
     let workload_agent_release_assets = Arc::clone(&assets);
     let agent_release_admission_assets = Arc::clone(&assets);
-    let bind_skill_assets = assets;
+    let workload_skill_release_assets = assets;
     let select_asset_releases = asset_catalog;
     let enrollment_nodes = Arc::clone(&nodes);
     let rotation_nodes = Arc::clone(&nodes);
@@ -2961,6 +2962,9 @@ fn build_management_application_with_health(
             workload_agent_release_assets,
             Arc::clone(&hosted_artifacts),
         ));
+    let workload_skill_release_admissions: Arc<dyn IWorkloadSkillReleaseAdmissionPort> = Arc::new(
+        AssetsWorkloadSkillReleaseAdmissionAdapter::new(workload_skill_release_assets),
+    );
     let agent_release_admissions: Arc<dyn IAgentReleaseAdmissionPort> = Arc::new(
         AssetsAgentReleaseAdmissionAdapter::new(agent_release_admission_assets, hosted_artifacts),
     );
@@ -3680,7 +3684,7 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::workloads::BindSkillWorkloadDeployment, _>(
                     BindSkillWorkloadDeploymentHandler::new(
-                        bind_skill_assets,
+                        workload_skill_release_admissions,
                         bind_skill_workloads,
                         bind_skill_workload_secrets,
                     ),

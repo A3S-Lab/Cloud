@@ -11,6 +11,7 @@ pub(crate) mod replica_deployment_materialization;
 mod replica_retirement_reconciliation;
 mod secret_rotation_reconciliation;
 mod secrets_binding_access;
+mod skill_release_admission;
 
 pub use agent_release_admission::AssetsWorkloadAgentReleaseAdmissionAdapter;
 pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
@@ -48,3 +49,4 @@ pub use secret_rotation_reconciliation::{
     SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
 };
 pub use secrets_binding_access::SecretsWorkloadsSecretBindingAccessAdapter;
+pub use skill_release_admission::AssetsWorkloadSkillReleaseAdmissionAdapter;
