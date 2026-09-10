@@ -6,15 +6,15 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
-    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess, IIdentityNodeAccess,
-    IIdentityProjectAccess, IInferenceCredentialAclProjectionPort,
-    IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
-    IWorkloadRuntimeExecutionAuthorizationQueryPort, IdentityEnvironmentScope, IdentityNodeScope,
-    IdentityProjectScope, InferenceCredentialDeliveryReceiptSweeper,
-    InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
-    InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
-    RecipientContactVerificationDispatchResult, RecordWorkloadRuntimeEvidence,
-    WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
+    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess,
+    IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
+    IInferenceCredentialAclProjectionPort, IRecipientContactVerificationDispatcher,
+    IWorkloadRuntimeEvidenceCandidatePort, IWorkloadRuntimeExecutionAuthorizationQueryPort,
+    IdentityEnvironmentScope, IdentityNodeScope, IdentityProjectScope,
+    InferenceCredentialDeliveryReceiptSweeper, InferenceCredentialDeliveryResult,
+    InferenceCredentialEnvironmentScope, InferenceCredentialMutationResult,
+    RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
+    RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
     WorkloadRuntimeExecutionAuthorizationQuery, WorkloadRuntimeExecutionAuthorizationQueryService,
 };
 
@@ -159,6 +159,7 @@ pub use infrastructure::{
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
     IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
     ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
+    SecretsIdentityInferenceCredentialEncryptionAdapter,
     SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,

@@ -1,7 +1,7 @@
 use super::RotateInferenceKey;
 use crate::modules::identity::application::{
-    encrypt_inference_credential_delivery_receipt, recover_inference_credential_delivery,
-    IIdentityEnvironmentAccess, IdentityEnvironmentScope, InferenceCredentialDeliveryResult,
+    IIdentityEnvironmentAccess, IIdentityInferenceCredentialEncryption, IdentityEnvironmentScope,
+    InferenceCredentialDeliveryResult,
 };
 use crate::modules::identity::domain::events::InferenceCredentialChanged;
 use crate::modules::identity::domain::repositories::{
@@ -10,7 +10,6 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::infrastructure::{
     InferenceCredentialIssuanceError, InferenceCredentialIssuer,
 };
-use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -23,7 +22,7 @@ pub struct RotateInferenceKeyHandler {
     environments: Arc<dyn IIdentityEnvironmentAccess>,
     credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     issuer: InferenceCredentialIssuer,
-    encryption: Arc<dyn ISecretEncryptionService>,
+    encryption: Arc<dyn IIdentityInferenceCredentialEncryption>,
 }
 
 impl RotateInferenceKeyHandler {
@@ -31,7 +30,7 @@ impl RotateInferenceKeyHandler {
         environments: Arc<dyn IIdentityEnvironmentAccess>,
         credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
         issuer: InferenceCredentialIssuer,
-        encryption: Arc<dyn ISecretEncryptionService>,
+        encryption: Arc<dyn IIdentityInferenceCredentialEncryption>,
     ) -> Self {
         Self {
             environments,
@@ -106,12 +105,9 @@ impl CommandHandler<RotateInferenceKey> for RotateInferenceKeyHandler {
                 .await
             {
                 Ok(Some(write)) => {
-                    return Ok(recover_inference_credential_delivery(
-                        encryption.as_ref(),
-                        write,
-                        command.requested_at,
-                    )
-                    .await)
+                    return Ok(encryption
+                        .recover_delivery(write, command.requested_at)
+                        .await)
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -153,12 +149,9 @@ impl CommandHandler<RotateInferenceKey> for RotateInferenceKeyHandler {
                 ) {
                     return Ok(Err(ApplicationError::Invalid(error)));
                 }
-                let receipt = match encrypt_inference_credential_delivery_receipt(
-                    encryption.as_ref(),
-                    &candidate,
-                    secret.as_str(),
-                )
-                .await
+                let receipt = match encryption
+                    .encrypt_delivery_receipt(&candidate, secret.as_str())
+                    .await
                 {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
@@ -176,12 +169,9 @@ impl CommandHandler<RotateInferenceKey> for RotateInferenceKeyHandler {
                     .await
                 {
                     Ok(write) => {
-                        return Ok(recover_inference_credential_delivery(
-                            encryption.as_ref(),
-                            write,
-                            command.requested_at,
-                        )
-                        .await)
+                        return Ok(encryption
+                            .recover_delivery(write, command.requested_at)
+                            .await)
                     }
                     Err(error)
                         if identity_collision(&error) && attempt + 1 < MAX_IDENTITY_ATTEMPTS =>
@@ -241,6 +231,7 @@ mod tests {
     };
     use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
+    use crate::modules::identity::infrastructure::SecretsIdentityInferenceCredentialEncryptionAdapter;
     use crate::modules::secrets::domain::{
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
@@ -334,7 +325,9 @@ mod tests {
             Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
-            Arc::new(TestEncryption),
+            Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+                Arc::new(TestEncryption),
+            )),
         )
         .execute(
             CreateInferenceKey {
@@ -361,7 +354,9 @@ mod tests {
             Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
-            Arc::new(TestEncryption),
+            Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+                Arc::new(TestEncryption),
+            )),
         )
     }
 
@@ -511,7 +506,9 @@ mod tests {
             Arc::new(MissingEnvironmentAccess),
             Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
-            Arc::new(TestEncryption),
+            Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+                Arc::new(TestEncryption),
+            )),
         )
         .execute(
             rotate_command(&created, created.aggregate_version(), "rotate-missing-env"),

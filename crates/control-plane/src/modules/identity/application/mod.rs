@@ -4,6 +4,7 @@ mod empty_inference_credential_acl_projection;
 mod environment_access;
 mod inference_credential_delivery;
 mod inference_credential_delivery_receipt_sweeper;
+mod inference_credential_encryption;
 mod inference_credential_projection;
 mod membership_invitation_result;
 mod membership_result;
@@ -27,11 +28,11 @@ pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMember
 pub use empty_inference_credential_acl_projection::EmptyInferenceCredentialAclProjectionPort;
 pub use environment_access::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
 pub use inference_credential_delivery::{
-    encrypt_inference_credential_delivery_receipt, recover_inference_credential_delivery,
     InferenceCredentialDeliveryResult, InferenceCredentialMutationResult,
     INFERENCE_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
 };
 pub use inference_credential_delivery_receipt_sweeper::InferenceCredentialDeliveryReceiptSweeper;
+pub use inference_credential_encryption::IIdentityInferenceCredentialEncryption;
 pub use inference_credential_projection::{
     IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
 };

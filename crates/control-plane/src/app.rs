@@ -206,6 +206,7 @@ use crate::modules::identity::domain::value_objects::{
 };
 use crate::modules::identity::infrastructure::{
     ApiTokenVerifier, HmacRecipientContactProofService,
+    SecretsIdentityInferenceCredentialEncryptionAdapter,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     VaultRecipientContactProofService,
 };
@@ -225,20 +226,20 @@ use crate::modules::identity::{
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess, IIdentityNodeAccess,
-    IIdentityProjectAccess, IInferenceCredentialAclProjectionPort,
-    IdentityInferenceGrantCredentialAdmissionAdapter, IdentityModule, InferenceCredentialIssuer,
-    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler, ListInferenceKeysHandler,
-    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
-    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
-    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
-    OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
-    ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
-    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
-    RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
-    RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
-    RevokeTenantSupportGrantHandler, RotateInferenceKeyHandler,
-    SmtpRecipientContactVerificationDeliveryService,
+    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess,
+    IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
+    IInferenceCredentialAclProjectionPort, IdentityInferenceGrantCredentialAdmissionAdapter,
+    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
+    ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
+    ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
+    ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
+    ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
+    ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
+    ProposeTenantSupportGrantHandler, RecipientContactVerificationDeliveryDispatcher,
+    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RevokeMembershipHandler,
+    RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
+    RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
+    RotateInferenceKeyHandler, SmtpRecipientContactVerificationDeliveryService,
     WorkloadRuntimeExecutionAuthorizationQueryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
@@ -3056,8 +3057,11 @@ fn build_management_application_with_health(
     ));
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = Arc::clone(&secret_encryption);
-    let create_inference_key_encryption = Arc::clone(&secret_encryption);
-    let rotate_inference_key_encryption = Arc::clone(&secret_encryption);
+    let inference_key_encryption: Arc<dyn IIdentityInferenceCredentialEncryption> = Arc::new(
+        SecretsIdentityInferenceCredentialEncryptionAdapter::new(Arc::clone(&secret_encryption)),
+    );
+    let create_inference_key_encryption = Arc::clone(&inference_key_encryption);
+    let rotate_inference_key_encryption = inference_key_encryption;
     let mcp_credential_encryption: Arc<dyn IEdgeMcpCredentialEncryption> = Arc::new(
         SecretsEdgeMcpCredentialEncryptionAdapter::new(secret_encryption),
     );

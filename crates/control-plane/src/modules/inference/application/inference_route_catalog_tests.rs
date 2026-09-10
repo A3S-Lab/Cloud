@@ -626,6 +626,7 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::{
         InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuer,
+        SecretsIdentityInferenceCredentialEncryptionAdapter,
     };
     use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
     use crate::modules::secrets::domain::{
@@ -771,7 +772,9 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
         Arc::new(AlwaysPresentEnvironmentRepository),
         Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         InferenceCredentialIssuer::new(),
-        Arc::new(TestEncryption),
+        Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+            Arc::new(TestEncryption),
+        )),
     )
     .execute(
         CreateInferenceKey {
@@ -914,6 +917,7 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::{
         InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuer,
+        SecretsIdentityInferenceCredentialEncryptionAdapter,
     };
     use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
     use crate::modules::secrets::domain::{
@@ -1034,7 +1038,9 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
         Arc::new(AlwaysPresentEnvironmentRepository),
         Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         InferenceCredentialIssuer::new(),
-        Arc::new(TestEncryption),
+        Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+            Arc::new(TestEncryption),
+        )),
     )
     .execute(
         CreateInferenceKey {
@@ -1372,6 +1378,7 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::{
         InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuer,
+        SecretsIdentityInferenceCredentialEncryptionAdapter,
     };
     use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
     use crate::modules::secrets::domain::{
@@ -1492,7 +1499,9 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
         Arc::new(AlwaysPresentEnvironmentRepository),
         Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         InferenceCredentialIssuer::new(),
-        Arc::new(TestEncryption),
+        Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+            Arc::new(TestEncryption),
+        )),
     )
     .execute(
         CreateInferenceKey {
@@ -1597,7 +1606,9 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
         Arc::new(AlwaysPresentEnvironmentRepository),
         Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         InferenceCredentialIssuer::new(),
-        Arc::new(TestEncryption),
+        Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(
+            Arc::new(TestEncryption),
+        )),
     )
     .execute(
         RotateInferenceKey {

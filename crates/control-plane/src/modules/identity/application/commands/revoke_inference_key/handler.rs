@@ -170,7 +170,9 @@ mod tests {
     };
     use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
-    use crate::modules::identity::infrastructure::InferenceCredentialIssuer;
+    use crate::modules::identity::infrastructure::{
+        InferenceCredentialIssuer, SecretsIdentityInferenceCredentialEncryptionAdapter,
+    };
     use crate::modules::secrets::domain::{
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
@@ -291,7 +293,7 @@ mod tests {
             Arc::clone(credentials)
                 as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
-            Arc::new(TestEncryption),
+            Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(Arc::new(TestEncryption))),
         )
         .execute(
             CreateInferenceKey {
@@ -529,7 +531,7 @@ mod tests {
             Arc::clone(&credentials)
                 as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
-            Arc::new(TestEncryption),
+            Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(Arc::new(TestEncryption))),
         )
         .execute(
             CreateInferenceKey {
@@ -721,7 +723,7 @@ mod tests {
                 Arc::clone(&credentials)
                     as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
                 InferenceCredentialIssuer::new(),
-                Arc::new(TestEncryption),
+                Arc::new(SecretsIdentityInferenceCredentialEncryptionAdapter::new(Arc::new(TestEncryption))),
             )
             .execute(
                 CreateInferenceKey {
