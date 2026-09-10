@@ -1342,7 +1342,9 @@ evidence, and fenced release protocol.
   visibility (`ListInferenceKeys` / `GetInferenceKey` with
   `ResourceAccessEvaluator`); get-by-id admits restricted callers through
   deferred coarse scope then hides ungranted owning environments as
-  `NotFound`. Full worker publication and Cloud-certified billing tokenizer remain
+  `NotFound`. Empty credential ACL projection is certified to return no
+  credentials for any scopes; the Identity adapter still projects revoked
+  keys with `revoked = true` so Gateway can fail closed. Full worker publication and Cloud-certified billing tokenizer remain
   open (they require Power observation delivery and billing authority,
   not route catalog ownership). Cloud contracts now own the typed route/grant ACL projection
   compiler (`InferenceRouteAclProjection`,
