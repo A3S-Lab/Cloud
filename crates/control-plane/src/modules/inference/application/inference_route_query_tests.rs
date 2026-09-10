@@ -344,6 +344,41 @@ async fn ungranted_environment_fails_closed_as_not_found() {
 }
 
 #[tokio::test]
+async fn get_rejects_wrong_environment_path_as_not_found() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let get = GetInferenceRouteHandler::new(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let other_environment_id = EnvironmentId::new();
+    let published = publish_one(
+        &publish,
+        organization_id,
+        project_id,
+        environment_id,
+        "publish-get-wrong-env",
+    )
+    .await;
+
+    let denied = get
+        .execute(
+            GetInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id: other_environment_id,
+                route_id: published.id,
+                resource_access: org_wide(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(denied, ApplicationError::NotFound(_)));
+}
+
+#[tokio::test]
 async fn list_pages_by_route_id_cursor() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
