@@ -61,6 +61,11 @@ use crate::modules::identity::{
     IInferenceCredentialLifecycleRepository, IInferenceCredentialRepository,
     InferenceCredentialAclProjectionAdapter, PostgresIdentityRepository,
 };
+use crate::modules::inference::{
+    IInferenceRouteAclProjectionPort, IInferenceRouteRepository, IInferenceUsageRepository,
+    InferenceRouteAclProjectionAdapter, PostgresInferenceRouteRepository,
+    PostgresInferenceUsageRepository,
+};
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
@@ -128,6 +133,7 @@ impl PostgresAdapterFactory {
         ApiWorkerPostgresAdapters {
             automations: AutomationPostgresAdapters::new(self.executor.clone()),
             identity: IdentityPostgresAdapters::new(self.executor.clone()),
+            inference: InferencePostgresAdapters::new(self.executor.clone()),
             projects: ProjectPostgresAdapters::new(self.executor.clone()),
             workflow: WorkflowPostgresAdapters::new(self.executor.clone()),
             notifications: NotificationPostgresAdapters::new(self.executor.clone()),
@@ -241,6 +247,7 @@ impl ConnectorExecutionPostgresAdapters {
 pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) automations: AutomationPostgresAdapters,
     pub(super) identity: IdentityPostgresAdapters,
+    pub(super) inference: InferencePostgresAdapters,
     pub(super) projects: ProjectPostgresAdapters,
     pub(super) workflow: WorkflowPostgresAdapters,
     pub(super) notifications: NotificationPostgresAdapters,
@@ -434,6 +441,27 @@ impl IdentityPostgresAdapters {
             workload_identity_policies: repository,
             inference_credentials,
             inference_credential_acl_projections,
+        }
+    }
+}
+
+pub(super) struct InferencePostgresAdapters {
+    pub(super) usage: Arc<dyn IInferenceUsageRepository>,
+    pub(super) routes: Arc<dyn IInferenceRouteRepository>,
+    pub(super) route_acl_projections: Arc<dyn IInferenceRouteAclProjectionPort>,
+}
+
+impl InferencePostgresAdapters {
+    fn new(executor: PostgresExecutor) -> Self {
+        let routes = Arc::new(PostgresInferenceRouteRepository::new(executor.clone()));
+        let route_acl_projections: Arc<dyn IInferenceRouteAclProjectionPort> =
+            Arc::new(InferenceRouteAclProjectionAdapter::new(
+                routes.clone() as Arc<dyn IInferenceRouteRepository>,
+            ));
+        Self {
+            usage: Arc::new(PostgresInferenceUsageRepository::new(executor)),
+            routes,
+            route_acl_projections,
         }
     }
 }

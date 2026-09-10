@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 196;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "196";
+pub const CLOUD_MIGRATION_COUNT: i64 = 198;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "198";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1775,6 +1775,22 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/196_inference_credentials.sql"
+            )),
+        ),
+        Migration::new(
+            "197",
+            "Identity inference credential delivery receipts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/197_inference_credential_delivery_receipts.sql"
+            )),
+        ),
+        Migration::new(
+            "198",
+            "Inference route catalog",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/198_inference_routes.sql"
             )),
         ),
     ]

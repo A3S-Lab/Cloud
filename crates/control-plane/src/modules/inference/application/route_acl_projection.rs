@@ -52,8 +52,8 @@ impl InferenceRouteEnvironmentScope {
 
 /// Inference-owned projection port for managed Gateway inference route ACL.
 ///
-/// Until durable catalog/route authority lands, production may wire an empty
-/// adapter. Edge must never invent catalog or worker facts.
+/// Postgres composition wires a durable catalog adapter. Empty remains for
+/// unit fixtures and non-Postgres test composition only.
 #[async_trait]
 pub trait IInferenceRouteAclProjectionPort: Send + Sync {
     async fn list_inference_route_acl_projections(

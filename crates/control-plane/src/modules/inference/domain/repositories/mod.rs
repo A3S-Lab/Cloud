@@ -9,6 +9,13 @@ use a3s_cloud_contracts::{InferenceUsageBatchV1, InferenceUsageReceiptV1};
 use async_trait::async_trait;
 use chrono::{DateTime, NaiveDate, Utc};
 
+mod inference_route_repository;
+
+pub use inference_route_repository::{
+    InferenceRouteWriteReference, PublishInferenceRouteWrite, RetireInferenceRouteWrite,
+    IInferenceRouteRepository, INFERENCE_ROUTE_REPOSITORY,
+};
+
 /// Authenticated write of one Gateway usage batch into the Inference ledger.
 #[derive(Debug, Clone)]
 pub struct AcceptInferenceUsageBatchWrite {

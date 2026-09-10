@@ -327,6 +327,8 @@ fn postgres_repositories_have_one_typed_composition_boundary() {
     let adapters = include_str!("../postgres_adapters.rs");
     let repositories = [
         "PostgresIdentityRepository",
+        "PostgresInferenceRouteRepository",
+        "PostgresInferenceUsageRepository",
         "PostgresProjectsRepository",
         "PostgresOntologyRepository",
         "PostgresWorkflowDefinitionRepository",

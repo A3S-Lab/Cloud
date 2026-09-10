@@ -11,3 +11,7 @@ pub use queries::*;
 pub use route_acl_projection::{
     IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
 };
+
+#[cfg(test)]
+#[path = "inference_route_catalog_tests.rs"]
+mod inference_route_catalog_tests;

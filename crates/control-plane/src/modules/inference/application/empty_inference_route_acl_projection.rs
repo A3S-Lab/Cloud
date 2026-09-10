@@ -1,4 +1,4 @@
-//! Empty Inference route ACL projection until catalog authority is published.
+//! Empty Inference route ACL projection for unit fixtures and non-Postgres tests.
 
 use super::{IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope};
 use crate::modules::shared_kernel::domain::RepositoryError;

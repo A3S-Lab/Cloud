@@ -1338,9 +1338,9 @@ evidence, and fenced release protocol.
   `IInferenceCredentialAclProjectionPort`; Edge managed publication paths
   (cutover, certificate convergence, MCP desired-state, route rollout,
   rollback) load those projections before compile and never store secrets.
-  Full route/worker publication and Cloud-certified billing tokenizer remain
-  open (they require Inference catalog/route authority, not credential
-  ownership). Cloud contracts now own the typed route/grant ACL projection
+  Full worker publication and Cloud-certified billing tokenizer remain
+  open (they require Power observation delivery and billing authority,
+  not route catalog ownership). Cloud contracts now own the typed route/grant ACL projection
   compiler (`InferenceRouteAclProjection`,
   `render_inference_policy_acl_with_routes`) that emits Gateway-compatible
   `routes` / `models` / `targets` / `grants` / `limits` bytes with
@@ -1348,9 +1348,12 @@ evidence, and fenced release protocol.
   worker ACL projection compiler (`InferenceWorkerAclProjection`,
   `render_inference_policy_acl_with_routes_and_workers`) that emits
   Gateway-compatible `workers` blocks with Power observation integrity,
-  freshness, and route-target binding. Inference now owns
-  `IInferenceRouteAclProjectionPort` (with `EmptyInferenceRouteAclProjectionPort`
-  until durable catalog authority lands); Edge loaders on managed publication
+  freshness, and route-target binding. Inference now owns durable route
+  catalog authority (migration `198`, `InferenceRoute` publish/revise/retire,
+  Postgres/in-memory repositories) and exposes
+  `IInferenceRouteAclProjectionPort` via `InferenceRouteAclProjectionAdapter`
+  on Postgres composition; `EmptyInferenceRouteAclProjectionPort` remains only
+  for unit fixtures and non-Postgres tests. Edge loaders on managed publication
   paths (cutover, certificate convergence, MCP desired-state, route rollout,
   rollback) accept and forward those projections into
   `GatewaySnapshotCompiler` without inventing catalog facts. Workers remain

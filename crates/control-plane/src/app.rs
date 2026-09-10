@@ -644,9 +644,10 @@ async fn build_api_worker_application(
     let inference_credentials = adapters.identity.inference_credentials;
     let inference_credential_acl_projections =
         adapters.identity.inference_credential_acl_projections;
-    let inference_route_acl_projections: Arc<
-        dyn crate::modules::inference::IInferenceRouteAclProjectionPort,
-    > = Arc::new(crate::modules::inference::EmptyInferenceRouteAclProjectionPort);
+    let inference_usage = adapters.inference.usage;
+    let inference_routes = adapters.inference.routes;
+    let inference_route_acl_projections = adapters.inference.route_acl_projections;
+    let _ = &inference_routes;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -724,9 +725,6 @@ async fn build_api_worker_application(
     let secret_rotation_restarts = adapters.workloads.secret_rotation_restarts;
     let resource_claims = adapters.workloads.resource_claims;
     let routes = adapters.edge.routes;
-    let inference_usage: Arc<dyn crate::modules::inference::IInferenceUsageRepository> = Arc::new(
-        crate::modules::inference::PostgresInferenceUsageRepository::new(executor.clone()),
-    );
     let mcp_credentials = adapters.edge.mcp_credentials;
     let mcp_credential_reader = adapters.edge.mcp_credential_reader;
     let mcp_route_policy_repository = adapters.edge.mcp_route_policies;
