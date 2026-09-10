@@ -2,12 +2,11 @@ use super::*;
 use crate::infrastructure::{ImmutableObjectClient, BOUNDED_STEP_RETRY_PATCH_ID};
 use crate::modules::data::application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
-    ObjectNamespaceAccess, ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
-    ObjectNamespaceRecoveryStore, RestoreObjectNamespaceOperationInput,
-    RestoreObjectNamespaceOperationOutput, SealObjectNamespaceOperationInput,
-    SealObjectNamespaceOperationOutput, OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME,
-    OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME,
-    OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
+    ObjectNamespaceAccess, ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryStore,
+    RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
+    SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
+    OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
+    OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
 };
 use crate::modules::data::domain::{
     IObjectNamespace, ObjectNamespaceCredentialBinding, ObjectNamespaceCredentialBindingSpec,
@@ -15,6 +14,7 @@ use crate::modules::data::domain::{
     ObjectNamespaceProviderProfile, ObjectNamespaceProviderProfileSpec, ObjectNamespaceRestorePlan,
     ObjectNamespaceRetentionPolicy, ObjectNamespaceRetentionPolicySpec,
 };
+use crate::modules::data::infrastructure::ObjectNamespaceRecoveryOperationRequest;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, OperationId, OrganizationId, ProjectId, SecretId,
     SecretVersionReference, Sha256Digest, StorageNamespaceId,

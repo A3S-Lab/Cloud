@@ -6,8 +6,7 @@ pub use application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
     MaterializedObjectNamespaceCredentials, ObjectNamespaceAccess, ObjectNamespaceConformanceProbe,
     ObjectNamespaceCredentialAdmission, ObjectNamespaceCredentialMaterializer,
-    ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryExecutor,
-    ObjectNamespaceRecoveryOperationRequest, ObjectNamespaceRecoveryStore,
+    ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryExecutor, ObjectNamespaceRecoveryStore,
     RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
     SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
     OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
@@ -26,3 +25,4 @@ pub use domain::{
 pub(crate) use infrastructure::object_namespace_recovery_flow_step_names;
 pub(crate) use infrastructure::object_namespace_recovery_flow_workflow_identities;
 pub(crate) use infrastructure::ObjectNamespaceRecoveryFlowRuntime;
+pub use infrastructure::ObjectNamespaceRecoveryOperationRequest;

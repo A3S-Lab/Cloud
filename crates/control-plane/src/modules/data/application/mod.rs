@@ -19,9 +19,9 @@ pub(crate) use object_namespace_recovery::{
 pub(crate) use object_namespace_recovery_operation::LEGACY_OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION;
 pub use object_namespace_recovery_operation::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
-    ObjectNamespaceFlowBinding, ObjectNamespaceRecoveryOperationRequest,
-    RestoreObjectNamespaceOperationInput, RestoreObjectNamespaceOperationOutput,
-    SealObjectNamespaceOperationInput, SealObjectNamespaceOperationOutput,
-    OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME, OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION,
-    OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME, OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
+    ObjectNamespaceFlowBinding, RestoreObjectNamespaceOperationInput,
+    RestoreObjectNamespaceOperationOutput, SealObjectNamespaceOperationInput,
+    SealObjectNamespaceOperationOutput, OBJECT_NAMESPACE_DELETE_WORKFLOW_NAME,
+    OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION, OBJECT_NAMESPACE_RESTORE_WORKFLOW_NAME,
+    OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME,
 };

@@ -10536,6 +10536,59 @@ fn identity_inference_credentials_isolate_secrets_encryption_behind_one_owner_po
 }
 
 #[test]
+fn data_recovery_operations_compose_behind_one_infrastructure_builder() {
+    let root = module_root();
+
+    let application = std::fs::read_to_string(
+        root.join("data/application/object_namespace_recovery_operation.rs"),
+    )
+    .expect("read Data recovery operation application types");
+    let production_application = production_source(&application);
+    for forbidden in [
+        "crate::modules::operations",
+        "OperationRequest",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "ObjectNamespaceRecoveryOperationRequest",
+    ] {
+        assert!(
+            !production_application.contains(forbidden),
+            "Data recovery application types regained Operations construction {forbidden}"
+        );
+    }
+    for required in [
+        "SealObjectNamespaceOperationInput",
+        "RestoreObjectNamespaceOperationInput",
+        "DeleteObjectNamespaceOperationInput",
+        "OBJECT_NAMESPACE_SEAL_WORKFLOW_NAME",
+    ] {
+        assert!(
+            production_application.contains(required),
+            "Data recovery application types lost owned input contract {required}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("data/infrastructure/object_namespace_recovery_operation.rs"),
+    )
+    .expect("read Data recovery operation builder");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructObjectNamespaceRecoveryOperationRequest",
+        "OperationRequest::new(",
+        "OperationSubject::new(\"storage_namespace\"",
+        "OBJECT_NAMESPACE_RECOVERY_WORKFLOW_VERSION",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Data recovery operation builder lost boundary behavior {required}"
+        );
+    }
+}
+
+#[test]
 fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("agents/application/agent_release_admission.rs"),
