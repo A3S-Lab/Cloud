@@ -2,20 +2,20 @@ use super::{CreateExecutionCommand, CreateExecutionResult};
 use crate::modules::executions::application::execution_creator::{
     ExecutionCreation, ExecutionCreator,
 };
+use crate::modules::executions::application::IExecutionsEnvironmentAccess;
 use crate::modules::executions::domain::IExecutionRepository;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CreateExecutionHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IExecutionsEnvironmentAccess>,
     executions: Arc<dyn IExecutionRepository>,
 }
 
 impl CreateExecutionHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IExecutionsEnvironmentAccess>,
         executions: Arc<dyn IExecutionRepository>,
     ) -> Self {
         Self {

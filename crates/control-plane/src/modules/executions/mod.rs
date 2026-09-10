@@ -7,9 +7,10 @@ pub use application::{
     CancelExecution, CancelExecutionHandler, CancelExecutionResult, CreateExecutionCommand,
     CreateExecutionHandler, CreateExecutionResult, CreateExecutionTemplateCommand,
     CreateExecutionTemplateHandler, CreateExecutionTemplateResult, ExecutionReconcileReport,
-    ExecutionReconciler, GetExecution, GetExecutionHandler, GetExecutionTemplate,
-    GetExecutionTemplateHandler, IWorkflowExecutionPort, ListExecutionTemplates,
-    ListExecutionTemplatesHandler, ListExecutions, ListExecutionsHandler,
+    ExecutionReconciler, ExecutionsEnvironmentScope, ExecutionsProjectScope, GetExecution,
+    GetExecutionHandler, GetExecutionTemplate, GetExecutionTemplateHandler,
+    IExecutionsEnvironmentAccess, IExecutionsProjectAccess, IWorkflowExecutionPort,
+    ListExecutionTemplates, ListExecutionTemplatesHandler, ListExecutions, ListExecutionsHandler,
     WorkflowExecutionApplicationService, WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME,
     EXECUTION_WORKFLOW_VERSION,
 };
@@ -25,6 +26,7 @@ pub use infrastructure::{
     project_execution_task, ExecutionFlowConfig, ExecutionFlowConfigOptions, ExecutionFlowRuntime,
     ExecutionFlowRuntimeDependencies, InMemoryExecutionRepository,
     InMemoryExecutionTemplateRepository, PostgresExecutionRepository,
-    PostgresExecutionTemplateRepository,
+    PostgresExecutionTemplateRepository, ProjectsExecutionsEnvironmentAccessAdapter,
+    ProjectsExecutionsProjectAccessAdapter,
 };
 pub use presentation::ExecutionsModule;

@@ -1,10 +1,12 @@
 use super::CreateExecutionResult;
+use crate::modules::executions::application::{
+    ExecutionsEnvironmentScope, IExecutionsEnvironmentAccess,
+};
 use crate::modules::executions::domain::events::ExecutionRequested;
 use crate::modules::executions::domain::{
     CreateExecution, Execution, ExecutionTaskPolicy, ExecutionTemplate, IExecutionRepository,
     WorkflowExecutionBinding,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, IdempotencyRequest, NodeId, OrganizationId, ProjectId,
@@ -45,13 +47,13 @@ pub(crate) struct BoundExecutionCreation {
 
 #[derive(Clone)]
 pub(crate) struct ExecutionCreator {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IExecutionsEnvironmentAccess>,
     executions: Arc<dyn IExecutionRepository>,
 }
 
 impl ExecutionCreator {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IExecutionsEnvironmentAccess>,
         executions: Arc<dyn IExecutionRepository>,
     ) -> Self {
         Self {
@@ -64,19 +66,12 @@ impl ExecutionCreator {
         &self,
         request: ExecutionCreation,
     ) -> ApplicationResult<CreateExecutionResult> {
-        match self
-            .environments
-            .find(
-                request.organization_id,
-                request.project_id,
-                request.environment_id,
-            )
-            .await
-        {
-            Ok(Some(_)) => {}
-            Ok(None) => return Err(ApplicationError::NotFound("environment not found".into())),
-            Err(error) => return Err(error.into()),
-        }
+        self.require_environment(
+            request.organization_id,
+            request.project_id,
+            request.environment_id,
+        )
+        .await?;
         request
             .template
             .validate()
@@ -207,13 +202,11 @@ impl ExecutionCreator {
         project_id: ProjectId,
         environment_id: EnvironmentId,
     ) -> ApplicationResult<()> {
-        match self
-            .environments
-            .find(organization_id, project_id, environment_id)
-            .await
-        {
-            Ok(Some(_)) => Ok(()),
-            Ok(None) => Err(ApplicationError::NotFound("environment not found".into())),
+        let scope = ExecutionsEnvironmentScope::new(organization_id, project_id, environment_id)
+            .map_err(ApplicationError::Invalid)?;
+        match self.environments.environment_exists(scope).await {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(ApplicationError::NotFound("environment not found".into())),
             Err(error) => Err(error.into()),
         }
     }

@@ -155,8 +155,10 @@ use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
     ExecutionFlowRuntime, ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule,
     GetExecutionHandler, GetExecutionTemplateHandler, IExecutionRepository,
-    IExecutionTemplateRepository, IWorkflowExecutionPort, ListExecutionTemplatesHandler,
-    ListExecutionsHandler, WorkflowExecutionApplicationService,
+    IExecutionTemplateRepository, IExecutionsEnvironmentAccess, IExecutionsProjectAccess,
+    IWorkflowExecutionPort, ListExecutionTemplatesHandler, ListExecutionsHandler,
+    ProjectsExecutionsEnvironmentAccessAdapter, ProjectsExecutionsProjectAccessAdapter,
+    WorkflowExecutionApplicationService,
 };
 use crate::modules::files::{
     ExpireUserFileUploadHandler, FilesModule, GetUserFileHandler, GetUserFileQuotaHandler,
@@ -663,6 +665,9 @@ async fn build_api_worker_application(
     let agents_environments: Arc<dyn IAgentsEnvironmentAccess> = Arc::new(
         ProjectsAgentsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
+    let executions_environments: Arc<dyn IExecutionsEnvironmentAccess> = Arc::new(
+        ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let ontologies = adapters.workflow.ontologies;
     let workflow_definitions = adapters.workflow.workflow_definitions;
     let workflow_goals = adapters.workflow.workflow_goals;
@@ -713,7 +718,7 @@ async fn build_api_worker_application(
     let executions = adapters.executions;
     let durable_cell_executions: Arc<dyn IDurableCellExecutionPort> =
         Arc::new(ExecutionsDurableCellExecutionAdapter::new(
-            Arc::clone(&environments),
+            Arc::clone(&executions_environments),
             Arc::clone(&executions),
         ));
     let execution_templates = adapters.execution_templates;
@@ -1307,10 +1312,9 @@ async fn build_api_worker_application(
             .as_ref()
             .map(|engine| Arc::new(WorkflowRunVariableReader::new(engine.clone())) as Arc<_>);
     let worker_workflow = if let Some(flow) = flow.as_ref() {
-        let workflow_execution_environments = Arc::clone(&environments);
         let workflow_execution_port: Arc<dyn IWorkflowExecutionPort> =
             Arc::new(WorkflowExecutionApplicationService::new(
-                workflow_execution_environments,
+                Arc::clone(&executions_environments),
                 Arc::clone(&execution_templates),
                 Arc::clone(&executions),
             ));
@@ -2937,7 +2941,9 @@ fn build_management_application_with_health(
         AssetsAgentReleaseAdmissionAdapter::new(agent_release_admission_assets, hosted_artifacts),
     );
     let source_workload_builds = builds;
-    let execution_environments = Arc::clone(&environments);
+    let execution_environments: Arc<dyn IExecutionsEnvironmentAccess> = Arc::new(
+        ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let inference_key_environments = Arc::clone(&identity_environments);
     let rotate_inference_key_environments = Arc::clone(&identity_environments);
     let revoke_inference_key_environments = Arc::clone(&identity_environments);
@@ -2955,8 +2961,10 @@ fn build_management_application_with_health(
     let list_inference_routes = Arc::clone(&inference_routes);
     let get_inference_routes = Arc::clone(&inference_routes);
     let retire_inference_routes = inference_routes;
-    let create_execution_template_projects = Arc::clone(&projects);
-    let list_execution_template_projects = Arc::clone(&projects);
+    let create_execution_template_projects: Arc<dyn IExecutionsProjectAccess> = Arc::new(
+        ProjectsExecutionsProjectAccessAdapter::new(Arc::clone(&projects)),
+    );
+    let list_execution_template_projects = Arc::clone(&create_execution_template_projects);
     let create_execution_templates = Arc::clone(&execution_templates);
     let list_execution_templates = Arc::clone(&execution_templates);
     let get_execution_templates = execution_templates;

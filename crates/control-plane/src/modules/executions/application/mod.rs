@@ -1,9 +1,11 @@
 pub mod commands;
 pub mod queries;
 
+mod environment_access;
 mod execution_cancellation;
 mod execution_creator;
 mod execution_reconciler;
+mod project_access;
 pub(crate) mod resource_access;
 mod workflow_execution_port;
 
@@ -17,10 +19,12 @@ pub use commands::{
     CreateExecutionHandler, CreateExecutionResult, CreateExecutionTemplateCommand,
     CreateExecutionTemplateHandler, CreateExecutionTemplateResult,
 };
+pub use environment_access::{ExecutionsEnvironmentScope, IExecutionsEnvironmentAccess};
 pub use execution_reconciler::{
     ExecutionReconcileReport, ExecutionReconciler, EXECUTION_WORKFLOW_NAME,
     EXECUTION_WORKFLOW_VERSION,
 };
+pub use project_access::{ExecutionsProjectScope, IExecutionsProjectAccess};
 pub use queries::{
     GetExecution, GetExecutionHandler, GetExecutionTemplate, GetExecutionTemplateHandler,
     ListExecutionTemplates, ListExecutionTemplatesHandler, ListExecutions, ListExecutionsHandler,

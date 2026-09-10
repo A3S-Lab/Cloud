@@ -1,5 +1,5 @@
+use crate::modules::executions::application::{ExecutionsProjectScope, IExecutionsProjectAccess};
 use crate::modules::executions::domain::{ExecutionTemplateRevision, IExecutionTemplateRepository};
-use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ExecutionTemplateId, ExecutionTemplateRevisionId, OrganizationId, ProjectId,
@@ -69,13 +69,13 @@ impl Query for ListExecutionTemplates {
 }
 
 pub struct ListExecutionTemplatesHandler {
-    projects: Arc<dyn IProjectRepository>,
+    projects: Arc<dyn IExecutionsProjectAccess>,
     templates: Arc<dyn IExecutionTemplateRepository>,
 }
 
 impl ListExecutionTemplatesHandler {
     pub fn new(
-        projects: Arc<dyn IProjectRepository>,
+        projects: Arc<dyn IExecutionsProjectAccess>,
         templates: Arc<dyn IExecutionTemplateRepository>,
     ) -> Self {
         Self {
@@ -97,9 +97,16 @@ impl QueryHandler<ListExecutionTemplates> for ListExecutionTemplatesHandler {
         let projects = Arc::clone(&self.projects);
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
-            match projects.find(query.organization_id, query.project_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+            let project_scope =
+                match ExecutionsProjectScope::new(query.organization_id, query.project_id) {
+                    Ok(scope) => scope,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+            match projects.project_exists(project_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                }
                 Err(error) => return Ok(Err(error.into())),
             }
             match templates

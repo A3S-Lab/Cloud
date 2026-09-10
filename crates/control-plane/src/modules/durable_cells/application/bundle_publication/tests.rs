@@ -36,6 +36,7 @@ use crate::modules::durable_cells::{
 };
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
+use crate::modules::executions::ProjectsExecutionsEnvironmentAccessAdapter;
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRequest, OperationStatus,
 };
@@ -69,7 +70,8 @@ fn execution_port(
     executions: Arc<InMemoryExecutionRepository>,
 ) -> Arc<dyn IDurableCellExecutionPort> {
     Arc::new(ExecutionsDurableCellExecutionAdapter::new(
-        projects, executions,
+        Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(projects)),
+        executions,
     ))
 }
 

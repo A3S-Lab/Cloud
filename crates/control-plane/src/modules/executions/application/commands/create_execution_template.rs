@@ -1,9 +1,9 @@
+use crate::modules::executions::application::{ExecutionsProjectScope, IExecutionsProjectAccess};
 use crate::modules::executions::domain::events::ExecutionTemplatePublished;
 use crate::modules::executions::domain::{
     CreateExecutionTemplateRevision, ExecutionTemplateDefinition, ExecutionTemplateRevision,
     IExecutionTemplateRepository,
 };
-use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ExecutionTemplateId, ExecutionTemplateRevisionId, IdempotencyRequest, OrganizationId,
@@ -37,13 +37,13 @@ pub struct CreateExecutionTemplateResult {
 }
 
 pub struct CreateExecutionTemplateHandler {
-    projects: Arc<dyn IProjectRepository>,
+    projects: Arc<dyn IExecutionsProjectAccess>,
     templates: Arc<dyn IExecutionTemplateRepository>,
 }
 
 impl CreateExecutionTemplateHandler {
     pub fn new(
-        projects: Arc<dyn IProjectRepository>,
+        projects: Arc<dyn IExecutionsProjectAccess>,
         templates: Arc<dyn IExecutionTemplateRepository>,
     ) -> Self {
         Self {
@@ -65,12 +65,16 @@ impl CommandHandler<CreateExecutionTemplateCommand> for CreateExecutionTemplateH
         let projects = Arc::clone(&self.projects);
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
-            match projects
-                .find(command.organization_id, command.project_id)
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+            let project_scope =
+                match ExecutionsProjectScope::new(command.organization_id, command.project_id) {
+                    Ok(scope) => scope,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+            match projects.project_exists(project_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                }
                 Err(error) => return Ok(Err(error.into())),
             }
             let definition = match ExecutionTemplateDefinition::parse_acl(&command.definition_acl) {

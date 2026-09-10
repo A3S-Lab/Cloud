@@ -1,8 +1,8 @@
 use super::{
     CancelExecution, CancelExecutionHandler, CreateExecutionCommand, CreateExecutionHandler,
-    ExecutionReconciler, GetExecution, GetExecutionHandler, IWorkflowExecutionPort,
-    WorkflowExecutionApplicationService, WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME,
-    EXECUTION_WORKFLOW_VERSION,
+    ExecutionReconciler, GetExecution, GetExecutionHandler, IExecutionsEnvironmentAccess,
+    IWorkflowExecutionPort, WorkflowExecutionApplicationService, WorkflowExecutionRequest,
+    EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::executions::domain::events::{ExecutionRequested, ExecutionTemplatePublished};
 use crate::modules::executions::domain::{
@@ -15,6 +15,7 @@ use crate::modules::executions::domain::{
 };
 use crate::modules::executions::infrastructure::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
+    ProjectsExecutionsEnvironmentAccessAdapter,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -119,7 +120,7 @@ async fn environment() -> (
     OrganizationId,
     ProjectId,
     EnvironmentId,
-    Arc<InMemoryProjectsRepository>,
+    Arc<dyn IExecutionsEnvironmentAccess>,
 ) {
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -155,7 +156,12 @@ async fn environment() -> (
         )
         .await
         .expect("create environment");
-    (organization_id, project_id, environment_id, repository)
+    (
+        organization_id,
+        project_id,
+        environment_id,
+        Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(repository)),
+    )
 }
 
 async fn publish_execution_template(
@@ -502,7 +508,10 @@ async fn reconciler_enqueues_the_versioned_execution_workflow_once() {
 #[tokio::test]
 async fn create_requires_an_existing_environment() {
     let executions: Arc<dyn IExecutionRepository> = Arc::new(InMemoryExecutionRepository::new());
-    let environments: Arc<dyn IEnvironmentRepository> = Arc::new(InMemoryProjectsRepository::new());
+    let environments: Arc<dyn IExecutionsEnvironmentAccess> =
+        Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::new(
+            InMemoryProjectsRepository::new(),
+        )));
     let result = CreateExecutionHandler::new(environments, executions)
         .execute(
             CreateExecutionCommand {

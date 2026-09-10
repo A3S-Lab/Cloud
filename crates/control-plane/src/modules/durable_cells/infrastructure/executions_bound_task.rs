@@ -6,14 +6,13 @@ use crate::modules::durable_cells::application::{
 };
 use crate::modules::executions::application::{
     validate_bound_execution, BoundExecutionCreation, ExecutionCancellation,
-    ExecutionCancellationService, ExecutionCreator,
+    ExecutionCancellationService, ExecutionCreator, IExecutionsEnvironmentAccess,
 };
 use crate::modules::executions::domain::{
     Execution, ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
     ExecutionTaskArtifactMount, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
     ExecutionTaskSecretTarget, ExecutionTemplate, IExecutionRepository,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{ExecutionId, OrganizationId, Sha256Digest};
 use a3s_cloud_contracts::CloudSecretReference;
@@ -33,7 +32,7 @@ pub(crate) struct ExecutionsDurableCellExecutionAdapter {
 
 impl ExecutionsDurableCellExecutionAdapter {
     pub(crate) fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IExecutionsEnvironmentAccess>,
         executions: Arc<dyn IExecutionRepository>,
     ) -> Self {
         Self {

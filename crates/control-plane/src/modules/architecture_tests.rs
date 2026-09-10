@@ -8281,6 +8281,108 @@ fn durable_cells_create_application_isolates_projects_behind_one_environment_por
 }
 
 #[test]
+fn executions_isolate_projects_behind_owner_ports() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("executions/application/environment_access.rs"))
+            .expect("read Executions environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructExecutionsEnvironmentScope",
+        "pubtraitIExecutionsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Executions lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let project_port =
+        std::fs::read_to_string(root.join("executions/application/project_access.rs"))
+            .expect("read Executions project port");
+    let compact_project_port = production_source(&project_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructExecutionsProjectScope",
+        "pubtraitIExecutionsProjectAccess:Send+Sync",
+        "project_exists(",
+    ] {
+        assert!(
+            compact_project_port.contains(required),
+            "Executions lost its narrow Projects project boundary {required}"
+        );
+    }
+    assert!(!project_port.contains("crate::modules::projects"));
+
+    for (relative, required) in [
+        (
+            "executions/application/execution_creator.rs",
+            &[
+                "Arc<dyn IExecutionsEnvironmentAccess>",
+                ".environment_exists(",
+            ][..],
+        ),
+        (
+            "executions/application/commands/create_execution/handler.rs",
+            &["Arc<dyn IExecutionsEnvironmentAccess>"][..],
+        ),
+        (
+            "executions/application/workflow_execution_port.rs",
+            &["Arc<dyn IExecutionsEnvironmentAccess>"][..],
+        ),
+        (
+            "executions/application/commands/create_execution_template.rs",
+            &["Arc<dyn IExecutionsProjectAccess>", ".project_exists("][..],
+        ),
+        (
+            "executions/application/queries/execution_templates.rs",
+            &["Arc<dyn IExecutionsProjectAccess>", ".project_exists("][..],
+        ),
+    ] {
+        let source =
+            std::fs::read_to_string(root.join(relative)).expect("read Executions consumer");
+        let production = production_source(&source);
+        for item in required {
+            assert!(
+                production.contains(item),
+                "{relative} lost owner-port wiring {item}"
+            );
+        }
+        for forbidden in [
+            "IEnvironmentRepository",
+            "IProjectRepository",
+            "crate::modules::projects",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsExecutionsEnvironmentAccessAdapter::new(")
+            .count(),
+        2,
+        "root composition must construct the Executions environment adapter once per composition root"
+    );
+    assert_eq!(
+        app.matches("ProjectsExecutionsProjectAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Executions project adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

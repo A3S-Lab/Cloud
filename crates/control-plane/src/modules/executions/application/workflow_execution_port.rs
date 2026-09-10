@@ -1,10 +1,10 @@
 use super::execution_cancellation::{ExecutionCancellation, ExecutionCancellationService};
 use super::execution_creator::{ExecutionCreation, ExecutionCreator};
+use crate::modules::executions::application::IExecutionsEnvironmentAccess;
 use crate::modules::executions::domain::{
     Execution, ExecutionStatus, IExecutionRepository, IExecutionTemplateRepository,
     WorkflowExecutionBinding, EXECUTION_TEMPLATE_CAPABILITY,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, ExecutionTemplateId, ExecutionTemplateRevisionId,
@@ -98,7 +98,7 @@ pub struct WorkflowExecutionApplicationService {
 
 impl WorkflowExecutionApplicationService {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IExecutionsEnvironmentAccess>,
         templates: Arc<dyn IExecutionTemplateRepository>,
         executions: Arc<dyn IExecutionRepository>,
     ) -> Self {
