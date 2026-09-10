@@ -176,6 +176,42 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     assert_eq!(retired.status(), 202);
     assert_no_store(&retired);
     assert!(response_json(&retired)?["data"]["retiredAt"].is_string());
+
+    let stale_retire = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &retire_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:retire-stale")
+                .with_body(
+                    json!({ "expectedAggregateVersion": aggregate_version })
+                        .to_string()
+                        .into_bytes(),
+                ),
+        )
+        .await?;
+    assert_eq!(stale_retire.status(), 409);
+
+    let zero_retire = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &retire_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:retire-zero")
+                .with_body(
+                    json!({ "expectedAggregateVersion": 0 })
+                        .to_string()
+                        .into_bytes(),
+                ),
+        )
+        .await?;
+    assert_eq!(zero_retire.status(), 422);
     Ok(())
 }
 
