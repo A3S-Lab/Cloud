@@ -70,6 +70,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/revoke" => {
             expected_version_schema("expectedAggregateVersion")
         }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes" => {
+            publish_inference_route_schema()
+        }
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials" => {
             credential_expiry_schema()
         }
@@ -565,6 +568,94 @@ fn route_schema() -> Value {
             "hostname": { "type": "string", "minLength": 1, "maxLength": 253 },
             "pathPrefix": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^/" },
             "portName": { "type": "string", "minLength": 1, "maxLength": 63 }
+        }),
+    )
+}
+
+fn publish_inference_route_schema() -> Value {
+    object(
+        &["router", "models", "grants", "binding"],
+        json!({
+            "router": { "type": "string", "minLength": 1, "maxLength": 128 },
+            "models": {
+                "type": "array",
+                "minItems": 1,
+                "items": object(
+                    &["alias", "modelId", "targets"],
+                    json!({
+                        "alias": { "type": "string", "minLength": 1, "maxLength": 128 },
+                        "modelId": uuid_schema(),
+                        "targets": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": object(
+                                &["targetId", "service", "upstreamModel", "priority", "weight"],
+                                json!({
+                                    "targetId": uuid_schema(),
+                                    "service": { "type": "string", "minLength": 1, "maxLength": 128 },
+                                    "upstreamModel": { "type": "string", "minLength": 1, "maxLength": 256 },
+                                    "priority": { "type": "integer", "minimum": 0 },
+                                    "weight": { "type": "integer", "minimum": 1 }
+                                })
+                            )
+                        }
+                    })
+                )
+            },
+            "grants": {
+                "type": "array",
+                "minItems": 1,
+                "items": object(
+                    &["credentialId", "credentialGeneration", "models", "endpoints", "limits"],
+                    json!({
+                        "credentialId": uuid_schema(),
+                        "credentialGeneration": positive_integer_schema(),
+                        "models": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+                        },
+                        "endpoints": {
+                            "type": "array",
+                            "minItems": 1,
+                            "items": {
+                                "type": "string",
+                                "enum": ["models", "chat-completions", "completions", "embeddings"]
+                            }
+                        },
+                        "limits": object(
+                            &[
+                                "maxConcurrentRequests",
+                                "requestsPerMinute",
+                                "requestBurst",
+                                "tokensPerMinute"
+                            ],
+                            json!({
+                                "maxConcurrentRequests": positive_integer_schema(),
+                                "requestsPerMinute": positive_integer_schema(),
+                                "requestBurst": positive_integer_schema(),
+                                "tokensPerMinute": positive_integer_schema()
+                            })
+                        )
+                    })
+                )
+            },
+            "binding": object(
+                &[
+                    "domainClaimId",
+                    "gatewayScopeId",
+                    "hostname",
+                    "pathPrefix",
+                    "bindingGeneration"
+                ],
+                json!({
+                    "domainClaimId": uuid_schema(),
+                    "gatewayScopeId": uuid_schema(),
+                    "hostname": { "type": "string", "minLength": 1, "maxLength": 253 },
+                    "pathPrefix": { "type": "string", "minLength": 1, "maxLength": 2048, "pattern": "^/" },
+                    "bindingGeneration": positive_integer_schema()
+                })
+            )
         }),
     )
 }

@@ -1,8 +1,10 @@
 mod dto;
 mod inference_module;
+mod inference_route_commands_controller;
 mod usage_queries_controller;
 mod usage_retention_controller;
 
 pub use inference_module::InferenceModule;
+pub use inference_route_commands_controller::inference_route_commands_controller;
 pub use usage_queries_controller::usage_queries_controller;
 pub use usage_retention_controller::usage_retention_controller;

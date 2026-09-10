@@ -805,6 +805,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke an inference key",
         ),
         (
+            "/inference/routes/{route_id}/retire",
+            "Retire an inference route",
+        ),
+        (
             "/notification-alert-policies/{policy_id}/revoke",
             "Revoke a notification alert policy",
         ),
@@ -881,6 +885,9 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
         if path.ends_with(suffix) {
             return Some(summary);
         }
+    }
+    if path.ends_with("/inference/routes") {
+        return Some("Publish an inference route");
     }
     if path.ends_with("/routes") {
         return Some("Publish a route");

@@ -1,9 +1,12 @@
 use crate::modules::inference::domain::{
-    InferenceUsageDailyRollup, InferenceUsageRequestFact, InferenceUsageRetentionStatus,
+    InferenceRoute, InferenceUsageDailyRollup, InferenceUsageRequestFact,
+    InferenceUsageRetentionStatus,
 };
+use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use a3s_cloud_contracts::{
-    InferenceUsageEndpointV1, InferenceUsageMeasurementCompletenessV1,
-    InferenceUsageTerminalOutcomeV1,
+    InferenceEndpointAcl, InferenceGrantAclProjection, InferenceLimitsAclProjection,
+    InferenceModelAclProjection, InferenceTargetAclProjection, InferenceUsageEndpointV1,
+    InferenceUsageMeasurementCompletenessV1, InferenceUsageTerminalOutcomeV1,
 };
 use chrono::{DateTime, NaiveDate, Utc};
 use serde::Serialize;
@@ -132,6 +135,148 @@ impl From<InferenceUsageRetentionStatus> for InferenceUsageRetentionStatusRespon
             last_completed_at: status.last_completed_at,
             next_scan_at: status.next_scan_at,
             version: status.version,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceRouteResponse {
+    pub id: Uuid,
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub environment_id: Uuid,
+    pub router: String,
+    pub policy_revision: u64,
+    pub models: Vec<InferenceModelResponse>,
+    pub grants: Vec<InferenceGrantResponse>,
+    pub binding: EdgeRouteBindingResponse,
+    pub aggregate_version: u64,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub retired_at: Option<DateTime<Utc>>,
+}
+
+impl From<InferenceRoute> for InferenceRouteResponse {
+    fn from(route: InferenceRoute) -> Self {
+        Self {
+            id: route.id.as_uuid(),
+            organization_id: route.organization_id.as_uuid(),
+            project_id: route.project_id.as_uuid(),
+            environment_id: route.environment_id.as_uuid(),
+            router: route.router().into(),
+            policy_revision: route.policy_revision(),
+            models: route.models().iter().cloned().map(Into::into).collect(),
+            grants: route.grants().iter().cloned().map(Into::into).collect(),
+            binding: route.binding().clone().into(),
+            aggregate_version: route.aggregate_version(),
+            created_at: route.created_at(),
+            updated_at: route.updated_at(),
+            retired_at: route.retired_at(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceModelResponse {
+    pub alias: String,
+    pub model_id: Uuid,
+    pub targets: Vec<InferenceTargetResponse>,
+}
+
+impl From<InferenceModelAclProjection> for InferenceModelResponse {
+    fn from(model: InferenceModelAclProjection) -> Self {
+        Self {
+            alias: model.alias,
+            model_id: model.model_id,
+            targets: model.targets.into_iter().map(Into::into).collect(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceTargetResponse {
+    pub target_id: Uuid,
+    pub service: String,
+    pub upstream_model: String,
+    pub priority: u32,
+    pub weight: u32,
+}
+
+impl From<InferenceTargetAclProjection> for InferenceTargetResponse {
+    fn from(target: InferenceTargetAclProjection) -> Self {
+        Self {
+            target_id: target.target_id,
+            service: target.service,
+            upstream_model: target.upstream_model,
+            priority: target.priority,
+            weight: target.weight,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceGrantResponse {
+    pub credential_id: Uuid,
+    pub credential_generation: u64,
+    pub models: Vec<String>,
+    pub endpoints: Vec<InferenceEndpointAcl>,
+    pub limits: InferenceLimitsResponse,
+}
+
+impl From<InferenceGrantAclProjection> for InferenceGrantResponse {
+    fn from(grant: InferenceGrantAclProjection) -> Self {
+        Self {
+            credential_id: grant.credential_id,
+            credential_generation: grant.credential_generation,
+            models: grant.models,
+            endpoints: grant.endpoints,
+            limits: grant.limits.into(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceLimitsResponse {
+    pub max_concurrent_requests: u64,
+    pub requests_per_minute: u64,
+    pub request_burst: u64,
+    pub tokens_per_minute: u64,
+}
+
+impl From<InferenceLimitsAclProjection> for InferenceLimitsResponse {
+    fn from(limits: InferenceLimitsAclProjection) -> Self {
+        Self {
+            max_concurrent_requests: limits.max_concurrent_requests,
+            requests_per_minute: limits.requests_per_minute,
+            request_burst: limits.request_burst,
+            tokens_per_minute: limits.tokens_per_minute,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct EdgeRouteBindingResponse {
+    pub domain_claim_id: Uuid,
+    pub gateway_scope_id: Uuid,
+    pub hostname: String,
+    pub path_prefix: String,
+    pub binding_generation: u64,
+}
+
+impl From<EdgeRouteBindingRef> for EdgeRouteBindingResponse {
+    fn from(binding: EdgeRouteBindingRef) -> Self {
+        Self {
+            domain_claim_id: binding.domain_claim_id.as_uuid(),
+            gateway_scope_id: binding.gateway_scope_id.as_uuid(),
+            hostname: binding.hostname,
+            path_prefix: binding.path_prefix,
+            binding_generation: binding.binding_generation,
         }
     }
 }

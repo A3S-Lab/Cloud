@@ -233,6 +233,7 @@ mod developer_workflow_tests;
 mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
+mod inference_route_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod notification_tests;
@@ -2109,6 +2110,13 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             Arc::clone(&workload_port),
             writer_fence_port,
         ));
+    let inference_routes: Arc<dyn crate::modules::inference::IInferenceRouteRepository> =
+        Arc::new(crate::modules::inference::InMemoryInferenceRouteRepository::default());
+    let inference_route_acl_projections: Arc<
+        dyn crate::modules::inference::IInferenceRouteAclProjectionPort,
+    > = Arc::new(crate::modules::inference::InferenceRouteAclProjectionAdapter::new(
+        Arc::clone(&inference_routes),
+    ));
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -2170,9 +2178,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             inference_credential_acl_projections: Arc::new(
                 crate::modules::identity::EmptyInferenceCredentialAclProjectionPort,
             ),
-            inference_route_acl_projections: Arc::new(
-                crate::modules::inference::EmptyInferenceRouteAclProjectionPort,
-            ),
+            inference_routes,
+            inference_route_acl_projections,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),

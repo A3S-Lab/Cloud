@@ -1353,7 +1353,12 @@ evidence, and fenced release protocol.
   Postgres/in-memory repositories) and exposes
   `IInferenceRouteAclProjectionPort` via `InferenceRouteAclProjectionAdapter`
   on Postgres composition; `EmptyInferenceRouteAclProjectionPort` remains only
-  for unit fixtures and non-Postgres tests. Edge loaders on managed publication
+  for unit fixtures and non-Postgres tests. REST publish/retire are composed
+  through Boot CQRS (`PublishInferenceRoute` / `RetireInferenceRoute`) and
+  `InferenceModule` presentation
+  (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/retire`)
+  with `inference:write` and required `Idempotency-Key`. Edge loaders on managed
+  publication
   paths (cutover, certificate convergence, MCP desired-state, route rollout,
   rollback) accept and forward those projections into
   `GatewaySnapshotCompiler` without inventing catalog facts. Workers remain

@@ -1,5 +1,7 @@
-use super::{usage_queries_controller, usage_retention_controller};
-use a3s_boot::{ControllerDefinition, Module, ModuleRef, QueryBus, Result};
+use super::{
+    inference_route_commands_controller, usage_queries_controller, usage_retention_controller,
+};
+use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
 use std::sync::Arc;
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -11,10 +13,12 @@ impl Module for InferenceModule {
     }
 
     fn controllers(&self, module_ref: &ModuleRef) -> Result<Vec<ControllerDefinition>> {
-        let bus = module_ref.get::<QueryBus>()?;
+        let command_bus = module_ref.get::<CommandBus>()?;
+        let query_bus = module_ref.get::<QueryBus>()?;
         Ok(vec![
-            usage_queries_controller(Arc::clone(&bus))?,
-            usage_retention_controller(bus)?,
+            inference_route_commands_controller(Arc::clone(&command_bus))?,
+            usage_queries_controller(Arc::clone(&query_bus))?,
+            usage_retention_controller(query_bus)?,
         ])
     }
 }

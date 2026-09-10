@@ -647,7 +647,6 @@ async fn build_api_worker_application(
     let inference_usage = adapters.inference.usage;
     let inference_routes = adapters.inference.routes;
     let inference_route_acl_projections = adapters.inference.route_acl_projections;
-    let _ = &inference_routes;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -1964,6 +1963,7 @@ async fn build_api_worker_application(
                 workload_identity_policies,
                 inference_credentials,
                 inference_credential_acl_projections,
+                inference_routes,
                 inference_route_acl_projections,
                 projects: projects.clone(),
                 environments,
@@ -2230,6 +2230,7 @@ struct ManagementApplicationDependencies {
     workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
     inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
+    inference_routes: Arc<dyn crate::modules::inference::IInferenceRouteRepository>,
     inference_route_acl_projections:
         Arc<dyn crate::modules::inference::IInferenceRouteAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
@@ -2338,6 +2339,7 @@ fn build_management_application_with_health(
         workload_identity_policies,
         inference_credentials,
         inference_credential_acl_projections,
+        inference_routes,
         inference_route_acl_projections,
         projects,
         environments,
@@ -2872,6 +2874,9 @@ fn build_management_application_with_health(
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let inference_key_environments = Arc::clone(&environments);
+    let publish_inference_route_environments = Arc::clone(&environments);
+    let publish_inference_routes = Arc::clone(&inference_routes);
+    let retire_inference_routes = inference_routes;
     let create_execution_template_projects = Arc::clone(&projects);
     let list_execution_template_projects = Arc::clone(&projects);
     let create_execution_templates = Arc::clone(&execution_templates);
@@ -3026,6 +3031,17 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::RevokeInferenceKey, _>(
                     RevokeInferenceKeyHandler::new(revoke_inference_credentials),
+                )
+                .command_handler::<crate::modules::inference::PublishInferenceRoute, _>(
+                    crate::modules::inference::PublishInferenceRouteHandler::new(
+                        publish_inference_route_environments,
+                        publish_inference_routes,
+                    ),
+                )
+                .command_handler::<crate::modules::inference::RetireInferenceRoute, _>(
+                    crate::modules::inference::RetireInferenceRouteHandler::new(
+                        retire_inference_routes,
+                    ),
                 )
                 .command_handler::<crate::modules::identity::CreateOrganization, _>(
                     CreateOrganizationHandler::new(organizations),

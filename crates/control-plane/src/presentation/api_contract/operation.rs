@@ -1461,6 +1461,8 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("/inference/keys")
     {
         "Identity"
+    } else if path.contains("/inference/") {
+        "Inference"
     } else if path.starts_with("/node-control")
         || path.contains("/nodes")
         || path.contains("/node-pools")
@@ -1598,6 +1600,7 @@ fn request_has_no_body(path: &str) -> bool {
         || is_form_release_mutation_path(path)
         || is_human_task_assignment_mutation_path(path)
         || (path.contains("/secrets/") && path.ends_with("/revoke"))
+        || (path.contains("/inference/routes/") && path.ends_with("/retire"))
 }
 
 fn asynchronous_mutation(path: &str) -> bool {
@@ -1614,6 +1617,7 @@ fn asynchronous_mutation(path: &str) -> bool {
         || is_agent_execution_fork_path(path)
         || (path.contains("domain-claims") && path.ends_with("/revoke"))
         || (path.contains("/inference/keys/") && path.ends_with("/revoke"))
+        || (path.contains("/inference/routes/") && path.ends_with("/retire"))
         || path.ends_with("/routes")
         || (path.contains("/agent-conversations/") && path.ends_with("/executions"))
         || is_workflow_run_start_path(path)
