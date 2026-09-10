@@ -84,6 +84,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use uuid::Uuid;
 
 mod box_cancellation;
+mod managed_route_cutover_inference_acl;
 mod routed_update;
 mod support;
 mod workload_health_facts;
