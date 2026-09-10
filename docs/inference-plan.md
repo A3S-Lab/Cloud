@@ -1344,9 +1344,13 @@ evidence, and fenced release protocol.
   compiler (`InferenceRouteAclProjection`,
   `render_inference_policy_acl_with_routes`) that emits Gateway-compatible
   `routes` / `models` / `targets` / `grants` / `limits` bytes with
-  generation+environment matching against projected credentials; Edge must
-  not invent catalog facts—Inference must supply the projections. Workers
-  remain omitted until that compiler lands. Joint Gateway revocation/expiry
+  generation+environment matching against projected credentials; and the
+  worker ACL projection compiler (`InferenceWorkerAclProjection`,
+  `render_inference_policy_acl_with_routes_and_workers`) that emits
+  Gateway-compatible `workers` blocks with Power observation integrity,
+  freshness, and route-target binding. Edge must not invent catalog or
+  worker facts—Inference (+ Power observation authority) must supply the
+  projections. Joint Gateway revocation/expiry
   fail-closed already covers projected `revoked = true` credentials. Gateway
   also proves credential-projection snapshot succession locally (revoke/rotate
   successors, expected-revision CAS rejection, unknown-tokenizer retention

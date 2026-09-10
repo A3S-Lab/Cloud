@@ -9,6 +9,10 @@ use super::tokenizer_revision::{
     inference_tokenizer_revision_acl_attr, require_inference_tokenizer_revision,
     INFERENCE_TOKENIZER_REVISION_V1,
 };
+use super::worker_acl::{
+    render_inference_worker_acl_blocks, require_workers_bound_to_routes,
+    InferenceWorkerAclProjection,
+};
 use argon2::password_hash::PasswordHash;
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
@@ -117,14 +121,20 @@ impl fmt::Debug for InferenceCredentialAclProjection {
 /// Render a managed `inference` ACL block with optional credential projections.
 ///
 /// Credentials are sorted by `credential_id` for deterministic snapshot digests.
-/// Routes default to empty; use [`render_inference_policy_acl_with_routes`] when
-/// Inference catalog authority supplies route projections. Workers remain
-/// omitted until that compiler lands.
+/// Routes and workers default to empty; use
+/// [`render_inference_policy_acl_with_routes_and_workers`] when Inference
+/// supplies those projections.
 pub fn render_inference_policy_acl(
     expires_at: DateTime<Utc>,
     credentials: &[InferenceCredentialAclProjection],
 ) -> Result<String, String> {
-    render_inference_policy_acl_with_routes(expires_at, credentials, &[])
+    render_inference_policy_acl_with_routes_and_workers(
+        expires_at,
+        credentials,
+        &[],
+        &[],
+        expires_at,
+    )
 }
 
 /// Render credentials plus route/grant projections into one inference policy.
@@ -132,6 +142,26 @@ pub fn render_inference_policy_acl_with_routes(
     expires_at: DateTime<Utc>,
     credentials: &[InferenceCredentialAclProjection],
     routes: &[InferenceRouteAclProjection],
+) -> Result<String, String> {
+    render_inference_policy_acl_with_routes_and_workers(
+        expires_at,
+        credentials,
+        routes,
+        &[],
+        expires_at,
+    )
+}
+
+/// Render credentials, routes, and Power worker projections into one policy.
+///
+/// `projected_at` is the Cloud projection clock used for worker freshness.
+/// Workers without matching route targets fail closed.
+pub fn render_inference_policy_acl_with_routes_and_workers(
+    expires_at: DateTime<Utc>,
+    credentials: &[InferenceCredentialAclProjection],
+    routes: &[InferenceRouteAclProjection],
+    workers: &[InferenceWorkerAclProjection],
+    projected_at: DateTime<Utc>,
 ) -> Result<String, String> {
     if expires_at.timestamp_millis() <= 0 {
         return Err("inference policy expires_at must be a positive UTC timestamp".into());
@@ -186,6 +216,7 @@ pub fn render_inference_policy_acl_with_routes(
             }
         }
     }
+    require_workers_bound_to_routes(workers, routes)?;
 
     let expires = expires_at.to_rfc3339_opts(SecondsFormat::Micros, true);
     let mut acl = format!(
@@ -208,6 +239,11 @@ pub fn render_inference_policy_acl_with_routes(
         ));
     }
     acl.push_str(&render_inference_route_acl_blocks(routes)?);
+    acl.push_str(&render_inference_worker_acl_blocks(
+        workers,
+        projected_at,
+        expires_at,
+    )?);
     acl.push_str("}\n");
     require_inference_tokenizer_revision(&acl)?;
     debug_assert_eq!(INFERENCE_TOKENIZER_REVISION_V1, "a3s.gateway.tokenizer.v1");
@@ -404,6 +440,98 @@ mod tests {
         let error = render_inference_policy_acl_with_routes(expires_at, &[mismatched], &[route])
             .unwrap_err();
         assert!(error.contains("credential_generation"));
+    }
+
+    #[test]
+    fn renders_workers_only_when_bound_to_route_targets() {
+        use crate::inference::{
+            render_inference_policy_acl_with_routes_and_workers, InferenceServingPhase,
+            InferenceWorkerAclProjection, PowerTransferHealth, POWER_WORKER_OBSERVATION_SCHEMA,
+        };
+        use chrono::Duration;
+
+        let projected_at = Utc.with_ymd_and_hms(2099, 1, 1, 0, 0, 0).unwrap();
+        let expires_at = Utc.with_ymd_and_hms(2099, 1, 1, 1, 0, 0).unwrap();
+        let mut credential = credential("a3s_inf_abc12345");
+        credential.generation = 3;
+        let target_id = Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap();
+        let route = crate::inference::InferenceRouteAclProjection {
+            route_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+            router: "inference".into(),
+            environment_id: credential.environment_id,
+            policy_revision: 11,
+            models: vec![crate::inference::InferenceModelAclProjection {
+                alias: "chat-model".into(),
+                model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+                targets: vec![crate::inference::InferenceTargetAclProjection {
+                    target_id,
+                    service: "model-service".into(),
+                    upstream_model: "internal/model-v1".into(),
+                    priority: 0,
+                    weight: 100,
+                }],
+            }],
+            grants: vec![crate::inference::InferenceGrantAclProjection {
+                credential_id: credential.credential_id,
+                credential_generation: 3,
+                models: vec!["chat-model".into()],
+                endpoints: vec![crate::inference::InferenceEndpointAcl::Models],
+                limits: crate::inference::InferenceLimitsAclProjection {
+                    max_concurrent_requests: 2,
+                    requests_per_minute: 60,
+                    request_burst: 2,
+                    tokens_per_minute: 10_000,
+                },
+            }],
+        };
+        let worker = InferenceWorkerAclProjection {
+            unit_id: "power-unit-1".into(),
+            target_id,
+            generation: 5,
+            schema: POWER_WORKER_OBSERVATION_SCHEMA.into(),
+            worker_epoch: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap(),
+            execution_profile_sha256: None,
+            observation_generation: 9,
+            observed_at: projected_at - Duration::seconds(1),
+            expires_at: projected_at + Duration::seconds(14),
+            phases: vec![InferenceServingPhase::Aggregated],
+            prompt_cache_capable: true,
+            state_transfer_capable: false,
+            ready_phases: vec![InferenceServingPhase::Aggregated],
+            active_limit: Some(8),
+            active: 2,
+            waiting: 1,
+            prompt_cache_supported: true,
+            prompt_cache_entries: 2,
+            prompt_cache_capacity: 8,
+            prompt_cache_pressure_basis_points: 2500,
+            transfer_health: PowerTransferHealth::Unsupported,
+            certified_latency_ms: Some(42),
+        };
+        let acl = render_inference_policy_acl_with_routes_and_workers(
+            expires_at,
+            &[credential.clone()],
+            &[route.clone()],
+            &[worker.clone()],
+            projected_at,
+        )
+        .unwrap();
+        assert!(acl.contains("workers \"power-unit-1\""));
+        assert!(acl.contains("routes \"44444444-4444-4444-8444-444444444444\""));
+
+        let orphan = InferenceWorkerAclProjection {
+            target_id: Uuid::parse_str("77777777-7777-4777-8777-777777777777").unwrap(),
+            ..worker
+        };
+        let error = render_inference_policy_acl_with_routes_and_workers(
+            expires_at,
+            &[credential],
+            &[route],
+            &[orphan],
+            projected_at,
+        )
+        .unwrap_err();
+        assert!(error.contains("not bound"));
     }
 
     #[test]

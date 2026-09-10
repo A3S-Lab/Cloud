@@ -5,10 +5,12 @@ mod lifecycle;
 mod route_acl;
 mod tokenizer_revision;
 mod usage;
+mod worker_acl;
 
 pub use credential_acl::{
     render_inference_policy_acl, render_inference_policy_acl_with_routes,
-    InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    render_inference_policy_acl_with_routes_and_workers, InferenceCredentialAclProjection,
+    INFERENCE_CREDENTIAL_AUDIENCE,
 };
 pub use lifecycle::{
     InferenceUsageAttemptEvidenceV1, InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1,
@@ -30,6 +32,10 @@ pub use usage::{
     INFERENCE_USAGE_BATCH_SCHEMA_V1, INFERENCE_USAGE_MAX_BATCH_BYTES,
     INFERENCE_USAGE_MAX_EVENT_BYTES, INFERENCE_USAGE_MAX_RECEIPT_BYTES,
     INFERENCE_USAGE_MAX_RECORDS, INFERENCE_USAGE_RECEIPT_SCHEMA_V1,
+};
+pub use worker_acl::{
+    render_inference_worker_acl_blocks, require_workers_bound_to_routes,
+    InferenceWorkerAclProjection,
 };
 
 use chrono::{DateTime, Duration, Utc};
