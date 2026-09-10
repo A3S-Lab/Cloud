@@ -1421,6 +1421,10 @@ evidence, and fenced release protocol.
   fail closed as NotFound). First-principles query tests for
   `GetUsageRequestFact` certify visible happy path, ungranted environment
   hide, cross-environment fact hide, and missing request as NotFound.
+  `ListDailyUsageRollups` first-principles tests also certify inverted
+  `from_day`/`to_day` rejection and Conflict fail-closed when the requested
+  window precedes `records_available_from`; purged request facts after
+  retention sweep hide as NotFound.
   Migration `195` adds monotonic per-organization
   retention authority (`inference_usage_retention_states`), hide-then-purge
   sweeps that never delete watermarks, showback fail-closed before

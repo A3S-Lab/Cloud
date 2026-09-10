@@ -227,4 +227,132 @@ mod tests {
             .unwrap_err();
         assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
+
+    #[tokio::test]
+    async fn rejects_inverted_day_window() {
+        let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+        let handler = ListDailyUsageRollupsHandler::new(usage);
+        let from = NaiveDate::from_ymd_opt(2026, 1, 3).unwrap();
+        let to = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+        let error = handler
+            .execute(
+                ListDailyUsageRollups {
+                    organization_id: OrganizationId::from_uuid(Uuid::from_u128(1)),
+                    project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
+                    environment_id: EnvironmentId::from_uuid(Uuid::from_u128(101)),
+                    from_day: from,
+                    to_day: to,
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(a3s_boot::ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(error, ApplicationError::Invalid(_)));
+    }
+
+    #[tokio::test]
+    async fn fails_closed_when_window_precedes_retention_boundary() {
+        use crate::modules::inference::domain::{
+            InferenceUsageRetentionPolicy, InferenceUsageRetentionSweep,
+        };
+        use std::time::Duration;
+
+        let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+        let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
+        let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
+        let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(101));
+        let handler = ListDailyUsageRollupsHandler::new(usage.clone());
+        let started = lifecycle(
+            InferenceUsageLifecycleKindV1::RequestStarted,
+            "2026-01-02T10:00:00Z",
+            false,
+        );
+        let finished = lifecycle(
+            InferenceUsageLifecycleKindV1::RequestTerminal,
+            "2026-01-02T10:00:01Z",
+            true,
+        );
+        let epoch = Uuid::from_u128(9);
+        usage
+            .accept_usage_batch(
+                AcceptInferenceUsageBatchWrite::new(
+                    organization_id,
+                    NodeId::from_uuid(Uuid::from_u128(2)),
+                    InferenceUsageBatchV1 {
+                        schema: InferenceUsageBatchV1::SCHEMA.into(),
+                        gateway_id: Uuid::from_u128(3),
+                        batch_id: Uuid::from_u128(4),
+                        after: None,
+                        records: vec![
+                            record(
+                                InferenceUsageCursorV1 {
+                                    boot_epoch: epoch,
+                                    sequence: 1,
+                                },
+                                Uuid::from_u128(10),
+                                &started,
+                            ),
+                            record(
+                                InferenceUsageCursorV1 {
+                                    boot_epoch: epoch,
+                                    sequence: 2,
+                                },
+                                Uuid::from_u128(11),
+                                &finished,
+                            ),
+                        ],
+                    },
+                    Utc::now(),
+                )
+                .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        let policy =
+            InferenceUsageRetentionPolicy::new(Duration::from_millis(86_400_000)).expect("policy");
+        let cutoff = DateTime::parse_from_rfc3339("2026-01-03T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let swept_at = DateTime::parse_from_rfc3339("2026-01-03T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next_scan_at = DateTime::parse_from_rfc3339("2026-01-03T02:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        usage
+            .sweep_retention(InferenceUsageRetentionSweep {
+                cutoff,
+                swept_at,
+                next_scan_at,
+                policy_digest: policy.digest().clone(),
+                organization_batch_size: 10,
+                record_batch_size: 100,
+            })
+            .await
+            .expect("sweep");
+
+        let day = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+        let denied = handler
+            .execute(
+                ListDailyUsageRollups {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    from_day: day,
+                    to_day: day,
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(a3s_boot::ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            matches!(denied, ApplicationError::Conflict(_)),
+            "showback before records_available_from must fail closed, got {denied:?}"
+        );
+    }
 }

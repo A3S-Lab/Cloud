@@ -291,4 +291,61 @@ mod tests {
             .unwrap_err();
         assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
+
+    #[tokio::test]
+    async fn hides_purged_fact_after_retention_sweep() {
+        use crate::modules::inference::domain::{
+            InferenceUsageRetentionPolicy, InferenceUsageRetentionSweep,
+        };
+        use std::time::Duration;
+
+        let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+        let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
+        let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
+        let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(ENVIRONMENT_ID));
+        seed_request_fact(usage.as_ref(), organization_id).await;
+
+        let policy =
+            InferenceUsageRetentionPolicy::new(Duration::from_millis(86_400_000)).expect("policy");
+        let cutoff = DateTime::parse_from_rfc3339("2026-01-03T00:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let swept_at = DateTime::parse_from_rfc3339("2026-01-03T01:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        let next_scan_at = DateTime::parse_from_rfc3339("2026-01-03T02:00:00Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        usage
+            .sweep_retention(InferenceUsageRetentionSweep {
+                cutoff,
+                swept_at,
+                next_scan_at,
+                policy_digest: policy.digest().clone(),
+                organization_batch_size: 10,
+                record_batch_size: 100,
+            })
+            .await
+            .expect("sweep");
+
+        let handler = GetUsageRequestFactHandler::new(usage);
+        let denied = handler
+            .execute(
+                GetUsageRequestFact {
+                    organization_id,
+                    project_id,
+                    environment_id,
+                    request_id: Uuid::from_u128(REQUEST_ID),
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(
+            matches!(denied, ApplicationError::NotFound(_)),
+            "purged showback facts must hide as NotFound, got {denied:?}"
+        );
+    }
 }
