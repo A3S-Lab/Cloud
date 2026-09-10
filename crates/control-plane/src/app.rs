@@ -2909,6 +2909,7 @@ fn build_management_application_with_health(
     let revoke_inference_key_environments = Arc::clone(&environments);
     let list_inference_key_environments = Arc::clone(&environments);
     let list_inference_route_environments = Arc::clone(&environments);
+    let get_inference_route_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
     let revise_inference_route_environments = Arc::clone(&environments);
     let retire_inference_route_environments = Arc::clone(&environments);
@@ -4375,7 +4376,10 @@ fn build_management_application_with_health(
                     ),
                 )
                 .query_handler::<crate::modules::inference::GetInferenceRoute, _>(
-                    crate::modules::inference::GetInferenceRouteHandler::new(get_inference_routes),
+                    crate::modules::inference::GetInferenceRouteHandler::new(
+                        get_inference_route_environments,
+                        get_inference_routes,
+                    ),
                 )
                 .query_handler::<crate::modules::edge::ListDomainClaims, _>(
                     ListDomainClaimsHandler::new(list_domain_claims),
