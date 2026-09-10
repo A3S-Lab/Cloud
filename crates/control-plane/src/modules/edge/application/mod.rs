@@ -2,6 +2,7 @@ pub mod commands;
 mod environment_access;
 mod mcp_credential_delivery;
 mod mcp_credential_delivery_receipt_sweeper;
+mod mcp_credential_encryption;
 mod mcp_route_policy_service;
 mod mcp_service_profile_access;
 mod node_access;
@@ -9,12 +10,12 @@ pub mod queries;
 mod resource_access;
 
 pub use environment_access::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
-pub(crate) use mcp_credential_delivery::{encrypt_delivery_receipt, recover_delivery};
 pub use mcp_credential_delivery::{
     McpCredentialDeliveryResult, McpCredentialMutationResult,
     MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
 };
 pub use mcp_credential_delivery_receipt_sweeper::McpCredentialDeliveryReceiptSweeper;
+pub use mcp_credential_encryption::IEdgeMcpCredentialEncryption;
 pub use mcp_route_policy_service::McpRoutePolicyApplicationService;
 pub use mcp_service_profile_access::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};

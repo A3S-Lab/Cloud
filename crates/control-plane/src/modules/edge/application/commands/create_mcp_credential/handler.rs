@@ -1,5 +1,5 @@
 use super::CreateMcpCredential;
-use crate::modules::edge::application::{encrypt_delivery_receipt, recover_delivery};
+use crate::modules::edge::application::IEdgeMcpCredentialEncryption;
 use crate::modules::edge::application::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
 use crate::modules::edge::domain::events::McpCredentialChanged;
 use crate::modules::edge::domain::repositories::{
@@ -8,7 +8,6 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::services::{
     IMcpCredentialIssuer, McpCredentialIssuanceError, McpCredentialIssueRequest,
 };
-use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -21,7 +20,7 @@ pub struct CreateMcpCredentialHandler {
     environments: Arc<dyn IEdgeEnvironmentAccess>,
     credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     issuer: Arc<dyn IMcpCredentialIssuer>,
-    encryption: Arc<dyn ISecretEncryptionService>,
+    encryption: Arc<dyn IEdgeMcpCredentialEncryption>,
 }
 
 impl CreateMcpCredentialHandler {
@@ -29,7 +28,7 @@ impl CreateMcpCredentialHandler {
         environments: Arc<dyn IEdgeEnvironmentAccess>,
         credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
         issuer: Arc<dyn IMcpCredentialIssuer>,
-        encryption: Arc<dyn ISecretEncryptionService>,
+        encryption: Arc<dyn IEdgeMcpCredentialEncryption>,
     ) -> Self {
         Self {
             environments,
@@ -96,9 +95,9 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                 .await
             {
                 Ok(Some(write)) => {
-                    return Ok(
-                        recover_delivery(encryption.as_ref(), write, command.requested_at).await,
-                    )
+                    return Ok(encryption
+                        .recover_delivery(write, command.requested_at)
+                        .await)
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -119,12 +118,9 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                     Err(error) => return Ok(Err(issuance_error(error))),
                 };
                 let (credential, bearer) = issued.into_parts();
-                let receipt = match encrypt_delivery_receipt(
-                    encryption.as_ref(),
-                    &credential,
-                    bearer.as_str(),
-                )
-                .await
+                let receipt = match encryption
+                    .encrypt_delivery_receipt(&credential, bearer.as_str())
+                    .await
                 {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
@@ -141,12 +137,9 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                     .await
                 {
                     Ok(write) => {
-                        return Ok(recover_delivery(
-                            encryption.as_ref(),
-                            write,
-                            command.requested_at,
-                        )
-                        .await)
+                        return Ok(encryption
+                            .recover_delivery(write, command.requested_at)
+                            .await)
                     }
                     Err(error)
                         if identity_collision(&error) && attempt + 1 < MAX_IDENTITY_ATTEMPTS => {}

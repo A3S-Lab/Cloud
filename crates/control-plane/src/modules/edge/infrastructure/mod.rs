@@ -19,6 +19,7 @@ mod inference_edge_route_binding_admission;
 mod inference_route_scope;
 mod inference_worker_scope;
 mod local_gateway_certificate_authority;
+mod mcp_credential_encryption;
 mod mcp_credential_issuer;
 mod mcp_gateway_desired_state_reconciler;
 mod mcp_gateway_node_projection_planner;
@@ -111,6 +112,7 @@ pub use inference_route_scope::{
 };
 pub use inference_worker_scope::load_inference_worker_projections_for_routes;
 pub use local_gateway_certificate_authority::LocalGatewayCertificateAuthority;
+pub use mcp_credential_encryption::SecretsEdgeMcpCredentialEncryptionAdapter;
 pub use mcp_credential_issuer::McpCredentialIssuer;
 pub use mcp_gateway_desired_state_reconciler::{
     McpGatewayDesiredStateReconciler, McpGatewayDesiredStateReconciliationFailure,

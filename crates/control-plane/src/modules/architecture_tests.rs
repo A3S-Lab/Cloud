@@ -10348,6 +10348,100 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
 }
 
 #[test]
+fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
+    let root = module_root();
+
+    let port_path = "edge/application/mcp_credential_encryption.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Edge MCP credential encryption port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIEdgeMcpCredentialEncryption:Send+Sync",
+        "asyncfnencrypt_delivery_receipt(",
+        "asyncfnrecover_delivery(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge MCP credential encryption port lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "ISecretEncryptionService",
+        "crate::modules::secrets",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Edge MCP credential encryption port leaked Secrets or concrete authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/application/commands/create_mcp_credential/handler.rs",
+        "edge/application/commands/rotate_mcp_credential/handler.rs",
+        "edge/application/mcp_credential_delivery.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        for forbidden in ["ISecretEncryptionService", "crate::modules::secrets"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign encryption authority {forbidden}"
+            );
+        }
+        if relative.contains("handler.rs") {
+            let compact = production.split_whitespace().collect::<String>();
+            assert!(
+                compact.contains("Arc<dynIEdgeMcpCredentialEncryption>")
+                    && compact.contains(".encrypt_delivery_receipt(")
+                    && compact.contains(".recover_delivery("),
+                "{relative} stopped entering MCP delivery encryption through the Edge-owned port"
+            );
+        }
+    }
+
+    let adapter_path = "edge/infrastructure/mcp_credential_encryption.rs";
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Edge MCP credential encryption adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "implIEdgeMcpCredentialEncryptionforSecretsEdgeMcpCredentialEncryptionAdapter",
+        "encryption:Arc<dynISecretEncryptionService>",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Edge MCP credential encryption adapter lost boundary behavior {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_source(&adapter).contains(forbidden),
+            "Edge MCP credential encryption adapter introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("SecretsEdgeMcpCredentialEncryptionAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Edge MCP credential encryption adapter exactly once"
+    );
+}
+
+#[test]
 fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("agents/application/agent_release_admission.rs"),

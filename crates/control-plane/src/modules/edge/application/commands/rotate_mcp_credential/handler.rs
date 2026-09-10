@@ -2,13 +2,12 @@ use super::RotateMcpCredential;
 use crate::modules::edge::application::commands::create_mcp_credential::{
     identity_collision, issuance_error,
 };
-use crate::modules::edge::application::{encrypt_delivery_receipt, recover_delivery};
+use crate::modules::edge::application::IEdgeMcpCredentialEncryption;
 use crate::modules::edge::domain::events::McpCredentialChanged;
 use crate::modules::edge::domain::repositories::{
     IMcpCredentialLifecycleRepository, RotateMcpCredentialWrite,
 };
 use crate::modules::edge::domain::services::IMcpCredentialIssuer;
-use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -20,14 +19,14 @@ const MAX_IDENTITY_ATTEMPTS: usize = 4;
 pub struct RotateMcpCredentialHandler {
     credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     issuer: Arc<dyn IMcpCredentialIssuer>,
-    encryption: Arc<dyn ISecretEncryptionService>,
+    encryption: Arc<dyn IEdgeMcpCredentialEncryption>,
 }
 
 impl RotateMcpCredentialHandler {
     pub fn new(
         credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
         issuer: Arc<dyn IMcpCredentialIssuer>,
-        encryption: Arc<dyn ISecretEncryptionService>,
+        encryption: Arc<dyn IEdgeMcpCredentialEncryption>,
     ) -> Self {
         Self {
             credentials,
@@ -80,9 +79,9 @@ impl CommandHandler<RotateMcpCredential> for RotateMcpCredentialHandler {
                 .await
             {
                 Ok(Some(write)) => {
-                    return Ok(
-                        recover_delivery(encryption.as_ref(), write, command.requested_at).await,
-                    )
+                    return Ok(encryption
+                        .recover_delivery(write, command.requested_at)
+                        .await)
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -114,12 +113,9 @@ impl CommandHandler<RotateMcpCredential> for RotateMcpCredentialHandler {
                     Err(error) => return Ok(Err(issuance_error(error))),
                 };
                 let (credential, bearer) = issued.into_parts();
-                let receipt = match encrypt_delivery_receipt(
-                    encryption.as_ref(),
-                    &credential,
-                    bearer.as_str(),
-                )
-                .await
+                let receipt = match encryption
+                    .encrypt_delivery_receipt(&credential, bearer.as_str())
+                    .await
                 {
                     Ok(value) => value,
                     Err(error) => return Ok(Err(error)),
@@ -137,12 +133,9 @@ impl CommandHandler<RotateMcpCredential> for RotateMcpCredentialHandler {
                     .await
                 {
                     Ok(write) => {
-                        return Ok(recover_delivery(
-                            encryption.as_ref(),
-                            write,
-                            command.requested_at,
-                        )
-                        .await)
+                        return Ok(encryption
+                            .recover_delivery(write, command.requested_at)
+                            .await)
                     }
                     Err(error)
                         if identity_collision(&error) && attempt + 1 < MAX_IDENTITY_ATTEMPTS => {}

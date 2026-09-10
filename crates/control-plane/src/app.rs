@@ -141,17 +141,19 @@ use crate::modules::edge::{
     GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
     GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler,
-    GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess, IEdgeNodeAccess,
-    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
-    ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
-    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
-    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
-    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess,
+    IEdgeMcpCredentialEncryption, IEdgeNodeAccess, ListDomainClaimsHandler,
+    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
+    ListMcpRoutePoliciesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
+    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService, McpRouteProjectionInputReader,
+    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
     ProjectsEdgeEnvironmentAccessAdapter, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
     RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
-    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    SecretsEdgeMcpCredentialEncryptionAdapter, VaultGatewayCertificateAuthority,
+    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
@@ -3054,10 +3056,13 @@ fn build_management_application_with_health(
     ));
     let create_secret_encryption = Arc::clone(&secret_encryption);
     let rotate_secret_encryption = Arc::clone(&secret_encryption);
-    let create_mcp_credential_encryption = Arc::clone(&secret_encryption);
     let create_inference_key_encryption = Arc::clone(&secret_encryption);
     let rotate_inference_key_encryption = Arc::clone(&secret_encryption);
-    let rotate_mcp_credential_encryption = secret_encryption;
+    let mcp_credential_encryption: Arc<dyn IEdgeMcpCredentialEncryption> = Arc::new(
+        SecretsEdgeMcpCredentialEncryptionAdapter::new(secret_encryption),
+    );
+    let create_mcp_credential_encryption = Arc::clone(&mcp_credential_encryption);
+    let rotate_mcp_credential_encryption = mcp_credential_encryption;
     let mcp_credential_issuer: Arc<dyn IMcpCredentialIssuer> = Arc::new(McpCredentialIssuer::new());
     let rotate_mcp_credential_issuer = Arc::clone(&mcp_credential_issuer);
     let workload_log_store = Arc::clone(&log_chunks);
