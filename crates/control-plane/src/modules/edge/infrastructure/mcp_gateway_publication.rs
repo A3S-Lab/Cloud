@@ -686,6 +686,13 @@ impl StageManagedGatewayCertificateConvergence {
                         .collect::<BTreeSet<_>>()
                         == expected_claims => {}
             (None, None)
+                if ordinary.publication.certificate_request.as_ref().is_some_and(
+                    |request| {
+                        GatewayCertificateId::from_uuid(request.certificate_id)
+                            == previous_certificate.id
+                    },
+                ) && expected_claims.is_subset(&previous_claims) => {}
+            (None, None)
                 if ordinary.publication.certificate_request.is_none()
                     && expected_claims.is_subset(&previous_claims) => {}
             _ => {

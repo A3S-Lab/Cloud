@@ -372,6 +372,8 @@ impl StageGatewayCertificateConvergence {
                     && certificate.csr_digest.is_none()
                     && certificate.material.is_none() => {}
             (None, None, None) => {}
+            (None, Some(request), None)
+                if request.certificate_id == convergence.previous_certificate_id.as_uuid() => {}
             _ => {
                 return Err(
                     "Gateway certificate convergence replacement material is inconsistent".into(),

@@ -1482,7 +1482,13 @@ evidence, and fenced release protocol.
   `McpGatewayDesiredStateReconciler` stages one snapshot whose ACL embeds
   `inference {`, the projected `prefix`, and route grants/models while omitting
   any `workers` block and bearer secret material (port load → compile → stage,
-  not compiler-only).
+  not compiler-only). Cloud likewise certifies the live managed certificate
+  convergence path: `GatewayCertificateReconciler::new_managed` near snapshot
+  renewal, with the same stub Identity credential and Inference route ACL ports
+  plus `EmptyInferenceWorkerAclProjectionPort`, stages one convergence whose
+  publication ACL embeds `inference {`, the projected `prefix`, and route
+  grants/models while omitting any `workers` block and bearer secret material
+  (desired-state plan → port load → managed compile → stage, not compiler-only).
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips

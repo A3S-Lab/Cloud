@@ -580,7 +580,9 @@ impl GatewaySnapshotCompiler {
                 ingress_routes: mcp.ingress_routes(),
                 projection: planned.projection(),
             });
-            let reused = self.compile_snapshot(
+            // Keep the reused certificate request on the snapshot so managed
+            // MCP staged evidence stays consistent with domain claim IDs.
+            candidate.snapshot = self.compile_snapshot(
                 metadata,
                 certificate_id,
                 &routes,
@@ -590,15 +592,6 @@ impl GatewaySnapshotCompiler {
                 &inference_credentials,
                 &inference_routes,
                 &inference_workers,
-            )?;
-            candidate.snapshot = GatewaySnapshot::new_with_certificate(
-                metadata.node_id.as_uuid(),
-                metadata.revision,
-                metadata.expected_revision,
-                metadata.issued_at,
-                metadata.expires_at,
-                reused.acl,
-                None,
             )?;
         }
         Ok(candidate)

@@ -779,6 +779,14 @@ impl GatewayCertificateReconciler {
                 .map_err(RepositoryError::Conflict)?,
             ),
             (None, None) => None,
+            (None, Some(request))
+                if GatewayCertificateId::from_uuid(request.certificate_id)
+                    == target.certificate.id =>
+            {
+                // SnapshotRenewal reuses prior certificate material in the ACL
+                // without provisioning a replacement certificate aggregate.
+                None
+            }
             _ => {
                 return Err(RepositoryError::Storage(
                     "managed Gateway convergence certificate request is inconsistent".into(),

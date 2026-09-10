@@ -37,6 +37,8 @@ use uuid::Uuid;
 
 #[path = "gateway_certificate_reconciler_tests/expiration_tests.rs"]
 mod expiration_tests;
+#[path = "gateway_certificate_reconciler_tests/managed_inference_acl_tests.rs"]
+mod managed_inference_acl_tests;
 
 #[derive(Default)]
 struct RecordingGatewayQueue {
