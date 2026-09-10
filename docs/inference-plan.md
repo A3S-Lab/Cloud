@@ -1529,10 +1529,16 @@ evidence, and fenced release protocol.
   enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
   The shared `a3s.gateway.usage-batch.v1` contract now matches Gateway by
   applying the `after` succession check only to the first record, so lawful
-  multi-record continuations validate. Domain ledger first-principles tests
+  multi-record continuations validate.   Domain ledger first-principles tests
   certify empty-stream holes advertise the missing sequence-1 gap without
   inserting tip invention, fill/replay advances ACK without double-insert, and
   multi-record continuation after a matching tip advances the watermark.
+  The enrolled-node node-control path now mirrors that recovery contract:
+  `authenticated_node_advertises_empty_stream_hole_and_fills_without_double_insert`
+  posts the hole and fill/redelivery batches through
+  `POST /v1/inference-control/usage-batches` and asserts the same gap receipt,
+  tip advance, and no invented contiguity. EmptyInferenceWorkerAclProjectionPort
+  remains the wired worker projection (no invented workers).
   Migration `194` plus domain projection persist request facts and
   rebuildable daily rollups from newly inserted lifecycle events
   (`project_inserted_usage_records` / `PostgresInferenceUsageRepository`
@@ -1542,7 +1548,7 @@ evidence, and fenced release protocol.
   `GET .../inference-usage/requests/{request_id}` via `InferenceModule`
   (`ListDailyUsageRollups` / `GetUsageRequestFact`) with
   `ResourceAccessEvaluator` environment visibility (ungranted environments
-  fail closed as NotFound) and `IEnvironmentRepository` existence checks so
+  fail closed as NotFound) and `IInferenceEnvironmentAccess` existence checks so
   missing environment UUIDs fail closed as NotFound (not empty rollups).
   First-principles query tests for
   `GetUsageRequestFact` certify visible happy path, ungranted environment

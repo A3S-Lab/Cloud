@@ -119,6 +119,136 @@ async fn authenticated_node_accepts_usage_batch_and_holds_wrong_after() {
 }
 
 #[tokio::test]
+async fn authenticated_node_advertises_empty_stream_hole_and_fills_without_double_insert() {
+    // First principles on the live node-control path: an empty ledger never
+    // invents missing spool prefixes. A batch that starts above sequence 1 must
+    // advertise the missing cursor, hold the watermark, and insert nothing.
+    // Filling the prefix then the previously-skipped tip advances ACK without
+    // double-counting digests; exact redelivery inserts nothing again.
+    let directory = tempfile::tempdir().expect("node-control directory");
+    let authority = Arc::new(
+        LocalCertificateAuthority::load_or_create(directory.path().join("node-ca"))
+            .expect("local CA"),
+    );
+    let nodes = Arc::new(InMemoryNodeRepository::new());
+    let agents = Arc::new(InMemoryAgentRepository::new());
+    let identity_store = FileNodeIdentityStore::new(directory.path().join("node-identity"));
+    let (organization_id, enrolled_identity) =
+        enroll_node(Arc::clone(&nodes), Arc::clone(&authority), &identity_store).await;
+    let node_id = enrolled_identity.response.node_id;
+    let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+
+    let commands: Arc<dyn INodeControlRepository> = nodes.clone();
+    let sessions: Arc<dyn INodeProtocolSessionRepository> = nodes.clone();
+    let node_repository: Arc<dyn INodeRepository> = nodes.clone();
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let api = NodeControlApi::new(
+        node_repository,
+        commands,
+        sessions,
+        agents,
+        Arc::clone(&usage) as Arc<_>,
+        Arc::new(
+            NodeArtifactObjectStore::local(directory.path().join("artifacts"), 1024 * 1024)
+                .expect("artifact store"),
+        ),
+        Arc::new(EdgeGatewayAcknowledgementProjector::new(edge.clone())),
+        edge,
+        Arc::new(
+            LocalGatewayCertificateAuthority::load_or_create(directory.path().join("gateway-ca"))
+                .expect("Gateway CA"),
+        ),
+        Arc::new(LogChunkObjectStore::local(directory.path()).expect("log object store")),
+        authority,
+        test_secret_material_handler(directory.path()),
+        Duration::days(30),
+        Duration::hours(1),
+        Duration::minutes(5),
+        Duration::minutes(5),
+        Duration::seconds(30),
+        StdDuration::from_millis(100),
+        StdDuration::from_millis(5),
+        1024 * 1024,
+        StdDuration::from_secs(1),
+        StdDuration::from_secs(5),
+    )
+    .expect("node-control API");
+
+    let certificate = nodes
+        .find_active_certificate(organization_id, NodeId::from_uuid(node_id))
+        .await
+        .expect("active node certificate");
+    let router = api.router().layer(axum::Extension(PeerCertificate {
+        fingerprint: certificate.fingerprint,
+    }));
+
+    let gateway_id = Uuid::from_u128(42);
+    let epoch = Uuid::from_u128(7);
+    let skipped = InferenceUsageCursorV1 {
+        boot_epoch: epoch,
+        sequence: 3,
+    };
+    let hole = InferenceUsageBatchV1 {
+        schema: InferenceUsageBatchV1::SCHEMA.into(),
+        gateway_id,
+        batch_id: Uuid::from_u128(30),
+        after: None,
+        records: vec![record(skipped, Uuid::from_u128(30))],
+    };
+    let advertised = post_usage(&router, &hole).await;
+    assert_eq!(advertised.status(), axum::http::StatusCode::OK);
+    let advertised = decode_receipt(advertised).await;
+    advertised
+        .validate_for(&hole)
+        .expect("gap receipt must remain contract-valid");
+    assert_eq!(advertised.acknowledged_through, None);
+    assert_eq!(
+        advertised.gaps,
+        vec![InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 1
+        }]
+    );
+
+    let fill = InferenceUsageBatchV1 {
+        schema: InferenceUsageBatchV1::SCHEMA.into(),
+        gateway_id,
+        batch_id: Uuid::from_u128(31),
+        after: None,
+        records: vec![
+            record(
+                InferenceUsageCursorV1 {
+                    boot_epoch: epoch,
+                    sequence: 1,
+                },
+                Uuid::from_u128(31),
+            ),
+            record(
+                InferenceUsageCursorV1 {
+                    boot_epoch: epoch,
+                    sequence: 2,
+                },
+                Uuid::from_u128(32),
+            ),
+            record(skipped, Uuid::from_u128(30)),
+        ],
+    };
+    let advanced = post_usage(&router, &fill).await;
+    assert_eq!(advanced.status(), axum::http::StatusCode::OK);
+    let advanced = decode_receipt(advanced).await;
+    advanced.validate_for(&fill).expect("fill receipt");
+    assert_eq!(advanced.acknowledged_through, Some(skipped));
+    assert!(advanced.gaps.is_empty());
+
+    let redelivery = post_usage(&router, &fill).await;
+    assert_eq!(redelivery.status(), axum::http::StatusCode::OK);
+    let redelivery = decode_receipt(redelivery).await;
+    redelivery.validate_for(&fill).expect("redelivery receipt");
+    assert_eq!(redelivery.acknowledged_through, Some(skipped));
+    assert!(redelivery.gaps.is_empty());
+}
+
+#[tokio::test]
 async fn unauthenticated_peer_cannot_post_usage_batches() {
     let directory = tempfile::tempdir().expect("node-control directory");
     let authority = Arc::new(
