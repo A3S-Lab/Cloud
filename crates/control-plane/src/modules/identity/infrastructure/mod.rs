@@ -4,6 +4,7 @@ mod inference_credential_issuer;
 mod inference_grant_credential_admission;
 mod openid_connect_provider;
 pub mod persistence;
+mod project_environment_access;
 mod recipient_contact_proof;
 mod recipient_contact_verification_event_consumer;
 mod smtp_recipient_contact_verification_delivery;
@@ -19,6 +20,7 @@ pub use inference_credential_issuer::{
 };
 pub use inference_grant_credential_admission::IdentityInferenceGrantCredentialAdmissionAdapter;
 pub use openid_connect_provider::OpenIdConnectProviderService;
+pub use project_environment_access::ProjectsIdentityEnvironmentAccessAdapter;
 pub use recipient_contact_proof::HmacRecipientContactProofService;
 pub use recipient_contact_verification_event_consumer::{
     A3sEventRecipientContactVerificationConsumer, RecipientContactVerificationConsumerAction,

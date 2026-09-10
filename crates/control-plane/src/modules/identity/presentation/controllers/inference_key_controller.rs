@@ -6,7 +6,7 @@ use crate::modules::identity::application::queries::list_inference_keys::ListInf
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::dto::{
     CreateInferenceKeyRequest, InferenceKeyDeliveryResponse, InferenceKeyMutationResponse,
-    InferenceKeyResponse, RotateInferenceKeyRequest, RevokeInferenceKeyRequest,
+    InferenceKeyResponse, RevokeInferenceKeyRequest, RotateInferenceKeyRequest,
 };
 use crate::modules::identity::presentation::request_context::{mutation_identity, request_id};
 use crate::modules::identity::presentation::{
@@ -18,8 +18,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    RouteDefinition, AUTH_SCOPES_METADATA,
+    BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result, RouteDefinition,
+    AUTH_SCOPES_METADATA,
 };
 use chrono::Utc;
 use std::sync::Arc;

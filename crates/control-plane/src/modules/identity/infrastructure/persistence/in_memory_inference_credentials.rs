@@ -3,8 +3,8 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
-    IInferenceCredentialRepository, InferenceCredentialWrite, RotateInferenceCredentialWrite,
-    RevokeInferenceCredentialWrite,
+    IInferenceCredentialRepository, InferenceCredentialWrite, RevokeInferenceCredentialWrite,
+    RotateInferenceCredentialWrite,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotencyRequest, InferenceCredentialId, OrganizationId,
@@ -507,14 +507,12 @@ mod tests {
         };
         {
             let mut state = repository.state.write().await;
-            state.receipts.insert(
-                first.id,
-                receipt(&first, now - Duration::minutes(10)),
-            );
-            state.receipts.insert(
-                second.id,
-                receipt(&second, now - Duration::minutes(5)),
-            );
+            state
+                .receipts
+                .insert(first.id, receipt(&first, now - Duration::minutes(10)));
+            state
+                .receipts
+                .insert(second.id, receipt(&second, now - Duration::minutes(5)));
             state
                 .receipts
                 .insert(active.id, receipt(&active, now + Duration::minutes(5)));

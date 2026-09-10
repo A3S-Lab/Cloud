@@ -1,15 +1,16 @@
 //! First-principles Inference route catalog authority tests (I0.2b brick).
 
+use crate::modules::identity::application::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
 use crate::modules::inference::application::{
     IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
     PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
     PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
     RetireInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
 };
-use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::domain::repositories::IInferenceRouteRepository;
+use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::{
-    InferenceRouteAclProjectionAdapter, InMemoryInferenceRouteRepository,
+    InMemoryInferenceRouteRepository, InferenceRouteAclProjectionAdapter,
 };
 use crate::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use crate::modules::projects::domain::entities::Environment;
@@ -67,6 +68,16 @@ impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
         _project_id: ProjectId,
     ) -> Result<Vec<Environment>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl IIdentityEnvironmentAccess for AlwaysPresentEnvironmentRepository {
+    async fn environment_exists(
+        &self,
+        _scope: IdentityEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -137,9 +148,7 @@ fn publish_command(
     }
 }
 
-fn publish_handler(
-    routes: Arc<InMemoryInferenceRouteRepository>,
-) -> PublishInferenceRouteHandler {
+fn publish_handler(routes: Arc<InMemoryInferenceRouteRepository>) -> PublishInferenceRouteHandler {
     PublishInferenceRouteHandler::new(
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
@@ -216,8 +225,7 @@ async fn publish_lists_projection_with_models_and_grants_without_workers() {
     assert_eq!(projections[0].route_id, route.id.as_uuid());
     assert_eq!(projections[0].models.len(), 1);
     assert_eq!(projections[0].grants.len(), 1);
-    let rendered =
-        a3s_cloud_contracts::render_inference_route_acl_blocks(&projections).unwrap();
+    let rendered = a3s_cloud_contracts::render_inference_route_acl_blocks(&projections).unwrap();
     assert!(rendered.contains("models \"chat-model\""));
     assert!(rendered.contains("grants \"33333333-3333-4333-8333-333333333333\""));
     assert!(!rendered.contains("workers "));
@@ -225,8 +233,9 @@ async fn publish_lists_projection_with_models_and_grants_without_workers() {
 
 #[tokio::test]
 async fn empty_repository_projects_nothing_so_edge_invents_no_catalog_facts() {
-    let adapter =
-        InferenceRouteAclProjectionAdapter::new(Arc::new(InMemoryInferenceRouteRepository::default()));
+    let adapter = InferenceRouteAclProjectionAdapter::new(Arc::new(
+        InMemoryInferenceRouteRepository::default(),
+    ));
     let scope = InferenceRouteEnvironmentScope::new(
         OrganizationId::new(),
         ProjectId::new(),
@@ -251,13 +260,21 @@ async fn empty_repository_projects_nothing_so_edge_invents_no_catalog_facts() {
 async fn retire_removes_route_from_projection() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let retire = RetireInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
     let route = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-retire"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-retire",
+            ),
             context(),
         )
         .await
@@ -317,11 +334,7 @@ async fn publish_is_idempotent_for_same_key_and_body() {
         .await
         .unwrap()
         .unwrap();
-    let second = handler
-        .execute(command, context())
-        .await
-        .unwrap()
-        .unwrap();
+    let second = handler.execute(command, context()).await.unwrap().unwrap();
     assert_eq!(first.id, second.id);
     assert_eq!(first.aggregate_version(), second.aggregate_version());
 }
@@ -374,7 +387,12 @@ async fn revise_advances_policy_revision_and_updates_projection_without_workers(
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-revise"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-revise",
+            ),
             context(),
         )
         .await
@@ -404,7 +422,10 @@ async fn revise_advances_policy_revision_and_updates_projection_without_workers(
         .unwrap();
     assert_eq!(revised.id, published.id);
     assert_eq!(revised.policy_revision(), 2);
-    assert_eq!(revised.aggregate_version(), published.aggregate_version() + 1);
+    assert_eq!(
+        revised.aggregate_version(),
+        published.aggregate_version() + 1
+    );
     assert_eq!(revised.models()[0].alias, "chat-model-v2");
 
     let adapter = InferenceRouteAclProjectionAdapter::new(routes);
@@ -417,8 +438,7 @@ async fn revise_advances_policy_revision_and_updates_projection_without_workers(
     assert_eq!(projections.len(), 1);
     assert_eq!(projections[0].policy_revision, 2);
     assert_eq!(projections[0].models[0].alias, "chat-model-v2");
-    let rendered =
-        a3s_cloud_contracts::render_inference_route_acl_blocks(&projections).unwrap();
+    let rendered = a3s_cloud_contracts::render_inference_route_acl_blocks(&projections).unwrap();
     assert!(rendered.contains("models \"chat-model-v2\""));
     assert!(!rendered.contains("workers "));
 }
@@ -435,9 +455,7 @@ async fn publish_projection_succeeds_edge_managed_snapshot_acl_without_workers()
     use crate::modules::shared_kernel::domain::{
         GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use a3s_cloud_contracts::{
-        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
+    use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -568,10 +586,9 @@ async fn publish_projection_succeeds_edge_managed_snapshot_acl_without_workers()
         )
         .unwrap();
     assert!(successor.acl.contains("models \"chat-model\""));
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(successor
         .acl
         .contains("grants \"33333333-3333-4333-8333-333333333333\""));
@@ -659,8 +676,7 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
     let environment_id = EnvironmentId::new();
     let requested_at = Utc::now();
 
-    let credential_adapter =
-        InferenceCredentialAclProjectionAdapter::new(credentials.clone());
+    let credential_adapter = InferenceCredentialAclProjectionAdapter::new(credentials.clone());
     let route_adapter = InferenceRouteAclProjectionAdapter::new(routes.clone());
     let credential_scope =
         InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
@@ -847,16 +863,15 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
     assert!(successor.acl.contains(&format!("prefix = \"{prefix}\"")));
     assert!(successor.acl.contains("revoked = false"));
     assert!(successor.acl.contains("models \"chat-model\""));
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(successor
         .acl
         .contains(&format!("grants \"{credential_id}\"")));
-    assert!(successor.acl.contains(&format!(
-        "credential_generation = {credential_generation}"
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("credential_generation = {credential_generation}")));
     assert!(!successor.acl.contains("\n  workers "));
     assert_eq!(successor.acl.matches("inference {").count(), 1);
     assert!(
@@ -866,7 +881,8 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
 }
 
 #[tokio::test]
-async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapshot_acl_succession() {
+async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapshot_acl_succession()
+{
     use crate::modules::edge::domain::{
         DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
         UpstreamEndpoint,
@@ -1094,9 +1110,9 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
     assert!(active.acl.contains(&format!("prefix = \"{prefix}\"")));
     assert!(active.acl.contains("revoked = false"));
     assert!(active.acl.contains(&format!("grants \"{credential_id}\"")));
-    assert!(active.acl.contains(&format!(
-        "credential_generation = {credential_generation}"
-    )));
+    assert!(active
+        .acl
+        .contains(&format!("credential_generation = {credential_generation}")));
     assert!(!active.acl.contains("\n  workers "));
 
     let revoked = RevokeInferenceKeyHandler::new(
@@ -1119,11 +1135,13 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
     .await
     .expect("boot")
     .expect("revoke");
-    assert!(revoked
-        .credential
-        .gateway_projection()
-        .expect("projection")
-        .revoked);
+    assert!(
+        revoked
+            .credential
+            .gateway_projection()
+            .expect("projection")
+            .revoked
+    );
 
     let successor_credentials = credential_adapter
         .list_inference_credential_acl_projections(&[credential_scope])
@@ -1140,8 +1158,7 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
     assert_eq!(successor_routes.len(), 1);
     assert_eq!(successor_routes[0].grants.len(), 1);
     assert_eq!(
-        successor_routes[0].grants[0].credential_id,
-        credential_id,
+        successor_routes[0].grants[0].credential_id, credential_id,
         "revoke must not silently rewrite Inference route grants"
     );
     assert_eq!(
@@ -1168,17 +1185,16 @@ async fn create_publish_route_then_revoke_key_succeeds_joint_edge_managed_snapsh
     assert!(successor.acl.contains(&format!("prefix = \"{prefix}\"")));
     assert!(successor.acl.contains("revoked = true"));
     assert!(!successor.acl.contains("revoked = false"));
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(successor.acl.contains("models \"chat-model\""));
     assert!(successor
         .acl
         .contains(&format!("grants \"{credential_id}\"")));
-    assert!(successor.acl.contains(&format!(
-        "credential_generation = {credential_generation}"
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("credential_generation = {credential_generation}")));
     assert!(!successor.acl.contains("\n  workers "));
     assert_eq!(successor.acl.matches("inference {").count(), 1);
     assert!(
@@ -1199,9 +1215,7 @@ async fn expired_credential_with_published_route_succeeds_joint_edge_managed_sna
     use crate::modules::shared_kernel::domain::{
         GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use a3s_cloud_contracts::{
-        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
+    use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const PREFIX: &str = "a3s_inf_abc12345";
@@ -1305,22 +1319,17 @@ async fn expired_credential_with_published_route_succeeds_joint_edge_managed_sna
             &route_projections,
         )
         .unwrap();
-    let credential_expires_acl = credential_expires_at.to_rfc3339_opts(
-        chrono::SecondsFormat::Micros,
-        true,
-    );
+    let credential_expires_acl =
+        credential_expires_at.to_rfc3339_opts(chrono::SecondsFormat::Micros, true);
+    assert!(snapshot.acl.contains(&format!("prefix = \"{PREFIX}\"")));
     assert!(snapshot
         .acl
-        .contains(&format!("prefix = \"{PREFIX}\"")));
-    assert!(snapshot.acl.contains(&format!(
-        "expires_at = \"{credential_expires_acl}\""
-    )));
+        .contains(&format!("expires_at = \"{credential_expires_acl}\"")));
     assert!(snapshot.acl.contains("revoked = false"));
     assert!(!snapshot.acl.contains("revoked = true"));
-    assert!(snapshot.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(snapshot
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(snapshot.acl.contains("models \"chat-model\""));
     assert!(snapshot
         .acl
@@ -1507,7 +1516,9 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
         routes.clone(),
         Arc::new(PermitInferenceEdgeRouteBindingAdmission),
         Arc::clone(&grant_admission)
-            as Arc<dyn crate::modules::inference::application::IInferenceGrantCredentialAdmissionPort>,
+            as Arc<
+                dyn crate::modules::inference::application::IInferenceGrantCredentialAdmissionPort,
+            >,
     );
     let published = publish
         .execute(
@@ -1560,10 +1571,14 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
             &baseline_routes,
         )
         .unwrap();
-    assert!(baseline.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
+    assert!(baseline
+        .acl
+        .contains(&format!("prefix = \"{prior_prefix}\"")));
     assert!(baseline.acl.contains("generation = 1"));
     assert!(baseline.acl.contains("credential_generation = 1"));
-    assert!(baseline.acl.contains(&format!("grants \"{credential_id}\"")));
+    assert!(baseline
+        .acl
+        .contains(&format!("grants \"{credential_id}\"")));
     assert!(!baseline.acl.contains("\n  workers "));
 
     let rotate_at = Utc::now() + Duration::seconds(1);
@@ -1702,17 +1717,22 @@ async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapsho
             &successor_routes,
         )
         .unwrap();
-    assert!(successor.acl.contains(&format!("prefix = \"{new_prefix}\"")));
-    assert!(!successor.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
+    assert!(successor
+        .acl
+        .contains(&format!("prefix = \"{new_prefix}\"")));
+    assert!(!successor
+        .acl
+        .contains(&format!("prefix = \"{prior_prefix}\"")));
     assert!(successor.acl.contains("generation = 2"));
     assert!(successor.acl.contains("credential_generation = 2"));
     assert!(!successor.acl.contains("credential_generation = 1"));
-    assert!(successor.acl.contains(&format!("grants \"{credential_id}\"")));
+    assert!(successor
+        .acl
+        .contains(&format!("grants \"{credential_id}\"")));
     assert!(successor.acl.contains("models \"chat-model\""));
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(successor.acl.contains("revoked = false"));
     assert!(!successor.acl.contains("\n  workers "));
     assert_eq!(successor.acl.matches("inference {").count(), 1);
@@ -1738,9 +1758,7 @@ async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() 
     use crate::modules::shared_kernel::domain::{
         GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use a3s_cloud_contracts::{
-        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
+    use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
@@ -1752,7 +1770,12 @@ async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() 
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-for-edge"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-for-edge",
+            ),
             context(),
         )
         .await
@@ -1839,10 +1862,9 @@ async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() 
         )
         .unwrap();
     assert!(baseline.acl.contains("models \"chat-model\""));
-    assert!(baseline.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(baseline
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(!baseline.acl.contains("models \"chat-model-v2\""));
     assert!(!baseline.acl.contains("\n  workers "));
 
@@ -1893,12 +1915,13 @@ async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() 
         )
         .unwrap();
     assert!(successor.acl.contains("models \"chat-model-v2\""));
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(!successor.acl.contains("models \"chat-model\""));
-    assert!(!successor.acl.contains("targets \"66666666-6666-4666-8666-666666666666\""));
+    assert!(!successor
+        .acl
+        .contains("targets \"66666666-6666-4666-8666-666666666666\""));
     assert!(successor
         .acl
         .contains("targets \"88888888-8888-4888-8888-888888888888\""));
@@ -1918,9 +1941,7 @@ async fn revise_withdraws_grants_succeeds_edge_managed_snapshot_acl_without_revo
     use crate::modules::shared_kernel::domain::{
         GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use a3s_cloud_contracts::{
-        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
+    use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
     const CREDENTIAL_ID: &str = "33333333-3333-4333-8333-333333333333";
@@ -2028,7 +2049,9 @@ async fn revise_withdraws_grants_succeeds_edge_managed_snapshot_acl_without_revo
             &baseline_projections,
         )
         .unwrap();
-    assert!(baseline.acl.contains(&format!("grants \"{CREDENTIAL_ID}\"")));
+    assert!(baseline
+        .acl
+        .contains(&format!("grants \"{CREDENTIAL_ID}\"")));
     assert!(baseline.acl.contains(&format!("prefix = \"{PREFIX}\"")));
     assert!(baseline.acl.contains("revoked = false"));
     assert!(baseline.acl.contains("generation = 3"));
@@ -2085,13 +2108,14 @@ async fn revise_withdraws_grants_succeeds_edge_managed_snapshot_acl_without_revo
             &successor_projections,
         )
         .unwrap();
-    assert!(successor.acl.contains(&format!(
-        "routes \"{}\"",
-        published.id.as_uuid()
-    )));
+    assert!(successor
+        .acl
+        .contains(&format!("routes \"{}\"", published.id.as_uuid())));
     assert!(successor.acl.contains("models \"chat-model\""));
     assert!(
-        !successor.acl.contains(&format!("grants \"{CREDENTIAL_ID}\"")),
+        !successor
+            .acl
+            .contains(&format!("grants \"{CREDENTIAL_ID}\"")),
         "successor ACL must withdraw grants without removing the authenticatable credential"
     );
     assert!(successor.acl.contains(&format!("prefix = \"{PREFIX}\"")));
@@ -2114,21 +2138,27 @@ async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
     use crate::modules::shared_kernel::domain::{
         GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
     };
-    use a3s_cloud_contracts::{
-        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
+    use a3s_cloud_contracts::{InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
 
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let retire = RetireInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-for-retire-edge"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-for-retire-edge",
+            ),
             context(),
         )
         .await
@@ -2272,14 +2302,22 @@ async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
 async fn revise_retired_route_is_rejected() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let retire = RetireInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
     let revise = revise_handler(routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-then-retire"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-then-retire",
+            ),
             context(),
         )
         .await
@@ -2428,7 +2466,12 @@ async fn revise_is_idempotent_for_same_key_and_body() {
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-idempotent"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-idempotent",
+            ),
             context(),
         )
         .await
@@ -2463,13 +2506,19 @@ async fn revise_is_idempotent_for_same_key_and_body() {
 async fn retire_stale_and_zero_aggregate_version_fail_closed() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
+    let retire =
+        RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-retire-cas"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-retire-cas",
+            ),
             context(),
         )
         .await
@@ -2519,13 +2568,19 @@ async fn retire_stale_and_zero_aggregate_version_fail_closed() {
 async fn retire_is_idempotent_for_same_key_and_cas() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
+    let retire =
+        RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
     let published = publish
         .execute(
-            publish_command(organization_id, project_id, environment_id, "publish-retire-idem"),
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-retire-idem",
+            ),
             context(),
         )
         .await
@@ -2533,8 +2588,8 @@ async fn retire_is_idempotent_for_same_key_and_cas() {
         .unwrap();
     let command = RetireInferenceRoute {
         organization_id,
-                project_id,
-                environment_id,
+        project_id,
+        environment_id,
         route_id: published.id,
         expected_aggregate_version: published.aggregate_version(),
         idempotency_key: "retire-same".into(),
@@ -2604,7 +2659,10 @@ async fn retire_rejects_wrong_environment_path_as_not_found() {
         .unwrap()
         .expect("route must remain unretired");
     assert!(still_live.retired_at().is_none());
-    assert_eq!(still_live.aggregate_version(), published.aggregate_version());
+    assert_eq!(
+        still_live.aggregate_version(),
+        published.aggregate_version()
+    );
 }
 
 #[tokio::test]
@@ -2769,7 +2827,10 @@ async fn revise_rejects_wrong_environment_path_as_not_found_before_admission() {
         .await
         .unwrap()
         .expect("route must remain unrevised");
-    assert_eq!(still_live.aggregate_version(), published.aggregate_version());
+    assert_eq!(
+        still_live.aggregate_version(),
+        published.aggregate_version()
+    );
     assert_eq!(still_live.policy_revision(), published.policy_revision());
 }
 
@@ -2861,7 +2922,10 @@ async fn revise_rejects_missing_environment_as_not_found() {
         .await
         .unwrap()
         .expect("route");
-    assert_eq!(still_live.aggregate_version(), published.aggregate_version());
+    assert_eq!(
+        still_live.aggregate_version(),
+        published.aggregate_version()
+    );
 }
 
 #[tokio::test]

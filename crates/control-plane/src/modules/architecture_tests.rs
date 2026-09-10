@@ -7704,6 +7704,88 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
 }
 
 #[test]
+fn identity_inference_keys_isolate_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("identity/application/environment_access.rs"))
+            .expect("read Identity environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructIdentityEnvironmentScope",
+        "pubtraitIIdentityEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+        "Result<bool,RepositoryError>",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Identity lost its narrow Projects boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    for relative in [
+        "identity/application/commands/create_inference_key/handler.rs",
+        "identity/application/commands/rotate_inference_key/handler.rs",
+        "identity/application/commands/revoke_inference_key/handler.rs",
+        "identity/application/queries/list_inference_keys.rs",
+        "identity/application/queries/get_inference_key.rs",
+    ] {
+        let source =
+            std::fs::read_to_string(root.join(relative)).expect("read inference-key handler");
+        let production = production_source(&source);
+        assert!(
+            production.contains("Arc<dyn IIdentityEnvironmentAccess>"),
+            "{relative} must depend on IIdentityEnvironmentAccess"
+        );
+        assert_eq!(
+            production.matches(".environment_exists(").count(),
+            1,
+            "{relative} must consult environment existence exactly once"
+        );
+        assert!(
+            !production.contains("IEnvironmentRepository"),
+            "{relative} regained IEnvironmentRepository"
+        );
+        assert!(
+            !production.contains("crate::modules::projects"),
+            "{relative} bypassed the Identity environment port into Projects"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(root.join("identity/infrastructure/project_environment_access.rs"))
+            .expect("read Identity Projects environment adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIIdentityEnvironmentAccessforProjectsIdentityEnvironmentAccessAdapter",
+        "environments:Arc<dynIEnvironmentRepository>",
+        ".find(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Identity environment adapter lost boundary behavior {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsIdentityEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Identity environment adapter exactly once"
+    );
+    assert!(
+        production_source(&app).contains("Arc<dyn IIdentityEnvironmentAccess>"),
+        "root composition must wire Identity handlers through IIdentityEnvironmentAccess"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

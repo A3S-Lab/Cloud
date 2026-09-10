@@ -6,9 +6,10 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
-    IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
-    IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
-    IWorkloadRuntimeExecutionAuthorizationQueryPort, InferenceCredentialDeliveryReceiptSweeper,
+    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess,
+    IInferenceCredentialAclProjectionPort, IRecipientContactVerificationDispatcher,
+    IWorkloadRuntimeEvidenceCandidatePort, IWorkloadRuntimeExecutionAuthorizationQueryPort,
+    IdentityEnvironmentScope, InferenceCredentialDeliveryReceiptSweeper,
     InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
     InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
     RecipientContactVerificationDispatchResult, RecordWorkloadRuntimeEvidence,
@@ -45,9 +46,6 @@ pub use application::commands::create_api_token::{
 };
 pub use application::commands::create_inference_key::{
     CreateInferenceKey, CreateInferenceKeyHandler,
-};
-pub use application::commands::rotate_inference_key::{
-    RotateInferenceKey, RotateInferenceKeyHandler,
 };
 pub use application::commands::create_membership::{CreateMembership, CreateMembershipHandler};
 pub use application::commands::create_membership_invitation::{
@@ -87,6 +85,9 @@ pub use application::commands::revoke_recipient_contact::{
 };
 pub use application::commands::revoke_resource_grant::{
     RevokeResourceGrant, RevokeResourceGrantHandler,
+};
+pub use application::commands::rotate_inference_key::{
+    RotateInferenceKey, RotateInferenceKeyHandler,
 };
 pub use application::queries::get_api_token::{GetApiToken, GetApiTokenHandler};
 pub use application::queries::get_inference_key::{GetInferenceKey, GetInferenceKeyHandler};
@@ -155,8 +156,8 @@ pub use infrastructure::{
     A3sEventRecipientContactVerificationConsumer, IdentityInferenceGrantCredentialAdmissionAdapter,
     InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuanceError,
     InferenceCredentialIssueRequest, InferenceCredentialIssuer, IssuedInferenceCredential,
-    OwnerWorkloadRuntimeEvidenceAdapter, SmtpRecipientContactVerificationCredentials,
-    SmtpRecipientContactVerificationDeliveryOptions,
+    OwnerWorkloadRuntimeEvidenceAdapter, ProjectsIdentityEnvironmentAccessAdapter,
+    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,

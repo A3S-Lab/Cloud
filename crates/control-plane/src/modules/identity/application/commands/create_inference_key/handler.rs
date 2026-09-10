@@ -1,7 +1,7 @@
 use super::CreateInferenceKey;
 use crate::modules::identity::application::{
     encrypt_inference_credential_delivery_receipt, recover_inference_credential_delivery,
-    InferenceCredentialDeliveryResult,
+    IIdentityEnvironmentAccess, IdentityEnvironmentScope, InferenceCredentialDeliveryResult,
 };
 use crate::modules::identity::domain::events::InferenceCredentialChanged;
 use crate::modules::identity::domain::repositories::{
@@ -10,7 +10,6 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::infrastructure::{
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
@@ -21,7 +20,7 @@ use std::sync::Arc;
 const MAX_IDENTITY_ATTEMPTS: usize = 4;
 
 pub struct CreateInferenceKeyHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IIdentityEnvironmentAccess>,
     credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     issuer: InferenceCredentialIssuer,
     encryption: Arc<dyn ISecretEncryptionService>,
@@ -29,7 +28,7 @@ pub struct CreateInferenceKeyHandler {
 
 impl CreateInferenceKeyHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IIdentityEnvironmentAccess>,
         credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
         issuer: InferenceCredentialIssuer,
         encryption: Arc<dyn ISecretEncryptionService>,
@@ -57,16 +56,17 @@ impl CommandHandler<CreateInferenceKey> for CreateInferenceKeyHandler {
         let issuer = self.issuer.clone();
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match IdentityEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))
@@ -201,17 +201,11 @@ mod tests {
     use super::*;
     use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
-    use crate::modules::projects::domain::entities::Environment;
-    use crate::modules::projects::domain::repositories::IEnvironmentRepository;
-    use crate::modules::projects::domain::value_objects::EnvironmentName;
     use crate::modules::secrets::domain::{
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
-    use crate::modules::shared_kernel::domain::{
-        EnvironmentId, IdempotentWrite, OrganizationId, ProjectId,
-    };
+    use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
     use a3s_boot::{CommandHandler, ModuleRef};
-    use a3s_cloud_contracts::DomainEventEnvelope;
     use async_trait::async_trait;
     use base64::engine::general_purpose::STANDARD_NO_PAD;
     use base64::Engine as _;
@@ -220,43 +214,27 @@ mod tests {
     use std::sync::Arc;
     use uuid::Uuid;
 
-    struct AlwaysPresentEnvironmentRepository;
+    struct AlwaysPresentEnvironmentAccess;
 
     #[async_trait]
-    impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
-        async fn create(
+    impl IIdentityEnvironmentAccess for AlwaysPresentEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
         }
+    }
 
-        async fn find(
-            &self,
-            organization_id: OrganizationId,
-            project_id: ProjectId,
-            environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(Some(Environment::create(
-                organization_id,
-                project_id,
-                environment_id,
-                EnvironmentName::parse("default").expect("environment name"),
-                Utc::now(),
-            )))
-        }
+    struct MissingEnvironmentAccess;
 
-        async fn list(
+    #[async_trait]
+    impl IIdentityEnvironmentAccess for MissingEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
         }
     }
 
@@ -326,7 +304,7 @@ mod tests {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         (
             CreateInferenceKeyHandler::new(
-                Arc::new(AlwaysPresentEnvironmentRepository),
+                Arc::new(AlwaysPresentEnvironmentAccess),
                 Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
                 InferenceCredentialIssuer::new(),
                 Arc::new(TestEncryption),
@@ -445,45 +423,11 @@ mod tests {
         );
     }
 
-    struct MissingEnvironmentRepository;
-
-    #[async_trait]
-    impl IEnvironmentRepository for MissingEnvironmentRepository {
-        async fn create(
-            &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
-        }
-
-        async fn find(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-            _environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(None)
-        }
-
-        async fn list(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
-        }
-    }
-
     #[tokio::test]
     async fn missing_environment_fails_closed_as_not_found() {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let handler = CreateInferenceKeyHandler::new(
-            Arc::new(MissingEnvironmentRepository),
+            Arc::new(MissingEnvironmentAccess),
             Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
             Arc::new(TestEncryption),
@@ -679,7 +623,7 @@ mod tests {
 
         let requested_at = Utc::now();
         let created = CreateInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
             Arc::new(TestEncryption),

@@ -9,9 +9,9 @@ mod membership_invitation_request;
 mod privileged_management_request;
 mod recipient_contact_request;
 mod revoke_inference_key_request;
-mod rotate_inference_key_request;
 mod revoke_membership_request;
 mod revoke_resource_grant_request;
+mod rotate_inference_key_request;
 
 pub use bootstrap_identity_request::BootstrapIdentityRequest;
 pub use change_membership_role_request::ChangeMembershipRoleRequest;
@@ -34,6 +34,6 @@ pub use recipient_contact_request::{
     RevokeRecipientContactRequest,
 };
 pub use revoke_inference_key_request::RevokeInferenceKeyRequest;
-pub use rotate_inference_key_request::RotateInferenceKeyRequest;
 pub use revoke_membership_request::RevokeMembershipRequest;
 pub use revoke_resource_grant_request::RevokeResourceGrantRequest;
+pub use rotate_inference_key_request::RotateInferenceKeyRequest;

@@ -2,7 +2,7 @@
 
 use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
 use crate::modules::inference::application::{
-    InferenceGrantCredentialAdmissionRequest, IInferenceGrantCredentialAdmissionPort,
+    IInferenceGrantCredentialAdmissionPort, InferenceGrantCredentialAdmissionRequest,
     INFERENCE_GRANT_CREDENTIAL_INVALID,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};

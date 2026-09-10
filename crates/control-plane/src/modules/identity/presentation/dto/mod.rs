@@ -10,9 +10,8 @@ pub use request::{
     CreateMembershipInvitationRequest, CreateMembershipRequest, CreateOrganizationRequest,
     CreatePlatformRoleBindingRequest, CreateResourceGrantRequest, ExpectedVersionRequest,
     MembershipInvitationVersionRequest, ProposeTenantSupportGrantRequest,
-    RequestRecipientContactVerificationRequest, RotateInferenceKeyRequest, RevokeInferenceKeyRequest,
-    RevokeMembershipRequest,
-    RevokeRecipientContactRequest, RevokeResourceGrantRequest,
+    RequestRecipientContactVerificationRequest, RevokeInferenceKeyRequest, RevokeMembershipRequest,
+    RevokeRecipientContactRequest, RevokeResourceGrantRequest, RotateInferenceKeyRequest,
 };
 pub use resource_grant_scope::ResourceGrantScopeDto;
 pub use response::{

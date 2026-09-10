@@ -36,4 +36,3 @@ async fn empty_port_returns_no_credentials_for_any_scopes() {
         "Empty port must not invent inference credentials from environment scopes"
     );
 }
-

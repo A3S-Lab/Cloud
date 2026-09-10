@@ -1,10 +1,11 @@
 use super::RevokeInferenceKey;
-use crate::modules::identity::application::InferenceCredentialMutationResult;
+use crate::modules::identity::application::{
+    IIdentityEnvironmentAccess, IdentityEnvironmentScope, InferenceCredentialMutationResult,
+};
 use crate::modules::identity::domain::events::InferenceCredentialChanged;
 use crate::modules::identity::domain::repositories::{
     IInferenceCredentialLifecycleRepository, RevokeInferenceCredentialWrite,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -12,13 +13,13 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct RevokeInferenceKeyHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IIdentityEnvironmentAccess>,
     credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
 }
 
 impl RevokeInferenceKeyHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IIdentityEnvironmentAccess>,
         credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     ) -> Self {
         Self {
@@ -45,16 +46,17 @@ impl CommandHandler<RevokeInferenceKey> for RevokeInferenceKeyHandler {
                     "expected inference credential aggregate version must be positive".into(),
                 )));
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match IdentityEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))
@@ -169,18 +171,13 @@ mod tests {
     use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::InferenceCredentialIssuer;
-    use crate::modules::projects::domain::entities::Environment;
-    use crate::modules::projects::domain::repositories::IEnvironmentRepository;
-    use crate::modules::projects::domain::value_objects::EnvironmentName;
     use crate::modules::secrets::domain::{
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, IdempotentWrite, InferenceCredentialId, OrganizationId, ProjectId,
-        RepositoryError,
+        EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId, RepositoryError,
     };
     use a3s_boot::{CommandHandler, ModuleRef};
-    use a3s_cloud_contracts::DomainEventEnvelope;
     use async_trait::async_trait;
     use base64::engine::general_purpose::STANDARD_NO_PAD;
     use base64::Engine as _;
@@ -189,77 +186,27 @@ mod tests {
     use std::sync::Arc;
     use uuid::Uuid;
 
-    struct AlwaysPresentEnvironmentRepository;
+    struct AlwaysPresentEnvironmentAccess;
 
     #[async_trait]
-    impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
-        async fn create(
+    impl IIdentityEnvironmentAccess for AlwaysPresentEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: crate::modules::shared_kernel::domain::IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
-        }
-
-        async fn find(
-            &self,
-            organization_id: OrganizationId,
-            project_id: ProjectId,
-            environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(Some(Environment::create(
-                organization_id,
-                project_id,
-                environment_id,
-                EnvironmentName::parse("default").expect("environment name"),
-                Utc::now(),
-            )))
-        }
-
-        async fn list(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
         }
     }
 
-    struct MissingEnvironmentRepository;
+    struct MissingEnvironmentAccess;
 
     #[async_trait]
-    impl IEnvironmentRepository for MissingEnvironmentRepository {
-        async fn create(
+    impl IIdentityEnvironmentAccess for MissingEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: crate::modules::shared_kernel::domain::IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
-        }
-
-        async fn find(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-            _environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(None)
-        }
-
-        async fn list(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
         }
     }
 
@@ -267,7 +214,7 @@ mod tests {
         credentials: &Arc<InMemoryInferenceCredentialRepository>,
     ) -> RevokeInferenceKeyHandler {
         RevokeInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         )
     }
@@ -340,7 +287,7 @@ mod tests {
     ) -> crate::modules::identity::domain::entities::InferenceCredential {
         let requested_at = Utc::now();
         let created = CreateInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials)
                 as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
@@ -525,7 +472,7 @@ mod tests {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let credential = create_active_key(&credentials).await;
         let error = RevokeInferenceKeyHandler::new(
-            Arc::new(MissingEnvironmentRepository),
+            Arc::new(MissingEnvironmentAccess),
             Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
         )
         .execute(
@@ -578,7 +525,7 @@ mod tests {
         let environment_id = EnvironmentId::new();
         let requested_at = Utc::now();
         let created = CreateInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(&credentials)
                 as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
@@ -616,7 +563,10 @@ mod tests {
             .unwrap();
         assert_eq!(baseline_projections.len(), 1);
         assert!(!baseline_projections[0].revoked);
-        assert_eq!(baseline_projections[0].credential_id, credential.id.as_uuid());
+        assert_eq!(
+            baseline_projections[0].credential_id,
+            credential.id.as_uuid()
+        );
         assert_eq!(baseline_projections[0].prefix, prefix);
 
         let node_id = NodeId::new();
@@ -691,11 +641,13 @@ mod tests {
             .await
             .expect("boot")
             .expect("revoke");
-        assert!(revoked
-            .credential
-            .gateway_projection()
-            .expect("projection")
-            .revoked);
+        assert!(
+            revoked
+                .credential
+                .gateway_projection()
+                .expect("projection")
+                .revoked
+        );
 
         let successor_projections = adapter
             .list_inference_credential_acl_projections(&[scope])
@@ -765,7 +717,7 @@ mod tests {
         ) -> crate::modules::identity::application::InferenceCredentialDeliveryResult {
             let requested_at = Utc::now();
             CreateInferenceKeyHandler::new(
-                Arc::new(AlwaysPresentEnvironmentRepository),
+                Arc::new(AlwaysPresentEnvironmentAccess),
                 Arc::clone(&credentials)
                     as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
                 InferenceCredentialIssuer::new(),

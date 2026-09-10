@@ -216,17 +216,18 @@ use crate::modules::identity::{
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IInferenceCredentialAclProjectionPort,
-    IdentityModule, IdentityInferenceGrantCredentialAdmissionAdapter, InferenceCredentialIssuer,
-    InspectCurrentTrustDomainProviderHandler,
+    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess,
+    IInferenceCredentialAclProjectionPort, IdentityInferenceGrantCredentialAdmissionAdapter,
+    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
     ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
     ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
     ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
     ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
-    ProposeTenantSupportGrantHandler, RecipientContactVerificationDeliveryDispatcher,
-    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RotateInferenceKeyHandler, RevokeMembershipHandler,
-    RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
-    RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
+    ProjectsIdentityEnvironmentAccessAdapter, ProposeTenantSupportGrantHandler,
+    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
+    RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
+    RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
+    RevokeTenantSupportGrantHandler, RotateInferenceKeyHandler,
     SmtpRecipientContactVerificationDeliveryService,
     WorkloadRuntimeExecutionAuthorizationQueryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
@@ -2739,6 +2740,9 @@ fn build_management_application_with_health(
     let secret_environments: Arc<dyn ISecretEnvironmentAccess> = Arc::new(
         ProjectsSecretEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
+    let identity_environments: Arc<dyn IIdentityEnvironmentAccess> = Arc::new(
+        ProjectsIdentityEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
     let create_subscription_environments = Arc::clone(&environments);
@@ -2906,13 +2910,13 @@ fn build_management_application_with_health(
     );
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
-    let inference_key_environments = Arc::clone(&environments);
-    let rotate_inference_key_environments = Arc::clone(&environments);
-    let revoke_inference_key_environments = Arc::clone(&environments);
+    let inference_key_environments = Arc::clone(&identity_environments);
+    let rotate_inference_key_environments = Arc::clone(&identity_environments);
+    let revoke_inference_key_environments = Arc::clone(&identity_environments);
     let list_daily_usage_environments = Arc::clone(&environments);
     let get_usage_request_fact_environments = Arc::clone(&environments);
-    let list_inference_key_environments = Arc::clone(&environments);
-    let get_inference_key_environments = Arc::clone(&environments);
+    let list_inference_key_environments = Arc::clone(&identity_environments);
+    let get_inference_key_environments = Arc::clone(&identity_environments);
     let list_inference_route_environments = Arc::clone(&environments);
     let get_inference_route_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);

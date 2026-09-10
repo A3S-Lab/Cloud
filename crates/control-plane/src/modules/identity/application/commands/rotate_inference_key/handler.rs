@@ -1,7 +1,7 @@
 use super::RotateInferenceKey;
 use crate::modules::identity::application::{
     encrypt_inference_credential_delivery_receipt, recover_inference_credential_delivery,
-    InferenceCredentialDeliveryResult,
+    IIdentityEnvironmentAccess, IdentityEnvironmentScope, InferenceCredentialDeliveryResult,
 };
 use crate::modules::identity::domain::events::InferenceCredentialChanged;
 use crate::modules::identity::domain::repositories::{
@@ -10,7 +10,6 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::infrastructure::{
     InferenceCredentialIssuanceError, InferenceCredentialIssuer,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
@@ -21,7 +20,7 @@ use std::sync::Arc;
 const MAX_IDENTITY_ATTEMPTS: usize = 4;
 
 pub struct RotateInferenceKeyHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IIdentityEnvironmentAccess>,
     credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     issuer: InferenceCredentialIssuer,
     encryption: Arc<dyn ISecretEncryptionService>,
@@ -29,7 +28,7 @@ pub struct RotateInferenceKeyHandler {
 
 impl RotateInferenceKeyHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IIdentityEnvironmentAccess>,
         credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
         issuer: InferenceCredentialIssuer,
         encryption: Arc<dyn ISecretEncryptionService>,
@@ -62,16 +61,17 @@ impl CommandHandler<RotateInferenceKey> for RotateInferenceKeyHandler {
                     "expected inference credential aggregate version must be positive".into(),
                 )));
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match IdentityEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(value) => value,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))
@@ -241,17 +241,13 @@ mod tests {
     };
     use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
-    use crate::modules::projects::domain::entities::Environment;
-    use crate::modules::projects::domain::repositories::IEnvironmentRepository;
-    use crate::modules::projects::domain::value_objects::EnvironmentName;
     use crate::modules::secrets::domain::{
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+        EnvironmentId, OrganizationId, ProjectId, RepositoryError,
     };
     use a3s_boot::{CommandHandler, ModuleRef};
-    use a3s_cloud_contracts::DomainEventEnvelope;
     use async_trait::async_trait;
     use base64::engine::general_purpose::STANDARD_NO_PAD;
     use base64::Engine as _;
@@ -260,77 +256,27 @@ mod tests {
     use std::sync::Arc;
     use uuid::Uuid;
 
-    struct AlwaysPresentEnvironmentRepository;
+    struct AlwaysPresentEnvironmentAccess;
 
     #[async_trait]
-    impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
-        async fn create(
+    impl IIdentityEnvironmentAccess for AlwaysPresentEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
-        }
-
-        async fn find(
-            &self,
-            organization_id: OrganizationId,
-            project_id: ProjectId,
-            environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(Some(Environment::create(
-                organization_id,
-                project_id,
-                environment_id,
-                EnvironmentName::parse("default").expect("environment name"),
-                Utc::now(),
-            )))
-        }
-
-        async fn list(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
         }
     }
 
-    struct MissingEnvironmentRepository;
+    struct MissingEnvironmentAccess;
 
     #[async_trait]
-    impl IEnvironmentRepository for MissingEnvironmentRepository {
-        async fn create(
+    impl IIdentityEnvironmentAccess for MissingEnvironmentAccess {
+        async fn environment_exists(
             &self,
-            environment: Environment,
-            _event: DomainEventEnvelope,
-            _idempotency: IdempotencyRequest,
-        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-            Ok(IdempotentWrite {
-                value: environment,
-                replayed: false,
-            })
-        }
-
-        async fn find(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-            _environment_id: EnvironmentId,
-        ) -> Result<Option<Environment>, RepositoryError> {
-            Ok(None)
-        }
-
-        async fn list(
-            &self,
-            _organization_id: OrganizationId,
-            _project_id: ProjectId,
-        ) -> Result<Vec<Environment>, RepositoryError> {
-            Ok(Vec::new())
+            _scope: IdentityEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
         }
     }
 
@@ -385,7 +331,7 @@ mod tests {
     ) -> crate::modules::identity::domain::entities::InferenceCredential {
         let requested_at = Utc::now();
         CreateInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
             Arc::new(TestEncryption),
@@ -412,7 +358,7 @@ mod tests {
         credentials: &Arc<InMemoryInferenceCredentialRepository>,
     ) -> RotateInferenceKeyHandler {
         RotateInferenceKeyHandler::new(
-            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::new(AlwaysPresentEnvironmentAccess),
             Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
             Arc::new(TestEncryption),
@@ -473,13 +419,17 @@ mod tests {
                 .verifier_hash(),
             prior_verifier
         );
-        assert!(rotated.bearer_credential().starts_with(rotated.credential.prefix()));
+        assert!(rotated
+            .bearer_credential()
+            .starts_with(rotated.credential.prefix()));
         assert!(!rotated.bearer_credential().starts_with(&prior_prefix));
-        assert!(!rotated
-            .credential
-            .gateway_projection()
-            .expect("projection")
-            .revoked);
+        assert!(
+            !rotated
+                .credential
+                .gateway_projection()
+                .expect("projection")
+                .revoked
+        );
     }
 
     #[tokio::test]
@@ -500,7 +450,10 @@ mod tests {
 
         assert!(replay.replayed);
         assert_eq!(replay.credential.id, first.credential.id);
-        assert_eq!(replay.credential.generation(), first.credential.generation());
+        assert_eq!(
+            replay.credential.generation(),
+            first.credential.generation()
+        );
         assert_eq!(replay.bearer_credential(), first.bearer_credential());
     }
 
@@ -555,7 +508,7 @@ mod tests {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let created = create_active_key(&credentials).await;
         let error = RotateInferenceKeyHandler::new(
-            Arc::new(MissingEnvironmentRepository),
+            Arc::new(MissingEnvironmentAccess),
             Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
             InferenceCredentialIssuer::new(),
             Arc::new(TestEncryption),
@@ -667,7 +620,9 @@ mod tests {
                 &baseline_projections,
             )
             .unwrap();
-        assert!(baseline.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
+        assert!(baseline
+            .acl
+            .contains(&format!("prefix = \"{prior_prefix}\"")));
         assert!(baseline.acl.contains("generation = 1"));
         assert!(!baseline.acl.contains("\n  workers "));
 
@@ -691,10 +646,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(successor_projections.len(), 1);
-        assert_eq!(
-            successor_projections[0].credential_id,
-            created.id.as_uuid()
-        );
+        assert_eq!(successor_projections[0].credential_id, created.id.as_uuid());
         assert_eq!(successor_projections[0].generation, 2);
         assert_eq!(successor_projections[0].prefix, next_prefix);
         assert!(!successor_projections[0].revoked);
@@ -713,12 +665,15 @@ mod tests {
                 &successor_projections,
             )
             .unwrap();
-        assert!(successor.acl.contains(&format!("prefix = \"{next_prefix}\"")));
-        assert!(!successor.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
-        assert!(successor.acl.contains(&format!(
-            "credentials \"{}\"",
-            created.id.as_uuid()
-        )));
+        assert!(successor
+            .acl
+            .contains(&format!("prefix = \"{next_prefix}\"")));
+        assert!(!successor
+            .acl
+            .contains(&format!("prefix = \"{prior_prefix}\"")));
+        assert!(successor
+            .acl
+            .contains(&format!("credentials \"{}\"", created.id.as_uuid())));
         assert!(successor.acl.contains("generation = 2"));
         assert!(successor.acl.contains("revoked = false"));
         assert!(!successor.acl.contains("\n  workers "));
