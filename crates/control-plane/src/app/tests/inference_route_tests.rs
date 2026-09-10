@@ -1738,6 +1738,48 @@ async fn inference_route_get_rejects_wrong_environment_path_as_not_found() -> Re
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_list_rejects_missing_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-list-missing-env",
+        "Inference list missing env",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-list-missing-env-project",
+        "Inference List Missing Env",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-list-missing-env-write",
+        "inference-route-list-missing-env-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let missing_environment = Uuid::now_v7();
+    let listed = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/routes"
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 404);
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,

@@ -1397,7 +1397,9 @@ evidence, and fenced release protocol.
   `inference:read`: list returns non-retired heads only (cursor-paginated by
   `route_id`), while get-by-id still returns retired heads for inspection.
   Get path-scopes like mutations: wrong-environment URL fails closed as
-  `NotFound` for org-wide callers. Environment visibility fails closed as
+  `NotFound` for org-wide callers. List similarly fails closed as `NotFound`
+  for a missing environment UUID (not `200` empty), matching create/publish.
+  Environment visibility fails closed as
   `NotFound` like usage showback.
   HTTP list/get for routes and keys also fail closed for restricted principals
   without an environment grant (`403`/`404`, no secret leakage). Create with a

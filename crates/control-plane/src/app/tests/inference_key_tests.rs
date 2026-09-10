@@ -623,6 +623,48 @@ async fn inference_key_revoke_rejects_wrong_environment_path_as_not_found() -> R
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_key_list_rejects_missing_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-key-list-missing-env",
+        "Inference key list missing env",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-list-missing-env-project",
+        "Inference Key List Missing Env",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-list-missing-env-read",
+        "inference-key-list-missing-env-read",
+        INFERENCE_KEY_READ_TOKEN,
+        &[ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let missing_environment = Uuid::now_v7();
+    let listed = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/keys"
+            ),
+            INFERENCE_KEY_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed.status(), 404);
+    Ok(())
+}
+
 fn replayed_revoke_json_replayed(response: &BootResponse) -> Result<bool> {
     response_json(response)?["data"]["replayed"]
         .as_bool()

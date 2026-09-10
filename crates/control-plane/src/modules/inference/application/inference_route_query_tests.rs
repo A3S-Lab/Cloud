@@ -160,7 +160,7 @@ async fn publish_one(
 async fn publish_then_list_and_get_return_route_without_secrets() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(routes.clone());
+    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let get = GetInferenceRouteHandler::new(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -220,7 +220,7 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
     let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
-    let list = ListInferenceRoutesHandler::new(routes.clone());
+    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let get = GetInferenceRouteHandler::new(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -290,7 +290,7 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
 async fn ungranted_environment_fails_closed_as_not_found() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(routes.clone());
+    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let get = GetInferenceRouteHandler::new(routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -379,10 +379,66 @@ async fn get_rejects_wrong_environment_path_as_not_found() {
 }
 
 #[tokio::test]
+async fn list_rejects_missing_environment_as_not_found() {
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let list = ListInferenceRoutesHandler::new(Arc::new(MissingEnvironmentRepository), routes);
+    let denied = list
+        .execute(
+            ListInferenceRoutes {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+                cursor: None,
+                limit: DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
+                resource_access: org_wide(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(denied, ApplicationError::NotFound(_)));
+}
+
+#[tokio::test]
 async fn list_pages_by_route_id_cursor() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(routes.clone());
+    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();

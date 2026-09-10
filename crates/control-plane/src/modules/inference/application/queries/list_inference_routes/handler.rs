@@ -1,5 +1,6 @@
 use super::{InferenceRoutePage, ListInferenceRoutes, MAXIMUM_INFERENCE_ROUTE_LIST_LIMIT};
 use crate::modules::inference::domain::repositories::IInferenceRouteRepository;
+use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::InferenceRouteId;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -7,12 +8,19 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct ListInferenceRoutesHandler {
+    environments: Arc<dyn IEnvironmentRepository>,
     routes: Arc<dyn IInferenceRouteRepository>,
 }
 
 impl ListInferenceRoutesHandler {
-    pub fn new(routes: Arc<dyn IInferenceRouteRepository>) -> Self {
-        Self { routes }
+    pub fn new(
+        environments: Arc<dyn IEnvironmentRepository>,
+        routes: Arc<dyn IInferenceRouteRepository>,
+    ) -> Self {
+        Self {
+            environments,
+            routes,
+        }
     }
 }
 
@@ -22,6 +30,7 @@ impl QueryHandler<ListInferenceRoutes> for ListInferenceRoutesHandler {
         query: ListInferenceRoutes,
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<InferenceRoutePage>>> {
+        let environments = Arc::clone(&self.environments);
         let routes = Arc::clone(&self.routes);
         Box::pin(async move {
             if !query
@@ -31,6 +40,22 @@ impl QueryHandler<ListInferenceRoutes> for ListInferenceRoutesHandler {
                 return Ok(Err(ApplicationError::NotFound(
                     "environment not found in organization".into(),
                 )));
+            }
+            match environments
+                .find(
+                    query.organization_id,
+                    query.project_id,
+                    query.environment_id,
+                )
+                .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "environment not found in organization and project".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
             }
             if query.limit == 0 || query.limit > MAXIMUM_INFERENCE_ROUTE_LIST_LIMIT {
                 return Ok(Err(ApplicationError::Invalid(format!(
