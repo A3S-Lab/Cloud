@@ -4,16 +4,15 @@ use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreat
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, TransitionDomainClaim,
 };
-use crate::modules::edge::domain::{
-    DomainClaim, DomainNamePattern, GatewayScope,
-};
+use crate::modules::edge::domain::{DomainClaim, DomainNamePattern, GatewayScope};
 use crate::modules::edge::infrastructure::EdgeInferenceRouteBindingAdmissionAdapter;
 use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::inference::application::{
-    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
-    IInferenceRouteAclProjectionPort, PermitInferenceGrantCredentialAdmission,
-    PublishInferenceRoute, PublishInferenceRouteHandler, ReviseInferenceRoute,
-    ReviseInferenceRouteHandler, EDGE_ROUTE_BINDING_INVALID,
+    IInferenceEdgeRouteBindingAdmissionPort, IInferenceEnvironmentAccess,
+    IInferenceRouteAclProjectionPort, InferenceEdgeRouteBindingAdmissionRequest,
+    InferenceEnvironmentScope, PermitInferenceGrantCredentialAdmission, PublishInferenceRoute,
+    PublishInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
+    EDGE_ROUTE_BINDING_INVALID,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -73,6 +72,16 @@ impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
         _project_id: ProjectId,
     ) -> Result<Vec<Environment>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl IInferenceEnvironmentAccess for AlwaysPresentEnvironmentRepository {
+    async fn environment_exists(
+        &self,
+        _scope: InferenceEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -328,12 +337,7 @@ async fn unknown_claim_is_rejected() {
             organization_id,
             project_id,
             environment_id,
-            binding(
-                DomainClaimId::new(),
-                scope_id,
-                "api.example.com",
-                "/v1",
-            ),
+            binding(DomainClaimId::new(), scope_id, "api.example.com", "/v1"),
         ))
         .await
         .unwrap_err();
@@ -415,12 +419,7 @@ async fn publish_handler_rejects_unknown_claim_before_persist() {
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![sample_grant()],
-                binding: binding(
-                    DomainClaimId::new(),
-                    scope_id,
-                    "api.example.com",
-                    "/v1",
-                ),
+                binding: binding(DomainClaimId::new(), scope_id, "api.example.com", "/v1"),
                 idempotency_key: "unknown-claim".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: Utc::now(),
@@ -682,4 +681,3 @@ async fn revise_also_enforces_edge_binding_admission() {
         .unwrap_err();
     assert_binding_invalid(error);
 }
-

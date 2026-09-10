@@ -2,10 +2,11 @@
 
 use crate::modules::identity::application::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
 use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
-    PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
-    PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
-    RetireInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
+    IInferenceEnvironmentAccess, IInferenceRouteAclProjectionPort, InferenceEnvironmentScope,
+    InferenceRouteEnvironmentScope, PermitInferenceEdgeRouteBindingAdmission,
+    PermitInferenceGrantCredentialAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
+    RetireInferenceRoute, RetireInferenceRouteHandler, ReviseInferenceRoute,
+    ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::repositories::IInferenceRouteRepository;
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
@@ -68,6 +69,16 @@ impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
         _project_id: ProjectId,
     ) -> Result<Vec<Environment>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl IInferenceEnvironmentAccess for AlwaysPresentEnvironmentRepository {
+    async fn environment_exists(
+        &self,
+        _scope: InferenceEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -2701,6 +2712,16 @@ async fn retire_rejects_missing_environment_as_not_found() {
         }
     }
 
+    #[async_trait]
+    impl IInferenceEnvironmentAccess for MissingEnvironmentRepository {
+        async fn environment_exists(
+            &self,
+            _scope: InferenceEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
     let retire =
@@ -2870,6 +2891,16 @@ async fn revise_rejects_missing_environment_as_not_found() {
         }
     }
 
+    #[async_trait]
+    impl IInferenceEnvironmentAccess for MissingEnvironmentRepository {
+        async fn environment_exists(
+            &self,
+            _scope: InferenceEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
     let revise = ReviseInferenceRouteHandler::new(
@@ -2966,6 +2997,16 @@ async fn publish_rejects_missing_environment_as_not_found_before_admission() {
             _project_id: ProjectId,
         ) -> Result<Vec<Environment>, RepositoryError> {
             Ok(Vec::new())
+        }
+    }
+
+    #[async_trait]
+    impl IInferenceEnvironmentAccess for MissingEnvironmentRepository {
+        async fn environment_exists(
+            &self,
+            _scope: InferenceEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
         }
     }
 

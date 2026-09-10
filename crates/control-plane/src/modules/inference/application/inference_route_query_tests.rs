@@ -3,7 +3,8 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::inference::application::{
-    GetInferenceRoute, GetInferenceRouteHandler, ListInferenceRoutes, ListInferenceRoutesHandler,
+    GetInferenceRoute, GetInferenceRouteHandler, IInferenceEnvironmentAccess,
+    InferenceEnvironmentScope, ListInferenceRoutes, ListInferenceRoutesHandler,
     PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
     PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
     RetireInferenceRouteHandler, DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
@@ -65,6 +66,16 @@ impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
         _project_id: ProjectId,
     ) -> Result<Vec<Environment>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl IInferenceEnvironmentAccess for AlwaysPresentEnvironmentRepository {
+    async fn environment_exists(
+        &self,
+        _scope: InferenceEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -160,8 +171,12 @@ async fn publish_one(
 async fn publish_then_list_and_get_return_route_without_secrets() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
-    let get = GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let list = ListInferenceRoutesHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
+    let get =
+        GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -219,9 +234,16 @@ async fn publish_then_list_and_get_return_route_without_secrets() {
 async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
-    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
-    let get = GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let retire = RetireInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
+    let list = ListInferenceRoutesHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
+    let get =
+        GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -290,8 +312,12 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
 async fn ungranted_environment_fails_closed_as_not_found() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
-    let get = GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let list = ListInferenceRoutesHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
+    let get =
+        GetInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -414,6 +440,16 @@ async fn get_rejects_missing_environment_as_not_found() {
         }
     }
 
+    #[async_trait]
+    impl IInferenceEnvironmentAccess for MissingEnvironmentRepository {
+        async fn environment_exists(
+            &self,
+            _scope: InferenceEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
     let get = GetInferenceRouteHandler::new(Arc::new(MissingEnvironmentRepository), routes);
@@ -482,6 +518,16 @@ async fn list_rejects_missing_environment_as_not_found() {
         }
     }
 
+    #[async_trait]
+    impl IInferenceEnvironmentAccess for MissingEnvironmentRepository {
+        async fn environment_exists(
+            &self,
+            _scope: InferenceEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let list = ListInferenceRoutesHandler::new(Arc::new(MissingEnvironmentRepository), routes);
     let denied = list
@@ -506,7 +552,10 @@ async fn list_rejects_missing_environment_as_not_found() {
 async fn list_pages_by_route_id_cursor() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let list = ListInferenceRoutesHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
+    let list = ListInferenceRoutesHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();

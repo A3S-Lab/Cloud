@@ -1,6 +1,8 @@
 use super::{InferenceRoutePage, ListInferenceRoutes, MAXIMUM_INFERENCE_ROUTE_LIST_LIMIT};
+use crate::modules::inference::application::{
+    IInferenceEnvironmentAccess, InferenceEnvironmentScope,
+};
 use crate::modules::inference::domain::repositories::IInferenceRouteRepository;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::InferenceRouteId;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -8,13 +10,13 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct ListInferenceRoutesHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IInferenceEnvironmentAccess>,
     routes: Arc<dyn IInferenceRouteRepository>,
 }
 
 impl ListInferenceRoutesHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IInferenceEnvironmentAccess>,
         routes: Arc<dyn IInferenceRouteRepository>,
     ) -> Self {
         Self {
@@ -41,16 +43,17 @@ impl QueryHandler<ListInferenceRoutes> for ListInferenceRoutesHandler {
                     "environment not found in organization".into(),
                 )));
             }
-            match environments
-                .find(
-                    query.organization_id,
-                    query.project_id,
-                    query.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let scope = match InferenceEnvironmentScope::new(
+                query.organization_id,
+                query.project_id,
+                query.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Forbidden(error))),
+            };
+            match environments.environment_exists(scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

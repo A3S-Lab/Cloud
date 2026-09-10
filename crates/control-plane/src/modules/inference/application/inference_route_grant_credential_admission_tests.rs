@@ -5,10 +5,10 @@ use crate::modules::identity::domain::repositories::IInferenceCredentialReposito
 use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
 use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
 use crate::modules::inference::application::{
-    InferenceGrantCredentialAdmissionRequest, IInferenceGrantCredentialAdmissionPort,
-    PermitInferenceEdgeRouteBindingAdmission, PublishInferenceRoute,
-    PublishInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
-    INFERENCE_GRANT_CREDENTIAL_INVALID,
+    IInferenceEnvironmentAccess, IInferenceGrantCredentialAdmissionPort, InferenceEnvironmentScope,
+    InferenceGrantCredentialAdmissionRequest, PermitInferenceEdgeRouteBindingAdmission,
+    PublishInferenceRoute, PublishInferenceRouteHandler, ReviseInferenceRoute,
+    ReviseInferenceRouteHandler, INFERENCE_GRANT_CREDENTIAL_INVALID,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -69,6 +69,16 @@ impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
         _project_id: ProjectId,
     ) -> Result<Vec<Environment>, RepositoryError> {
         Ok(Vec::new())
+    }
+}
+
+#[async_trait]
+impl IInferenceEnvironmentAccess for AlwaysPresentEnvironmentRepository {
+    async fn environment_exists(
+        &self,
+        _scope: InferenceEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(true)
     }
 }
 
@@ -315,7 +325,9 @@ async fn revoked_credential_rejects_publish() {
         "cccccccccccccccc",
     )
     .await;
-    credential.revoke(Utc::now() + Duration::seconds(1)).unwrap();
+    credential
+        .revoke(Utc::now() + Duration::seconds(1))
+        .unwrap();
     credentials
         .update_inference_credential(credential.clone(), 1)
         .await

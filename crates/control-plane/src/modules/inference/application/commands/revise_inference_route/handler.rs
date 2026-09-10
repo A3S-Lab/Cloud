@@ -1,13 +1,13 @@
 use super::ReviseInferenceRoute;
 use crate::modules::inference::application::{
-    InferenceEdgeRouteBindingAdmissionRequest, InferenceGrantCredentialAdmissionRequest,
-    IInferenceEdgeRouteBindingAdmissionPort, IInferenceGrantCredentialAdmissionPort,
+    IInferenceEdgeRouteBindingAdmissionPort, IInferenceEnvironmentAccess,
+    IInferenceGrantCredentialAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
+    InferenceEnvironmentScope, InferenceGrantCredentialAdmissionRequest,
 };
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
     IInferenceRouteRepository, ReviseInferenceRouteWrite,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -15,7 +15,7 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct ReviseInferenceRouteHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IInferenceEnvironmentAccess>,
     routes: Arc<dyn IInferenceRouteRepository>,
     edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
     grant_credentials: Arc<dyn IInferenceGrantCredentialAdmissionPort>,
@@ -23,7 +23,7 @@ pub struct ReviseInferenceRouteHandler {
 
 impl ReviseInferenceRouteHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IInferenceEnvironmentAccess>,
         routes: Arc<dyn IInferenceRouteRepository>,
         edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
         grant_credentials: Arc<dyn IInferenceGrantCredentialAdmissionPort>,
@@ -54,16 +54,17 @@ impl CommandHandler<ReviseInferenceRoute> for ReviseInferenceRouteHandler {
                 )));
             }
 
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let scope = match InferenceEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Forbidden(error))),
+            };
+            match environments.environment_exists(scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

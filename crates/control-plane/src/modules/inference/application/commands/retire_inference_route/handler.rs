@@ -1,9 +1,11 @@
 use super::RetireInferenceRoute;
+use crate::modules::inference::application::{
+    IInferenceEnvironmentAccess, InferenceEnvironmentScope,
+};
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
     IInferenceRouteRepository, RetireInferenceRouteWrite,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -11,13 +13,13 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct RetireInferenceRouteHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IInferenceEnvironmentAccess>,
     routes: Arc<dyn IInferenceRouteRepository>,
 }
 
 impl RetireInferenceRouteHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IInferenceEnvironmentAccess>,
         routes: Arc<dyn IInferenceRouteRepository>,
     ) -> Self {
         Self {
@@ -42,16 +44,17 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
                 )));
             }
 
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let scope = match InferenceEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Forbidden(error))),
+            };
+            match environments.environment_exists(scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

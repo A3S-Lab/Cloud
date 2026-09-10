@@ -7786,6 +7786,87 @@ fn identity_inference_keys_isolate_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn inference_environment_queries_isolate_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("inference/application/environment_access.rs"))
+            .expect("read Inference environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructInferenceEnvironmentScope",
+        "pubtraitIInferenceEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+        "Result<bool,RepositoryError>",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Inference lost its narrow Projects boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    for relative in [
+        "inference/application/commands/publish_inference_route/handler.rs",
+        "inference/application/commands/revise_inference_route/handler.rs",
+        "inference/application/commands/retire_inference_route/handler.rs",
+        "inference/application/queries/get_inference_route/handler.rs",
+        "inference/application/queries/list_inference_routes/handler.rs",
+        "inference/application/queries/list_daily_usage_rollups.rs",
+        "inference/application/queries/get_usage_request_fact.rs",
+    ] {
+        let source =
+            std::fs::read_to_string(root.join(relative)).expect("read inference environment user");
+        let production = production_source(&source);
+        assert!(
+            production.contains("Arc<dyn IInferenceEnvironmentAccess>"),
+            "{relative} must depend on IInferenceEnvironmentAccess"
+        );
+        assert_eq!(
+            production.matches(".environment_exists(").count(),
+            1,
+            "{relative} must consult environment existence exactly once"
+        );
+        assert!(
+            !production.contains("IEnvironmentRepository"),
+            "{relative} regained IEnvironmentRepository"
+        );
+        assert!(
+            !production.contains("crate::modules::projects"),
+            "{relative} bypassed the Inference environment port into Projects"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("inference/infrastructure/project_environment_access.rs"),
+    )
+    .expect("read Inference Projects environment adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIInferenceEnvironmentAccessforProjectsInferenceEnvironmentAccessAdapter",
+        "environments:Arc<dynIEnvironmentRepository>",
+        ".find(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Inference environment adapter lost boundary behavior {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsInferenceEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Inference environment adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

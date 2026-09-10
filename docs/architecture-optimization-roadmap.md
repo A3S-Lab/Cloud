@@ -200,7 +200,7 @@ evidence (no CI requirement for this backlog unless a gate already demands it).
 
 | Theme | Examples |
 | --- | --- |
-| Architecture integrity | Reduce audit ratchets; replace foreign repository imports with owner Application ports. Identity inference-key create/rotate/revoke/list/get now use `IIdentityEnvironmentAccess` + `ProjectsIdentityEnvironmentAccessAdapter` (Secrets pattern); `create_resource_grant` still imports Projects repositories. |
+| Architecture integrity | Reduce audit ratchets; replace foreign repository imports with owner Application ports. Identity inference-key create/rotate/revoke/list/get use `IIdentityEnvironmentAccess`; Inference route/usage create/revise/retire/list/get use `IInferenceEnvironmentAccess` + `ProjectsInferenceEnvironmentAccessAdapter`. `create_resource_grant` still imports Projects repositories. |
 | I0 Track A | Further Edge succession / admission / path-scope bricks; usage recovery gaps that stay Cloud-owned |
 | C0 remainder | Enterprise slices that do not require Box; day-two CLI/MCP parity for already-owned lifecycles |
 | G0 / P0 / U0 components | Provider evidence and handoffs already named in ROADMAP without claiming full lane exit |

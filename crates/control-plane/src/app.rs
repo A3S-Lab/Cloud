@@ -2743,6 +2743,12 @@ fn build_management_application_with_health(
     let identity_environments: Arc<dyn IIdentityEnvironmentAccess> = Arc::new(
         ProjectsIdentityEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
+    let inference_environments: Arc<dyn crate::modules::inference::IInferenceEnvironmentAccess> =
+        Arc::new(
+            crate::modules::inference::ProjectsInferenceEnvironmentAccessAdapter::new(Arc::clone(
+                &environments,
+            )),
+        );
     let source_environments = Arc::clone(&environments);
     let source_query_environments = Arc::clone(&environments);
     let create_subscription_environments = Arc::clone(&environments);
@@ -2913,15 +2919,15 @@ fn build_management_application_with_health(
     let inference_key_environments = Arc::clone(&identity_environments);
     let rotate_inference_key_environments = Arc::clone(&identity_environments);
     let revoke_inference_key_environments = Arc::clone(&identity_environments);
-    let list_daily_usage_environments = Arc::clone(&environments);
-    let get_usage_request_fact_environments = Arc::clone(&environments);
+    let list_daily_usage_environments = Arc::clone(&inference_environments);
+    let get_usage_request_fact_environments = Arc::clone(&inference_environments);
     let list_inference_key_environments = Arc::clone(&identity_environments);
     let get_inference_key_environments = Arc::clone(&identity_environments);
-    let list_inference_route_environments = Arc::clone(&environments);
-    let get_inference_route_environments = Arc::clone(&environments);
-    let publish_inference_route_environments = Arc::clone(&environments);
-    let revise_inference_route_environments = Arc::clone(&environments);
-    let retire_inference_route_environments = Arc::clone(&environments);
+    let list_inference_route_environments = Arc::clone(&inference_environments);
+    let get_inference_route_environments = Arc::clone(&inference_environments);
+    let publish_inference_route_environments = Arc::clone(&inference_environments);
+    let revise_inference_route_environments = Arc::clone(&inference_environments);
+    let retire_inference_route_environments = Arc::clone(&inference_environments);
     let publish_inference_routes = Arc::clone(&inference_routes);
     let revise_inference_routes = Arc::clone(&inference_routes);
     let list_inference_routes = Arc::clone(&inference_routes);
