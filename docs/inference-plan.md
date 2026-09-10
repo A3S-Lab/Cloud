@@ -1487,7 +1487,9 @@ evidence, and fenced release protocol.
   `GET .../inference-usage/requests/{request_id}` via `InferenceModule`
   (`ListDailyUsageRollups` / `GetUsageRequestFact`) with
   `ResourceAccessEvaluator` environment visibility (ungranted environments
-  fail closed as NotFound). First-principles query tests for
+  fail closed as NotFound) and `IEnvironmentRepository` existence checks so
+  missing environment UUIDs fail closed as NotFound (not empty rollups).
+  First-principles query tests for
   `GetUsageRequestFact` certify visible happy path, ungranted environment
   hide, cross-environment fact hide, and missing request as NotFound.
   `ListDailyUsageRollups` first-principles tests also certify inverted
@@ -1495,7 +1497,8 @@ evidence, and fenced release protocol.
   window precedes `records_available_from`; purged request facts after
   retention sweep hide as NotFound. HTTP showback lifecycle tests certify
   `INFERENCE_READ` scope gating, inverted window `422`, cross-environment and
-  missing request `404`, restricted membership without environment grant
+  missing request `404`, missing environment path `404`, restricted membership
+  without environment grant
   `403`, retention admin `200` vs member `403`, and Conflict/NotFound after
   retention sweep. Usage query controllers declare `AUTH_SCOPES_METADATA`
   for `INFERENCE_READ`; retention remains administrator + `CLOUD_READ`.

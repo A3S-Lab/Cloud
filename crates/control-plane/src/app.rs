@@ -2907,6 +2907,8 @@ fn build_management_application_with_health(
     let execution_environments = Arc::clone(&environments);
     let inference_key_environments = Arc::clone(&environments);
     let revoke_inference_key_environments = Arc::clone(&environments);
+    let list_daily_usage_environments = Arc::clone(&environments);
+    let get_usage_request_fact_environments = Arc::clone(&environments);
     let list_inference_key_environments = Arc::clone(&environments);
     let get_inference_key_environments = Arc::clone(&environments);
     let list_inference_route_environments = Arc::clone(&environments);
@@ -4356,11 +4358,13 @@ fn build_management_application_with_health(
                 ))
                 .query_handler::<crate::modules::inference::ListDailyUsageRollups, _>(
                     crate::modules::inference::ListDailyUsageRollupsHandler::new(
+                        Arc::clone(&list_daily_usage_environments),
                         Arc::clone(&list_daily_usage_rollups),
                     ),
                 )
                 .query_handler::<crate::modules::inference::GetUsageRequestFact, _>(
                     crate::modules::inference::GetUsageRequestFactHandler::new(
+                        get_usage_request_fact_environments,
                         Arc::clone(&get_usage_request_fact),
                     ),
                 )

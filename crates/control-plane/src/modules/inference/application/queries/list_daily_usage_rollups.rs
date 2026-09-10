@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::{IInferenceUsageRepository, InferenceUsageDailyRollup};
+use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -21,12 +22,19 @@ impl Query for ListDailyUsageRollups {
 }
 
 pub struct ListDailyUsageRollupsHandler {
+    environments: Arc<dyn IEnvironmentRepository>,
     usage: Arc<dyn IInferenceUsageRepository>,
 }
 
 impl ListDailyUsageRollupsHandler {
-    pub fn new(usage: Arc<dyn IInferenceUsageRepository>) -> Self {
-        Self { usage }
+    pub fn new(
+        environments: Arc<dyn IEnvironmentRepository>,
+        usage: Arc<dyn IInferenceUsageRepository>,
+    ) -> Self {
+        Self {
+            environments,
+            usage,
+        }
     }
 }
 
@@ -39,6 +47,7 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
         'static,
         a3s_boot::Result<ApplicationResult<Vec<InferenceUsageDailyRollup>>>,
     > {
+        let environments = Arc::clone(&self.environments);
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
             if !query
@@ -48,6 +57,22 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
                 return Ok(Err(ApplicationError::NotFound(
                     "environment not found in organization".into(),
                 )));
+            }
+            match environments
+                .find(
+                    query.organization_id,
+                    query.project_id,
+                    query.environment_id,
+                )
+                .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "environment not found in organization and project".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
             }
             if query.from_day > query.to_day {
                 return Ok(Err(ApplicationError::Invalid(
@@ -73,17 +98,96 @@ mod tests {
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::inference::InMemoryInferenceUsageRepository;
-    use crate::modules::shared_kernel::domain::NodeId;
+    use crate::modules::projects::domain::entities::Environment;
+    use crate::modules::projects::domain::value_objects::EnvironmentName;
+    use crate::modules::shared_kernel::domain::{
+        IdempotencyRequest, IdempotentWrite, NodeId, RepositoryError,
+    };
     use a3s_cloud_contracts::{
-        InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
-        InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
+        DomainEventEnvelope, InferenceUsageBatchV1, InferenceUsageCursorV1,
+        InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
         InferenceUsageMeasurementCompletenessV1, InferenceUsageRecordV1,
         InferenceUsageRequestEvidenceV1, InferenceUsageTerminalOutcomeV1,
     };
+    use async_trait::async_trait;
     use base64::Engine;
     use chrono::{DateTime, Utc};
     use sha2::{Digest, Sha256};
     use uuid::Uuid;
+
+    struct AlwaysPresentEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            organization_id: OrganizationId,
+            project_id: ProjectId,
+            environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(Some(Environment::create(
+                organization_id,
+                project_id,
+                environment_id,
+                EnvironmentName::parse("default").expect("environment name"),
+                Utc::now(),
+            )))
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
 
     fn org_wide() -> ResourceAccessEvaluator {
         ResourceAccessEvaluator::organization_wide()
@@ -138,7 +242,7 @@ mod tests {
         let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(101));
-        let handler = ListDailyUsageRollupsHandler::new(usage.clone());
+        let handler = ListDailyUsageRollupsHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage.clone());
         let started = lifecycle(
             InferenceUsageLifecycleKindV1::RequestStarted,
             "2026-01-02T10:00:00Z",
@@ -231,7 +335,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_inverted_day_window() {
         let usage = Arc::new(InMemoryInferenceUsageRepository::new());
-        let handler = ListDailyUsageRollupsHandler::new(usage);
+        let handler = ListDailyUsageRollupsHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
         let from = NaiveDate::from_ymd_opt(2026, 1, 3).unwrap();
         let to = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
         let error = handler
@@ -263,7 +367,7 @@ mod tests {
         let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(101));
-        let handler = ListDailyUsageRollupsHandler::new(usage.clone());
+        let handler = ListDailyUsageRollupsHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage.clone());
         let started = lifecycle(
             InferenceUsageLifecycleKindV1::RequestStarted,
             "2026-01-02T10:00:00Z",
@@ -354,5 +458,31 @@ mod tests {
             matches!(denied, ApplicationError::Conflict(_)),
             "showback before records_available_from must fail closed, got {denied:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn missing_environment_fails_closed_as_not_found() {
+        let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+        let handler = ListDailyUsageRollupsHandler::new(
+            Arc::new(MissingEnvironmentRepository),
+            usage,
+        );
+        let day = NaiveDate::from_ymd_opt(2026, 1, 2).unwrap();
+        let denied = handler
+            .execute(
+                ListDailyUsageRollups {
+                    organization_id: OrganizationId::from_uuid(Uuid::from_u128(1)),
+                    project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
+                    environment_id: EnvironmentId::from_uuid(Uuid::from_u128(101)),
+                    from_day: day,
+                    to_day: day,
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(a3s_boot::ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
 }

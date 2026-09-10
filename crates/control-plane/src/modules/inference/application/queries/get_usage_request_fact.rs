@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::{IInferenceUsageRepository, InferenceUsageRequestFact};
+use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -20,12 +21,19 @@ impl Query for GetUsageRequestFact {
 }
 
 pub struct GetUsageRequestFactHandler {
+    environments: Arc<dyn IEnvironmentRepository>,
     usage: Arc<dyn IInferenceUsageRepository>,
 }
 
 impl GetUsageRequestFactHandler {
-    pub fn new(usage: Arc<dyn IInferenceUsageRepository>) -> Self {
-        Self { usage }
+    pub fn new(
+        environments: Arc<dyn IEnvironmentRepository>,
+        usage: Arc<dyn IInferenceUsageRepository>,
+    ) -> Self {
+        Self {
+            environments,
+            usage,
+        }
     }
 }
 
@@ -36,6 +44,7 @@ impl QueryHandler<GetUsageRequestFact> for GetUsageRequestFactHandler {
         _context: CqrsContext,
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<InferenceUsageRequestFact>>>
     {
+        let environments = Arc::clone(&self.environments);
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
             if !query
@@ -45,6 +54,22 @@ impl QueryHandler<GetUsageRequestFact> for GetUsageRequestFactHandler {
                 return Ok(Err(ApplicationError::NotFound(
                     "environment not found in organization".into(),
                 )));
+            }
+            match environments
+                .find(
+                    query.organization_id,
+                    query.project_id,
+                    query.environment_id,
+                )
+                .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "environment not found in organization and project".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
             }
             match usage
                 .get_request_fact(query.organization_id, query.request_id)
@@ -68,20 +93,99 @@ mod tests {
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::inference::InMemoryInferenceUsageRepository;
-    use crate::modules::shared_kernel::domain::NodeId;
+    use crate::modules::projects::domain::entities::Environment;
+    use crate::modules::projects::domain::value_objects::EnvironmentName;
+    use crate::modules::shared_kernel::domain::{
+        IdempotencyRequest, IdempotentWrite, NodeId, RepositoryError,
+    };
     use a3s_boot::ModuleRef;
     use a3s_cloud_contracts::{
-        InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
-        InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
+        DomainEventEnvelope, InferenceUsageBatchV1, InferenceUsageCursorV1,
+        InferenceUsageEndpointV1, InferenceUsageLifecycleEventV1, InferenceUsageLifecycleKindV1,
         InferenceUsageMeasurementCompletenessV1, InferenceUsageRecordV1,
         InferenceUsageRequestEvidenceV1, InferenceUsageTerminalOutcomeV1,
     };
+    use async_trait::async_trait;
     use base64::Engine;
     use chrono::{DateTime, Utc};
     use sha2::{Digest, Sha256};
 
     const REQUEST_ID: u128 = 100;
     const ENVIRONMENT_ID: u128 = 101;
+
+    struct AlwaysPresentEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for AlwaysPresentEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            organization_id: OrganizationId,
+            project_id: ProjectId,
+            environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(Some(Environment::create(
+                organization_id,
+                project_id,
+                environment_id,
+                EnvironmentName::parse("default").expect("environment name"),
+                Utc::now(),
+            )))
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
 
     fn org_wide() -> ResourceAccessEvaluator {
         ResourceAccessEvaluator::organization_wide()
@@ -189,7 +293,7 @@ mod tests {
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(ENVIRONMENT_ID));
         seed_request_fact(usage.as_ref(), organization_id).await;
-        let handler = GetUsageRequestFactHandler::new(usage);
+        let handler = GetUsageRequestFactHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
 
         let fact = handler
             .execute(
@@ -217,7 +321,7 @@ mod tests {
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(ENVIRONMENT_ID));
         seed_request_fact(usage.as_ref(), organization_id).await;
-        let handler = GetUsageRequestFactHandler::new(usage);
+        let handler = GetUsageRequestFactHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
 
         let denied = handler
             .execute(
@@ -248,7 +352,7 @@ mod tests {
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let other_environment = EnvironmentId::from_uuid(Uuid::from_u128(202));
         seed_request_fact(usage.as_ref(), organization_id).await;
-        let handler = GetUsageRequestFactHandler::new(usage);
+        let handler = GetUsageRequestFactHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
 
         let denied = handler
             .execute(
@@ -273,7 +377,7 @@ mod tests {
         let organization_id = OrganizationId::from_uuid(Uuid::from_u128(1));
         let project_id = ProjectId::from_uuid(Uuid::from_u128(50));
         let environment_id = EnvironmentId::from_uuid(Uuid::from_u128(ENVIRONMENT_ID));
-        let handler = GetUsageRequestFactHandler::new(usage);
+        let handler = GetUsageRequestFactHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
 
         let denied = handler
             .execute(
@@ -328,7 +432,7 @@ mod tests {
             .await
             .expect("sweep");
 
-        let handler = GetUsageRequestFactHandler::new(usage);
+        let handler = GetUsageRequestFactHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), usage);
         let denied = handler
             .execute(
                 GetUsageRequestFact {
@@ -347,5 +451,27 @@ mod tests {
             matches!(denied, ApplicationError::NotFound(_)),
             "purged showback facts must hide as NotFound, got {denied:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn missing_environment_fails_closed_as_not_found() {
+        let usage = Arc::new(InMemoryInferenceUsageRepository::new());
+        let handler =
+            GetUsageRequestFactHandler::new(Arc::new(MissingEnvironmentRepository), usage);
+        let denied = handler
+            .execute(
+                GetUsageRequestFact {
+                    organization_id: OrganizationId::from_uuid(Uuid::from_u128(1)),
+                    project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
+                    environment_id: EnvironmentId::from_uuid(Uuid::from_u128(ENVIRONMENT_ID)),
+                    request_id: Uuid::from_u128(REQUEST_ID),
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
 }

@@ -221,6 +221,26 @@ async fn inference_usage_showback_http_is_scope_visible_and_fail_closed() -> Res
         403,
         "restricted tokens without environment grant must fail closed before showback"
     );
+
+    let missing_environment = Uuid::now_v7();
+    let missing_rollups = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference-usage/daily-rollups?from_day=2026-01-02&to_day=2026-01-02"
+            ),
+            USAGE_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing_rollups.status(), 404);
+    let missing_fact = app
+        .call(get_as(
+            format!(
+                "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference-usage/requests/{request_id}"
+            ),
+            USAGE_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing_fact.status(), 404);
     Ok(())
 }
 
