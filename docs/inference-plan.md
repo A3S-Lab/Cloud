@@ -1482,10 +1482,14 @@ evidence, and fenced release protocol.
   create-then-revoke replacement → Edge managed-snapshot ACL succession: create key
   A, create replacement B, revoke A; the successor compile keeps both prefixes with
   A `revoked = true` and B `revoked = false`, without inventing `workers` or
-  embedding either bearer. Expired (non-revoked) credentials still project with
+  embedding either bearer.   Expired (non-revoked) credentials still project with
   their past `expires_at` and `revoked = false` so Gateway can fail closed on
-  expiry alone. Cloud also certifies retire → Edge managed-snapshot omission: after
-  `RetireInferenceRoute` the route ACL projection is empty and the successor
+  expiry alone. Cloud also certifies grant withdrawal → Edge managed-snapshot ACL
+  succession: `ReviseInferenceRoute` with empty grants advances `policy_revision`,
+  drops `grants` for the credential in the successor compile, and keeps the same
+  Identity credential projection (`prefix`/`generation`, `revoked = false`) without
+  inventing `workers`. Cloud also certifies retire → Edge managed-snapshot omission:
+  after `RetireInferenceRoute` the route ACL projection is empty and the successor
   compile drops `routes`/`models` while still projecting Identity credentials.
   Broader joint mixed-version / fallback conformance beyond that succession brick
   remains open. I0.2b is not fully verified.
