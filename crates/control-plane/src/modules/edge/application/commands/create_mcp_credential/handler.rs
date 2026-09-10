@@ -1,5 +1,6 @@
 use super::CreateMcpCredential;
 use crate::modules::edge::application::{encrypt_delivery_receipt, recover_delivery};
+use crate::modules::edge::application::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
 use crate::modules::edge::domain::events::McpCredentialChanged;
 use crate::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, IMcpCredentialLifecycleRepository,
@@ -7,7 +8,6 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::services::{
     IMcpCredentialIssuer, McpCredentialIssuanceError, McpCredentialIssueRequest,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretEncryptionService;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
@@ -18,7 +18,7 @@ use std::sync::Arc;
 const MAX_IDENTITY_ATTEMPTS: usize = 4;
 
 pub struct CreateMcpCredentialHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IEdgeEnvironmentAccess>,
     credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
     issuer: Arc<dyn IMcpCredentialIssuer>,
     encryption: Arc<dyn ISecretEncryptionService>,
@@ -26,7 +26,7 @@ pub struct CreateMcpCredentialHandler {
 
 impl CreateMcpCredentialHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IEdgeEnvironmentAccess>,
         credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
         issuer: Arc<dyn IMcpCredentialIssuer>,
         encryption: Arc<dyn ISecretEncryptionService>,
@@ -56,16 +56,17 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
         let issuer = Arc::clone(&self.issuer);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match EdgeEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

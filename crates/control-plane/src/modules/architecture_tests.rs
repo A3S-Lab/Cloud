@@ -7951,6 +7951,101 @@ fn identity_resource_grants_isolate_projects_and_fleet_behind_owner_ports() {
 }
 
 #[test]
+fn edge_gateway_scope_commands_isolate_projects_and_fleet_behind_owner_ports() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("edge/application/environment_access.rs"))
+            .expect("read Edge environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeEnvironmentScope",
+        "pubtraitIEdgeEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Edge lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let node_port = std::fs::read_to_string(root.join("edge/application/node_access.rs"))
+        .expect("read Edge node port");
+    let compact_node_port = production_source(&node_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeNodeScope",
+        "pubtraitIEdgeNodeAccess:Send+Sync",
+        "node_exists(",
+    ] {
+        assert!(
+            compact_node_port.contains(required),
+            "Edge lost its narrow Fleet node boundary {required}"
+        );
+    }
+    assert!(!node_port.contains("crate::modules::fleet"));
+
+    for (relative, required_ports, required_calls) in [
+        (
+            "edge/application/commands/create_gateway_scope/handler.rs",
+            &[
+                "Arc<dyn IEdgeEnvironmentAccess>",
+                "Arc<dyn IEdgeNodeAccess>",
+            ][..],
+            &[".environment_exists(", ".node_exists("][..],
+        ),
+        (
+            "edge/application/commands/create_domain_claim/handler.rs",
+            &["Arc<dyn IEdgeEnvironmentAccess>"][..],
+            &[".environment_exists("][..],
+        ),
+        (
+            "edge/application/commands/create_mcp_credential/handler.rs",
+            &["Arc<dyn IEdgeEnvironmentAccess>"][..],
+            &[".environment_exists("][..],
+        ),
+    ] {
+        let handler = std::fs::read_to_string(root.join(relative)).expect("read Edge handler");
+        let production = production_source(&handler);
+        for required in required_ports.iter().chain(required_calls.iter()) {
+            assert!(
+                production.contains(required),
+                "{relative} lost owner-port wiring {required}"
+            );
+        }
+        for forbidden in [
+            "IEnvironmentRepository",
+            "INodeRepository",
+            "crate::modules::projects",
+            "crate::modules::fleet",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsEdgeEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Edge environment adapter exactly once"
+    );
+    assert_eq!(
+        app.matches("FleetEdgeNodeAccessAdapter::new(").count(),
+        1,
+        "root composition must construct the Edge node adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

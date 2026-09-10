@@ -1,10 +1,11 @@
 use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
     load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    load_inference_worker_projections_for_routes, CompileManagedGatewayCertificateConvergenceSnapshot,
-    GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata,
-    GatewaySnapshotPublicationOwner, GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository,
-    PlanGatewayNodeDesiredState, StageManagedGatewayCertificateConvergence,
+    load_inference_worker_projections_for_routes,
+    CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
+    GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
+    GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    StageManagedGatewayCertificateConvergence,
 };
 use crate::modules::edge::domain::events::{
     GatewayCertificateConvergenceStaged, GatewayCertificateExpiryChanged,

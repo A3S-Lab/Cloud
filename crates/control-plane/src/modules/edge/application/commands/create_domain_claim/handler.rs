@@ -1,8 +1,8 @@
 use super::{CreateDomainClaim, CreateDomainClaimResult};
+use crate::modules::edge::application::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
 use crate::modules::edge::domain::events::DomainClaimChanged;
 use crate::modules::edge::domain::repositories::{CreateDomainClaimWrite, IEdgeRepository};
 use crate::modules::edge::domain::{DomainClaim, DomainNamePattern};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{DomainClaimId, IdempotencyRequest};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -11,13 +11,13 @@ use base64::Engine;
 use std::sync::Arc;
 
 pub struct CreateDomainClaimHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IEdgeEnvironmentAccess>,
     edge: Arc<dyn IEdgeRepository>,
 }
 
 impl CreateDomainClaimHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IEdgeEnvironmentAccess>,
         edge: Arc<dyn IEdgeRepository>,
     ) -> Self {
         Self { environments, edge }
@@ -34,16 +34,17 @@ impl CommandHandler<CreateDomainClaim> for CreateDomainClaimHandler {
         let environments = Arc::clone(&self.environments);
         let edge = Arc::clone(&self.edge);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match EdgeEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))

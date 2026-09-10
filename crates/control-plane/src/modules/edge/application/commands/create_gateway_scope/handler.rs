@@ -1,24 +1,25 @@
 use super::{CreateGatewayScope, CreateGatewayScopeResult};
+use crate::modules::edge::application::{
+    EdgeEnvironmentScope, EdgeNodeScope, IEdgeEnvironmentAccess, IEdgeNodeAccess,
+};
 use crate::modules::edge::domain::events::GatewayScopeCreated;
 use crate::modules::edge::domain::repositories::{CreateGatewayScopeWrite, IEdgeRepository};
 use crate::modules::edge::domain::{GatewayRolloutPolicy, GatewayScope};
-use crate::modules::fleet::domain::repositories::INodeRepository;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{GatewayScopeId, IdempotencyRequest};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CreateGatewayScopeHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
-    nodes: Arc<dyn INodeRepository>,
+    environments: Arc<dyn IEdgeEnvironmentAccess>,
+    nodes: Arc<dyn IEdgeNodeAccess>,
     edge: Arc<dyn IEdgeRepository>,
 }
 
 impl CreateGatewayScopeHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
-        nodes: Arc<dyn INodeRepository>,
+        environments: Arc<dyn IEdgeEnvironmentAccess>,
+        nodes: Arc<dyn IEdgeNodeAccess>,
         edge: Arc<dyn IEdgeRepository>,
     ) -> Self {
         Self {
@@ -40,16 +41,17 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
         let nodes = Arc::clone(&self.nodes);
         let edge = Arc::clone(&self.edge);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match EdgeEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
                     )))
@@ -102,8 +104,16 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
             };
             for node_id in &scope.member_node_ids {
-                if let Err(error) = nodes.find(command.organization_id, *node_id).await {
-                    return Ok(Err(error.into()));
+                let node_scope = match EdgeNodeScope::new(command.organization_id, *node_id) {
+                    Ok(scope) => scope,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+                match nodes.node_exists(node_scope).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        return Ok(Err(ApplicationError::NotFound("resource not found".into())))
+                    }
+                    Err(error) => return Ok(Err(error.into())),
                 }
             }
             let event = GatewayScopeCreated::envelope(&scope, command.request_id)
@@ -124,5 +134,123 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 replayed: write.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::edge::domain::GatewayRolloutPolicy;
+    use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, NodeId, OrganizationId, ProjectId, RepositoryError,
+    };
+    use a3s_boot::{CommandHandler, ModuleRef};
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    struct MissingEnvironmentAccess;
+    struct PresentEnvironmentAccess;
+    struct MissingNodeAccess;
+    struct PresentNodeAccess;
+
+    #[async_trait]
+    impl IEdgeEnvironmentAccess for MissingEnvironmentAccess {
+        async fn environment_exists(
+            &self,
+            _scope: EdgeEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
+    #[async_trait]
+    impl IEdgeEnvironmentAccess for PresentEnvironmentAccess {
+        async fn environment_exists(
+            &self,
+            _scope: EdgeEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[async_trait]
+    impl IEdgeNodeAccess for MissingNodeAccess {
+        async fn node_exists(&self, _scope: EdgeNodeScope) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
+    #[async_trait]
+    impl IEdgeNodeAccess for PresentNodeAccess {
+        async fn node_exists(&self, _scope: EdgeNodeScope) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    fn command(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+        node_id: NodeId,
+    ) -> CreateGatewayScope {
+        CreateGatewayScope {
+            organization_id,
+            project_id,
+            environment_id,
+            node_id,
+            member_node_ids: vec![node_id],
+            rollout_policy: GatewayRolloutPolicy::single_replica(),
+            idempotency_key: "edge-gateway-scope-1".into(),
+            request_id: Uuid::new_v4(),
+            requested_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_environment_fails_closed_as_not_found() {
+        let handler = CreateGatewayScopeHandler::new(
+            Arc::new(MissingEnvironmentAccess),
+            Arc::new(PresentNodeAccess),
+            Arc::new(InMemoryEdgeRepository::new()),
+        );
+        let error = handler
+            .execute(
+                command(
+                    OrganizationId::new(),
+                    ProjectId::new(),
+                    EnvironmentId::new(),
+                    NodeId::new(),
+                ),
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("command bus")
+            .expect_err("missing environment");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn missing_member_node_fails_closed_as_not_found() {
+        let handler = CreateGatewayScopeHandler::new(
+            Arc::new(PresentEnvironmentAccess),
+            Arc::new(MissingNodeAccess),
+            Arc::new(InMemoryEdgeRepository::new()),
+        );
+        let error = handler
+            .execute(
+                command(
+                    OrganizationId::new(),
+                    ProjectId::new(),
+                    EnvironmentId::new(),
+                    NodeId::new(),
+                ),
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("command bus")
+            .expect_err("missing node");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
     }
 }

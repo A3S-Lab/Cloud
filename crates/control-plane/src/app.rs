@@ -132,21 +132,21 @@ use crate::modules::edge::{
     CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
     CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
     EdgeGatewayAcknowledgementProjector, EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule,
-    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
-    GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
-    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler,
-    GetMcpRoutePolicyHandler, GetRouteHandler, ListDomainClaimsHandler,
-    ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
-    ListMcpRoutePoliciesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
-    LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService, McpRouteProjectionInputReader,
-    McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler, PublishRouteHandler,
-    ReviseMcpRoutePolicyHandler, RevokeDomainClaimHandler, RevokeMcpCredentialHandler,
-    RotateMcpCredentialHandler, VaultGatewayCertificateAuthority, VerifyDomainClaimHandler,
-    WorkloadRouteTargetReader,
+    FleetEdgeNodeAccessAdapter, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
+    GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
+    GatewayRolloutReconciler, GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler,
+    GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess,
+    IEdgeNodeAccess, ListDomainClaimsHandler, ListGatewayCertificatesHandler,
+    ListGatewayScopesHandler, ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler,
+    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    ProjectsEdgeEnvironmentAccessAdapter, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
+    RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
+    VaultGatewayCertificateAuthority, VerifyDomainClaimHandler, WorkloadRouteTargetReader,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
@@ -2735,9 +2735,9 @@ fn build_management_application_with_health(
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let agent_workload_environments = Arc::clone(&environments);
-    let domain_environments = Arc::clone(&environments);
-    let gateway_scope_environments = Arc::clone(&environments);
-    let mcp_credential_environments = Arc::clone(&environments);
+    let edge_environments: Arc<dyn IEdgeEnvironmentAccess> = Arc::new(
+        ProjectsEdgeEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let secret_environments: Arc<dyn ISecretEnvironmentAccess> = Arc::new(
         ProjectsSecretEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
@@ -2850,7 +2850,8 @@ fn build_management_application_with_health(
     let manage_node_pools = Arc::clone(&node_pools);
     let get_node_pools = Arc::clone(&node_pools);
     let list_node_pools = node_pools;
-    let gateway_scope_nodes = Arc::clone(&nodes);
+    let edge_nodes: Arc<dyn IEdgeNodeAccess> =
+        Arc::new(FleetEdgeNodeAccessAdapter::new(Arc::clone(&nodes)));
     let enqueue_commands = Arc::clone(&node_control);
     let lease_commands = Arc::clone(&node_control);
     let acknowledge_commands = Arc::clone(&node_control);
@@ -3720,7 +3721,10 @@ fn build_management_application_with_health(
                     AppendAgentExecutionEventsHandler::new(append_agent_execution_events),
                 )
                 .command_handler::<crate::modules::edge::CreateDomainClaim, _>(
-                    CreateDomainClaimHandler::new(domain_environments, create_domain_claims),
+                    CreateDomainClaimHandler::new(
+                        Arc::clone(&edge_environments),
+                        create_domain_claims,
+                    ),
                 )
                 .command_handler::<crate::modules::edge::VerifyDomainClaim, _>(
                     VerifyDomainClaimHandler::new(verify_domain_claims, domain_verifier),
@@ -3730,14 +3734,14 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::edge::CreateGatewayScope, _>(
                     CreateGatewayScopeHandler::new(
-                        gateway_scope_environments,
-                        gateway_scope_nodes,
+                        Arc::clone(&edge_environments),
+                        edge_nodes,
                         create_gateway_scopes,
                     ),
                 )
                 .command_handler::<crate::modules::edge::CreateMcpCredential, _>(
                     CreateMcpCredentialHandler::new(
-                        mcp_credential_environments,
+                        Arc::clone(&edge_environments),
                         create_mcp_credentials,
                         mcp_credential_issuer,
                         create_mcp_credential_encryption,

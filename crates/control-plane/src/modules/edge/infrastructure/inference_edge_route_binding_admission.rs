@@ -3,7 +3,7 @@
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::{DomainClaimState, RouteHostname};
 use crate::modules::inference::application::{
-    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
+    IInferenceEdgeRouteBindingAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
     EDGE_ROUTE_BINDING_INVALID,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -51,10 +51,7 @@ impl IInferenceEdgeRouteBindingAdmissionPort for EdgeInferenceRouteBindingAdmiss
 
         let claim = match self
             .edge
-            .find_domain_claim(
-                request.organization_id,
-                request.binding.domain_claim_id,
-            )
+            .find_domain_claim(request.organization_id, request.binding.domain_claim_id)
             .await
         {
             Ok(claim) => claim,
@@ -83,10 +80,7 @@ impl IInferenceEdgeRouteBindingAdmissionPort for EdgeInferenceRouteBindingAdmiss
 
         match self
             .edge
-            .find_gateway_scope(
-                request.organization_id,
-                request.binding.gateway_scope_id,
-            )
+            .find_gateway_scope(request.organization_id, request.binding.gateway_scope_id)
             .await
         {
             Ok(scope) => {
@@ -112,8 +106,5 @@ impl IInferenceEdgeRouteBindingAdmissionPort for EdgeInferenceRouteBindingAdmiss
 }
 
 fn binding_invalid(detail: impl Into<String>) -> ApplicationError {
-    ApplicationError::Invalid(format!(
-        "{EDGE_ROUTE_BINDING_INVALID}: {}",
-        detail.into()
-    ))
+    ApplicationError::Invalid(format!("{EDGE_ROUTE_BINDING_INVALID}: {}", detail.into()))
 }

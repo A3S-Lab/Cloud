@@ -414,7 +414,11 @@ async fn mcp_desired_state_stages_inference_credential_and_route_acl_without_wor
 
     assert_eq!(report.staged_snapshots, 1);
     assert_eq!(report.unchanged_snapshots, 0);
-    assert!(report.failures.is_empty(), "failures: {:?}", report.failures);
+    assert!(
+        report.failures.is_empty(),
+        "failures: {:?}",
+        report.failures
+    );
     let staged = repository.staged();
     assert_eq!(staged.len(), 1);
     let acl = &staged[0].publication().acl;

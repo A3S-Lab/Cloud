@@ -1,5 +1,6 @@
 mod deployment_route_updater;
 mod domain_ownership_verifier;
+mod fleet_node_access;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
@@ -30,6 +31,7 @@ mod mcp_route_projection_input_reader;
 mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
 pub mod persistence;
+mod project_environment_access;
 mod route_target_reader;
 mod runtime_http_upstream;
 mod vault_gateway_certificate_authority;
@@ -53,6 +55,7 @@ mod mcp_gateway_snapshot_reconciler_tests;
 
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
+pub use fleet_node_access::FleetEdgeNodeAccessAdapter;
 pub use gateway_acknowledgement_projector::EdgeGatewayAcknowledgementProjector;
 pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciler, GatewayCertificateReconciliationFailure,
@@ -142,6 +145,7 @@ pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRoutePr
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
+pub use project_environment_access::ProjectsEdgeEnvironmentAccessAdapter;
 pub use route_target_reader::WorkloadRouteTargetReader;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) use runtime_http_upstream::gateway_http_upstream;

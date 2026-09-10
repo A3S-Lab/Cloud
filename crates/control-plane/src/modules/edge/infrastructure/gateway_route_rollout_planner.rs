@@ -257,8 +257,7 @@ impl GatewayRouteRolloutPlanner {
             let credentials = inference_port
                 .list_inference_credential_acl_projections(&scopes)
                 .await?;
-            member_inference_credentials
-                .insert(desired.physical_scope().node_id, credentials);
+            member_inference_credentials.insert(desired.physical_scope().node_id, credentials);
 
             let mut route_scopes = inference_route_scopes_from_routes(&ordinary_routes)
                 .map_err(RepositoryError::Conflict)?;
