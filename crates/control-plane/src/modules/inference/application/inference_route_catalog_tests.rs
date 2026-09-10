@@ -7,6 +7,7 @@ use crate::modules::inference::application::{
     RetireInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
+use crate::modules::inference::domain::repositories::IInferenceRouteRepository;
 use crate::modules::inference::infrastructure::{
     InferenceRouteAclProjectionAdapter, InMemoryInferenceRouteRepository,
 };
@@ -250,7 +251,7 @@ async fn empty_repository_projects_nothing_so_edge_invents_no_catalog_facts() {
 async fn retire_removes_route_from_projection() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -267,6 +268,8 @@ async fn retire_removes_route_from_projection() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: route.id,
                 expected_aggregate_version: route.aggregate_version(),
                 idempotency_key: "retire-1".into(),
@@ -620,7 +623,7 @@ async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
 
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -718,6 +721,8 @@ async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 idempotency_key: "retire-for-edge".into(),
@@ -768,7 +773,7 @@ async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
 async fn revise_retired_route_is_rejected() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let revise = revise_handler(routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
@@ -785,6 +790,8 @@ async fn revise_retired_route_is_rejected() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 idempotency_key: "retire-before-revise".into(),
@@ -957,7 +964,7 @@ async fn revise_is_idempotent_for_same_key_and_body() {
 async fn retire_stale_and_zero_aggregate_version_fail_closed() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes);
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -974,6 +981,8 @@ async fn retire_stale_and_zero_aggregate_version_fail_closed() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: published.id,
                 expected_aggregate_version: 0,
                 idempotency_key: "retire-zero".into(),
@@ -991,6 +1000,8 @@ async fn retire_stale_and_zero_aggregate_version_fail_closed() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version() + 1,
                 idempotency_key: "retire-stale".into(),
@@ -1009,7 +1020,7 @@ async fn retire_stale_and_zero_aggregate_version_fail_closed() {
 async fn retire_is_idempotent_for_same_key_and_cas() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes);
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes);
     let organization_id = OrganizationId::new();
     let project_id = ProjectId::new();
     let environment_id = EnvironmentId::new();
@@ -1023,6 +1034,8 @@ async fn retire_is_idempotent_for_same_key_and_cas() {
         .unwrap();
     let command = RetireInferenceRoute {
         organization_id,
+                project_id,
+                environment_id,
         route_id: published.id,
         expected_aggregate_version: published.aggregate_version(),
         idempotency_key: "retire-same".into(),
@@ -1039,4 +1052,142 @@ async fn retire_is_idempotent_for_same_key_and_cas() {
     assert_eq!(first.aggregate_version(), second.aggregate_version());
     assert!(first.retired_at().is_some());
     assert_eq!(first.retired_at(), second.retired_at());
+}
+
+#[tokio::test]
+async fn retire_rejects_wrong_environment_path_as_not_found() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+    );
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let other_environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-retire-wrong-env",
+            ),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let denied = retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id: other_environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                idempotency_key: "retire-wrong-env".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(denied, ApplicationError::NotFound(_)));
+
+    let still_live = routes
+        .find_inference_route(organization_id, published.id)
+        .await
+        .unwrap()
+        .expect("route must remain unretired");
+    assert!(still_live.retired_at().is_none());
+    assert_eq!(still_live.aggregate_version(), published.aggregate_version());
+}
+
+#[tokio::test]
+async fn retire_rejects_missing_environment_as_not_found() {
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire =
+        RetireInferenceRouteHandler::new(Arc::new(MissingEnvironmentRepository), routes.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(
+                organization_id,
+                project_id,
+                environment_id,
+                "publish-retire-missing-env",
+            ),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let denied = retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                idempotency_key: "retire-missing-env".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(denied, ApplicationError::NotFound(_)));
+    assert!(routes
+        .find_inference_route(organization_id, published.id)
+        .await
+        .unwrap()
+        .expect("route")
+        .retired_at()
+        .is_none());
 }

@@ -125,6 +125,12 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            environment_id: EnvironmentId::from_uuid(
+                                request.param_as::<Uuid>("environment_id")?,
+                            ),
                             route_id: InferenceRouteId::from_uuid(
                                 request.param_as::<Uuid>("route_id")?,
                             ),

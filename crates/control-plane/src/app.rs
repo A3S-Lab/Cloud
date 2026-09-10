@@ -2908,6 +2908,7 @@ fn build_management_application_with_health(
     let inference_key_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
     let revise_inference_route_environments = Arc::clone(&environments);
+    let retire_inference_route_environments = Arc::clone(&environments);
     let publish_inference_routes = Arc::clone(&inference_routes);
     let revise_inference_routes = Arc::clone(&inference_routes);
     let list_inference_routes = Arc::clone(&inference_routes);
@@ -3087,6 +3088,7 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::inference::RetireInferenceRoute, _>(
                     crate::modules::inference::RetireInferenceRouteHandler::new(
+                        retire_inference_route_environments,
                         retire_inference_routes,
                     ),
                 )

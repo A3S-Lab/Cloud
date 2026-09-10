@@ -219,7 +219,7 @@ async fn publish_then_list_and_get_return_route_without_secrets() {
 async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
-    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(Arc::new(AlwaysPresentEnvironmentRepository), routes.clone());
     let list = ListInferenceRoutesHandler::new(routes.clone());
     let get = GetInferenceRouteHandler::new(routes.clone());
     let organization_id = OrganizationId::new();
@@ -238,6 +238,8 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
         .execute(
             RetireInferenceRoute {
                 organization_id,
+                project_id,
+                environment_id,
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 idempotency_key: "retire-1".into(),

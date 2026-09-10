@@ -1383,8 +1383,10 @@ evidence, and fenced release protocol.
   idempotent replay, policy-revision advance, and stale CAS `409`. Retire likewise
   requires client `expectedAggregateVersion` CAS (zero → Invalid, stale →
   Conflict) so concurrent revise versus retire cannot silently race on the
-  head version. Authorized management
-  reads are composed as `ListInferenceRoutes` / `GetInferenceRoute` with
+  head version, and path-scopes like revise: wrong-environment URL or missing
+  environment fail closed as `NotFound` without mutating the head. Authorized
+  management reads are composed as `ListInferenceRoutes` / `GetInferenceRoute`
+  with
   `GET ENV/inference/routes` and `GET ENV/inference/routes/{route_id}` under
   `inference:read`: list returns non-retired heads only (cursor-paginated by
   `route_id`), while get-by-id still returns retired heads for inspection.
