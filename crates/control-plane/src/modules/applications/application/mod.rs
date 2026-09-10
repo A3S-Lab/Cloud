@@ -3,6 +3,7 @@ mod delivery_access;
 mod delivery_commands;
 mod delivery_identity;
 mod delivery_queries;
+mod environment_access;
 mod invocation_commands;
 mod invocation_composition;
 mod ontology_revision_port;
@@ -33,6 +34,7 @@ pub use delivery_queries::{
     ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
     DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
+pub use environment_access::{ApplicationsEnvironmentScope, IApplicationsEnvironmentAccess};
 pub use invocation_commands::{
     AdmitApplicationInvocation, AdmitApplicationInvocationHandler,
     ApplicationInvocationMutationResult,

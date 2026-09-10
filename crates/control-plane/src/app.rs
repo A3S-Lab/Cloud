@@ -27,8 +27,9 @@ use crate::modules::applications::{
     CreateApplicationHandler, GetApplicationHandler, GetApplicationInvocationHandler,
     GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationOntologyRevisionPort,
     IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
-    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IWorkflowApplicationEffectsPort,
-    ListApplicationReleasesHandler, ListApplicationsHandler, OpenApplicationSessionHandler,
+    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess,
+    IWorkflowApplicationEffectsPort, ListApplicationReleasesHandler, ListApplicationsHandler,
+    OpenApplicationSessionHandler, ProjectsApplicationsEnvironmentAccessAdapter,
     PublishApplicationReleaseHandler, ReplayApplicationSessionHandler,
     RequestApplicationInvocationHandler, WorkflowApplicationEffectsService,
     WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
@@ -329,16 +330,17 @@ use crate::modules::workflow::{
     GetWorkflowRunOutputHandler, GetWorkflowRunVariablesHandler, HumanTaskCoordinator,
     HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskFormPort, IHumanTaskRepository,
     IOntologyRepository, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
-    IWorkflowDefinitionRepository, IWorkflowGoalRepository, IWorkflowRunCoordinator,
-    IWorkflowRunDiagnosticsReader, IWorkflowRunHistoryReader, IWorkflowRunRepository,
-    IWorkflowRunVariableReader, ListHumanTasksHandler, ListOntologiesHandler,
-    ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler,
-    ListWorkflowRevisionsHandler, ListWorkflowRunsHandler, ReviseOntologyHandler,
-    ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler, SubmitHumanTaskHandler,
-    WaitWorkflowRunHandler, WorkflowCompositeExecutionApplicationService,
-    WorkflowDefinitionPublicationService, WorkflowModule, WorkflowRunDiagnosticsReader,
-    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
-    WorkflowRunVariableReader,
+    IWorkflowDefinitionRepository, IWorkflowEnvironmentAccess, IWorkflowGoalRepository,
+    IWorkflowProjectAccess, IWorkflowRunCoordinator, IWorkflowRunDiagnosticsReader,
+    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
+    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
+    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
+    ListWorkflowRunsHandler, ProjectsWorkflowEnvironmentAccessAdapter,
+    ProjectsWorkflowProjectAccessAdapter, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
+    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler,
+    WorkflowCompositeExecutionApplicationService, WorkflowDefinitionPublicationService,
+    WorkflowModule, WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
+    WorkflowRunReconciler, WorkflowRunVariableReader,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
@@ -2605,9 +2607,12 @@ fn build_management_application_with_health(
     let get_connector_execution_attempt_resolutions = connector_attempt_resolutions;
     let revoke_connector_revisions = Arc::clone(&connector_revocations);
     let get_connector_revision_revocations = connector_revocations;
+    let workflow_projects: Arc<dyn IWorkflowProjectAccess> = Arc::new(
+        ProjectsWorkflowProjectAccessAdapter::new(Arc::clone(&projects)),
+    );
     let workflow_definition_publications: Arc<dyn IWorkflowDefinitionPublicationPort> =
         Arc::new(WorkflowDefinitionPublicationService::new(
-            Arc::clone(&projects),
+            Arc::clone(&workflow_projects),
             Arc::clone(&workflow_definitions),
         ));
     let application_workflow_evidence: Arc<dyn IApplicationWorkflowRevisionPort> = Arc::new(
@@ -2646,7 +2651,9 @@ fn build_management_application_with_health(
     let admit_application_sessions = Arc::clone(&application_sessions);
     let admit_application_invocation_releases = Arc::clone(&applications);
     let admit_application_invocation_sessions = Arc::clone(&application_sessions);
-    let admit_application_environments = Arc::clone(&environments);
+    let admit_application_environments: Arc<dyn IApplicationsEnvironmentAccess> = Arc::new(
+        ProjectsApplicationsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let admit_application_workflow_runs = application_workflow_runs;
     let get_application_sessions = Arc::clone(&application_sessions);
     let get_application_invocations = Arc::clone(&application_sessions);
@@ -2703,7 +2710,7 @@ fn build_management_application_with_health(
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
     let environment_projects = Arc::clone(&projects);
-    let create_ontology_projects = Arc::clone(&projects);
+    let create_ontology_projects = Arc::clone(&workflow_projects);
     let create_ontologies = Arc::clone(&ontologies);
     let revise_ontologies = Arc::clone(&ontologies);
     let get_ontologies = Arc::clone(&ontologies);
@@ -2711,15 +2718,17 @@ fn build_management_application_with_health(
     let get_ontology_revisions = Arc::clone(&ontologies);
     let list_ontology_revisions = Arc::clone(&ontologies);
     let diff_ontology_revisions = Arc::clone(&ontologies);
-    let get_workflow_node_catalog_projects = Arc::clone(&projects);
+    let get_workflow_node_catalog_projects = Arc::clone(&workflow_projects);
     let create_workflow_definition_publications = workflow_definition_publications;
     let revise_workflow_definitions = Arc::clone(&workflow_definitions);
     let get_workflow_definitions = Arc::clone(&workflow_definitions);
     let list_workflow_definitions = Arc::clone(&workflow_definitions);
     let get_workflow_revisions = Arc::clone(&workflow_definitions);
     let list_workflow_revisions = Arc::clone(&workflow_definitions);
-    let create_workflow_goal_projects = Arc::clone(&projects);
-    let create_workflow_goal_environments = Arc::clone(&environments);
+    let create_workflow_goal_projects = Arc::clone(&workflow_projects);
+    let create_workflow_goal_environments: Arc<dyn IWorkflowEnvironmentAccess> = Arc::new(
+        ProjectsWorkflowEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let create_goal_workflows = Arc::clone(&workflow_definitions);
     let create_goal_ontologies = Arc::clone(&ontologies);
     let create_workflow_goals = Arc::clone(&workflow_goals);

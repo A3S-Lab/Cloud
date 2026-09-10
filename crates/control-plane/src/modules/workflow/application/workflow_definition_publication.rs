@@ -1,11 +1,11 @@
-use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, WorkflowDefinitionId,
-    WorkflowRevisionId,
+    IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::application::{
-    WorkflowDefinitionMutationResult, WorkflowPayloadAcl, WorkflowSemanticContractAcls,
+    IWorkflowProjectAccess, WorkflowDefinitionMutationResult, WorkflowPayloadAcl,
+    WorkflowProjectScope, WorkflowSemanticContractAcls,
 };
 use crate::modules::workflow::domain::{
     CreateWorkflowDefinitionWrite, IWorkflowDefinitionRepository, WorkflowCompositeRegions,
@@ -60,13 +60,13 @@ pub trait IWorkflowDefinitionPublicationPort: Send + Sync {
 }
 
 pub struct WorkflowDefinitionPublicationService {
-    projects: Arc<dyn IProjectRepository>,
+    projects: Arc<dyn IWorkflowProjectAccess>,
     workflows: Arc<dyn IWorkflowDefinitionRepository>,
 }
 
 impl WorkflowDefinitionPublicationService {
     pub fn new(
-        projects: Arc<dyn IProjectRepository>,
+        projects: Arc<dyn IWorkflowProjectAccess>,
         workflows: Arc<dyn IWorkflowDefinitionRepository>,
     ) -> Self {
         Self {
@@ -82,13 +82,15 @@ impl IWorkflowDefinitionPublicationPort for WorkflowDefinitionPublicationService
         &self,
         request: WorkflowDefinitionPublicationRequest,
     ) -> ApplicationResult<WorkflowDefinitionMutationResult> {
-        match self
-            .projects
-            .find(request.organization_id, request.project_id)
-            .await
-        {
-            Ok(Some(_)) => {}
-            Ok(None) => return Err(ApplicationError::NotFound("project not found".into())),
+        let scope = match WorkflowProjectScope::new(request.organization_id, request.project_id) {
+            Ok(scope) => scope,
+            Err(error) => return Err(ApplicationError::Invalid(error)),
+        };
+        match self.projects.project_exists(scope).await {
+            Ok(true) => {}
+            Ok(false) | Err(RepositoryError::NotFound) => {
+                return Err(ApplicationError::NotFound("project not found".into()))
+            }
             Err(error) => return Err(error.into()),
         }
         if request.definition_id.as_uuid().is_nil()

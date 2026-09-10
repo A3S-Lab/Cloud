@@ -19,8 +19,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::{
     CapabilityType, IWorkflowDefinitionPublicationPort, IWorkflowDefinitionRepository,
-    InMemoryWorkflowDefinitionRepository, WorkflowDefinitionPublicationService, WorkflowStepKind,
-    WorkflowStepOwner,
+    InMemoryWorkflowDefinitionRepository, ProjectsWorkflowProjectAccessAdapter,
+    WorkflowDefinitionPublicationService, WorkflowStepKind, WorkflowStepOwner,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use chrono::{TimeZone, Utc};
@@ -256,7 +256,10 @@ async fn command_authorizes_before_compilation_and_user_authored_modes_fail_clos
     let workflows = Arc::new(InMemoryWorkflowDefinitionRepository::new());
     let port: Arc<dyn IApplicationPresetWorkflowPort> =
         Arc::new(WorkflowApplicationPresetCompiler::new(Arc::new(
-            WorkflowDefinitionPublicationService::new(projects, workflows.clone()),
+            WorkflowDefinitionPublicationService::new(
+                Arc::new(ProjectsWorkflowProjectAccessAdapter::new(projects)),
+                workflows.clone(),
+            ),
         )));
     let handler = CompileApplicationPresetWorkflowHandler::new(port);
     let command = CompileApplicationPresetWorkflow {
@@ -323,9 +326,11 @@ fn compiler(
     projects: Arc<InMemoryProjectsRepository>,
     workflows: Arc<InMemoryWorkflowDefinitionRepository>,
 ) -> WorkflowApplicationPresetCompiler {
-    let publications: Arc<dyn IWorkflowDefinitionPublicationPort> = Arc::new(
-        WorkflowDefinitionPublicationService::new(projects, workflows),
-    );
+    let publications: Arc<dyn IWorkflowDefinitionPublicationPort> =
+        Arc::new(WorkflowDefinitionPublicationService::new(
+            Arc::new(ProjectsWorkflowProjectAccessAdapter::new(projects)),
+            workflows,
+        ));
     WorkflowApplicationPresetCompiler::new(publications)
 }
 

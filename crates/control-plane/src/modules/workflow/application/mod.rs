@@ -1,8 +1,10 @@
 pub mod commands;
+mod environment_access;
 #[cfg(test)]
 mod historical_idempotency_replay_tests;
 pub(crate) mod human_task_access;
 mod human_task_form_port;
+mod project_access;
 pub mod queries;
 pub(crate) mod resource_access;
 mod workflow_authoring;
@@ -16,9 +18,11 @@ mod workflow_definition_publication;
 mod workflow_definition_publication_tests;
 mod workflow_run_reconciler;
 
+pub use environment_access::{IWorkflowEnvironmentAccess, WorkflowEnvironmentScope};
 pub use human_task_form_port::{
     HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority, IHumanTaskFormPort,
 };
+pub use project_access::{IWorkflowProjectAccess, WorkflowProjectScope};
 pub use workflow_authoring::{
     AppendWorkflowAuthoringRequest, CreateWorkflowAuthoringJournalRequest,
     GetWorkflowAuthoringJournalRequest, IWorkflowAuthoringApplicationPort,

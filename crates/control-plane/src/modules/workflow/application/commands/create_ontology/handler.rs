@@ -1,8 +1,11 @@
 use super::CreateOntology;
-use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, OntologyId, OntologyRevisionId};
-use crate::modules::workflow::application::OntologyMutationResult;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, OntologyId, OntologyRevisionId, RepositoryError,
+};
+use crate::modules::workflow::application::{
+    IWorkflowProjectAccess, OntologyMutationResult, WorkflowProjectScope,
+};
 use crate::modules::workflow::domain::{
     CreateOntologyWrite, IOntologyRepository, Ontology, OntologyContract, OntologyName,
     OntologyRecord, OntologyRevision, OntologyRevisionPublished,
@@ -12,13 +15,13 @@ use chrono::Utc;
 use std::sync::Arc;
 
 pub struct CreateOntologyHandler {
-    projects: Arc<dyn IProjectRepository>,
+    projects: Arc<dyn IWorkflowProjectAccess>,
     ontologies: Arc<dyn IOntologyRepository>,
 }
 
 impl CreateOntologyHandler {
     pub fn new(
-        projects: Arc<dyn IProjectRepository>,
+        projects: Arc<dyn IWorkflowProjectAccess>,
         ontologies: Arc<dyn IOntologyRepository>,
     ) -> Self {
         Self {
@@ -38,12 +41,16 @@ impl CommandHandler<CreateOntology> for CreateOntologyHandler {
         let projects = Arc::clone(&self.projects);
         let ontologies = Arc::clone(&self.ontologies);
         Box::pin(async move {
-            match projects
-                .find(command.organization_id, command.project_id)
-                .await
+            let scope = match WorkflowProjectScope::new(command.organization_id, command.project_id)
             {
-                Ok(Some(_)) => {}
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match projects.project_exists(scope).await {
+                Ok(true) => {}
+                Ok(false) | Err(RepositoryError::NotFound) => {
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                }
                 Err(error) => return Ok(Err(error.into())),
             }
             let contract = match OntologyContract::parse_acl(&command.acl) {

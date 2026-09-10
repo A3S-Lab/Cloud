@@ -3,6 +3,7 @@ mod application_in_memory;
 mod ontology_revision;
 mod persistence;
 mod preset_workflow;
+mod project_environment_access;
 #[cfg(test)]
 mod session_in_memory;
 #[cfg(test)]
@@ -15,6 +16,7 @@ pub use application_in_memory::InMemoryApplicationRepository;
 pub use ontology_revision::WorkflowApplicationOntologyRevisionReader;
 pub use persistence::{PostgresApplicationRepository, PostgresApplicationSessionRepository};
 pub use preset_workflow::WorkflowApplicationPresetCompiler;
+pub use project_environment_access::ProjectsApplicationsEnvironmentAccessAdapter;
 #[cfg(test)]
 pub use session_in_memory::InMemoryApplicationSessionRepository;
 pub use workflow_revision::WorkflowApplicationReleaseEvidenceReader;

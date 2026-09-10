@@ -1,6 +1,7 @@
 use super::delivery_access::project_member_session;
 use super::delivery_commands::{RequestApplicationInvocation, RequestApplicationInvocationHandler};
 use super::delivery_identity::{idempotency, invocation_id};
+use super::environment_access::{ApplicationsEnvironmentScope, IApplicationsEnvironmentAccess};
 use super::resource_access::environment;
 use super::{
     ApplicationWorkflowRunEvidence, IApplicationOntologyRevisionPort, IApplicationWorkflowRunPort,
@@ -10,7 +11,6 @@ use crate::modules::applications::domain::{
     IApplicationSessionRepository, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, ApplicationId, ApplicationSessionId, EnvironmentId, OntologyId,
@@ -58,7 +58,7 @@ pub struct AdmitApplicationInvocationHandler {
     applications: Arc<dyn IApplicationRepository>,
     sessions: Arc<dyn IApplicationSessionRepository>,
     ontologies: Arc<dyn IApplicationOntologyRevisionPort>,
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IApplicationsEnvironmentAccess>,
     workflows: Arc<dyn IApplicationWorkflowRunPort>,
 }
 
@@ -67,7 +67,7 @@ impl AdmitApplicationInvocationHandler {
         applications: Arc<dyn IApplicationRepository>,
         sessions: Arc<dyn IApplicationSessionRepository>,
         ontologies: Arc<dyn IApplicationOntologyRevisionPort>,
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IApplicationsEnvironmentAccess>,
         workflows: Arc<dyn IApplicationWorkflowRunPort>,
     ) -> Self {
         Self {
@@ -114,12 +114,17 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                 {
                     return Ok(Err(error));
                 }
-                match environments
-                    .find(command.organization_id, command.project_id, environment_id)
-                    .await
-                {
-                    Ok(Some(_)) => {}
-                    Ok(None) | Err(RepositoryError::NotFound) => {
+                let scope = match ApplicationsEnvironmentScope::new(
+                    command.organization_id,
+                    command.project_id,
+                    environment_id,
+                ) {
+                    Ok(scope) => scope,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+                match environments.environment_exists(scope).await {
+                    Ok(true) => {}
+                    Ok(false) | Err(RepositoryError::NotFound) => {
                         return Ok(Err(ApplicationError::NotFound(
                             "Application environment not found".into(),
                         )))

@@ -7,7 +7,8 @@ use a3s_cloud_control_plane::modules::projects::domain::repositories::IProjectRe
 use a3s_cloud_control_plane::modules::projects::domain::value_objects::ProjectName;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::workflow::{
-    GetWorkflowNodeCatalog, GetWorkflowNodeCatalogHandler, WorkflowNodeCatalog,
+    GetWorkflowNodeCatalog, GetWorkflowNodeCatalogHandler, ProjectsWorkflowProjectAccessAdapter,
+    WorkflowNodeCatalog,
 };
 
 pub(super) async fn exercise_workflow_node_catalog_reconnect(
@@ -87,7 +88,10 @@ async fn query_catalog(
     project_id: ProjectId,
 ) -> Result<WorkflowNodeCatalog, Box<dyn std::error::Error>> {
     let projects: Arc<dyn IProjectRepository> = projects;
-    Ok(GetWorkflowNodeCatalogHandler::new(projects)
+    Ok(
+        GetWorkflowNodeCatalogHandler::new(Arc::new(ProjectsWorkflowProjectAccessAdapter::new(
+            projects,
+        )))
         .execute(
             GetWorkflowNodeCatalog {
                 organization_id,
@@ -96,5 +100,6 @@ async fn query_catalog(
             },
             CqrsContext::new(ModuleRef::new()),
         )
-        .await??)
+        .await??,
+    )
 }

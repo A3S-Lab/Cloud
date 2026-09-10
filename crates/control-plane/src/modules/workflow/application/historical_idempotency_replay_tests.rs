@@ -29,6 +29,7 @@ use crate::modules::workflow::test_support::{
 use crate::modules::workflow::{
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
     InMemoryWorkflowGoalRepository, InMemoryWorkflowRunRepository,
+    ProjectsWorkflowEnvironmentAccessAdapter, ProjectsWorkflowProjectAccessAdapter,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use chrono::Duration;
@@ -51,7 +52,10 @@ async fn publication_replays_historic_unsupported_revision_before_runtime_admiss
     let scope = definition_scope(&fixture);
     let idempotency = publication_idempotency(&fixture, &scope, CREATE_KEY);
     seed_definition(workflows.as_ref(), &fixture, idempotency).await;
-    let service = WorkflowDefinitionPublicationService::new(projects, workflows);
+    let service = WorkflowDefinitionPublicationService::new(
+        Arc::new(ProjectsWorkflowProjectAccessAdapter::new(projects)),
+        workflows,
+    );
 
     let replay = service
         .publish(publication_request(
@@ -192,8 +196,13 @@ async fn goal_replays_historic_plan_before_runtime_admission() {
         goal_idempotency(&fixture, GOAL_KEY, &fixture.goal.contract),
     )
     .await;
-    let handler =
-        CreateWorkflowGoalHandler::new(projects.clone(), projects, workflows, ontologies, goals);
+    let handler = CreateWorkflowGoalHandler::new(
+        Arc::new(ProjectsWorkflowProjectAccessAdapter::new(projects.clone())),
+        Arc::new(ProjectsWorkflowEnvironmentAccessAdapter::new(projects)),
+        workflows,
+        ontologies,
+        goals,
+    );
 
     let replay = handler
         .execute(

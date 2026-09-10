@@ -7,14 +7,18 @@ use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PrincipalId, ProjectId, WorkflowDefinitionId, WorkflowRevisionId,
 };
-use crate::modules::workflow::InMemoryWorkflowDefinitionRepository;
+use crate::modules::workflow::{
+    InMemoryWorkflowDefinitionRepository, ProjectsWorkflowProjectAccessAdapter,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
 #[tokio::test]
 async fn project_admission_precedes_acl_parsing() {
     let publications = WorkflowDefinitionPublicationService::new(
-        Arc::new(InMemoryProjectsRepository::new()),
+        Arc::new(ProjectsWorkflowProjectAccessAdapter::new(Arc::new(
+            InMemoryProjectsRepository::new(),
+        ))),
         Arc::new(InMemoryWorkflowDefinitionRepository::new()),
     );
     let result = publications

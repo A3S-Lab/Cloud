@@ -1,8 +1,12 @@
 use super::CreateWorkflowGoal;
-use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, PlanRevisionId, WorkflowGoalId};
-use crate::modules::workflow::application::WorkflowGoalMutationResult;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, PlanRevisionId, RepositoryError, WorkflowGoalId,
+};
+use crate::modules::workflow::application::{
+    IWorkflowEnvironmentAccess, IWorkflowProjectAccess, WorkflowEnvironmentScope,
+    WorkflowGoalMutationResult, WorkflowProjectScope,
+};
 use crate::modules::workflow::domain::{
     CreateWorkflowGoalWrite, IOntologyRepository, IWorkflowDefinitionRepository,
     IWorkflowGoalRepository, WorkflowGoalCompiled, WorkflowGoalContract, WorkflowGoalRecord,
@@ -13,8 +17,8 @@ use chrono::Utc;
 use std::sync::Arc;
 
 pub struct CreateWorkflowGoalHandler {
-    projects: Arc<dyn IProjectRepository>,
-    environments: Arc<dyn IEnvironmentRepository>,
+    projects: Arc<dyn IWorkflowProjectAccess>,
+    environments: Arc<dyn IWorkflowEnvironmentAccess>,
     workflows: Arc<dyn IWorkflowDefinitionRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
     goals: Arc<dyn IWorkflowGoalRepository>,
@@ -22,8 +26,8 @@ pub struct CreateWorkflowGoalHandler {
 
 impl CreateWorkflowGoalHandler {
     pub fn new(
-        projects: Arc<dyn IProjectRepository>,
-        environments: Arc<dyn IEnvironmentRepository>,
+        projects: Arc<dyn IWorkflowProjectAccess>,
+        environments: Arc<dyn IWorkflowEnvironmentAccess>,
         workflows: Arc<dyn IWorkflowDefinitionRepository>,
         ontologies: Arc<dyn IOntologyRepository>,
         goals: Arc<dyn IWorkflowGoalRepository>,
@@ -51,12 +55,16 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
         let ontologies = Arc::clone(&self.ontologies);
         let goals = Arc::clone(&self.goals);
         Box::pin(async move {
-            match projects
-                .find(command.organization_id, command.project_id)
-                .await
+            let scope = match WorkflowProjectScope::new(command.organization_id, command.project_id)
             {
-                Ok(Some(_)) => {}
-                Ok(None) => return Ok(Err(ApplicationError::NotFound("project not found".into()))),
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match projects.project_exists(scope).await {
+                Ok(true) => {}
+                Ok(false) | Err(RepositoryError::NotFound) => {
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                }
                 Err(error) => return Ok(Err(error.into())),
             }
             let contract = match WorkflowGoalContract::parse_acl(&command.goal_acl) {
@@ -65,12 +73,17 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
             };
             let spec = contract.spec();
             if let Some(environment_id) = spec.environment_id {
-                match environments
-                    .find(command.organization_id, command.project_id, environment_id)
-                    .await
-                {
-                    Ok(Some(_)) => {}
-                    Ok(None) => {
+                let environment_scope = match WorkflowEnvironmentScope::new(
+                    command.organization_id,
+                    command.project_id,
+                    environment_id,
+                ) {
+                    Ok(scope) => scope,
+                    Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                };
+                match environments.environment_exists(environment_scope).await {
+                    Ok(true) => {}
+                    Ok(false) | Err(RepositoryError::NotFound) => {
                         return Ok(Err(ApplicationError::NotFound(
                             "environment not found in project".into(),
                         )))

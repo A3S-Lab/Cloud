@@ -8454,6 +8454,161 @@ fn workloads_create_deployments_isolate_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn workflow_isolates_projects_behind_owner_ports() {
+    let root = module_root();
+
+    let project_port = std::fs::read_to_string(root.join("workflow/application/project_access.rs"))
+        .expect("read Workflow project port");
+    let compact_project_port = production_source(&project_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkflowProjectScope",
+        "pubtraitIWorkflowProjectAccess:Send+Sync",
+        "project_exists(",
+    ] {
+        assert!(
+            compact_project_port.contains(required),
+            "Workflow lost its narrow Projects project boundary {required}"
+        );
+    }
+    assert!(!project_port.contains("crate::modules::projects"));
+
+    let environment_port =
+        std::fs::read_to_string(root.join("workflow/application/environment_access.rs"))
+            .expect("read Workflow environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkflowEnvironmentScope",
+        "pubtraitIWorkflowEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Workflow lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    for (relative, required) in [
+        (
+            "workflow/application/commands/create_ontology/handler.rs",
+            &["Arc<dyn IWorkflowProjectAccess>", ".project_exists("][..],
+        ),
+        (
+            "workflow/application/workflow_definition_publication.rs",
+            &["Arc<dyn IWorkflowProjectAccess>", ".project_exists("][..],
+        ),
+        (
+            "workflow/application/commands/create_workflow_goal/handler.rs",
+            &[
+                "Arc<dyn IWorkflowProjectAccess>",
+                ".project_exists(",
+                "Arc<dyn IWorkflowEnvironmentAccess>",
+                ".environment_exists(",
+            ][..],
+        ),
+        (
+            "workflow/application/queries/get_workflow_node_catalog/handler.rs",
+            &[
+                "Arc<dyn IWorkflowProjectAccess>",
+                ".project_exists(",
+                "ResourceGrantScope::Project",
+            ][..],
+        ),
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read Workflow consumer");
+        let production = production_source(&source);
+        for item in required {
+            assert!(
+                production.contains(item),
+                "{relative} lost owner-port wiring {item}"
+            );
+        }
+        for forbidden in [
+            "IEnvironmentRepository",
+            "IProjectRepository",
+            "ProjectResourceAccess",
+            "crate::modules::projects",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsWorkflowProjectAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workflow project adapter exactly once"
+    );
+    assert_eq!(
+        app.matches("ProjectsWorkflowEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workflow environment adapter exactly once"
+    );
+}
+
+#[test]
+fn applications_admit_invocation_isolates_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("applications/application/environment_access.rs"))
+            .expect("read Applications environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructApplicationsEnvironmentScope",
+        "pubtraitIApplicationsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Applications lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let source =
+        std::fs::read_to_string(root.join("applications/application/invocation_commands.rs"))
+            .expect("read Applications invocation consumer");
+    let production = production_source(&source);
+    for item in [
+        "Arc<dyn IApplicationsEnvironmentAccess>",
+        ".environment_exists(",
+    ] {
+        assert!(
+            production.contains(item),
+            "invocation_commands lost owner-port wiring {item}"
+        );
+    }
+    for forbidden in ["IEnvironmentRepository", "crate::modules::projects"] {
+        assert!(
+            !production.contains(forbidden),
+            "invocation_commands regained foreign authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsApplicationsEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Applications environment adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

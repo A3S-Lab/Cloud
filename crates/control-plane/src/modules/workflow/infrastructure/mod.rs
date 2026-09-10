@@ -2,6 +2,8 @@ mod flow_resume;
 mod human_task_flow;
 mod human_task_form;
 pub mod persistence;
+mod project_access;
+mod project_environment_access;
 mod workflow_run_flow;
 
 pub use flow_resume::observe_flow_resume_receipt;
@@ -11,6 +13,8 @@ pub use human_task_flow::{
     HumanTaskResumeWorker, HumanTaskResumeWorkerConfig,
 };
 pub use human_task_form::FormsHumanTaskFormAdapter;
+pub use project_access::ProjectsWorkflowProjectAccessAdapter;
+pub use project_environment_access::ProjectsWorkflowEnvironmentAccessAdapter;
 pub(crate) use workflow_run_flow::flow_step_names as workflow_run_flow_step_names;
 pub(crate) use workflow_run_flow::flow_workflow_identities as workflow_run_flow_workflow_identities;
 pub use workflow_run_flow::{

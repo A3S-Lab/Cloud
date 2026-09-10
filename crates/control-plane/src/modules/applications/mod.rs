@@ -26,8 +26,9 @@ pub use infrastructure::InMemoryApplicationRepository;
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
     PostgresApplicationRepository, PostgresApplicationSessionRepository,
-    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
-    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
+    ProjectsApplicationsEnvironmentAccessAdapter, WorkflowApplicationOntologyRevisionReader,
+    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
+    WorkflowApplicationRunService,
 };
 pub use presentation::{
     ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,
