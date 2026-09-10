@@ -307,6 +307,132 @@ async fn inference_route_publish_rejects_stale_grant_credential_generation() -> 
 }
 
 #[tokio::test]
+async fn inference_route_publish_rejects_unverified_edge_binding() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-binding-http",
+        "Inference binding admission",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-binding-project",
+        "Inference Binding",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-binding-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-binding-write-token",
+        "inference-route-binding-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:binding-create-key",
+    )
+    .await?;
+
+    // Pending (unverified) DomainClaim must not invent Edge binding admission.
+    let now = Utc::now();
+    let claim = DomainClaim::create(
+        DomainClaimId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        DomainNamePattern::parse("pending.example.com").map_err(BootError::Internal)?,
+        format!("a3s-cloud-verification={}", Uuid::now_v7()),
+        now,
+    )
+    .map_err(BootError::Internal)?;
+    let created = DomainClaimChanged::envelope(&claim, Uuid::now_v7())
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    edge.create_domain_claim(CreateDomainClaimWrite {
+        claim: claim.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-domain-claims",
+            claim.id.to_string(),
+            claim.pattern.as_str().as_bytes(),
+        )
+        .map_err(BootError::Internal)?,
+        event: created,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+    let scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        NodeId::new(),
+        now,
+    )
+    .map_err(BootError::Internal)?;
+    edge.create_gateway_scope(CreateGatewayScopeWrite {
+        scope: scope.clone(),
+        idempotency: IdempotencyRequest::new(
+            "test-gateway-scopes",
+            scope.id.to_string(),
+            scope.node_id.to_string().as_bytes(),
+        )
+        .map_err(BootError::Internal)?,
+        event: GatewayScopeCreated::envelope(&scope, Uuid::now_v7())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    })
+    .await
+    .map_err(|error| BootError::Internal(error.to_string()))?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:pending-binding",
+            publish_body(
+                claim.id,
+                scope.id,
+                "pending.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 422);
+    let body = response_json(&rejected)?;
+    let serialized = body.to_string();
+    assert!(
+        serialized.contains("EDGE_ROUTE_BINDING_INVALID"),
+        "expected Edge binding admission fail-closed, got {body}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
