@@ -1458,7 +1458,12 @@ evidence, and fenced release protocol.
   item 5). Cloud also certifies Inference publish → Edge managed-snapshot ACL
   succession locally: empty route projections compile without `routes`/`models`,
   then `PublishInferenceRoute` projects `chat-model`/`routes`/`grants` into the
-  successor compile without inventing `workers`. Cloud certifies Inference revise →
+  successor compile without inventing `workers`. Cloud also certifies the joint
+  Identity create + Inference publish → Edge managed-snapshot ACL succession:
+  live `CreateInferenceKey` projections and grant-admitted
+  `PublishInferenceRoute` compile together into one `inference {` block with the
+  real prefix, matching `credential_generation`, routes/models/grants/limits, no
+  workers, and no bearer secret. Cloud certifies Inference revise →
   Edge managed-snapshot ACL succession locally: publish projection compiles
   `chat-model`, revise advances
   `policy_revision` and the successor compile replaces models/targets without
