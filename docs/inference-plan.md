@@ -1467,7 +1467,12 @@ evidence, and fenced release protocol.
   `ListDailyUsageRollups` first-principles tests also certify inverted
   `from_day`/`to_day` rejection and Conflict fail-closed when the requested
   window precedes `records_available_from`; purged request facts after
-  retention sweep hide as NotFound.
+  retention sweep hide as NotFound. HTTP showback lifecycle tests certify
+  `INFERENCE_READ` scope gating, inverted window `422`, cross-environment and
+  missing request `404`, restricted membership without environment grant
+  `403`, retention admin `200` vs member `403`, and Conflict/NotFound after
+  retention sweep. Usage query controllers declare `AUTH_SCOPES_METADATA`
+  for `INFERENCE_READ`; retention remains administrator + `CLOUD_READ`.
   Migration `195` adds monotonic per-organization
   retention authority (`inference_usage_retention_states`), hide-then-purge
   sweeps that never delete watermarks, showback fail-closed before

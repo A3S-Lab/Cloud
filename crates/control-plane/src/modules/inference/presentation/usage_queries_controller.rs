@@ -1,3 +1,4 @@
+use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::inference::application::{GetUsageRequestFact, ListDailyUsageRollups};
 use crate::modules::inference::presentation::dto::{
@@ -5,7 +6,9 @@ use crate::modules::inference::presentation::dto::{
 };
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::{application_error_response, request_id};
-use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
+};
 use chrono::NaiveDate;
 use serde::Deserialize;
 use std::sync::Arc;
@@ -21,6 +24,7 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
     let list_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
+        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::INFERENCE_READ])?
         .get(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/daily-rollups",
             move |request: BootRequest| {

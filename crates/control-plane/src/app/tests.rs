@@ -235,6 +235,7 @@ mod execution_tests;
 mod forms_tests;
 mod inference_key_tests;
 mod inference_route_tests;
+mod inference_usage_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod notification_tests;
@@ -719,6 +720,7 @@ struct TestRuntimeRepositories {
     connector_execution: Option<Arc<InMemoryConnectorExecutionRepository>>,
     user_files: Option<Arc<InMemoryUserFileRepository>>,
     user_file_objects: Option<Arc<dyn IUserFileObjectStore>>,
+    inference_usage: Option<Arc<crate::modules::inference::InMemoryInferenceUsageRepository>>,
 }
 
 #[async_trait::async_trait]
@@ -1631,6 +1633,33 @@ fn build_test_application_with_audit_records(
     )
 }
 
+fn build_test_application_with_inference_usage(
+    identity: Arc<InMemoryIdentityRepository>,
+    projects: Arc<InMemoryProjectsRepository>,
+    inference_usage: Arc<crate::modules::inference::InMemoryInferenceUsageRepository>,
+) -> Result<BootApplication> {
+    build_test_application_with_source_dependencies_and_tokens_and_builds_and_search_and_edge_with_runtime_repositories(
+        identity,
+        projects,
+        Arc::new(InMemorySecretRepository::new()),
+        Arc::new(InMemoryWorkloadRepository::new()),
+        Arc::new(InMemorySourceRevisionRepository::new()),
+        Arc::new(TestSourceResolver),
+        Arc::new(InMemoryGithubConnectionRepository::new()),
+        Arc::new(TestGithubAppAuthorization),
+        Arc::new(GithubInstallationTokenIssuer::disabled()),
+        Arc::new(InMemoryBuildRunRepository::new()),
+        Arc::new(InMemorySearchRepository::new()),
+        Arc::new(crate::modules::edge::InMemoryEdgeRepository::new()),
+        None,
+        None,
+        TestRuntimeRepositories {
+            inference_usage: Some(inference_usage),
+            ..TestRuntimeRepositories::default()
+        },
+    )
+}
+
 fn build_test_application_with_security_investigations(
     identity: Arc<InMemoryIdentityRepository>,
     projects: Arc<InMemoryProjectsRepository>,
@@ -2027,6 +2056,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         connector_execution,
         user_files,
         user_file_objects,
+        inference_usage,
     } = runtime_repositories;
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
@@ -2253,9 +2283,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 BuiltInAgentExecutionProviderRegistry::new().map_err(BootError::Internal)?,
             ),
             routes,
-            inference_usage: Arc::new(
-                crate::modules::inference::InMemoryInferenceUsageRepository::new(),
-            ),
+            inference_usage: inference_usage.unwrap_or_else(|| {
+                Arc::new(crate::modules::inference::InMemoryInferenceUsageRepository::new())
+            }),
             mcp_credentials,
             secrets,
             user_files: user_files
