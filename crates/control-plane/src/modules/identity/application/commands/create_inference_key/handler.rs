@@ -444,4 +444,68 @@ mod tests {
             "gateway ACL projection debug must stay hash-only"
         );
     }
+
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_environment_fails_closed_as_not_found() {
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let handler = CreateInferenceKeyHandler::new(
+            Arc::new(MissingEnvironmentRepository),
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+            InferenceCredentialIssuer::new(),
+            Arc::new(TestEncryption),
+        );
+        let cmd = command("missing-env");
+        let error = handler
+            .execute(cmd.clone(), context())
+            .await
+            .expect("boot")
+            .expect_err("missing environment");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
+        assert!(
+            credentials
+                .list_inference_credentials_by_environment(
+                    cmd.organization_id,
+                    cmd.project_id,
+                    cmd.environment_id,
+                )
+                .await
+                .unwrap()
+                .is_empty(),
+            "missing environment must not leave a credential row"
+        );
+    }
 }
