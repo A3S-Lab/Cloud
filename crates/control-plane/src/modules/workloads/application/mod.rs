@@ -15,7 +15,9 @@ mod workflow;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use agent_release_admission::admit_deployable_agent_release;
+pub use agent_release_admission::{
+    IWorkloadAgentReleaseAdmissionPort, WorkloadAgentReleaseAdmissionRequest,
+};
 pub use bound_runtime_claim::{
     BoundRuntimeClaimQuery, BoundRuntimeClaimQueryService, IBoundRuntimeClaimQueryPort,
 };

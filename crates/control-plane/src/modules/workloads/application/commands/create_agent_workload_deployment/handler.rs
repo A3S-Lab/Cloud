@@ -1,6 +1,4 @@
 use super::CreateAgentWorkloadDeployment;
-use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -9,11 +7,10 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    admit_deployable_agent_release,
     commands::{validate_node_pool_selection, validate_secret_bindings},
-    CreateWorkloadDeploymentResult, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
-    IWorkloadsSecretBindingAccess, WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME,
-    DEPLOYMENT_WORKFLOW_VERSION,
+    CreateWorkloadDeploymentResult, IWorkloadAgentReleaseAdmissionPort, IWorkloadsEnvironmentAccess,
+    IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess, WorkloadAgentReleaseAdmissionRequest,
+    WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
@@ -27,8 +24,7 @@ use std::sync::Arc;
 
 pub struct CreateAgentWorkloadDeploymentHandler {
     environments: Arc<dyn IWorkloadsEnvironmentAccess>,
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
@@ -37,16 +33,14 @@ pub struct CreateAgentWorkloadDeploymentHandler {
 impl CreateAgentWorkloadDeploymentHandler {
     pub fn new(
         environments: Arc<dyn IWorkloadsEnvironmentAccess>,
-        assets: Arc<dyn IAssetRepository>,
-        artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
         node_pools: Arc<dyn IWorkloadsNodePoolAccess>,
     ) -> Self {
         Self {
             environments,
-            assets,
-            artifacts,
+            agent_releases,
             workloads,
             secrets,
             node_pools,
@@ -64,8 +58,7 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
         a3s_boot::Result<ApplicationResult<CreateWorkloadDeploymentResult>>,
     > {
         let environments = Arc::clone(&self.environments);
-        let assets = Arc::clone(&self.assets);
-        let artifacts = Arc::clone(&self.artifacts);
+        let agent_releases = Arc::clone(&self.agent_releases);
         let workloads = Arc::clone(&self.workloads);
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
@@ -150,16 +143,15 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
             {
                 return Ok(Err(error));
             }
-            let deployable = match load_deployable_agent_release(
-                assets.as_ref(),
-                artifacts.as_ref(),
-                command.organization_id,
-                command.asset_id,
-                command.asset_release_id,
-            )
-            .await
+            let admission = match agent_releases
+                .admit(WorkloadAgentReleaseAdmissionRequest {
+                    organization_id: command.organization_id,
+                    asset_id: command.asset_id,
+                    asset_release_id: command.asset_release_id,
+                })
+                .await
             {
-                Ok(deployable) => deployable,
+                Ok(admission) => admission,
                 Err(error) => return Ok(Err(error)),
             };
             let workload = Workload::create(
@@ -170,10 +162,6 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 name,
                 command.requested_at,
             );
-            let admission = match admit_deployable_agent_release(&deployable) {
-                Ok(admission) => admission,
-                Err(error) => return Ok(Err(error)),
-            };
             let mut revision = match WorkloadRevision::create(
                 WorkloadRevisionId::new(),
                 workload.id,

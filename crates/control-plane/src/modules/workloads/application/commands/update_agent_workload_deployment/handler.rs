@@ -1,6 +1,4 @@
 use super::UpdateAgentWorkloadDeployment;
-use crate::modules::artifacts::IHostedArtifactQueryPort;
-use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
@@ -9,11 +7,11 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    admit_deployable_agent_release,
     commands::{
         load_direct_workload_control, require_acl_node_pool_selection, validate_secret_bindings,
     },
-    IWorkloadsSecretBindingAccess, UpdateWorkloadDeploymentResult, WorkloadResourceResolver,
+    IWorkloadAgentReleaseAdmissionPort, IWorkloadsSecretBindingAccess,
+    UpdateWorkloadDeploymentResult, WorkloadAgentReleaseAdmissionRequest, WorkloadResourceResolver,
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
@@ -27,22 +25,19 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct UpdateAgentWorkloadDeploymentHandler {
-    assets: Arc<dyn IAssetRepository>,
-    artifacts: Arc<dyn IHostedArtifactQueryPort>,
+    agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort>,
     workloads: Arc<dyn IWorkloadRepository>,
     secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
 }
 
 impl UpdateAgentWorkloadDeploymentHandler {
     pub fn new(
-        assets: Arc<dyn IAssetRepository>,
-        artifacts: Arc<dyn IHostedArtifactQueryPort>,
+        agent_releases: Arc<dyn IWorkloadAgentReleaseAdmissionPort>,
         workloads: Arc<dyn IWorkloadRepository>,
         secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     ) -> Self {
         Self {
-            assets,
-            artifacts,
+            agent_releases,
             workloads,
             secrets,
         }
@@ -58,8 +53,7 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
         'static,
         a3s_boot::Result<ApplicationResult<UpdateWorkloadDeploymentResult>>,
     > {
-        let assets = Arc::clone(&self.assets);
-        let artifacts = Arc::clone(&self.artifacts);
+        let agent_releases = Arc::clone(&self.agent_releases);
         let workloads = Arc::clone(&self.workloads);
         let resource_resolver = WorkloadResourceResolver::new(Arc::clone(&workloads));
         let secrets = Arc::clone(&self.secrets);
@@ -178,18 +172,6 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                     "Agent Workload updates must retain the same Asset identity".into(),
                 )));
             }
-            let deployable = match load_deployable_agent_release(
-                assets.as_ref(),
-                artifacts.as_ref(),
-                command.organization_id,
-                command.asset_id,
-                command.asset_release_id,
-            )
-            .await
-            {
-                Ok(deployable) => deployable,
-                Err(error) => return Ok(Err(error)),
-            };
             let revisions = match workloads
                 .list_revisions(command.organization_id, command.workload_id)
                 .await
@@ -211,7 +193,14 @@ impl CommandHandler<UpdateAgentWorkloadDeployment> for UpdateAgentWorkloadDeploy
                     )))
                 }
             };
-            let admission = match admit_deployable_agent_release(&deployable) {
+            let admission = match agent_releases
+                .admit(WorkloadAgentReleaseAdmissionRequest {
+                    organization_id: command.organization_id,
+                    asset_id: command.asset_id,
+                    asset_release_id: command.asset_release_id,
+                })
+                .await
+            {
                 Ok(admission) => admission,
                 Err(error) => return Ok(Err(error)),
             };

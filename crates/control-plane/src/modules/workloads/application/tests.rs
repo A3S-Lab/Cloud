@@ -1,5 +1,6 @@
 use super::{
-    BindSkillWorkloadDeployment, BindSkillWorkloadDeploymentHandler, CreateAgentWorkloadDeployment,
+    AssetsWorkloadAgentReleaseAdmissionAdapter, BindSkillWorkloadDeployment,
+    BindSkillWorkloadDeploymentHandler, CreateAgentWorkloadDeployment,
     CreateAgentWorkloadDeploymentHandler, SourceWorkloadTemplate, UnbindSkillWorkloadDeployment,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeployment,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
@@ -92,10 +93,13 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let create_handler = CreateAgentWorkloadDeploymentHandler::new(
-        environments,
+    let agent_releases = Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
         assets.clone(),
         artifacts.clone(),
+    ));
+    let create_handler = CreateAgentWorkloadDeploymentHandler::new(
+        environments,
+        Arc::clone(&agent_releases),
         workloads.clone(),
         secrets.clone(),
         node_pools,
@@ -227,8 +231,7 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     )
     .await;
     let update_handler = UpdateAgentWorkloadDeploymentHandler::new(
-        assets.clone(),
-        artifacts,
+        agent_releases,
         workloads.clone(),
         secrets.clone(),
     );
@@ -386,10 +389,13 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
         InMemorySecretRepository::new(),
     )));
-    let created = CreateAgentWorkloadDeploymentHandler::new(
-        environments,
+    let agent_releases = Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
         agent_assets.clone(),
         artifacts.clone(),
+    ));
+    let created = CreateAgentWorkloadDeploymentHandler::new(
+        environments,
+        Arc::clone(&agent_releases),
         workloads.clone(),
         secrets.clone(),
         Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(Arc::new(
@@ -528,8 +534,7 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     )
     .await;
     let updated_agent = UpdateAgentWorkloadDeploymentHandler::new(
-        agent_assets,
-        artifacts,
+        agent_releases,
         workloads.clone(),
         secrets.clone(),
     )

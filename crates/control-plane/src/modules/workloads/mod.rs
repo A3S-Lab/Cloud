@@ -15,8 +15,9 @@ pub use application::{
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     DeploymentRuntimeExecutionAdmissionRequest, GetDeployment, GetDeploymentHandler, GetWorkload,
     GetWorkloadHandler, GetWorkloadLogs, GetWorkloadLogsHandler, IBoundRuntimeClaimQueryPort,
-    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
+    IWorkloadAgentReleaseAdmissionPort, IWorkloadRuntimeExecutionAdmissionPort,
+    IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadsEnvironmentAccess,
+    IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
     ListWorkloads, ListWorkloadsHandler, NoWorkloadRuntimeExecutionAdmission,
     RollbackWorkloadDeployment, RollbackWorkloadDeploymentHandler,
     RollbackWorkloadDeploymentResult, SourceWorkloadTemplate, StopWorkload, StopWorkloadHandler,
@@ -78,8 +79,8 @@ pub use domain::services::{
     UnroutedDeploymentRouteUpdater, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 pub use infrastructure::{
-    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,
-    FleetWorkloadsNodePoolAccessAdapter, IWorkloadRuntimeControl,
+    AssetsWorkloadAgentReleaseAdmissionAdapter, DeploymentFlowConfig, DeploymentFlowDependencies,
+    DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, IWorkloadRuntimeControl,
     IdentityWorkloadRuntimeExecutionAdmissionAdapter, InMemoryResourceClaimRepository,
     InMemoryWorkloadRepository, NodeDrainEvacuationFailure, NodeDrainEvacuationReconciler,
     NodeDrainEvacuationReport, OciRegistryArtifactResolver, PostgresResourceClaimRepository,

@@ -1,3 +1,4 @@
+mod agent_release_admission;
 mod deployment_flow;
 mod fleet_node_pool_access;
 mod identity_runtime_execution_admission;
@@ -11,6 +12,7 @@ mod replica_retirement_reconciliation;
 mod secret_rotation_reconciliation;
 mod secrets_binding_access;
 
+pub use agent_release_admission::AssetsWorkloadAgentReleaseAdmissionAdapter;
 pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
 pub(crate) use deployment_flow::flow_workflow_identities as deployment_flow_workflow_identities;
 pub use deployment_flow::{
