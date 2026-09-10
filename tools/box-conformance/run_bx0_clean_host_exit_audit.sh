@@ -131,17 +131,22 @@ if [[ $receipts_status != PASS ]]; then
   exit 2
 fi
 
+# First principles: missing pin and invalid pin are different fail-closed
+# contracts. Collapsing both to power_unbound hides forged/typo pins.
 power_status=OPEN
 power_detail="power pin missing (PW0)"
 power_revision=
+power_block_reason=power_unbound
 if [[ -f $power_revision_file ]]; then
   power_revision=$(<"$power_revision_file")
   if [[ $power_revision =~ ^[0-9a-f]{40}$ ]]; then
     power_status=PASS
     power_detail="power_revision=$power_revision"
+    power_block_reason=
   else
     power_status=FAIL
     power_detail="power pin invalid: $power_revision"
+    power_block_reason=power_pin_invalid
   fi
 fi
 
@@ -149,12 +154,21 @@ printf 'power_status=%s detail=%s\n' "$power_status" "$power_detail" \
   | tee "$evidence_directory/power-status.txt"
 
 if [[ $power_status != PASS ]]; then
+  power_label=UNBOUND
+  if [[ $power_block_reason == power_pin_invalid ]]; then
+    power_label=INVALID
+  fi
   printf '%s\n' \
-    "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED cloud_revision=$cloud_revision reason=power_unbound" \
-    "loop=PASS receipts=PASS power=UNBOUND" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED cloud_revision=$cloud_revision reason=$power_block_reason" \
+    "loop=PASS receipts=PASS power=$power_label" \
     | tee "$evidence_directory/bx0-exit-certification.txt"
-  printf '%s\n' \
-    "BX0 product exit blocked: Power pin required (PW0); LOOP alone is insufficient" >&2
+  if [[ $power_block_reason == power_pin_invalid ]]; then
+    printf '%s\n' \
+      "BX0 product exit blocked: Power pin present but not exact lowercase 40-hex (PW0)" >&2
+  else
+    printf '%s\n' \
+      "BX0 product exit blocked: Power pin required (PW0); LOOP alone is insufficient" >&2
+  fi
   exit 2
 fi
 

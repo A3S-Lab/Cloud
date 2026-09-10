@@ -108,4 +108,5 @@ printf '%s\n' \
   "A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED" \
   "host_os=$(uname -s)" \
   "guest_os=Linux" \
-  "product_exit=not_claimed"
+  "product_exit=not_claimed" \
+  "loop_certified=not_claimed"

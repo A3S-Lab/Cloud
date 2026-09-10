@@ -8,7 +8,8 @@ Product `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` stays open until:
 ## Prerequisites
 
 - Supported **Linux** host (x86_64 for the pinned Box release fixture)
-- No `DOCKER_HOST` and no `/var/run/docker.sock` (a3s-box only)
+- No `DOCKER_HOST` and no Docker sock (default `/var/run/docker.sock`;
+  harness override `A3S_CLOUD_BX0_DOCKER_SOCK_PATH` must be absolute) — a3s-box only
 - Exact Cloud / Runtime / Box / Gateway pins from this checkout
 - `a3s-box` from `install_box_release.sh` (or matching pin)
 
@@ -103,7 +104,16 @@ bash tools/box-conformance/run_bx0_clean_host_exit_audit.sh /tmp/bx0-exit-audit
 - Without LOOP certification → `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` exit 2
 - With LOOP but no gate execute receipts → `EXIT_BLOCKED reason=execute_receipts_incomplete` exit 2
 - With LOOP + receipts but no Power pin → `EXIT_BLOCKED reason=power_unbound` exit 2
-- With LOOP + receipts + Power pin → may emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
+- With LOOP + receipts + invalid Power pin → `EXIT_BLOCKED reason=power_pin_invalid` exit 2
+- With LOOP + receipts + valid Power pin → may emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
 
-CI fail-closed harness `run_bx0_clean_host_gate_ci.sh` proves refuse paths only
-(`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED`).
+CI fail-closed harness `run_bx0_clean_host_gate_ci.sh` proves refuse paths and
+a temp-pin unlock path (never invents `tools/power-conformance/power-revision`).
+On non-Linux-x86_64 hosts it also proves `install_box_release.sh` refuses the
+pinned fixture. Virt-capable hosts run `run_bx0_host_box_smoke.sh` (lifecycle,
+ephemeral PID1→dead, plain `ps` hides dead, published-port curl, `exec` requires
+`--`, host→guest `cp`, exec-on-stopped fails, create+start `-v` mount,
+pause/unpause, snapshot create→restore, guest→host `cp`, restart, kill,
+`wait` exit code). Via-box CI must never claim product
+LOOP/EXIT. Emits `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` /
+`…_VIA_BOX_CERTIFIED` only.

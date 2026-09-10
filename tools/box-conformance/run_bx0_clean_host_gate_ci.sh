@@ -11,6 +11,8 @@ gate="$tools/run_bx0_clean_host_gate.sh"
 revision=$(<"$tools/box-revision")
 [[ $revision =~ ^[0-9a-f]{40}$ ]]
 [[ -x $gate || -f $gate ]]
+# Capture before later unsets; used for host virt first-principles probe.
+bx0_host_box_probe_bin=${A3S_CLOUD_BOX_BIN:-$(command -v a3s-box || true)}
 
 evidence_directory=$(mktemp -d "${TMPDIR:-/tmp}/a3s-cloud-bx0-clean-host-ci.XXXXXX")
 cleanup() {
@@ -98,6 +100,7 @@ via_box="$tools/run_bx0_clean_host_gate_ci_via_box.sh"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED' "$via_box"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_BLOCKED' "$via_box"
 grep -Fq 'product_exit=not_claimed' "$via_box"
+grep -Fq 'loop_certified=not_claimed' "$via_box"
 grep -Fq 'a3s-box_unavailable' "$via_box"
 grep -Fq 'monorepo_root_unavailable' "$via_box"
 grep -Fq 'A3S_CLOUD_BX0_VIA_BOX_APT_TIMEOUT' "$via_box"
@@ -110,8 +113,16 @@ if grep -Eiq 'docker[[:space:]]+run|orbstack' "$via_box"; then
   printf '%s\n' "via-box must not invoke Docker/OrbStack" >&2
   exit 1
 fi
+# Anti-overfit: via-box CI must never print product LOOP/EXIT certified markers.
+if grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$via_box" \
+  || grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$via_box"; then
+  printf '%s\n' "via-box must not claim product LOOP_CERTIFIED or EXIT_CERTIFIED" >&2
+  exit 1
+fi
 grep -Fq 'docker_host_set' "$gate"
 grep -Fq 'docker_sock_present' "$gate"
+grep -Fq 'docker_sock_path_not_absolute' "$gate"
+grep -Fq 'A3S_CLOUD_BX0_DOCKER_SOCK_PATH' "$gate"
 grep -Fq 'never Docker' "$gate"
 # Clean-host tooling must not import retired Docker client/runtime identifiers.
 # Portable across GNU and BusyBox grep (no --exclude).
@@ -1097,6 +1108,68 @@ if [[ $os_name == Linux ]]; then
   grep -Fq 'docker_host_set' "$evidence_directory/armed-docker-host.err"
   forbid_exit_certified_claim "$evidence_directory/armed-docker-host.out"
   forbid_exit_certified_claim "$evidence_directory/armed-docker-host.err"
+
+  echo "===== armed with docker.sock present must exit 1 (zero-Docker) ====="
+  # Anti-overfit: DOCKER_HOST refuse must not be the only zero-Docker path.
+  # Production checks /var/run/docker.sock; harness overrides path for fixtures.
+  stub_docker_sock="$evidence_directory/stub-box-docker-sock"
+  mkdir -p -- "$stub_docker_sock"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_docker_sock/a3s-box"
+  chmod +x "$stub_docker_sock/a3s-box"
+  printf '%s\n' "$revision" >"$stub_docker_sock/BOX-REVISION"
+  fake_sock="$evidence_directory/fake-docker.sock"
+  : >"$fake_sock"
+  set +e
+  env -u DOCKER_HOST \
+    A3S_CLOUD_BX0_DOCKER_SOCK_PATH="$fake_sock" \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_docker_sock/a3s-box" \
+    bash "$gate" \
+    >"$evidence_directory/armed-docker-sock.out" 2>"$evidence_directory/armed-docker-sock.err"
+  docker_sock_status=$?
+  set -e
+  if ((docker_sock_status != 1)); then
+    printf '%s\n' "expected docker.sock refuse exit 1, got $docker_sock_status" >&2
+    cat "$evidence_directory/armed-docker-sock.out" >&2 || true
+    cat "$evidence_directory/armed-docker-sock.err" >&2 || true
+    exit 1
+  fi
+  grep -Fq 'docker_sock_present' "$evidence_directory/armed-docker-sock.err"
+  if grep -Fq 'docker_host_set' "$evidence_directory/armed-docker-sock.err"; then
+    printf '%s\n' "docker.sock refuse must not collapse into docker_host_set" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-docker-sock.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-docker-sock.err"
+
+  echo "===== armed with relative DOCKER_SOCK_PATH must exit 1 ====="
+  stub_rel_sock="$evidence_directory/stub-box-rel-sock"
+  mkdir -p -- "$stub_rel_sock"
+  printf '%s\n' '#!/usr/bin/env bash' 'exit 0' >"$stub_rel_sock/a3s-box"
+  chmod +x "$stub_rel_sock/a3s-box"
+  printf '%s\n' "$revision" >"$stub_rel_sock/BOX-REVISION"
+  set +e
+  env -u DOCKER_HOST \
+    A3S_CLOUD_BX0_DOCKER_SOCK_PATH='relative-docker.sock' \
+    A3S_CLOUD_BX0_CLEAN_HOST=1 \
+    A3S_CLOUD_BOX_BIN="$stub_rel_sock/a3s-box" \
+    bash "$gate" \
+    >"$evidence_directory/armed-rel-sock.out" 2>"$evidence_directory/armed-rel-sock.err"
+  rel_sock_status=$?
+  set -e
+  if ((rel_sock_status != 1)); then
+    printf '%s\n' "expected relative DOCKER_SOCK_PATH refuse exit 1, got $rel_sock_status" >&2
+    cat "$evidence_directory/armed-rel-sock.out" >&2 || true
+    cat "$evidence_directory/armed-rel-sock.err" >&2 || true
+    exit 1
+  fi
+  grep -Fq 'docker_sock_path_not_absolute' "$evidence_directory/armed-rel-sock.err"
+  if grep -Fq 'docker_sock_present' "$evidence_directory/armed-rel-sock.err"; then
+    printf '%s\n' "relative sock path must not collapse into docker_sock_present" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/armed-rel-sock.out"
+  forbid_exit_certified_claim "$evidence_directory/armed-rel-sock.err"
 
   echo "===== armed stub without BOX-REVISION must exit 1 ====="
   stub_root="$evidence_directory/stub-box-missing"
@@ -2219,6 +2292,7 @@ bash -n "$exit_audit"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$validator"
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$exit_audit"
 grep -Fq 'power_unbound' "$exit_audit"
+grep -Fq 'power_pin_invalid' "$exit_audit"
 grep -Fq 'bx0_require_execute_receipts_dir' "$steps"
 grep -Fq 'execute_receipts_incomplete' "$collector"
 grep -Fq -- '--gate-evidence-dir' "$collector"
@@ -2411,6 +2485,135 @@ grep -Fq 'power_unbound' "$audit_dir_power/bx0-exit-certification.txt"
 forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.out"
 forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.err"
 forbid_exit_certified_claim "$audit_dir_power/bx0-exit-certification.txt"
+
+echo "===== invalid Power pin matrix must exit 2 with power_pin_invalid (not power_unbound) ====="
+# Anti-overfit: present-but-invalid must not collapse into "missing pin".
+invalid_pin_cases=(
+  'empty:'
+  'uppercase:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+  'short:abc123'
+  'junk:not-a-git-sha'
+  'whitespace:   '
+  'leadingspace: 0123456789abcdef0123456789abcdef01234567'
+  'multiline:0123456789abcdef0123456789abcdef01234567'$'\n''extra-line'
+)
+for case_spec in "${invalid_pin_cases[@]}"; do
+  case_name=${case_spec%%:*}
+  case_value=${case_spec#*:}
+  case_dir="$evidence_directory/exit-audit-bad-power-$case_name"
+  pin_file="$case_dir/power-revision"
+  mkdir -p -- "$case_dir"
+  if [[ $case_name == empty ]]; then
+    : >"$pin_file"
+  else
+    printf '%s\n' "$case_value" >"$pin_file"
+  fi
+  set +e
+  A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+    A3S_CLOUD_BX0_EVIDENCE_DIR="$gate_receipts" \
+    A3S_CLOUD_BX0_POWER_REVISION_FILE="$pin_file" \
+    bash "$exit_audit" "$case_dir/audit" \
+    >"$case_dir/out" 2>"$case_dir/err"
+  bad_pin_status=$?
+  set -e
+  if ((bad_pin_status != 2)); then
+    printf '%s\n' "expected invalid Power pin ($case_name) to exit 2, got $bad_pin_status" >&2
+    cat "$case_dir/out" >&2 || true
+    cat "$case_dir/err" >&2 || true
+    exit 1
+  fi
+  grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$case_dir/audit/bx0-exit-certification.txt"
+  grep -Fq 'reason=power_pin_invalid' "$case_dir/audit/bx0-exit-certification.txt"
+  if grep -Fq 'reason=power_unbound' "$case_dir/audit/bx0-exit-certification.txt"; then
+    printf '%s\n' "invalid Power pin ($case_name) must not report reason=power_unbound" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$case_dir/out"
+  forbid_exit_certified_claim "$case_dir/err"
+  forbid_exit_certified_claim "$case_dir/audit/bx0-exit-certification.txt"
+done
+
+echo "===== valid temp Power pin + LOOP + receipts may EXIT_CERTIFY (no repo pin invented) ====="
+valid_pin_dir="$evidence_directory/exit-audit-valid-power"
+mkdir -p -- "$valid_pin_dir"
+printf '%s\n' '0123456789abcdef0123456789abcdef01234567' >"$valid_pin_dir/power-revision"
+set +e
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+  A3S_CLOUD_BX0_EVIDENCE_DIR="$gate_receipts" \
+  A3S_CLOUD_BX0_POWER_REVISION_FILE="$valid_pin_dir/power-revision" \
+  bash "$exit_audit" "$valid_pin_dir/audit" \
+  >"$valid_pin_dir/out" 2>"$valid_pin_dir/err"
+valid_pin_status=$?
+set -e
+if ((valid_pin_status != 0)); then
+  printf '%s\n' "expected valid temp Power pin to unlock EXIT, got $valid_pin_status" >&2
+  cat "$valid_pin_dir/out" >&2 || true
+  cat "$valid_pin_dir/err" >&2 || true
+  exit 1
+fi
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$valid_pin_dir/audit/bx0-exit-certification.txt"
+grep -Fq 'power_revision=0123456789abcdef0123456789abcdef01234567' \
+  "$valid_pin_dir/audit/bx0-exit-certification.txt"
+if [[ -f $repository_root/tools/power-conformance/power-revision ]]; then
+  printf '%s\n' "tools/power-conformance/power-revision must remain absent after CI" >&2
+  exit 1
+fi
+
+echo "===== install_box_release refuses non-Linux-x86_64 (host-local first principles) ====="
+install_box_release="$tools/install_box_release.sh"
+[[ -f $install_box_release ]]
+bash -n "$install_box_release"
+grep -Fq 'requires Linux x86_64' "$install_box_release"
+if [[ $(uname -s) != Linux || $(uname -m) != x86_64 ]]; then
+  refuse_root="$evidence_directory/install-box-refuse"
+  rm -rf -- "$refuse_root"
+  set +e
+  bash "$install_box_release" "$refuse_root" \
+    >"$evidence_directory/install-box-refuse.out" 2>"$evidence_directory/install-box-refuse.err"
+  install_refuse_status=$?
+  set -e
+  if ((install_refuse_status != 1)); then
+    printf '%s\n' \
+      "expected install_box_release to exit 1 on $(uname -s)-$(uname -m), got $install_refuse_status" >&2
+    cat "$evidence_directory/install-box-refuse.out" >&2 || true
+    cat "$evidence_directory/install-box-refuse.err" >&2 || true
+    exit 1
+  fi
+  grep -Fq 'requires Linux x86_64' "$evidence_directory/install-box-refuse.err"
+  if [[ -e $refuse_root ]]; then
+    printf '%s\n' "install_box_release must not create install root on refused host" >&2
+    exit 1
+  fi
+  forbid_exit_certified_claim "$evidence_directory/install-box-refuse.out"
+  forbid_exit_certified_claim "$evidence_directory/install-box-refuse.err"
+fi
+
+echo "===== host a3s-box first-principles smoke (extracted harness) ====="
+host_box_smoke="$tools/run_bx0_host_box_smoke.sh"
+[[ -f $host_box_smoke ]]
+bash -n "$host_box_smoke"
+grep -Fq 'A3S_CLOUD_BX0_HOST_BOX_SMOKE_OK' "$host_box_smoke"
+grep -Fq 'plain ps must not list dead' "$host_box_smoke"
+grep -Fq 'cp host→guest' "$host_box_smoke"
+grep -Fq 'exec on stopped box must fail' "$host_box_smoke"
+grep -Fq 'create+start with -v mount' "$host_box_smoke"
+grep -Fq 'pause then unpause' "$host_box_smoke"
+grep -Fq 'snapshot create+restore' "$host_box_smoke"
+grep -Fq 'cp guest→host' "$host_box_smoke"
+grep -Fq 'restart must restore exec' "$host_box_smoke"
+grep -Fq 'kill must leave box non-execable' "$host_box_smoke"
+grep -Fq 'wait must surface guest exit code' "$host_box_smoke"
+# Never claim product LOOP/EXIT from the host smoke harness.
+if grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED' "$host_box_smoke" \
+  || grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' \
+    "$host_box_smoke"
+then
+  printf '%s\n' "host box smoke must not claim product LOOP/EXIT certified markers" >&2
+  exit 1
+fi
+if [[ -n ${bx0_host_box_probe_bin:-} && -x $bx0_host_box_probe_bin ]]; then
+  bash "$host_box_smoke" "$evidence_directory" "$bx0_host_box_probe_bin"
+fi
 
 printf '%s\n' \
   "A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED revision=$revision host_os=$os_name fail_closed=1"

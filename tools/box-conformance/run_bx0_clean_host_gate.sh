@@ -108,12 +108,23 @@ if [[ -n ${DOCKER_HOST:-} ]]; then
     'Unset DOCKER_HOST; clean-host requires a3s-box only (never Docker).' >&2
   exit 1
 fi
-if [[ -e /var/run/docker.sock || -S /var/run/docker.sock ]]; then
+# Default production path; harness may override for sock-refuse fixtures.
+# Override must be absolute so refuse cannot depend on cwd (anti-overfit).
+docker_sock_path=${A3S_CLOUD_BX0_DOCKER_SOCK_PATH:-/var/run/docker.sock}
+if [[ -n ${A3S_CLOUD_BX0_DOCKER_SOCK_PATH:-} && $docker_sock_path != /* ]]; then
+  print_checklist
+  printf '%s\n' \
+    'BX0 clean-host gate: FAIL_CLOSED reason=docker_sock_path_not_absolute' \
+    'A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=docker_sock_path_not_absolute' \
+    "A3S_CLOUD_BX0_DOCKER_SOCK_PATH must be absolute (got: $docker_sock_path)" >&2
+  exit 1
+fi
+if [[ -e $docker_sock_path || -S $docker_sock_path ]]; then
   print_checklist
   printf '%s\n' \
     'BX0 clean-host gate: FAIL_CLOSED reason=docker_sock_present' \
     'A3S_CLOUD_BX0_CLEAN_HOST_BLOCKED reason=docker_sock_present' \
-    'Remove /var/run/docker.sock; clean-host requires a3s-box only (never Docker).' >&2
+    "Remove $docker_sock_path; clean-host requires a3s-box only (never Docker)." >&2
   exit 1
 fi
 

@@ -168,6 +168,10 @@ Darwin-safe enroll…stop/cleanup preflight library cases, unarmed /
 armed-without-box paths, Linux stub pin missing/mismatch/match, Runtime
 pin-missing, and missing-dependency fail-closed behavior, then emits
 `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` only. Product EXIT stays open.
+Virt-capable hosts also run `run_bx0_host_box_smoke.sh` (extracted first-
+principles MicroVM smokes: lifecycle, ephemeral→dead, ports, `cp` both ways,
+mounts, pause/unpause, snapshot restore, restart/kill, `wait` exit code).
+That harness never claims product LOOP/EXIT.
 
 On Darwin (or any host with `a3s-box`), run the same harness inside a Linux
 MicroVM — never Docker (default guest image `alpine:3.20`):
