@@ -17,7 +17,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayCertificateRequest, GatewayManagementProtocol, GatewaySnapshot,
-    NodeGatewayAck,
+    InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
+    InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+    InferenceTargetAclProjection, NodeGatewayAck, INFERENCE_CREDENTIAL_AUDIENCE,
 };
 use chrono::{Duration, Utc};
 use uuid::Uuid;
@@ -183,6 +185,150 @@ fn managed_rollback_carries_one_complete_composition_for_every_member() {
     compiled
         .managed_stage_bundle()
         .expect("managed rollback stage bundle");
+}
+
+#[test]
+fn managed_rollback_compile_embeds_inference_credential_and_route_acl_without_workers() {
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const PREFIX: &str = "a3s_inf_rbstage01";
+    let credential_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+    let inference_route_id = Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap();
+
+    let now = Utc::now();
+    let members = [NodeId::new(), NodeId::new()];
+    let scope = replicated_scope(members, now - Duration::minutes(30));
+    let failed = failed_rollout(&scope, now - Duration::minutes(2));
+    let rollback = GatewayRolloutRollback::required(&failed).expect("required rollback");
+    let credential = InferenceCredentialAclProjection::new(
+        credential_id,
+        scope.environment_id.as_uuid(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        PREFIX,
+        VERIFIER,
+        3,
+        now + Duration::hours(2),
+        false,
+    )
+    .expect("credential projection");
+    let inference_route = InferenceRouteAclProjection {
+        route_id: inference_route_id,
+        router: "inference".into(),
+        environment_id: scope.environment_id.as_uuid(),
+        policy_revision: 11,
+        models: vec![InferenceModelAclProjection {
+            alias: "chat-model".into(),
+            model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+            targets: vec![InferenceTargetAclProjection {
+                target_id: Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap(),
+                service: "model-service".into(),
+                upstream_model: "internal/model-v1".into(),
+                priority: 0,
+                weight: 100,
+            }],
+        }],
+        grants: vec![InferenceGrantAclProjection {
+            credential_id,
+            credential_generation: 3,
+            models: vec!["chat-model".into()],
+            endpoints: vec![InferenceEndpointAcl::Models],
+            limits: InferenceLimitsAclProjection {
+                max_concurrent_requests: 2,
+                requests_per_minute: 60,
+                request_burst: 2,
+                tokens_per_minute: 10_000,
+            },
+        }],
+    };
+    let mut contexts = Vec::new();
+    for (index, node_id) in members.into_iter().enumerate() {
+        let (route, certificate) = active_route_with_ready_certificate(
+            &scope,
+            node_id,
+            &format!("managed-inf-retained-{index}.example.com"),
+            now - Duration::minutes(20),
+        );
+        let claim_id = route.domain_claim_id.expect("route claim");
+        let mut claim = DomainClaim::create(
+            claim_id,
+            route.organization_id,
+            route.project_id,
+            route.environment_id,
+            route.domain_pattern.clone().expect("route domain pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now - Duration::minutes(30),
+        )
+        .expect("claim");
+        claim
+            .verify(now - Duration::minutes(25))
+            .expect("verified claim");
+        let mcp = PlannedMcpGatewayNodeProjection::single(
+            PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
+                .expect("empty MCP scope projection"),
+        )
+        .expect("empty MCP desired state");
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState {
+                node_id,
+                last_issued_revision: 2,
+                installed_revision: Some(if index == 0 { 2 } else { 1 }),
+                aggregate_version: 5,
+            },
+            vec![GatewaySnapshotRouteInput {
+                route,
+                domain_claim: claim,
+            }],
+            mcp,
+        )
+        .expect("managed member state");
+        contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
+            desired_state,
+            reusable_certificate: Some(certificate),
+            inference_credentials: vec![credential.clone()],
+            inference_routes: vec![inference_route.clone()],
+            inference_workers: Vec::new(),
+        });
+    }
+
+    let compiled = rollback_compiler()
+        .compile_managed(CompileManagedGatewayRolloutRollback {
+            scope,
+            failed_rollout: failed,
+            rollback,
+            member_contexts: contexts,
+            issued_at: now,
+        })
+        .expect("managed rollback with inference ACL");
+    assert_eq!(compiled.publications.len(), 2);
+    compiled
+        .managed_stage_bundle()
+        .expect("managed rollback stage bundle with inference ACL");
+    for publication in &compiled.publications {
+        let acl = &publication.acl;
+        assert!(
+            acl.contains("inference {"),
+            "publication ACL must embed inference policy shell"
+        );
+        assert!(
+            acl.contains(&format!("prefix = \"{PREFIX}\"")),
+            "publication ACL must embed Identity credential prefix"
+        );
+        assert!(
+            acl.contains(&format!("routes \"{inference_route_id}\"")),
+            "publication ACL must embed Inference route grants"
+        );
+        assert!(
+            acl.contains("models \"chat-model\""),
+            "publication ACL must embed model grant aliases"
+        );
+        assert!(
+            !acl.contains("\n  workers ") && !acl.contains("\nworkers "),
+            "empty workers vector must not invent workers blocks"
+        );
+        assert!(
+            !acl.contains("bearer") && !acl.contains("a3s_inf_rbstage01."),
+            "publication ACL must not embed bearer secret material"
+        );
+    }
 }
 
 fn rollback_compiler() -> GatewayRolloutRollbackCompiler {

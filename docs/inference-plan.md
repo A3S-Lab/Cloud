@@ -1503,6 +1503,13 @@ evidence, and fenced release protocol.
   embeds `inference {`, the projected `prefix`, and route grants/models while
   omitting any `workers` block and bearer secret material (desired-state plan →
   port load → managed compile → stage, not compiler-only).
+  Cloud likewise certifies the managed rollout-rollback compile path:
+  `GatewayRolloutRollbackCompiler::compile_managed` with Identity credential and
+  Inference route ACL projections plus an empty workers vector produces
+  publication ACL(s) that embed `inference {`, the projected `prefix`, and route
+  grants/models while omitting any `workers` block and bearer secret material, and
+  `managed_stage_bundle` validates the managed stage composition (compile → stage
+  bundle; live reconciler succession remains open).
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips
