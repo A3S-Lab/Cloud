@@ -1493,7 +1493,12 @@ evidence, and fenced release protocol.
   `generation`, compiling the stale route grant fails closed at the contract gate;
   `ReviseInferenceRoute` with matching `credential_generation` then succeeds with the
   new `prefix`/`generation` and matching grant without inventing `workers` or embedding
-  either bearer. Cloud also certifies retire → Edge managed-snapshot omission:
+  either bearer. Cloud also certifies joint create+publish+revoke → Edge
+  managed-snapshot ACL succession: after `RevokeInferenceKey` the successor joint
+  compile flips `revoked = true` while still projecting the published route
+  `grants`/`models` honestly (revoke does not silently strip catalog grants),
+  without inventing `workers` or embedding the bearer. Cloud also certifies retire →
+  Edge managed-snapshot omission:
   after `RetireInferenceRoute` the route ACL projection is empty and the successor
   compile drops `routes`/`models` while still projecting Identity credentials.
   Broader joint mixed-version / fallback conformance beyond that succession brick
