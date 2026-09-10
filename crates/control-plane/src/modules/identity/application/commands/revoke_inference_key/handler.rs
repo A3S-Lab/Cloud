@@ -139,7 +139,8 @@ mod tests {
         EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
     };
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+        EnvironmentId, IdempotentWrite, InferenceCredentialId, OrganizationId, ProjectId,
+        RepositoryError,
     };
     use a3s_boot::{CommandHandler, ModuleRef};
     use a3s_cloud_contracts::DomainEventEnvelope;
@@ -347,6 +348,65 @@ mod tests {
                 .gateway_projection()
                 .expect("projection")
                 .revoked
+        );
+    }
+
+    #[tokio::test]
+    async fn missing_key_fails_closed_as_not_found() {
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let error = RevokeInferenceKeyHandler::new(
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
+        )
+        .execute(
+            RevokeInferenceKey {
+                organization_id: OrganizationId::new(),
+                credential_id: InferenceCredentialId::new(),
+                expected_aggregate_version: 1,
+                idempotency_key: "revoke-missing".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .expect("boot")
+        .expect_err("missing key");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn stale_aggregate_version_fails_closed_as_conflict() {
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let credential = create_active_key(&credentials).await;
+        let error = RevokeInferenceKeyHandler::new(
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
+        )
+        .execute(
+            RevokeInferenceKey {
+                organization_id: credential.organization_id,
+                credential_id: credential.id,
+                expected_aggregate_version: credential.aggregate_version() + 1,
+                idempotency_key: "revoke-stale".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: credential.updated_at() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .expect("boot")
+        .expect_err("stale version");
+        assert!(matches!(error, ApplicationError::Conflict(_)));
+        let listed = credentials
+            .list_inference_credentials_by_environment(
+                credential.organization_id,
+                credential.project_id,
+                credential.environment_id,
+            )
+            .await
+            .expect("list");
+        assert!(
+            listed[0].revoked_at().is_none(),
+            "stale revoke must not mutate the active credential"
         );
     }
 }
