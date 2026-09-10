@@ -1,3 +1,4 @@
+mod agent_execution_operation_scheduler;
 mod agent_execution_reconciler;
 mod agent_release_admission;
 pub mod commands;
@@ -7,6 +8,10 @@ pub(crate) mod resource_access;
 mod support;
 mod workflow_agent_port;
 
+pub use agent_execution_operation_scheduler::{
+    AgentExecutionOperationRequest, AgentExecutionOperationScheduleOutcome,
+    IAgentExecutionOperationScheduler,
+};
 pub use agent_execution_reconciler::*;
 pub use agent_release_admission::*;
 pub use commands::*;

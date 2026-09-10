@@ -1,6 +1,7 @@
 mod agent_execution_checkpoint_object_reconciler;
 mod agent_execution_checkpoint_object_store;
 mod agent_execution_flow;
+mod agent_execution_operation_scheduler;
 mod agent_provider;
 mod agent_release_admission;
 mod persistence;

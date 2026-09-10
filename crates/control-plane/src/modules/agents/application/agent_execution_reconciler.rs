@@ -1,9 +1,8 @@
+use crate::modules::agents::application::{
+    AgentExecutionOperationRequest, IAgentExecutionOperationScheduler,
+};
 use crate::modules::agents::domain::IAgentRepository;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::repositories::IOperationRepository;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::RepositoryError;
-use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -20,27 +19,27 @@ pub struct AgentExecutionReconcileReport {
 
 pub struct AgentExecutionReconciler {
     agents: Arc<dyn IAgentRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    operation_scheduler: Arc<dyn IAgentExecutionOperationScheduler>,
     interval: Duration,
     batch_size: usize,
 }
 
 impl AgentExecutionReconciler {
-    pub fn new(
+    pub fn from_operation_scheduler(
         agents: Arc<dyn IAgentRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IAgentExecutionOperationScheduler>,
     ) -> Self {
         Self {
             agents,
-            operations,
+            operation_scheduler,
             interval: Duration::from_secs(1),
             batch_size: 100,
         }
     }
 
-    pub fn with_schedule(
+    pub fn with_operation_scheduler_and_schedule(
         agents: Arc<dyn IAgentRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IAgentExecutionOperationScheduler>,
         interval: Duration,
         batch_size: usize,
     ) -> Result<Self, String> {
@@ -51,7 +50,7 @@ impl AgentExecutionReconciler {
         }
         Ok(Self {
             agents,
-            operations,
+            operation_scheduler,
             interval,
             batch_size,
         })
@@ -64,24 +63,14 @@ impl AgentExecutionReconciler {
         let pending = self.agents.pending_operation_starts(limit.max(1)).await?;
         let mut report = AgentExecutionReconcileReport::default();
         for execution in pending {
-            let operation = OperationRequest::new(
+            let request = AgentExecutionOperationRequest::new(
                 execution.operation_id,
                 execution.organization_id,
-                OperationSubject::new("agent_execution", execution.id.as_uuid())
-                    .map_err(RepositoryError::Storage)?,
-                WorkflowIdentity::new(
-                    AGENT_EXECUTION_WORKFLOW_NAME,
-                    AGENT_EXECUTION_WORKFLOW_VERSION,
-                )
-                .map_err(RepositoryError::Storage)?,
-                json!({
-                    "organizationId": execution.organization_id,
-                    "executionId": execution.id,
-                }),
+                execution.id,
                 execution.requested_at,
             );
-            match self.operations.enqueue(operation).await {
-                Ok(write) if write.replayed => report.replayed += 1,
+            match self.operation_scheduler.schedule(request).await {
+                Ok(outcome) if outcome.replayed() => report.replayed += 1,
                 Ok(_) => report.started += 1,
                 Err(error) => report.failures.push(format!(
                     "could not enqueue Agent execution {} operation: {error}",
