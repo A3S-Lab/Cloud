@@ -10,7 +10,6 @@
   <a href="README.zh-CN.md">中文</a>
 </p>
 
-
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=release" /></a>
   <img alt="Rust 1.88 or later" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
@@ -19,36 +18,54 @@
 </p>
 
 <p align="center">
+  <a href="#what-cloud-is">First principles</a> &middot;
   <a href="#how-it-works">Architecture</a> &middot;
-  <a href="#service-outcomes">Services</a> &middot;
+  <a href="#product-lanes">Product lanes</a> &middot;
   <a href="#quick-start">Quick start</a> &middot;
-  <a href="#platform-capabilities">Capabilities</a> &middot;
   <a href="#delivery-status">Delivery</a> &middot;
   <a href="#documentation">Docs</a>
 </p>
 
-**A3S Cloud is a self-hosted, Agent-first developer platform that turns
-tenant-authorized product intent into durable AaaS, WaaS, FaaS, Durable Cell,
-model-inference, and Static Web services on operator-owned CPU/GPU
-infrastructure.** Cloud owns product and desired-state truth; A3S Flow
-coordinates durable work; A3S Runtime defines one lifecycle contract; A3S Box
-executes it; A3S Gateway is the only public edge.
+**A3S Cloud is a self-hosted control plane that turns tenant-authorized product
+intent into desired state on operator-owned CPU/GPU infrastructure.** Cloud owns
+product and desired-state truth in PostgreSQL. A3S Flow coordinates durable work.
+A3S Runtime defines one lifecycle contract. A3S Box executes it. A3S Gateway is
+the only public edge. Product lanes (AaaS, WaaS, FaaS, Durable Cell, inference,
+Static Web) are projections over that single path—not six runtimes.
 
 > [!IMPORTANT]
 > Architecture targets are not availability claims. A capability is released
 > only after its real-provider, failure, recovery, cleanup, upgrade, and release
-> gates are marked <code>Verified</code> in [ROADMAP.md](ROADMAP.md).
+> gates are marked <code>Verified</code> in [ROADMAP.md](ROADMAP.md). Until then,
+> treat the lane as unavailable even if components exist.
 
 > [!NOTE]
-> A3S Cloud does not ship a management Dashboard. It does host immutable
-> React/Vue and other tenant Web releases for Applications and Agents. Those
-> sites use the same Gateway and APIs as every other client.
+> A3S Cloud does not ship a management Dashboard. Management is
+> REST/OpenAPI, TypeScript client, CLI, and Management MCP. Tenant Web releases
+> (when <code>WEB0</code> lands) use the same Gateway and APIs as every other
+> client.
 
 > [!TIP]
-> Automatic CI and Box conformance run only for pushes to `release` and pull
-> requests targeting `release`. The `main` branch does not start these
-> workflows automatically; use the explicit workflow dispatch entries for an
-> ad hoc verification run.
+> Automatic CI and Box conformance run only for pushes to <code>release</code>
+> and pull requests targeting <code>release</code>. <code>main</code> does not
+> start those workflows automatically; use workflow dispatch for an ad hoc run.
+
+## What Cloud is
+
+First principles for reading this repository:
+
+| Cloud is | Cloud is not |
+| --- | --- |
+| Desired-state and product authority in PostgreSQL | A second request-byte proxy beside Gateway |
+| One Workloads + Fleet placement path for every service class | Per-product schedulers (Agent / MCP / Cell / GPU / inference) |
+| Edge compiler of complete Gateway snapshots | Bearer-secret store for inference keys (Identity owns issuance; Edge projects ACL only) |
+| Outbox → Event integration after commit | Publish-before-commit or UI-only policy |
+| API / CLI / MCP-first management | A Cloud Dashboard backend |
+| Gate-driven delivery | “Feature-complete because the module folder exists” |
+
+**Truth hierarchy:** PostgreSQL and owning bounded contexts are operational
+truth. Redis may accelerate. Doris may project analytics. Neither becomes
+quota, grant, or desired-state authority.
 
 ## How it works
 
@@ -56,64 +73,60 @@ executes it; A3S Gateway is the only public edge.
   <img src="assets/readme/architecture.svg" width="100%" alt="A3S Cloud authority map from A3S Gateway through tenant product domains, Identity, PostgreSQL, Flow, Workloads and Fleet, Runtime, Box, supply, storage, dispatch, and observability" />
 </p>
 
-The architecture follows one path for every service:
+Every admitted service follows one path:
 
-1. **Admit:** A3S Gateway authenticates public traffic; Identity resolves the
-   exact Installation, Organization, Project, Environment, Principal, and
-   credential scope.
-2. **Commit:** an Application use case atomically writes desired state,
-   idempotency, audit evidence, and Outbox facts to PostgreSQL through A3S ORM.
-3. **Coordinate:** A3S Flow and Operations own durable waits, retry, replay,
+1. **Admit.** Gateway authenticates public traffic; Identity resolves
+   Installation, Organization, Project, Environment, Principal, and credential
+   scope.
+2. **Commit.** An Application use case atomically writes desired state,
+   idempotency, audit, and Outbox facts to PostgreSQL through A3S ORM.
+3. **Coordinate.** Operations and A3S Flow own durable waits, retry, replay,
    approval, compensation, cancellation, and delivery history.
-4. **Place and execute:** Workloads and Fleet own the single CPU/GPU scheduler,
-   Claims, rollout, drain, and fencing; the node agent converges A3S Runtime
-   <code>Task</code> or <code>Service</code> units through A3S Box.
-5. **Publish:** Edge compiles complete versioned route snapshots; A3S Gateway
-   applies and serves them. Cloud never becomes a second request-byte proxy.
+4. **Place and execute.** Workloads and Fleet own Claims, rollout, drain, and
+   fencing; the Node Agent converges Runtime <code>Task</code> or
+   <code>Service</code> units through A3S Box.
+5. **Publish.** Edge compiles a complete versioned route snapshot; Fleet
+   delivers it; the Node Agent installs it; Gateway applies and serves it.
 
-Runtime CI/CD uses the same authority map: build once, verify the exact digest,
-promote the same immutable release, deploy through Workloads/Fleet, shift
-traffic through Edge/Gateway, and roll back to an earlier admitted release.
-Product domains retain release truth; Flow retains pipeline history.
+Runtime CI/CD uses the same map: build once, verify the digest, promote the
+same immutable release, deploy through Workloads/Fleet, shift traffic through
+Edge/Gateway, and roll back to an earlier admitted release.
 
-## Service outcomes
+### Control and data planes
 
-Six product outcomes share two execution classes instead of creating six
-runtime stacks:
+| Plane | Authority | Notes |
+| --- | --- | --- |
+| Tenant / admin API | Control-plane <code>api</code> role | Direct port access is local-dev only; production publishes through Gateway |
+| Durable workers | <code>worker</code> role | Health + reconcilers; no management surface |
+| Outbox relay | <code>relay</code> role | Event publication only |
+| Node control | Fleet ↔ Node Agent (outbound mTLS) | Commands, observations, Gateway snapshot install—separate from tenant request bytes |
+| Public traffic | Edge desired state → Gateway applied state | Cloud never proxies request bodies |
+| Inference ACL (partial) | Identity credentials + Inference routes → Edge compiler | Workers stay empty until Power observation delivery (<code>PW0</code>); full OpenAI data plane waits on <code>BX0</code> + <code>PW0</code> |
 
-- **AaaS — Agent as a Service.** Agents owns conversations, executions,
-  semantic events, approvals, checkpoints, forks, Tool evidence, provider
-  bindings, and recovery. Stateful Agents such as A3S Code run as warm,
-  session-fenced Runtime <code>Service</code> units; bounded batch Agents may
-  use <code>Task</code>.
-- **WaaS — Workflow as a Service.** Workflow owns ontology, immutable
-  definitions and plans, WorkflowRun, HumanTask, typed node order, and
-  outcomes. A3S Flow coordinates Agent, Function, MCP, Inference, Cell, human,
-  Connector, Task, and Service nodes; there is no duplicate Workflow runtime.
-- **FaaS — Function as a Service.** Assets owns the immutable Function
-  release/profile; its application facade delegates each invocation to
-  Executions, Workloads, or Connectors without owning another lifecycle. A
-  Function runs as a Runtime <code>Task</code>, stateless
-  <code>Service</code>, or external FaaS Connector. Sessionless MCP and calls
-  from A3S Code use the same modes. `FN0.1` freezes these component contracts;
-  FaaS remains unavailable until the later owner and production gates pass.
-- **Durable Cell.** Durable Cells owns application revision, compatibility,
-  retention, and deployment/storage correlation. An ordinary Runtime
-  <code>Service</code> provides a named, serialized, hibernatable state space
-  for people and multiple Agents without copying Agent or Workflow history.
-- **Model Inference.** Inference owns model revision, deployment, role
-  topology, routing policy, usage, and evaluation. It supports independent
-  replicas and typed multi-node prefill/decode groups on the shared CPU/GPU
-  placement rail.
-- **Static Web.** Applications and Assets own immutable Web releases. React,
-  Vue, and other admitted objects are served directly by Gateway with cache,
-  CSP, SPA fallback, route, and rollback policy; SSR is an ordinary
-  <code>Service</code> profile.
+## Product lanes
 
-The only general execution classes are **Task** and **Service**. Agent,
-Function, MCP, inference, Cell, build, and Cloud-system behavior is expressed
-through immutable consumer-owned profiles. A3S Runtime owns the unified
-lifecycle contract; A3S Box providers implement it.
+Six product outcomes share two execution classes (**Task** and **Service**).
+Status vocabulary matches [ROADMAP.md](ROADMAP.md): **Verified**, **In
+progress**, **Planned**.
+
+| Lane | Owner intent | Status |
+| --- | --- | --- |
+| **AaaS** — Agent as a Service | Conversations, executions, events, approvals, checkpoints, Tool evidence | **In progress** (A0.4 / A1.0 / A1.2 verified; complete AaaS still gate-bound) |
+| **WaaS** — Workflow as a Service | Ontology, immutable plans, WorkflowRun, HumanTask; Flow coordinates nodes | **In progress** (unavailable as a complete product) |
+| **FaaS** — Function as a Service | Immutable Function profile; invoke via Executions / Workloads / Connectors | **In progress / unavailable** (<code>FN0.1</code> contracts frozen) |
+| **Durable Cell** | Named, serialized, hibernatable shared state over ordinary Service | **In progress / unavailable** |
+| **Model inference** | Keys, route catalog, Edge ACL, usage ledger; Power serving on Box | **Planned** overall (<code>I0</code>); Cloud-side keys/routes/Edge/usage components exist; end-to-end serving blocked by <code>BX0</code> + <code>PW0</code> |
+| **Static Web** | Immutable Web releases served by Gateway | **Planned** (<code>WEB0</code>; Gateway static-object target not implemented) |
+
+Platform foundations that already carry product work:
+
+| Foundation | Status |
+| --- | --- |
+| Control plane, PostgreSQL/ORM, Operations/Flow, Outbox, migrations, public API | **Verified** (<code>F0</code>) |
+| REST / TypeScript client / CLI / Management MCP parity | **Verified** core (<code>C0.1</code>–<code>C0.2m</code>) |
+| Workloads replicas + Gateway target projection | **Verified** (<code>H0.1</code>–<code>H0.2</code>) |
+| Box-only execution/build re-certification | **In progress** (<code>BX0</code>; release blocker) |
+| A3S Power as Box-hosted inference Service | **Planned** (<code>PW0</code>) |
 
 ## Quick start
 
@@ -140,8 +153,8 @@ just down        # stop API and local compose/docker deps
 State, logs, and the generated bootstrap token live under
 <code>apps/cloud/.a3s/cloud/dev/</code>. Prefer <code>a3s-box compose</code>
 with [deploy/dev/compose.acl](deploy/dev/compose.acl); when Box is unavailable,
-<code>just up</code> falls back to Docker containers on the same ports and
-bootstraps the migration/serving Postgres roles.
+<code>just up</code> falls back to Docker on the same ports and bootstraps the
+migration/serving Postgres roles.
 
 Inside this repository alone:
 
@@ -172,17 +185,12 @@ curl http://127.0.0.1:8080/api/v1/health/ready
 curl http://127.0.0.1:8080/api/v1/openapi.json
 ~~~
 
-Direct port access is a local-development convenience. Production publishes
-the API only through A3S Gateway.
-
 <details>
 <summary><strong>Bootstrap the first Organization</strong></summary>
 
 Cloud stores only the API-token digest; the caller creates and retains the
-credential. The request below also creates the accepted baseline platform-role
-policy and binds <code>PlatformOwner</code> to the same bootstrap Principal.
-Concurrent identical requests serialize before replay, and any policy, audit,
-or Outbox failure rolls back the complete identity and authority root.
+credential. The request also creates the accepted baseline platform-role policy
+and binds <code>PlatformOwner</code> to the same bootstrap Principal.
 
 ~~~bash
 export A3S_CLOUD_ADMIN_TOKEN="a3s_$(openssl rand -hex 32)"
@@ -215,123 +223,18 @@ bun run --cwd cli src/main.ts operations list --output=json
 Credentials come from environment variables or standard input and are never
 written to a CLI context file.
 
-## Platform capabilities
-
-### Build, supply, and promote
-
-- Hosted Git authority plus external source revisions, webhooks, reproducible
-  Box builds, provenance, pull-request previews, immutable artifacts, and
-  digest-preserving promotion.
-- Separate **Git**, **OCI Registry**, and **A3S Use Registry** authorities.
-  None is overloaded to impersonate another supply type.
-- Governed logical Models and Model Revisions plus immutable model-weight
-  manifests/objects, external hub resolution such as ModelScope, licenses,
-  trust policy, and reconstructible node caches.
-- One Flow-backed CI/CD model for Agent, Workflow, Function/MCP, Durable Cell,
-  inference, Static Web, and Cloud system-service releases.
-- Hosted Agents bind one canonical Code-owned final release manifest to the
-  exact OCI and signed build provenance, then mount its deterministic archive
-  read-only through the ordinary Workloads/Runtime path. That same manifest
-  owns the readiness path, liveness path, and graceful-shutdown interval;
-  callers cannot weaken the lifecycle contract at deployment time.
-
-### Run, scale, and recover
-
-- One heterogeneous scheduler for CPU pools, GPU pools, accelerator/topology
-  constraints, Claims, anti-affinity, gang placement, maintenance, quotas, and
-  preemption policy.
-- Stateless horizontal scale and scale-to-zero; stateful drain, single-writer
-  fencing, checkpoint/handoff, recovery, and locality-aware placement.
-- Distributed inference with independent replicas, multi-node groups,
-  prefill/decode-disaggregated roles, explicit KV transfer, and one shared
-  scheduler rather than a second inference control plane.
-- Independently scalable API, Worker, Relay, migrator, node-agent, and Gateway
-  roles with explicit readiness, migration, lease/leader, rollout, and recovery
-  contracts.
-
-### Store, serve, and observe
-
-- One typed immutable-object client over external HTTPS AWS S3 or
-  S3-compatible storage. Cloud bundles no S3 server and does not present object
-  storage as POSIX/FUSE. Mutable volumes, backup, restore, retention, and writer
-  fencing belong to Data/S0.
-- A3S Gateway owns TLS, authentication, request limits, routes, model/Agent/
-  Function/MCP endpoints, and tenant Web delivery. Cloud services stay private.
-- OpenTelemetry correlates logs, metrics, traces, SLOs, and incidents.
-  Immutable evidence stays with domain owners; Apache Doris is an optional,
-  rebuildable analytics and SLO projection.
-
-### Govern tenants and privileged access
-
-- One immutable Installation identity and one discriminated
-  Installation/Organization/Project/Environment scope contract across tenant
-  isolation, memberships, Resource Grants, quotas, credentials, audit, Outbox,
-  and lifecycle cleanup. Platform facts never borrow a sentinel Organization.
-- A distinct system-administrator RBAC plane for installation, fleet,
-  migration, policy, incident, and break-glass duties. A system role never
-  silently grants tenant data or Secret access.
-- Tenant support requires an active exact human, an admitted support-use role,
-  a short-lived non-renewing grant, descendant scope, and one closed
-  non-sensitive permission. Each allow pins replayable policy, credential,
-  binding, grant, action, resource, and request evidence.
-- Fresh bootstrap atomically creates the first Organization, service Principal,
-  owner Membership, API token, accepted baseline platform-role policy, and
-  matching <code>PlatformOwner</code> binding with shared audit, Outbox, and
-  idempotency facts.
-- Privileged mutations and installation-wide organization-catalog reads use
-  the same Identity/PostgreSQL decision issuer. A valid exact
-  <code>cloud:read</code> credential without
-  <code>TenantLifecycleRead</code> sees only its own Organization; revoked,
-  expired, mismatched, or under-scoped credentials fail closed.
-- Workload trust uses immutable TrustDomain and WorkloadIdentityPolicy
-  revisions in the same Identity authority. Current, exact, bounded-history,
-  and workload-indexed reads plus CAS-fenced acceptance are exposed through
-  REST/OpenAPI, the TypeScript client, and CLI without caller-authored actor,
-  credential, or Installation overrides.
-- A canonical <code>cloud.identity.workload-provider.v1</code> profile binds
-  each TrustDomain revision to one replaceable provider adapter by digest. The
-  API-only <code>spiffe_https_web</code> adapter performs a fresh HTTPS,
-  bounded, strict-JSON SPIFFE bundle observation and admits it against that
-  exact revision. Its contract labels endpoint evidence as <code>observed*</code>
-  and digest-bound profile policy as <code>declared*</code>; it owns no
-  certificate issuance, private key, provider registry, or parallel trust
-  state.
-- The versioned
-  <code>cloud.identity.workload-runtime-evidence-binding.v1</code> foundation
-  binds one exact policy digest to its Workloads Claim, NodePool and Fleet Node
-  session/capability snapshot, plus Runtime Unit generation and Box provider
-  attestation. Verified C2 composes only the Workloads and Fleet owner facts.
-  Component-only C3a admits one generic Identity authorization before
-  scheduling and persists an immutable Workloads record, including an explicit
-  no-policy outcome, so crash replay cannot relabel a legacy or running Unit.
-  Component-only C3b adds the sole Identity-owned immutable
-  <code>cloud.identity.workload-runtime-evidence-record.v1</code> history in
-  migration <code>181</code>. Exact admission replay may return its historic
-  fact; every new write re-reads current TrustDomain/Policy and both owner
-  facts under the canonical Installation fence, then commits through one typed
-  A3S ORM repository. PostgreSQL rejects mutation, stale evidence, and a
-  Policy/evidence race that did not serialize first. The deterministic V1
-  record still lacks Node hardware attestation and cannot authorize credential
-  issuance; C4 remains a required fresh decision rather than an inferred
-  capability.
-- OpenShift-class outcomes—reconciliation, scheduling, isolation, rollout,
-  policy, observability, and day-two operations—and TokenHub-class
-  outcomes—governed model/provider/key access, routing, quotas, diagnostics,
-  and usage—are composed through A3S authorities rather than copied APIs or
-  control planes.
-
 ## Consistency by construction
 
 | Concern | Canonical rule |
 | --- | --- |
 | Command concurrency | Exact tenant scope, idempotency key, expected version, and payload digest are checked transactionally; drift or conflicting replay fails closed |
-| Database writes | Aggregate, idempotency, audit, and Outbox commit together through A3S ORM/PostgreSQL; the database resolves canonical Installation lineage |
+| Database writes | Aggregate, idempotency, audit, and Outbox commit together through A3S ORM/PostgreSQL |
 | Cross-system work | A3S Flow sagas and owner receipts reconcile uncertain outcomes; no database transaction spans an external provider |
-| Rate limits and quotas | Gateway enforces request limits; owner admission enforces durable quota. Redis may accelerate counters but never becomes quota truth |
-| Cache | Redis holds bounded, reconstructible reads, discovery, tokens, and coordination hints with revisioned invalidation; cache loss changes latency, not correctness |
-| Locks and leases | PostgreSQL/CAS owns correctness and fencing. A distributed lock may reduce contention but cannot replace versions or Fleet Claims |
-| Dispatch pressure | A3S Lane admits only post-durable work for fairness, backpressure, and bounded concurrency; it owns neither workflow nor queue truth |
-| Analytics | Doris consumes reconstructible telemetry/evidence projections; PostgreSQL and bounded-context owners remain operational truth |
+| Rate limits and quotas | Gateway enforces request limits; owner admission enforces durable quota. Redis never becomes quota truth |
+| Cache | Redis holds bounded, reconstructible hints; cache loss changes latency, not correctness |
+| Locks and leases | PostgreSQL/CAS owns fencing. A distributed lock may reduce contention but cannot replace versions or Fleet Claims |
+| Dispatch pressure | A3S Lane admits only post-durable work; it owns neither workflow nor queue truth |
+| Analytics | Doris consumes reconstructible projections; PostgreSQL and bounded-context owners remain operational truth |
 
 ## DDD and single authority
 
@@ -340,89 +243,72 @@ written to a CLI context file.
 </p>
 
 Presentation calls Application; Application coordinates its Domain and
-consumer-owned ports; Infrastructure implements those inward ports. Contexts
+consumer-owned ports; Infrastructure implements those ports. Contexts
 collaborate only through a synchronous owner Application contract or a
-versioned fact emitted from the owner's committed Outbox.
+versioned fact from the owner's committed Outbox.
 
 | Concern | Sole authority | Forbidden duplicate |
 | --- | --- | --- |
-| Tenant identity and authorization | Identity + Projects | Adapter-local roles, UI-only policy, provider sessions, or cache claims as truth |
-| Product meaning | Owning Agent, Workflow, Function, Cell, Inference, Application, or Asset context | Runtime/provider fields becoming product state |
-| Durable coordination | Operations + A3S Flow | Product retry tables, sleep loops, or another workflow engine |
-| Build and release delivery | Sources + Artifacts + product Release owner + Delivery Pipelines | Product-local CI state, rebuild-on-promotion, or mutable deployment tags |
+| Tenant identity and authorization | Identity + Projects | Adapter-local roles, UI-only policy, cache-as-truth |
+| Product meaning | Owning Agent, Workflow, Function, Cell, Inference, Application, or Asset context | Runtime/provider fields as product state |
+| Durable coordination | Operations + A3S Flow | Product retry tables or another workflow engine |
 | Placement and rollout | Workloads + Fleet | Agent-, MCP-, Cell-, model-, or Gateway-specific schedulers |
 | Provider lifecycle | A3S Runtime + A3S Box | Direct process/container/FaaS calls from product domains |
-| Public traffic | Edge desired state + A3S Gateway applied state | Cloud proxy, per-product ingress, or another Gateway publisher |
-| Immutable and mutable data | Shared object client + Data/S0 | Per-product S3 clients, backup engines, or provider state as desired-state truth |
-| Integration facts | One scope-aware transactional Outbox + A3S Event | Publish-before-commit, sentinel tenants, or parallel product/platform event buses |
-| Configuration | A3S ACL parsed by <code>a3s-acl</code> | Compatibility parsers or another product configuration language |
+| Public traffic | Edge desired state + Gateway applied state | Cloud proxy or parallel Gateway publishers |
+| Immutable / mutable data | Shared object client + Data/S0 | Per-product S3 clients as desired-state truth |
+| Integration facts | Scope-aware transactional Outbox + A3S Event | Publish-before-commit |
+| Configuration | A3S ACL via <code>a3s-acl</code> | Compatibility parsers or another config language |
 
-Cross-cutting behavior follows one visible ordered pipeline: authentication,
-authorization, validation, idempotency, transaction, audit/Outbox, then
-dispatch. Logging, tracing, metrics, cache, rate limits, and AOP interceptors
-observe or protect that path; none may become a second business authority.
-[Executable architecture ratchets](docs/architecture-audit.md) stop outer-layer
-imports and duplicate mechanisms from spreading while known debt is removed.
+Cross-cutting order is fixed: authentication → authorization → validation →
+idempotency → transaction → audit/Outbox → dispatch. Observability and rate
+limits protect that path; none becomes a second business authority.
+[Executable architecture ratchets](docs/architecture-audit.md) keep outer-layer
+imports and duplicate mechanisms from spreading.
 
 ## Delivery status
 
-The portfolio is gate-driven, not percentage-driven. As of **2026-09-06**:
+Gate-driven, not percentage-driven. Summary as of **2026-09-10** (exact
+evidence and remaining exits live in [ROADMAP.md](ROADMAP.md)):
 
-| Lane | Evidence state |
+| Area | Evidence state |
 | --- | --- |
-| Tenant-scoped Identity, PostgreSQL/A3S ORM, Operations/Flow, Outbox, public API, and migrations | **Verified foundation** |
-| Installation scope and system-administrator RBAC | **Verified core, broader gate in progress.** Atomic fresh bootstrap, policy/binding and support-grant repositories, exact privileged decisions, protected mutations, REST/OpenAPI, TypeScript client, CLI, Management MCP, and revocation-fenced organization catalog are verified. Controlled recovery for pre-root installations plus the wider MT3 role matrix, owner-port cleanup, and hostile-tenant evidence remain |
-| Workloads, Fleet, Runtime/Box, Gateway, supply, collaboration, and enterprise controls | **In progress; A0.4 real-provider gate verified.** The [A0.4 PostgreSQL/real-Box provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332) and [complete Cloud CI](https://github.com/A3S-Lab/Cloud/actions/runs/33686237772) pass against Box `65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` and OCI Runtime `878f8414cef3b85bef1b51fe6735017b25828252`; broader component/provider gates remain |
-| Agent and hosted MCP product lanes | **In progress; A0.4 verified.** The A0.4 published-Agent deployment, PostgreSQL persistence, real Box recovery, Secret rematerialization, cancellation, and cleanup gate is verified by the retained [provider evidence](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332); A0.3, A0.5, and hosted MCP remain gate-bound, so component evidence does not imply complete AaaS availability |
-| Ontology Workflow and AI Applications/Files | **In progress.** Complete WaaS and Application products remain gate-bound |
-| Automations | **Component foundation in progress.** Exact-revision webhook admission, schedule calendar/misfire/concurrency/durable cursor-lease boundaries, deterministic due-time envelopes, idempotent invocation admission with durable PostgreSQL state, injectable bounded schedule-worker/normalized-event consumer boundaries, and a digest-verified invocation target-owner handoff are implemented. The control-plane supervisor accepts and gracefully stops these processes when owner-composed providers/handlers are supplied. Production candidate discovery, target wiring, live recovery evidence, and public availability remain open |
-| Data/S0 and Durable Cell | **Foundation in progress.** Durable Cell is a first-class target but not yet an available managed service |
-| Workload identity | **Verified trust and WI2-C1/C2 foundation; C3a and C3b verified on main.** The [trust/provider main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33291073009), [C1/C2 main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33310808529), and [C1/C2 Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33310808538) pass. C3a production-composes the generic Identity authorization ACL and one immutable Workloads pre-scheduling bound/no-policy record through migration `180`; the complete [C3a main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33319781762) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33319781830) pass. C3b adds migration `181`, one typed immutable Identity evidence history, exact historic replay, current Policy/TrustDomain revalidation, deterministic same-fact adoption, and retained concurrency/revocation tests without a public API or second owner lifecycle; the [C3b main CI](https://github.com/A3S-Lab/Cloud/actions/runs/33327919058) and [same-revision Box provider conformance](https://github.com/A3S-Lab/Cloud/actions/runs/33327919079) pass. Fleet hardware attestation, the full issuance decision, issuance, enforcement, revocation, and federation remain open |
-| FaaS, distributed inference, model supply, Static Web, Runtime CI/CD, and full HA operations | **Planned or early foundation.** Their architecture and authority boundaries are defined, but complete product gates remain |
-
-See the [product roadmap](ROADMAP.md), [platform gap
-analysis](docs/platform-gap-analysis.md), and [ecosystem project
-roadmaps](docs/project-roadmaps/README.md) for exact dependencies, evidence, and
-remaining gates.
+| Foundation (<code>F0</code>): Identity, PostgreSQL/ORM, Flow/Operations, Outbox, API, migrations | **Verified** |
+| Control surfaces (<code>C0.1</code>–<code>C0.2m</code>) | **Verified** core; enterprise <code>C0.5</code> / broader <code>C0.3</code> slices still open |
+| Workloads / Fleet / Gateway projection (<code>H0.1</code>–<code>H0.2</code>) | **Verified**; multi-node HA / autoscaling (<code>H0.3</code>+) in progress |
+| Box-only platform (<code>BX0</code>) | **In progress** (release blocker for Box-backed production claims) |
+| Agent lanes (<code>A0</code>/<code>A1</code>) | **In progress**; A0.4 and selected A1 gates verified—complete AaaS still gate-bound |
+| Workflow / Applications / Automations / Cells / Knowledge | **In progress / unavailable** as complete products |
+| Inference (<code>I0</code>) | **Planned** product; Cloud keys, route catalog, Edge ACL succession, and usage ledger components exist; Power workers and end-to-end OpenAI data plane wait on <code>BX0</code> + <code>PW0</code> |
+| FaaS / Static Web / Runtime CI/CD / Power | **Planned** or early foundation |
 
 ## Deployment model
 
-Cloud system services and tenant workloads share mechanisms but never borrow
-authority:
-
-- the bootstrap plane installs PostgreSQL, NATS, S3-compatible storage, Git,
-  OCI Registry, A3S Use Registry, migrator, API, Worker, Relay, Gateway, and
-  observability dependencies through one dependency DAG;
-- API, Worker, Relay, migrator, node agent, and Gateway scale independently;
-- tenant workloads enter only through admitted releases, Workloads/Fleet
-  placement, Runtime/Box execution, and Gateway publication;
-- management is API/OpenAPI/client/CLI/MCP-first; there is no Cloud Dashboard
-  or UI-specific backend.
-
-The initial Box-hosted profile is the installation foundation. Production HA
-requires the named clean-install, upgrade, rollback, dependency-loss,
-credential-rotation, storage-recovery, node-drain, and multi-replica gates in
-the [deployment architecture](docs/deployment-and-cluster-architecture.md).
+- Bootstrap installs PostgreSQL, NATS, S3-compatible storage, Git, OCI Registry,
+  A3S Use Registry, migrator, API, Worker, Relay, Gateway, and observability
+  dependencies through one dependency DAG.
+- API, Worker, Relay, migrator, Node Agent, and Gateway scale independently.
+- Tenant workloads enter only through admitted releases, Workloads/Fleet
+  placement, Runtime/Box execution, and Gateway publication.
+- Production HA requires the named clean-install, upgrade, rollback,
+  dependency-loss, credential-rotation, storage-recovery, node-drain, and
+  multi-replica gates in
+  [deployment architecture](docs/deployment-and-cluster-architecture.md).
 
 ## Interfaces and configuration
 
 | Surface | Contract | Start here |
 | --- | --- | --- |
-| REST/OpenAPI | Versioned <code>/api/v1</code>, request IDs, idempotency, common envelopes, committed snapshot | [Guide](docs/openapi.md) · [openapi/v1.json](openapi/v1.json) |
+| REST/OpenAPI | Versioned <code>/api/v1</code>, request IDs, idempotency, common envelopes | [Guide](docs/openapi.md) · [openapi/v1.json](openapi/v1.json) |
 | TypeScript client | Maintained adapter over the same REST contract | [packages/cloud-client](packages/cloud-client) |
 | CLI | Scriptable structured output with no token argument | [cli/README.md](cli/README.md) |
 | Management MCP | Sessionless, tenant-authorized tools over the same Application handlers | [docs/management-mcp.md](docs/management-mcp.md) |
 
 Cloud and the Node Agent accept only closed, validated **A3S ACL** parsed by
-<code>a3s-acl</code>. Unknown fields and unsafe timing relationships fail before
-startup; Secret values never belong in ACL. Start with
+<code>a3s-acl</code>. Unknown fields and unsafe timing fail before startup;
+Secret values never belong in ACL. Start with
 [config/cloud.acl](config/cloud.acl),
-[config/node.example.acl](config/node.example.acl), and the
-[deploy/production](deploy/production/README.md) baseline.
-
-Redis is optional acceleration, Doris is optional analytics, and neither is
-durable truth. S3-compatible object storage and NATS are external production
-dependencies.
+[config/node.example.acl](config/node.example.acl), and
+[deploy/production](deploy/production/README.md).
 
 ## Repository and development
 
@@ -458,13 +344,12 @@ cargo clippy --workspace --all-targets -- -D warnings
 RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 ~~~
 
-Real-provider and release certification runs on isolated Linux hosts. Important
-repository-owned gates include [cross-surface
-conformance](tools/c0-conformance/README.md), [Runtime
-conformance](tools/runtime-conformance/README.md), [Box provider
-conformance](tools/box-conformance/README.md), [workload-identity provider
-conformance](tools/workload-identity-conformance/README.md), and the [pinned
-Gateway revision](tools/gateway-conformance/gateway-revision).
+Real-provider and release certification runs on isolated Linux hosts. Repository
+gates include [cross-surface conformance](tools/c0-conformance/README.md),
+[Runtime conformance](tools/runtime-conformance/README.md),
+[Box provider conformance](tools/box-conformance/README.md),
+[workload-identity conformance](tools/workload-identity-conformance/README.md),
+and the [pinned Gateway revision](tools/gateway-conformance/gateway-revision).
 
 </details>
 
@@ -472,19 +357,15 @@ Gateway revision](tools/gateway-conformance/gateway-revision).
 
 | Start here | Purpose |
 | --- | --- |
-| [Product roadmap](ROADMAP.md) | Gate status, dependencies, evidence, and delivery order |
-| [Technical architecture](docs/architecture.md) | Stable ownership, topology, consistency, and failure behavior |
-| [AI service platform](docs/ai-service-platform-architecture.md) | AaaS, WaaS, FaaS, Durable Cell, Inference, Runtime, Box, and Gateway composition |
-| [Agent release deployment contract](docs/agent-release-deployment-contract.md) | Code-owned final manifest generation, provenance, persistence, replay, and Runtime projection |
-| [Agent Runtime](docs/agent-runtime-architecture.md) · [Function Runtime](docs/function-runtime-architecture.md) · [Durable Cell](docs/durable-cell-platform-plan.md) | Service semantics over the unified Runtime |
-| [Static Web](docs/static-web-hosting-architecture.md) · [model supply](docs/model-supply-architecture.md) · [inference](docs/inference-plan.md) | Tenant UI, models/weights, and serving architecture |
-| [Cluster deployment](docs/deployment-and-cluster-architecture.md) · [elastic services](docs/elastic-service-deployment-architecture.md) | System services, CPU/GPU scheduling, stateful/stateless convergence, and HA |
-| [Runtime CI/CD](docs/runtime-cicd-architecture.md) · [workload identity](docs/workload-identity-and-service-connectivity-architecture.md) | Delivery, attestation, private discovery, mTLS, and revocation |
-| [Distributed API consistency](docs/distributed-api-consistency-architecture.md) · [Redis and Lane](docs/redis-and-lane-platform-architecture.md) | Concurrency, transactions, cache, locks, fairness, and backpressure |
-| [Observability and analytics](docs/observability-and-analytics-architecture.md) · [platform gap analysis](docs/platform-gap-analysis.md) | Telemetry/SLO/incident design and prioritized missing outcomes |
-| [Multi-tenant platform](docs/multi-tenant-developer-platform-architecture.md) · [capability architecture](docs/platform-capability-architecture.md) | Tenant/admin RBAC and OpenShift-/TokenHub-class outcomes |
-| [DDD, AOP, and patterns](docs/ddd-aop-and-pattern-architecture.md) · [architecture audit](docs/architecture-audit.md) | Layer rules, aspect order, patterns, and executable debt ratchets |
-| [Ecosystem roadmaps](docs/project-roadmaps/README.md) | Mission, dependencies, evidence, and negative boundary for every A3S subproject |
+| [Product roadmap](ROADMAP.md) | Gate status, dependencies, evidence, delivery order |
+| [Technical architecture](docs/architecture.md) | Ownership, topology, consistency, failure behavior |
+| [AI service platform](docs/ai-service-platform-architecture.md) | AaaS / WaaS / FaaS / Cell / Inference composition |
+| [Inference plan](docs/inference-plan.md) | I0 contracts, Edge ACL, usage, Power/Box dependencies |
+| [Cluster deployment](docs/deployment-and-cluster-architecture.md) | System services, scheduling, HA |
+| [Workload identity](docs/workload-identity-and-service-connectivity-architecture.md) | Trust, attestation, private discovery |
+| [Capability architecture](docs/platform-capability-architecture.md) | OpenShift-/TokenHub-class outcomes without copied APIs |
+| [Architecture audit](docs/architecture-audit.md) | Executable debt ratchets |
+| [Ecosystem roadmaps](docs/project-roadmaps/README.md) | Mission and negative boundary per A3S subproject |
 
 ## License
 
