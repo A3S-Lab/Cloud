@@ -15,6 +15,7 @@ use crate::modules::edge::domain::{
     GatewayScope, GatewayScopeState,
 };
 use crate::modules::identity::application::EmptyInferenceCredentialAclProjectionPort;
+use crate::modules::inference::application::EmptyInferenceRouteAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
@@ -326,6 +327,7 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         Arc::new(EmptyProjectionPlanner::default()),
         compiler(),
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(EmptyInferenceRouteAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
@@ -374,6 +376,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             )
             .expect("first node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("first complete snapshot");
     let second = compiler()
@@ -399,6 +402,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             )
             .expect("second node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("second complete snapshot");
 
@@ -624,6 +628,7 @@ fn reconciler(
         planner,
         compiler(),
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(EmptyInferenceRouteAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),

@@ -4,12 +4,16 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayScope, RouteHostname, RoutePath, RoutePortName,
 };
 use crate::modules::edge::infrastructure::{
-    inference_credential_scopes_from_routes, CompileGatewayRouteRollout,
-    CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout, GatewayMemberSnapshotContext,
-    GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler, PlanGatewayNodeDesiredState,
+    inference_credential_scopes_from_routes, inference_route_scopes_from_routes,
+    CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout,
+    GatewayMemberSnapshotContext, GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler,
+    PlanGatewayNodeDesiredState,
 };
 use crate::modules::identity::application::{
     IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+};
+use crate::modules::inference::application::{
+    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
 };
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayRolloutId, NodeId, RepositoryError, RouteId, WorkloadRevisionId,
@@ -58,6 +62,7 @@ pub struct GatewayRouteRolloutPlanner {
     compiler: GatewayRouteRolloutCompiler,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
     inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
+    inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
 }
 
 impl GatewayRouteRolloutPlanner {
@@ -72,6 +77,7 @@ impl GatewayRouteRolloutPlanner {
             compiler,
             desired_state: None,
             inference_credentials: None,
+            inference_routes: None,
         }
     }
 
@@ -81,6 +87,7 @@ impl GatewayRouteRolloutPlanner {
         compiler: GatewayRouteRolloutCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
+        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
     ) -> Self {
         Self {
             routes,
@@ -88,6 +95,7 @@ impl GatewayRouteRolloutPlanner {
             compiler,
             desired_state: Some(desired_state),
             inference_credentials: Some(inference_credentials),
+            inference_routes: Some(inference_routes),
         }
     }
 
@@ -210,7 +218,13 @@ impl GatewayRouteRolloutPlanner {
                 "managed Gateway inference credential projection is not configured".into(),
             )
         })?;
+        let inference_route_port = self.inference_routes.as_ref().ok_or_else(|| {
+            RepositoryError::Storage(
+                "managed Gateway inference route projection is not configured".into(),
+            )
+        })?;
         let mut member_inference_credentials = BTreeMap::<NodeId, _>::new();
+        let mut member_inference_routes = BTreeMap::<NodeId, _>::new();
         for desired in &member_desired_states {
             let ordinary_routes = desired
                 .active_routes()
@@ -234,6 +248,23 @@ impl GatewayRouteRolloutPlanner {
                 .await?;
             member_inference_credentials
                 .insert(desired.physical_scope().node_id, credentials);
+
+            let mut route_scopes = inference_route_scopes_from_routes(&ordinary_routes)
+                .map_err(RepositoryError::Conflict)?;
+            let route_claim_scope = InferenceRouteEnvironmentScope::new(
+                request.domain_claim.organization_id,
+                request.domain_claim.project_id,
+                request.domain_claim.environment_id,
+            )
+            .map_err(RepositoryError::Conflict)?;
+            if !route_scopes.contains(&route_claim_scope) {
+                route_scopes.push(route_claim_scope);
+                route_scopes.sort();
+            }
+            let routes = inference_route_port
+                .list_inference_route_acl_projections(&route_scopes)
+                .await?;
+            member_inference_routes.insert(desired.physical_scope().node_id, routes);
         }
         self.compiler
             .compile_managed(CompileManagedGatewayRouteRollout {
@@ -248,6 +279,7 @@ impl GatewayRouteRolloutPlanner {
                 target_set,
                 member_desired_states,
                 member_inference_credentials,
+                member_inference_routes,
                 issued_at: request.issued_at,
             })
             .map_err(RepositoryError::Conflict)

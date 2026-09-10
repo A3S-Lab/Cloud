@@ -1,6 +1,6 @@
 use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
-    load_inference_credential_projections_for_routes,
+    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
     CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
     GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
@@ -22,6 +22,7 @@ use crate::modules::edge::domain::{
     GatewayRouteVersion, Route,
 };
 use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
+use crate::modules::inference::application::IInferenceRouteAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, NodeCommandId, NodeId, RepositoryError,
 };
@@ -62,6 +63,7 @@ pub struct GatewayCertificateReconciler {
     managed_repository: Option<Arc<dyn IMcpGatewaySnapshotRepository>>,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
     inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
+    inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
     commands: Arc<dyn IGatewayCommandQueue>,
     certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     compiler: super::GatewaySnapshotCompiler,
@@ -103,6 +105,7 @@ impl GatewayCertificateReconciler {
             managed_repository: None,
             desired_state: None,
             inference_credentials: None,
+            inference_routes: None,
             commands,
             certificate_authority,
             compiler,
@@ -120,6 +123,7 @@ impl GatewayCertificateReconciler {
         managed_repository: Arc<dyn IMcpGatewaySnapshotRepository>,
         desired_state: GatewayNodeDesiredStatePlanner,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
+        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
         commands: Arc<dyn IGatewayCommandQueue>,
         certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         compiler: super::GatewaySnapshotCompiler,
@@ -143,6 +147,7 @@ impl GatewayCertificateReconciler {
         reconciler.managed_repository = Some(managed_repository);
         reconciler.desired_state = Some(desired_state);
         reconciler.inference_credentials = Some(inference_credentials);
+        reconciler.inference_routes = Some(inference_routes);
         Ok(reconciler)
     }
 
@@ -643,6 +648,19 @@ impl GatewayCertificateReconciler {
             );
             load_inference_credential_projections_for_routes(port.as_ref(), &load_routes).await?
         };
+        let inference_routes = {
+            let port = self.inference_routes.as_ref().ok_or_else(|| {
+                RepositoryError::Storage(
+                    "managed Gateway certificate convergence missing inference route projection port"
+                        .into(),
+                )
+            })?;
+            let load_routes = ordinary_routes_for_inference_projection(
+                &retained_routes,
+                desired_state.active_routes(),
+            );
+            load_inference_route_projections_for_routes(port.as_ref(), &load_routes).await?
+        };
         let candidate = if reuse {
             match self
                 .compiler
@@ -655,6 +673,7 @@ impl GatewayCertificateReconciler {
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
                         inference_credentials: inference_credentials.clone(),
+                        inference_routes: inference_routes.clone(),
                     },
                 ) {
                 Ok(candidate)
@@ -680,6 +699,7 @@ impl GatewayCertificateReconciler {
                                 retained_routes: retained_versions.clone(),
                                 rejected_routes: rejected_versions.clone(),
                                 inference_credentials: inference_credentials.clone(),
+                                inference_routes: inference_routes.clone(),
                             },
                         )
                         .map_err(RepositoryError::Conflict)?
@@ -702,6 +722,7 @@ impl GatewayCertificateReconciler {
                         retained_routes: retained_versions.clone(),
                         rejected_routes: rejected_versions.clone(),
                         inference_credentials,
+                        inference_routes,
                     },
                 )
                 .map_err(RepositoryError::Conflict)?

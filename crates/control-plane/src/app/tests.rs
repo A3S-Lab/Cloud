@@ -2170,6 +2170,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             inference_credential_acl_projections: Arc::new(
                 crate::modules::identity::EmptyInferenceCredentialAclProjectionPort,
             ),
+            inference_route_acl_projections: Arc::new(
+                crate::modules::inference::EmptyInferenceRouteAclProjectionPort,
+            ),
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),

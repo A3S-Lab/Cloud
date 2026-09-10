@@ -55,6 +55,8 @@ pub struct CompileManagedGatewayRouteRollout {
     pub member_desired_states: Vec<PlannedGatewayNodeDesiredState>,
     pub member_inference_credentials:
         BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceCredentialAclProjection>>,
+    pub member_inference_routes:
+        BTreeMap<NodeId, Vec<a3s_cloud_contracts::InferenceRouteAclProjection>>,
     pub issued_at: DateTime<Utc>,
 }
 
@@ -415,6 +417,11 @@ impl GatewayRouteRolloutCompiler {
                     additional_domain_claims: vec![request.domain_claim.clone()],
                     inference_credentials: request
                         .member_inference_credentials
+                        .get(&node_id)
+                        .cloned()
+                        .unwrap_or_default(),
+                    inference_routes: request
+                        .member_inference_routes
                         .get(&node_id)
                         .cloned()
                         .unwrap_or_default(),

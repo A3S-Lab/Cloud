@@ -644,6 +644,9 @@ async fn build_api_worker_application(
     let inference_credentials = adapters.identity.inference_credentials;
     let inference_credential_acl_projections =
         adapters.identity.inference_credential_acl_projections;
+    let inference_route_acl_projections: Arc<
+        dyn crate::modules::inference::IInferenceRouteAclProjectionPort,
+    > = Arc::new(crate::modules::inference::EmptyInferenceRouteAclProjectionPort);
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -993,6 +996,7 @@ async fn build_api_worker_application(
             deployment_route_compiler.clone(),
             gateway_node_desired_state_planner.clone(),
             Arc::clone(&inference_credential_acl_projections),
+            Arc::clone(&inference_route_acl_projections),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -1607,6 +1611,7 @@ async fn build_api_worker_application(
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
                 Arc::clone(&inference_credential_acl_projections),
+                Arc::clone(&inference_route_acl_projections),
                 Arc::clone(&route_commands),
                 Arc::clone(&gateway_certificate_authority),
                 deployment_route_compiler.clone(),
@@ -1622,6 +1627,7 @@ async fn build_api_worker_application(
                 Arc::clone(&mcp_node_projection_planner),
                 deployment_route_compiler.clone(),
                 Arc::clone(&inference_credential_acl_projections),
+                Arc::clone(&inference_route_acl_projections),
                 Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
                 chrono_duration(config.edge.command_ttl_ms)?,
                 chrono::Duration::hours(24),
@@ -1663,6 +1669,7 @@ async fn build_api_worker_application(
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
                 Arc::clone(&inference_credential_acl_projections),
+                Arc::clone(&inference_route_acl_projections),
                 GatewayRolloutRollbackCompiler::new(
                     deployment_route_compiler.clone(),
                     chrono_duration(config.edge.command_ttl_ms)?,
@@ -1959,6 +1966,7 @@ async fn build_api_worker_application(
                 workload_identity_policies,
                 inference_credentials,
                 inference_credential_acl_projections,
+                inference_route_acl_projections,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2224,6 +2232,8 @@ struct ManagementApplicationDependencies {
     workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
     inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
     inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
+    inference_route_acl_projections:
+        Arc<dyn crate::modules::inference::IInferenceRouteAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2330,6 +2340,7 @@ fn build_management_application_with_health(
         workload_identity_policies,
         inference_credentials,
         inference_credential_acl_projections,
+        inference_route_acl_projections,
         projects,
         environments,
         ontologies,
@@ -2968,6 +2979,7 @@ fn build_management_application_with_health(
                 route_compiler,
                 gateway_node_desired_state_planner,
                 Arc::clone(&inference_credential_acl_projections),
+                Arc::clone(&inference_route_acl_projections),
                 chrono_duration(config.edge.command_ttl_ms)?,
             )
         }

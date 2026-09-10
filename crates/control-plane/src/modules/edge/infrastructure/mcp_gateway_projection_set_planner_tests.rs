@@ -229,6 +229,7 @@ async fn plans_the_complete_active_set_for_one_receiving_gateway() {
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("complete MCP snapshot");
     let snapshot = compiled.snapshot();
@@ -335,6 +336,7 @@ async fn revoked_credential_keeps_cas_evidence_but_removes_the_gateway_route() {
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("credential cleanup snapshot");
     assert_eq!(compiled.domain_claim_versions().len(), 1);
@@ -480,6 +482,7 @@ async fn represents_an_empty_active_set_without_resolving_runtime() {
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("complete empty MCP snapshot");
     assert!(!compiled.snapshot().acl.contains("mcp {"));
@@ -573,6 +576,7 @@ async fn composes_ordinary_and_mcp_routes_with_all_cas_evidence() {
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("mixed complete snapshot");
 
@@ -673,6 +677,7 @@ async fn ordinary_publication_composes_the_current_mcp_projection_in_the_same_sn
             snapshot_routes: vec![ordinary_route],
             additional_domain_claims: vec![ordinary_claim],
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect("ordinary-plus-MCP managed snapshot");
 
@@ -818,6 +823,7 @@ async fn complete_snapshot_rejects_an_ordinary_prefix_overlapping_mcp_ingress() 
             mcp: PlannedMcpGatewayNodeProjection::single(planned)
                 .expect("single-scope node projection"),
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         })
         .expect_err("overlapping ingress")
         .contains("PathPrefix"));

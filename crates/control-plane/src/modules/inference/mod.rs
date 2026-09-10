@@ -1,4 +1,4 @@
-//! Inference bounded context — Gateway usage ledger ingestion and showback reads (I0.2c/I0.2e).
+//! Inference bounded context — usage ledger, showback, and Gateway ACL projections.
 
 pub mod application;
 pub mod domain;

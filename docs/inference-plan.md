@@ -1348,7 +1348,13 @@ evidence, and fenced release protocol.
   worker ACL projection compiler (`InferenceWorkerAclProjection`,
   `render_inference_policy_acl_with_routes_and_workers`) that emits
   Gateway-compatible `workers` blocks with Power observation integrity,
-  freshness, and route-target binding. Edge must not invent catalog or
+  freshness, and route-target binding. Inference now owns
+  `IInferenceRouteAclProjectionPort` (with `EmptyInferenceRouteAclProjectionPort`
+  until durable catalog authority lands); Edge loaders on managed publication
+  paths (cutover, certificate convergence, MCP desired-state, route rollout,
+  rollback) accept and forward those projections into
+  `GatewaySnapshotCompiler` without inventing catalog facts. Workers remain
+  open (Power observation delivery). Edge must not invent catalog or
   worker facts—Inference (+ Power observation authority) must supply the
   projections. Joint Gateway revocation/expiry
   fail-closed already covers projected `revoked = true` credentials. Gateway
@@ -1356,7 +1362,7 @@ evidence, and fenced release protocol.
   successors, expected-revision CAS rejection, unknown-tokenizer retention
   with prior runtime ready; `docs/first-principles-test-plan.md` §I0.2b
   item 5). Broader joint mixed-version / fallback conformance beyond that
-  succession brick remains open.
+  succession brick remains open. I0.2b is not fully verified.
 
 ### I0.2c: durable usage and rollout
 

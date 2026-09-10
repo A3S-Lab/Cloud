@@ -1,11 +1,12 @@
 use super::{
-    load_inference_credential_projections_for_routes, CompileMcpGatewaySnapshot,
-    GatewaySnapshotCompiler, GatewaySnapshotMetadata, IMcpGatewayNodeProjectionPlanner,
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotReconciliationState,
-    PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
+    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
+    CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
+    IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
+    McpGatewaySnapshotReconciliationState, PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::GatewayPublicationState;
 use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
+use crate::modules::inference::application::IInferenceRouteAclProjectionPort;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayScopeId, NodeCommandId, NodeId, RepositoryError,
 };
@@ -40,6 +41,7 @@ pub struct McpGatewayDesiredStateReconciler {
     planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
     compiler: GatewaySnapshotCompiler,
     inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
+    inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
     interval: Duration,
     command_ttl: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
@@ -56,6 +58,7 @@ impl McpGatewayDesiredStateReconciler {
         planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
         compiler: GatewaySnapshotCompiler,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
+        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
         interval: Duration,
         command_ttl: ChronoDuration,
         empty_snapshot_ttl: ChronoDuration,
@@ -83,6 +86,7 @@ impl McpGatewayDesiredStateReconciler {
             planner,
             compiler,
             inference_credentials,
+            inference_routes,
             interval,
             command_ttl,
             empty_snapshot_ttl,
@@ -320,6 +324,23 @@ impl McpGatewayDesiredStateReconciler {
                         continue;
                     }
                 };
+                let inference_routes = match load_inference_route_projections_for_routes(
+                    self.inference_routes.as_ref(),
+                    &ordinary_routes,
+                )
+                .await
+                {
+                    Ok(routes) => routes,
+                    Err(_) => {
+                        report.failures.push(failure(
+                            gateway_scope_id,
+                            node_id,
+                            "compile",
+                            "Inference route ACL projection failed",
+                        ));
+                        continue;
+                    }
+                };
                 match self
                     .compiler
                     .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
@@ -335,6 +356,7 @@ impl McpGatewayDesiredStateReconciler {
                         active_routes: inputs.active_routes,
                         mcp: planned,
                         inference_credentials,
+                        inference_routes,
                     }) {
                     Ok(candidate) => candidate,
                     Err(_) => {

@@ -1366,6 +1366,7 @@ async fn plan_gateway_snapshot(
             active_routes,
             mcp: PlannedMcpGatewayNodeProjection::single(planned)?,
             inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
         },
     )?;
     Ok(StageMcpGatewaySnapshot::new(

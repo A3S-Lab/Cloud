@@ -403,6 +403,7 @@ fn managed_rollout_composes_every_ordinary_route_under_one_publication_owner() {
             target_set: target_set(workload_id, revision_id, &members, issued_at),
             member_desired_states,
             member_inference_credentials: BTreeMap::new(),
+            member_inference_routes: BTreeMap::new(),
             issued_at,
         })
         .expect("managed rollout");
