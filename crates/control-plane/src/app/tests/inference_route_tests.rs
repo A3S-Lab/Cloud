@@ -216,6 +216,97 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
 }
 
 #[tokio::test]
+async fn inference_route_publish_rejects_stale_grant_credential_generation() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-grant-http",
+        "Inference grant admission",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-grant-project",
+        "Inference Grant",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-grant-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-grant-write-token",
+        "inference-route-grant-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "grant.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:grant-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:grant-stale-generation",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "grant.example.com",
+                credential_id,
+                credential_generation + 1,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 422);
+    let body = response_json(&rejected)?;
+    let message = body["message"]
+        .as_str()
+        .or_else(|| body["error"].as_str())
+        .or_else(|| body["details"].as_str())
+        .unwrap_or_default();
+    let serialized = body.to_string();
+    assert!(
+        message.contains("INFERENCE_GRANT_CREDENTIAL_INVALID")
+            || serialized.contains("INFERENCE_GRANT_CREDENTIAL_INVALID"),
+        "expected grant credential admission fail-closed, got {body}"
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
