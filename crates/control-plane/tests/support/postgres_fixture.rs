@@ -420,6 +420,12 @@ pub(super) fn config() -> CloudConfig {
             retention_organization_batch_size: 32,
             retention_record_batch_size: 256,
         },
+        inference: InferenceConfig {
+            retention_ms: 7_776_000_000,
+            retention_poll_ms: 60_000,
+            retention_organization_batch_size: 32,
+            retention_record_batch_size: 256,
+        },
         edge: EdgeConfig {
             entrypoint_address: "0.0.0.0:8081".into(),
             management_address: "127.0.0.1:9090".into(),

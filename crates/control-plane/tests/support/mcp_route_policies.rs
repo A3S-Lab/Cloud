@@ -37,6 +37,7 @@ use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort;
+use a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
@@ -1002,6 +1003,7 @@ pub async fn exercise(
         desired_planner,
         fixture_gateway_snapshot_compiler()?,
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(EmptyInferenceRouteAclProjectionPort),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
@@ -1367,6 +1369,7 @@ async fn plan_gateway_snapshot(
             mcp: PlannedMcpGatewayNodeProjection::single(planned)?,
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
         },
     )?;
     Ok(StageMcpGatewaySnapshot::new(

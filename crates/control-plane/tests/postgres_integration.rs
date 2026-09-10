@@ -14,7 +14,8 @@ use a3s_cloud_control_plane::app::{
 };
 use a3s_cloud_control_plane::config::{
     ArtifactTransferConfig, AssetsConfig, AuditConfig, AuthConfig, BuildsConfig, DeploymentsConfig,
-    EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, LogsConfig,
+    EdgeConfig, EventProviderKind, EventsConfig, FleetConfig, HumanTasksConfig, InferenceConfig,
+    LogsConfig,
     NodeControlConfig, ObjectStorageConfig, ObjectStorageProviderKind, OperationsConfig,
     PostgresConfig, ProcessRole, RegistryConfig, SecurityConfig, SecurityProfile,
     SecurityProviderKind, ServerConfig, SmtpConfig, SmtpProviderKind, SmtpTlsMode, SourcesConfig,
