@@ -7,7 +7,9 @@ mod inference_credential_delivery_receipt_sweeper;
 mod inference_credential_projection;
 mod membership_invitation_result;
 mod membership_result;
+mod node_access;
 mod privileged_management;
+mod project_access;
 pub mod queries;
 mod recipient_contact_result;
 mod recipient_contact_verification_delivery;
@@ -37,12 +39,14 @@ pub use membership_invitation_result::{
     MembershipInvitationAcceptanceResult, MembershipInvitationMutationResult,
 };
 pub use membership_result::MembershipMutationResult;
+pub use node_access::{IIdentityNodeAccess, IdentityNodeScope};
 pub use privileged_management::{
     PlatformRoleBindingMutationResult, PlatformRolePolicyMutationResult,
     TenantSupportGrantApprovalMutationResult, TenantSupportGrantMutationResult,
     TenantSupportGrantProposalMutationResult, TrustDomainRevisionMutationResult,
     WorkloadIdentityPolicyRevisionMutationResult, WorkloadIdentityProviderInspectionResult,
 };
+pub use project_access::{IIdentityProjectAccess, IdentityProjectScope};
 pub use recipient_contact_result::{
     RecipientContactMutationResult, RecipientContactVerificationRequestResult,
 };

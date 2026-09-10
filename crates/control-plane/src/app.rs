@@ -209,21 +209,22 @@ use crate::modules::identity::{
     ChangeMembershipRoleHandler, ChangePlatformRoleBindingHandler, CompleteOidcFlowHandler,
     CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateInferenceKeyHandler,
     CreateMembershipHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
-    CreatePlatformRoleBindingHandler, CreateResourceGrantHandler, GetApiTokenHandler,
-    GetCurrentPlatformRolePolicyHandler, GetCurrentTrustDomainHandler,
+    CreatePlatformRoleBindingHandler, CreateResourceGrantHandler, FleetIdentityNodeAccessAdapter,
+    GetApiTokenHandler, GetCurrentPlatformRolePolicyHandler, GetCurrentTrustDomainHandler,
     GetCurrentWorkloadIdentityPolicyForWorkloadHandler, GetCurrentWorkloadIdentityPolicyHandler,
     GetInferenceKeyHandler, GetMembershipHandler, GetMembershipInvitationHandler,
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess,
-    IInferenceCredentialAclProjectionPort, IdentityInferenceGrantCredentialAdmissionAdapter,
-    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
-    ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
-    ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
-    ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
-    ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
-    ProjectsIdentityEnvironmentAccessAdapter, ProposeTenantSupportGrantHandler,
+    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess, IIdentityNodeAccess,
+    IIdentityProjectAccess, IInferenceCredentialAclProjectionPort,
+    IdentityInferenceGrantCredentialAdmissionAdapter, IdentityModule, InferenceCredentialIssuer,
+    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler, ListInferenceKeysHandler,
+    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
+    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
+    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
+    OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
+    ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
     RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
     RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
     RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
@@ -2808,9 +2809,12 @@ fn build_management_application_with_health(
     let get_membership_invitations = Arc::clone(&membership_invitations);
     let list_my_membership_invitations = Arc::clone(&membership_invitations);
     let create_resource_grants = Arc::clone(&resource_grants);
-    let resource_grant_projects = Arc::clone(&projects);
-    let resource_grant_environments = Arc::clone(&environments);
-    let resource_grant_nodes = Arc::clone(&nodes);
+    let resource_grant_projects: Arc<dyn IIdentityProjectAccess> = Arc::new(
+        ProjectsIdentityProjectAccessAdapter::new(Arc::clone(&projects)),
+    );
+    let resource_grant_environments = Arc::clone(&identity_environments);
+    let resource_grant_nodes: Arc<dyn IIdentityNodeAccess> =
+        Arc::new(FleetIdentityNodeAccessAdapter::new(Arc::clone(&nodes)));
     let revoke_resource_grants = Arc::clone(&resource_grants);
     let list_resource_grants = Arc::clone(&resource_grants);
     let get_resource_grants = Arc::clone(&resource_grants);

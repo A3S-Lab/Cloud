@@ -6,10 +6,11 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
-    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess,
-    IInferenceCredentialAclProjectionPort, IRecipientContactVerificationDispatcher,
-    IWorkloadRuntimeEvidenceCandidatePort, IWorkloadRuntimeExecutionAuthorizationQueryPort,
-    IdentityEnvironmentScope, InferenceCredentialDeliveryReceiptSweeper,
+    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess, IIdentityNodeAccess,
+    IIdentityProjectAccess, IInferenceCredentialAclProjectionPort,
+    IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
+    IWorkloadRuntimeExecutionAuthorizationQueryPort, IdentityEnvironmentScope, IdentityNodeScope,
+    IdentityProjectScope, InferenceCredentialDeliveryReceiptSweeper,
     InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
     InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
     RecipientContactVerificationDispatchResult, RecordWorkloadRuntimeEvidence,
@@ -153,10 +154,11 @@ pub use infrastructure::persistence::{
 };
 pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
-    A3sEventRecipientContactVerificationConsumer, IdentityInferenceGrantCredentialAdmissionAdapter,
-    InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuanceError,
-    InferenceCredentialIssueRequest, InferenceCredentialIssuer, IssuedInferenceCredential,
-    OwnerWorkloadRuntimeEvidenceAdapter, ProjectsIdentityEnvironmentAccessAdapter,
+    A3sEventRecipientContactVerificationConsumer, FleetIdentityNodeAccessAdapter,
+    IdentityInferenceGrantCredentialAdmissionAdapter, InferenceCredentialAclProjectionAdapter,
+    InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
+    IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
+    ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
     SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,

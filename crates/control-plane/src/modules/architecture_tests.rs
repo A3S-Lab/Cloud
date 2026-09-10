@@ -7867,6 +7867,90 @@ fn inference_environment_queries_isolate_projects_behind_one_environment_port() 
 }
 
 #[test]
+fn identity_resource_grants_isolate_projects_and_fleet_behind_owner_ports() {
+    let root = module_root();
+
+    let project_port = std::fs::read_to_string(root.join("identity/application/project_access.rs"))
+        .expect("read Identity project port");
+    let compact_project_port = production_source(&project_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructIdentityProjectScope",
+        "pubtraitIIdentityProjectAccess:Send+Sync",
+        "project_exists(",
+    ] {
+        assert!(
+            compact_project_port.contains(required),
+            "Identity lost its narrow Projects project boundary {required}"
+        );
+    }
+    assert!(!project_port.contains("crate::modules::projects"));
+
+    let node_port = std::fs::read_to_string(root.join("identity/application/node_access.rs"))
+        .expect("read Identity node port");
+    let compact_node_port = production_source(&node_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructIdentityNodeScope",
+        "pubtraitIIdentityNodeAccess:Send+Sync",
+        "node_exists(",
+    ] {
+        assert!(
+            compact_node_port.contains(required),
+            "Identity lost its narrow Fleet node boundary {required}"
+        );
+    }
+    assert!(!node_port.contains("crate::modules::fleet"));
+
+    let handler = std::fs::read_to_string(
+        root.join("identity/application/commands/create_resource_grant/handler.rs"),
+    )
+    .expect("read CreateResourceGrant handler");
+    let production = production_source(&handler);
+    for required in [
+        "Arc<dyn IIdentityProjectAccess>",
+        "Arc<dyn IIdentityEnvironmentAccess>",
+        "Arc<dyn IIdentityNodeAccess>",
+        ".project_exists(",
+        ".environment_exists(",
+        ".node_exists(",
+    ] {
+        assert!(
+            production.contains(required),
+            "CreateResourceGrant lost owner-port wiring {required}"
+        );
+    }
+    for forbidden in [
+        "IProjectRepository",
+        "IEnvironmentRepository",
+        "INodeRepository",
+        "crate::modules::projects",
+        "crate::modules::fleet",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "CreateResourceGrant regained foreign authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsIdentityProjectAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Identity project adapter exactly once"
+    );
+    assert_eq!(
+        app.matches("FleetIdentityNodeAccessAdapter::new(").count(),
+        1,
+        "root composition must construct the Identity node adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

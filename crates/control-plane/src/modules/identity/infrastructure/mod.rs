@@ -1,9 +1,11 @@
 mod api_token_verifier;
+mod fleet_node_access;
 mod inference_credential_acl_projection_adapter;
 mod inference_credential_issuer;
 mod inference_grant_credential_admission;
 mod openid_connect_provider;
 pub mod persistence;
+mod project_access;
 mod project_environment_access;
 mod recipient_contact_proof;
 mod recipient_contact_verification_event_consumer;
@@ -13,6 +15,7 @@ mod vault_recipient_contact_proof;
 mod workload_runtime_evidence;
 
 pub use api_token_verifier::ApiTokenVerifier;
+pub use fleet_node_access::FleetIdentityNodeAccessAdapter;
 pub use inference_credential_acl_projection_adapter::InferenceCredentialAclProjectionAdapter;
 pub use inference_credential_issuer::{
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
@@ -20,6 +23,7 @@ pub use inference_credential_issuer::{
 };
 pub use inference_grant_credential_admission::IdentityInferenceGrantCredentialAdmissionAdapter;
 pub use openid_connect_provider::OpenIdConnectProviderService;
+pub use project_access::ProjectsIdentityProjectAccessAdapter;
 pub use project_environment_access::ProjectsIdentityEnvironmentAccessAdapter;
 pub use recipient_contact_proof::HmacRecipientContactProofService;
 pub use recipient_contact_verification_event_consumer::{
