@@ -2908,6 +2908,7 @@ fn build_management_application_with_health(
     let inference_key_environments = Arc::clone(&environments);
     let revoke_inference_key_environments = Arc::clone(&environments);
     let list_inference_key_environments = Arc::clone(&environments);
+    let get_inference_key_environments = Arc::clone(&environments);
     let list_inference_route_environments = Arc::clone(&environments);
     let get_inference_route_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
@@ -4406,7 +4407,10 @@ fn build_management_application_with_health(
                     ),
                 )
                 .query_handler::<crate::modules::identity::GetInferenceKey, _>(
-                    GetInferenceKeyHandler::new(get_inference_credentials),
+                    GetInferenceKeyHandler::new(
+                        get_inference_key_environments,
+                        get_inference_credentials,
+                    ),
                 )
                 .query_handler::<crate::modules::edge::ListMcpRoutePolicies, _>(
                     ListMcpRoutePoliciesHandler::new(list_mcp_route_policies),
