@@ -152,4 +152,51 @@ mod tests {
             "revoked credentials must still project so Gateway can fail closed"
         );
     }
+
+    #[tokio::test]
+    async fn projects_expired_unrevoked_credentials_with_expires_at_for_gateway_fail_closed() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let now = Utc::now();
+        // Domain allows expires_at in the past relative to wall clock so long as
+        // expires_at > updated_at and the credential is not revoked.
+        let credential = InferenceCredential::issue(
+            InferenceCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_inf_dddddddddddddddd",
+            VERIFIER,
+            now - Duration::hours(1),
+            now - Duration::hours(2),
+        )
+        .unwrap();
+        assert!(!credential.is_active_at(now));
+        assert!(credential.revoked_at().is_none());
+        repo.create_inference_credential(credential.clone())
+            .await
+            .unwrap();
+
+        let adapter = InferenceCredentialAclProjectionAdapter::new(repo);
+        let scope =
+            InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
+                .unwrap();
+        let projections = adapter
+            .list_inference_credential_acl_projections(&[scope])
+            .await
+            .unwrap();
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].credential_id, credential.id.as_uuid());
+        assert_eq!(projections[0].expires_at, credential.expires_at());
+        assert!(
+            !projections[0].revoked,
+            "expiry alone must not set revoked; Gateway fail-closes on expires_at"
+        );
+        assert!(
+            projections[0].expires_at < now,
+            "projection must retain the past expires_at for Gateway fail-closed"
+        );
+    }
 }
