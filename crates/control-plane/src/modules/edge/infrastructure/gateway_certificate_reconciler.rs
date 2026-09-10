@@ -661,6 +661,7 @@ impl GatewayCertificateReconciler {
             );
             load_inference_route_projections_for_routes(port.as_ref(), &load_routes).await?
         };
+        let inference_workers = Vec::new();
         let candidate = if reuse {
             match self
                 .compiler
@@ -674,6 +675,7 @@ impl GatewayCertificateReconciler {
                         rejected_routes: rejected_versions.clone(),
                         inference_credentials: inference_credentials.clone(),
                         inference_routes: inference_routes.clone(),
+                        inference_workers: inference_workers.clone(),
                     },
                 ) {
                 Ok(candidate)
@@ -700,6 +702,7 @@ impl GatewayCertificateReconciler {
                                 rejected_routes: rejected_versions.clone(),
                                 inference_credentials: inference_credentials.clone(),
                                 inference_routes: inference_routes.clone(),
+                                inference_workers: inference_workers.clone(),
                             },
                         )
                         .map_err(RepositoryError::Conflict)?
@@ -723,6 +726,7 @@ impl GatewayCertificateReconciler {
                         rejected_routes: rejected_versions.clone(),
                         inference_credentials,
                         inference_routes,
+                        inference_workers,
                     },
                 )
                 .map_err(RepositoryError::Conflict)?

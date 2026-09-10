@@ -168,10 +168,11 @@ fn compiles_route_less_revocation_snapshot_without_a_certificate() {
 
 #[test]
 fn projects_identity_inference_credentials_into_managed_snapshot_acl() {
-    use a3s_cloud_contracts::{
-        render_inference_policy_acl, InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
-    };
     use crate::modules::shared_kernel::domain::canonical_timestamp;
+    use a3s_cloud_contracts::{
+        render_inference_policy_acl, InferenceCredentialAclProjection,
+        INFERENCE_CREDENTIAL_AUDIENCE,
+    };
     use uuid::Uuid;
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -215,11 +216,9 @@ fn projects_identity_inference_credentials_into_managed_snapshot_acl() {
         )
         .expect("credential-aware snapshot");
 
-    let expected = render_inference_policy_acl(canonical_timestamp(expires_at), &[
-        credential,
-        revoked,
-    ])
-    .expect("expected inference ACL");
+    let expected =
+        render_inference_policy_acl(canonical_timestamp(expires_at), &[credential, revoked])
+            .expect("expected inference ACL");
     assert!(
         snapshot.acl.contains(expected.trim()),
         "compiled ACL missing Identity-projected inference credentials"
@@ -236,13 +235,13 @@ fn projects_identity_inference_credentials_into_managed_snapshot_acl() {
 
 #[test]
 fn projects_inference_route_grants_into_managed_snapshot_acl_without_workers() {
+    use crate::modules::shared_kernel::domain::canonical_timestamp;
     use a3s_cloud_contracts::{
         render_inference_policy_acl_with_routes, InferenceCredentialAclProjection,
         InferenceEndpointAcl, InferenceGrantAclProjection, InferenceLimitsAclProjection,
         InferenceModelAclProjection, InferenceRouteAclProjection, InferenceTargetAclProjection,
         INFERENCE_CREDENTIAL_AUDIENCE,
     };
-    use crate::modules::shared_kernel::domain::canonical_timestamp;
     use uuid::Uuid;
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -316,14 +315,125 @@ fn projects_inference_route_grants_into_managed_snapshot_acl_without_workers() {
         snapshot.acl.contains(expected.trim()),
         "compiled ACL missing Inference-projected route grants"
     );
-    assert!(snapshot.acl.contains("routes \"44444444-4444-4444-8444-444444444444\""));
+    assert!(snapshot
+        .acl
+        .contains("routes \"44444444-4444-4444-8444-444444444444\""));
     assert!(snapshot.acl.contains("models \"chat-model\""));
-    assert!(snapshot.acl.contains("targets \"66666666-6666-4666-8666-666666666666\""));
-    assert!(snapshot.acl.contains("grants \"33333333-3333-4333-8333-333333333333\""));
+    assert!(snapshot
+        .acl
+        .contains("targets \"66666666-6666-4666-8666-666666666666\""));
+    assert!(snapshot
+        .acl
+        .contains("grants \"33333333-3333-4333-8333-333333333333\""));
     assert!(snapshot.acl.contains("max_concurrent_requests = 2"));
     assert!(snapshot.acl.contains("requests_per_minute = 60"));
     assert!(!snapshot.acl.contains("\n  workers "));
     assert_eq!(snapshot.acl.matches("inference {").count(), 1);
+}
+
+#[test]
+fn projects_inference_owned_workers_through_managed_compiler() {
+    use a3s_cloud_contracts::{
+        InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
+        InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+        InferenceServingPhase, InferenceTargetAclProjection, InferenceWorkerAclProjection,
+        PowerTransferHealth, INFERENCE_CREDENTIAL_AUDIENCE, POWER_WORKER_OBSERVATION_SCHEMA,
+    };
+    use uuid::Uuid;
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let environment_id = Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap();
+    let credential_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+    let target_id = Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap();
+    let credential = InferenceCredentialAclProjection::new(
+        credential_id,
+        environment_id,
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        "a3s_inf_abc12345",
+        VERIFIER,
+        3,
+        expires_at + Duration::hours(1),
+        false,
+    )
+    .expect("credential");
+    let route_projection = InferenceRouteAclProjection {
+        route_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        router: "inference".into(),
+        environment_id,
+        policy_revision: 11,
+        models: vec![InferenceModelAclProjection {
+            alias: "chat-model".into(),
+            model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+            targets: vec![InferenceTargetAclProjection {
+                target_id,
+                service: "model-service".into(),
+                upstream_model: "internal/model-v1".into(),
+                priority: 0,
+                weight: 100,
+            }],
+        }],
+        grants: vec![InferenceGrantAclProjection {
+            credential_id,
+            credential_generation: 3,
+            models: vec!["chat-model".into()],
+            endpoints: vec![InferenceEndpointAcl::Models],
+            limits: InferenceLimitsAclProjection {
+                max_concurrent_requests: 2,
+                requests_per_minute: 60,
+                request_burst: 2,
+                tokens_per_minute: 10_000,
+            },
+        }],
+    };
+    let worker = InferenceWorkerAclProjection {
+        unit_id: "power-unit-1".into(),
+        target_id,
+        generation: 5,
+        schema: POWER_WORKER_OBSERVATION_SCHEMA.into(),
+        worker_epoch: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap(),
+        execution_profile_sha256: None,
+        observation_generation: 9,
+        observed_at: issued_at - Duration::seconds(1),
+        expires_at: issued_at + Duration::seconds(14),
+        phases: vec![InferenceServingPhase::Aggregated],
+        prompt_cache_capable: true,
+        state_transfer_capable: false,
+        ready_phases: vec![InferenceServingPhase::Aggregated],
+        active_limit: Some(8),
+        active: 2,
+        waiting: 1,
+        prompt_cache_supported: true,
+        prompt_cache_entries: 2,
+        prompt_cache_capacity: 8,
+        prompt_cache_pressure_basis_points: 2500,
+        transfer_health: PowerTransferHealth::Unsupported,
+        certified_latency_ms: Some(42),
+    };
+    let snapshot = compiler()
+        .compile_with_inference_policy_and_workers(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[credential],
+            &[route_projection],
+            &[worker],
+        )
+        .expect("worker-aware snapshot");
+    assert!(snapshot
+        .acl
+        .contains("routes \"44444444-4444-4444-8444-444444444444\""));
+    assert!(snapshot.acl.contains("workers \"power-unit-1\""));
+    assert!(snapshot
+        .acl
+        .contains("grants \"33333333-3333-4333-8333-333333333333\""));
 }
 
 #[test]

@@ -149,6 +149,7 @@ fn managed_rollback_carries_one_complete_composition_for_every_member() {
             reusable_certificate: Some(certificate),
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
         });
     }
 

@@ -432,6 +432,7 @@ impl GatewayRolloutRollbackReconciler {
                 reusable_certificate,
                 inference_credentials,
                 inference_routes,
+                inference_workers: Vec::new(),
             });
         }
         Ok(contexts)

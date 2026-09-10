@@ -377,6 +377,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             .expect("first node projection"),
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
         })
         .expect("first complete snapshot");
     let second = compiler()
@@ -403,6 +404,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             .expect("second node projection"),
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
         })
         .expect("second complete snapshot");
 

@@ -62,7 +62,8 @@ use crate::modules::identity::{
     InferenceCredentialAclProjectionAdapter, PostgresIdentityRepository,
 };
 use crate::modules::inference::{
-    IInferenceRouteAclProjectionPort, IInferenceRouteRepository, IInferenceUsageRepository,
+    EmptyInferenceWorkerAclProjectionPort, IInferenceRouteAclProjectionPort,
+    IInferenceRouteRepository, IInferenceUsageRepository, IInferenceWorkerAclProjectionPort,
     InferenceRouteAclProjectionAdapter, PostgresInferenceRouteRepository,
     PostgresInferenceUsageRepository,
 };
@@ -449,6 +450,7 @@ pub(super) struct InferencePostgresAdapters {
     pub(super) usage: Arc<dyn IInferenceUsageRepository>,
     pub(super) routes: Arc<dyn IInferenceRouteRepository>,
     pub(super) route_acl_projections: Arc<dyn IInferenceRouteAclProjectionPort>,
+    pub(super) worker_acl_projections: Arc<dyn IInferenceWorkerAclProjectionPort>,
 }
 
 impl InferencePostgresAdapters {
@@ -456,12 +458,15 @@ impl InferencePostgresAdapters {
         let routes = Arc::new(PostgresInferenceRouteRepository::new(executor.clone()));
         let route_acl_projections: Arc<dyn IInferenceRouteAclProjectionPort> =
             Arc::new(InferenceRouteAclProjectionAdapter::new(
-                routes.clone() as Arc<dyn IInferenceRouteRepository>,
+                routes.clone() as Arc<dyn IInferenceRouteRepository>
             ));
+        let worker_acl_projections: Arc<dyn IInferenceWorkerAclProjectionPort> =
+            Arc::new(EmptyInferenceWorkerAclProjectionPort);
         Self {
             usage: Arc::new(PostgresInferenceUsageRepository::new(executor)),
             routes,
             route_acl_projections,
+            worker_acl_projections,
         }
     }
 }

@@ -1357,14 +1357,15 @@ evidence, and fenced release protocol.
   through Boot CQRS (`PublishInferenceRoute` / `RetireInferenceRoute`) and
   `InferenceModule` presentation
   (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/retire`)
-  with `inference:write` and required `Idempotency-Key`. Edge loaders on managed
-  publication
+  with `inference:write` and required `Idempotency-Key`. Edge also loads workers
+  only through Inference-owned `IInferenceWorkerAclProjectionPort` (Empty until
+  Power observation delivery) and compiles managed snapshots via
+  `render_inference_policy_acl_with_routes_and_workers` with
+  `projected_at = snapshot issued_at`. Edge loaders on managed publication
   paths (cutover, certificate convergence, MCP desired-state, route rollout,
   rollback) accept and forward those projections into
-  `GatewaySnapshotCompiler` without inventing catalog facts. Workers remain
-  open (Power observation delivery). Edge must not invent catalog or
-  worker facts—Inference (+ Power observation authority) must supply the
-  projections. Joint Gateway revocation/expiry
+  `GatewaySnapshotCompiler` without inventing catalog or worker facts. Durable
+  worker publication remains open (Power observation delivery). Joint Gateway revocation/expiry
   fail-closed already covers projected `revoked = true` credentials. Gateway
   also proves credential-projection snapshot succession locally (revoke/rotate
   successors, expected-revision CAS rejection, unknown-tokenizer retention

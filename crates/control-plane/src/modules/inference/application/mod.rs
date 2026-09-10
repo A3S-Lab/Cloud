@@ -1,16 +1,18 @@
 pub mod commands;
 mod empty_inference_route_acl_projection;
+mod empty_inference_worker_acl_projection;
 mod inference_usage_retention_worker;
-mod route_acl_projection;
 pub mod queries;
+mod route_acl_projection;
+mod worker_acl_projection;
 
 pub use commands::*;
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
+pub use empty_inference_worker_acl_projection::EmptyInferenceWorkerAclProjectionPort;
 pub use inference_usage_retention_worker::InferenceUsageRetentionWorker;
 pub use queries::*;
-pub use route_acl_projection::{
-    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
-};
+pub use route_acl_projection::{IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope};
+pub use worker_acl_projection::IInferenceWorkerAclProjectionPort;
 
 #[cfg(test)]
 #[path = "inference_route_catalog_tests.rs"]

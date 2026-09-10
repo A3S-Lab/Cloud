@@ -9,14 +9,16 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::{
     load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    CompileManagedGatewayRouteSnapshot, GatewayManagedSnapshotComposition,
-    GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
-    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
-    StageManagedGatewayRouteCutover,
+    load_inference_worker_projections_for_routes, CompileManagedGatewayRouteSnapshot,
+    GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository,
+    PlanGatewayNodeDesiredState, StageManagedGatewayRouteCutover,
 };
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::IInferenceRouteAclProjectionPort;
+use crate::modules::inference::application::{
+    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, IdempotencyRequest, NodeCommandId, RepositoryError,
 };
@@ -48,6 +50,7 @@ struct ManagedGatewayRouteCutover {
     desired_state: GatewayNodeDesiredStatePlanner,
     inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
     inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
+    inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
 }
 
 impl EdgeDeploymentRouteUpdater {
@@ -81,6 +84,7 @@ impl EdgeDeploymentRouteUpdater {
         desired_state: GatewayNodeDesiredStatePlanner,
         inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
         inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
+        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
         command_ttl: Duration,
     ) -> Result<Self, String> {
         if command_ttl <= Duration::zero() {
@@ -97,6 +101,7 @@ impl EdgeDeploymentRouteUpdater {
                 desired_state,
                 inference_credentials,
                 inference_routes,
+                inference_workers,
             }),
         })
     }
@@ -402,6 +407,12 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                     &complete_routes,
                 )
                 .await?;
+                let inference_workers = load_inference_worker_projections_for_routes(
+                    managed.inference_workers.as_ref(),
+                    &complete_routes,
+                    issued_at,
+                )
+                .await?;
                 let candidate = self
                     .compiler
                     .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
@@ -412,6 +423,7 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         additional_domain_claims: Vec::new(),
                         inference_credentials,
                         inference_routes,
+                        inference_workers,
                     })
                     .map_err(RepositoryError::Conflict)?;
                 (candidate.snapshot().clone(), Some(candidate))

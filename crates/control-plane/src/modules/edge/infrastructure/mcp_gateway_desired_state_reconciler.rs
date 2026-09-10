@@ -357,6 +357,7 @@ impl McpGatewayDesiredStateReconciler {
                         mcp: planned,
                         inference_credentials,
                         inference_routes,
+                        inference_workers: Vec::new(),
                     }) {
                     Ok(candidate) => candidate,
                     Err(_) => {

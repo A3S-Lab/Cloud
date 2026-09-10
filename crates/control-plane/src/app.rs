@@ -647,6 +647,8 @@ async fn build_api_worker_application(
     let inference_usage = adapters.inference.usage;
     let inference_routes = adapters.inference.routes;
     let inference_route_acl_projections = adapters.inference.route_acl_projections;
+    let inference_worker_acl_projections = adapters.inference.worker_acl_projections;
+    let _ = &inference_routes;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
     let ontologies = adapters.workflow.ontologies;
@@ -994,6 +996,7 @@ async fn build_api_worker_application(
             gateway_node_desired_state_planner.clone(),
             Arc::clone(&inference_credential_acl_projections),
             Arc::clone(&inference_route_acl_projections),
+            Arc::clone(&inference_worker_acl_projections),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )

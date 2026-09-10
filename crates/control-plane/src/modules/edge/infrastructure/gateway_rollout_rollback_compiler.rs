@@ -45,6 +45,7 @@ pub struct ManagedGatewayRollbackMemberSnapshotContext {
     pub reusable_certificate: Option<GatewayCertificate>,
     pub inference_credentials: Vec<a3s_cloud_contracts::InferenceCredentialAclProjection>,
     pub inference_routes: Vec<a3s_cloud_contracts::InferenceRouteAclProjection>,
+    pub inference_workers: Vec<a3s_cloud_contracts::InferenceWorkerAclProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -325,6 +326,7 @@ impl GatewayRolloutRollbackCompiler {
                         reused_certificate_request: Some(certificate.request.clone()),
                         inference_credentials: context.inference_credentials.clone(),
                         inference_routes: context.inference_routes.clone(),
+                        inference_workers: context.inference_workers.clone(),
                     })
                     .ok()?;
                 let expected_claims = candidate
@@ -352,6 +354,7 @@ impl GatewayRolloutRollbackCompiler {
                                 reused_certificate_request: None,
                                 inference_credentials: context.inference_credentials.clone(),
                                 inference_routes: context.inference_routes.clone(),
+                                inference_workers: context.inference_workers.clone(),
                             },
                         )?,
                         None,
@@ -376,6 +379,7 @@ impl GatewayRolloutRollbackCompiler {
                                     reused_certificate_request: None,
                                     inference_credentials: context.inference_credentials.clone(),
                                     inference_routes: context.inference_routes.clone(),
+                                    inference_workers: context.inference_workers.clone(),
                                 },
                             )?,
                             None,

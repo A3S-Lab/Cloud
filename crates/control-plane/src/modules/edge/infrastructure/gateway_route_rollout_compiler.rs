@@ -425,6 +425,7 @@ impl GatewayRouteRolloutCompiler {
                         .get(&node_id)
                         .cloned()
                         .unwrap_or_default(),
+                    inference_workers: Vec::new(),
                 },
             )?;
             let command_id = NodeCommandId::new();
