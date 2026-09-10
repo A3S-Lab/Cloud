@@ -1378,14 +1378,18 @@ evidence, and fenced release protocol.
   `postgres_inference_worker_acl_projections()`; first-principles tests certify
   Empty returns no workers for any scopes and that managed snapshots with
   route grants still omit the `workers` block (intentional fail-closed, not a
-  missing adapter). Edge loaders on those paths accept and
+  missing adapter). Fleet production `current_node_protocol_policy` likewise
+  excludes `a3s.cloud.node-power-worker-observation-batch.v1` from supported
+  and required sets; first-principles unit tests certify offered Power schemas
+  are stripped at session negotiation until PW0 delivery is active. Edge loaders on those paths accept and
   forward those projections into
   `GatewaySnapshotCompiler` without inventing catalog or worker facts. Durable
   worker publication remains open (Power observation delivery). Joint Gateway revocation/expiry
   fail-closed already covers projected `revoked = true` credentials. Gateway
   also proves credential-projection snapshot succession locally (revoke/rotate
   successors, expected-revision CAS rejection, unknown-tokenizer retention
-  with prior runtime ready; `docs/first-principles-test-plan.md` §I0.2b
+  with prior runtime ready; Gateway
+  `docs/first-principles-test-plan.md` §I0.2b
   item 5). Broader joint mixed-version / fallback conformance beyond that
   succession brick remains open. I0.2b is not fully verified.
 

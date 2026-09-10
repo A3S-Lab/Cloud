@@ -33,6 +33,9 @@ impl INodeProtocolSessionRepository for SessionRepositoryStub {
     }
 }
 
+/// Capability fixture for negotiation-domain tests. This is **not** production
+/// Fleet node-control policy: production excludes Power writable schemas until
+/// PW0 observation delivery (see `production_node_protocol_policy`).
 fn contracts(include_power: bool) -> NodeProtocolContractSet {
     let mut agent_writable = vec![
         NodeCommandAck::SCHEMA.into(),

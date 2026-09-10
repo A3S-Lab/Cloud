@@ -344,6 +344,9 @@ impl NodeControlApi {
 }
 
 fn current_node_protocol_policy() -> Result<NodeProtocolPolicy, String> {
+    // Production intentionally excludes Power worker-observation schemas until
+    // PW0 observation delivery is active. Keep supported == required so agents
+    // cannot negotiate a writable Power batch against Empty worker publication.
     let required = NodeProtocolContractSet {
         agent_readable: vec![NodeCommandEnvelope::SCHEMA.into()],
         agent_writable: vec![
@@ -353,6 +356,120 @@ fn current_node_protocol_policy() -> Result<NodeProtocolPolicy, String> {
         ],
     };
     NodeProtocolPolicy::new(required.clone(), required).map_err(|error| error.to_string())
+}
+
+/// Production Fleet node-control protocol policy (testable surface).
+#[cfg(test)]
+pub(crate) fn production_node_protocol_policy() -> Result<NodeProtocolPolicy, String> {
+    current_node_protocol_policy()
+}
+
+#[cfg(test)]
+mod protocol_policy_tests {
+    use super::production_node_protocol_policy;
+    use crate::modules::fleet::domain::value_objects::NodeProtocolNegotiation;
+    use a3s_cloud_contracts::{
+        NodeCommandAck, NodeCommandEnvelope, NodeObservationBatchV2, NodeProtocolContractSet,
+        NodeResourceInventory, NodeSessionHello,
+    };
+    use chrono::{Duration, Utc};
+    use uuid::Uuid;
+
+    const POWER_OBSERVATION_SCHEMA: &str = "a3s.cloud.node-power-worker-observation-batch.v1";
+
+    #[test]
+    fn production_policy_excludes_power_worker_observation_schema() {
+        let policy = production_node_protocol_policy().expect("production policy");
+        let baseline = NodeProtocolContractSet {
+            agent_readable: vec![NodeCommandEnvelope::SCHEMA.into()],
+            agent_writable: vec![
+                NodeCommandAck::SCHEMA.into(),
+                NodeObservationBatchV2::SCHEMA.into(),
+                NodeResourceInventory::SCHEMA.into(),
+            ],
+        };
+        // Reconstruct through negotiation: offer Power + baseline, expect baseline only.
+        let node_id = Uuid::now_v7();
+        let offered = NodeProtocolContractSet {
+            agent_readable: baseline.agent_readable.clone(),
+            agent_writable: {
+                let mut writable = baseline.agent_writable.clone();
+                writable.push(POWER_OBSERVATION_SCHEMA.into());
+                writable.sort();
+                writable
+            },
+        };
+        let hello = NodeSessionHello {
+            schema: NodeSessionHello::SCHEMA.into(),
+            node_id,
+            agent_instance_id: Uuid::now_v7(),
+            session_epoch: Uuid::now_v7(),
+            hello_sequence: 1,
+            offered_at: Utc::now(),
+            agent_version: "0.1.0".into(),
+            contracts: offered,
+            previous_selection: None,
+        };
+        let outcome = NodeProtocolNegotiation::new(
+            hello,
+            policy,
+            Utc::now(),
+            Duration::minutes(5),
+            Uuid::now_v7(),
+        )
+        .expect("negotiation draft")
+        .apply(None)
+        .expect("apply production policy");
+        assert_eq!(outcome.selection().contracts, baseline);
+        assert!(!outcome
+            .selection()
+            .contracts
+            .agent_writable
+            .iter()
+            .any(|schema| schema == POWER_OBSERVATION_SCHEMA));
+        assert!(!outcome
+            .selection()
+            .contracts
+            .agent_readable
+            .iter()
+            .any(|schema| schema == POWER_OBSERVATION_SCHEMA));
+    }
+
+    #[test]
+    fn production_policy_baseline_matches_closed_node_control_set() {
+        let policy = production_node_protocol_policy().expect("production policy");
+        let node_id = Uuid::now_v7();
+        let baseline = NodeProtocolContractSet {
+            agent_readable: vec![NodeCommandEnvelope::SCHEMA.into()],
+            agent_writable: vec![
+                NodeCommandAck::SCHEMA.into(),
+                NodeObservationBatchV2::SCHEMA.into(),
+                NodeResourceInventory::SCHEMA.into(),
+            ],
+        };
+        let hello = NodeSessionHello {
+            schema: NodeSessionHello::SCHEMA.into(),
+            node_id,
+            agent_instance_id: Uuid::now_v7(),
+            session_epoch: Uuid::now_v7(),
+            hello_sequence: 1,
+            offered_at: Utc::now(),
+            agent_version: "0.1.0".into(),
+            contracts: baseline.clone(),
+            previous_selection: None,
+        };
+        let outcome = NodeProtocolNegotiation::new(
+            hello,
+            policy,
+            Utc::now(),
+            Duration::minutes(5),
+            Uuid::now_v7(),
+        )
+        .expect("negotiation draft")
+        .apply(None)
+        .expect("apply production policy");
+        assert_eq!(outcome.selection().contracts, baseline);
+    }
 }
 
 async fn download_artifact(
