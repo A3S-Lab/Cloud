@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Run Cloud Box-provider cargo under the Linux Sandbox setpriv harness.
 #
-# Full sudo (UID 0/0) fails OCI rootless device-policy bootstrap. Match Box
-# composition: matched setpriv credentials for the harness, elevate only the
-# owner child via A3S_BOX_CI_SETPRIV_WRAPPER.
+# Full sudo (UID 0/0) fails OCI rootless device-policy bootstrap. Match the
+# Box R17 advertised-profile identity: non-root real UID/GID with effective
+# root. Do not enable A3S_BOX_CI_SETPRIV_MATCHED_CREDS here — Secret roots are
+# validated against geteuid(), and Cloud keeps runtime-secrets root:0700.
 set -euo pipefail
 
 : "${A3S_BOX_CI_SANDBOX_UID:?A3S_BOX_CI_SANDBOX_UID is required}"
@@ -25,8 +26,10 @@ cargo_home="${CARGO_HOME:-$(dirname "$(dirname "${cargo_bin}")")}"
 rustup_home="$(rustup show home)"
 target_dir="${CARGO_TARGET_DIR:-${RUNNER_TEMP:-/tmp}/cloud-box-target}"
 
-export A3S_BOX_CI_SETPRIV_MATCHED_CREDS=1
-export A3S_BOX_CI_SETPRIV_WRAPPER="${sandbox_ci}"
+# Explicitly clear matched-cred / elevate-wrapper knobs so this helper cannot
+# inherit composition-only settings from a prior step.
+unset A3S_BOX_CI_SETPRIV_MATCHED_CREDS
+unset A3S_BOX_CI_SETPRIV_WRAPPER
 
 exec bash "${sandbox_ci}" env \
   PATH="${PATH}" \
@@ -41,8 +44,6 @@ exec bash "${sandbox_ci}" env \
   A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT="${A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT}" \
   A3S_BOX_CI_SANDBOX_UID="${A3S_BOX_CI_SANDBOX_UID}" \
   A3S_BOX_CI_SANDBOX_GID="${A3S_BOX_CI_SANDBOX_GID}" \
-  A3S_BOX_CI_SETPRIV_MATCHED_CREDS=1 \
-  A3S_BOX_CI_SETPRIV_WRAPPER="${A3S_BOX_CI_SETPRIV_WRAPPER}" \
   A3S_BOX_RUNTIME_CONFORMANCE_IMAGE="${A3S_BOX_RUNTIME_CONFORMANCE_IMAGE:-}" \
   A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE="${A3S_BOX_RUNTIME_CONFORMANCE_MEDIA_TYPE:-}" \
   A3S_CLOUD_TEST_BOX="${A3S_CLOUD_TEST_BOX:-}" \
