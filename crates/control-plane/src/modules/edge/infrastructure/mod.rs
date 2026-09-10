@@ -1,3 +1,4 @@
+mod assets_mcp_service_profile_access;
 mod deployment_route_updater;
 mod domain_ownership_verifier;
 mod fleet_node_access;
@@ -57,6 +58,7 @@ mod mcp_gateway_desired_state_reconciler_tests;
 #[cfg(test)]
 mod mcp_gateway_snapshot_reconciler_tests;
 
+pub use assets_mcp_service_profile_access::AssetsEdgeMcpServiceProfileAccessAdapter;
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
 pub use fleet_node_access::FleetEdgeNodeAccessAdapter;

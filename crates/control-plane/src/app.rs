@@ -133,17 +133,18 @@ use crate::modules::edge::domain::services::{
     IGatewayObservationQueue, IMcpCredentialIssuer, IRouteTargetReader,
 };
 use crate::modules::edge::{
-    CreateDomainClaimHandler, CreateGatewayScopeHandler, CreateMcpCredentialHandler,
-    CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier, EdgeDeploymentRouteUpdater,
-    EdgeGatewayAcknowledgementProjector, EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule,
-    FleetEdgeNodeAccessAdapter, FleetGatewayCommandQueue, FleetGatewayObservationQueue,
-    GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler,
-    GatewayRolloutReconciler, GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GetDomainClaimHandler,
-    GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess,
-    IEdgeNodeAccess, ListDomainClaimsHandler, ListGatewayCertificatesHandler,
-    ListGatewayScopesHandler, ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler,
-    ListRoutesHandler, LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
+    AssetsEdgeMcpServiceProfileAccessAdapter, CreateDomainClaimHandler, CreateGatewayScopeHandler,
+    CreateMcpCredentialHandler, CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier,
+    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
+    EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule, FleetEdgeNodeAccessAdapter,
+    FleetGatewayCommandQueue, FleetGatewayObservationQueue, GatewayCertificateReconciler,
+    GatewayNodeDesiredStatePlanner, GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler,
+    GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler,
+    GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess, IEdgeNodeAccess,
+    ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
+    ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
+    LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
     McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer, McpGatewayDesiredStateReconciler,
     McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
@@ -1442,7 +1443,9 @@ async fn build_api_worker_application(
         ));
         let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
             mcp_route_policy_repository,
-            Arc::clone(&mcp_profiles),
+            Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(
+                &mcp_profiles,
+            ))),
         ));
         let asset_git = Arc::new(
             AssetGitApplicationService::new(

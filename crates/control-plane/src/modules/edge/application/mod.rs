@@ -3,6 +3,7 @@ mod environment_access;
 mod mcp_credential_delivery;
 mod mcp_credential_delivery_receipt_sweeper;
 mod mcp_route_policy_service;
+mod mcp_service_profile_access;
 mod node_access;
 pub mod queries;
 mod resource_access;
@@ -15,6 +16,7 @@ pub use mcp_credential_delivery::{
 };
 pub use mcp_credential_delivery_receipt_sweeper::McpCredentialDeliveryReceiptSweeper;
 pub use mcp_route_policy_service::McpRoutePolicyApplicationService;
+pub use mcp_service_profile_access::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};
 
 pub use commands::{

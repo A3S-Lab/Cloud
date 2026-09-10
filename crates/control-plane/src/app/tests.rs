@@ -2124,7 +2124,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     ));
     let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
         Arc::new(UnavailableMcpRoutePolicyRepository),
-        unavailable_assets.clone(),
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(
+            unavailable_assets.clone(),
+        )),
     ));
     let asset_catalog = Arc::new(AssetCatalogApplicationService::new(
         identity.clone(),
@@ -2179,9 +2181,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::new(crate::modules::inference::InMemoryInferenceRouteRepository::default());
     let inference_route_acl_projections: Arc<
         dyn crate::modules::inference::IInferenceRouteAclProjectionPort,
-    > = Arc::new(crate::modules::inference::InferenceRouteAclProjectionAdapter::new(
-        Arc::clone(&inference_routes),
-    ));
+    > = Arc::new(
+        crate::modules::inference::InferenceRouteAclProjectionAdapter::new(Arc::clone(
+            &inference_routes,
+        )),
+    );
     let inference_worker_acl_projections: Arc<
         dyn crate::modules::inference::IInferenceWorkerAclProjectionPort,
     > = Arc::new(crate::modules::inference::EmptyInferenceWorkerAclProjectionPort);

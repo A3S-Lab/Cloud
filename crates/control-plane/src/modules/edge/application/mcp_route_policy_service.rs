@@ -1,4 +1,4 @@
-use crate::modules::assets::domain::IMcpServiceProfileRepository;
+use crate::modules::edge::application::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
 use crate::modules::edge::domain::events::McpRoutePolicyMutationKind;
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
@@ -15,13 +15,13 @@ use uuid::Uuid;
 
 pub struct McpRoutePolicyApplicationService {
     policies: Arc<dyn IMcpRoutePolicyRepository>,
-    profiles: Arc<dyn IMcpServiceProfileRepository>,
+    profiles: Arc<dyn IEdgeMcpServiceProfileAccess>,
 }
 
 impl McpRoutePolicyApplicationService {
     pub fn new(
         policies: Arc<dyn IMcpRoutePolicyRepository>,
-        profiles: Arc<dyn IMcpServiceProfileRepository>,
+        profiles: Arc<dyn IEdgeMcpServiceProfileAccess>,
     ) -> Self {
         Self { policies, profiles }
     }
@@ -143,15 +143,19 @@ impl McpRoutePolicyApplicationService {
         document: &McpRoutePolicyDocument,
     ) -> ApplicationResult<crate::modules::assets::domain::McpServiceProfile> {
         let spec = document.spec();
-        let binding = self
-            .profiles
-            .find_mcp_service_profile(spec.organization_id, spec.asset_id, spec.asset_release_id)
+        let scope = EdgeMcpServiceProfileScope::new(
+            spec.organization_id,
+            spec.asset_id,
+            spec.asset_release_id,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        self.profiles
+            .find_bound_profile(scope)
             .await
             .map_err(ApplicationError::from)?
             .ok_or_else(|| {
                 ApplicationError::NotFound("MCP Service profile binding not found".into())
-            })?;
-        Ok(binding.profile)
+            })
     }
 
     async fn mutate(

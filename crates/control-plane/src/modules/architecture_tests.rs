@@ -10267,6 +10267,91 @@ workloads -> presentation
 }
 
 #[test]
+fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
+    let root = module_root();
+
+    let port_path = "edge/application/mcp_service_profile_access.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Edge MCP Service profile port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructEdgeMcpServiceProfileScope",
+        "pubtraitIEdgeMcpServiceProfileAccess:Send+Sync",
+        "asyncfnfind_bound_profile(&self,scope:EdgeMcpServiceProfileScope,)->Result<Option<McpServiceProfile>,RepositoryError>;",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge MCP profile port lost minimum interface {required}"
+        );
+    }
+    for forbidden in ["IMcpServiceProfileRepository", "Postgres", "InMemory"] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Edge MCP profile port leaked Assets repository or concrete authority {forbidden}"
+        );
+    }
+
+    let service =
+        std::fs::read_to_string(root.join("edge/application/mcp_route_policy_service.rs"))
+            .expect("read MCP route policy service");
+    let production_service = production_source(&service);
+    let compact_service = production_service.split_whitespace().collect::<String>();
+    for required in [
+        "profiles:Arc<dynIEdgeMcpServiceProfileAccess>",
+        "EdgeMcpServiceProfileScope::new(",
+        ".find_bound_profile(scope)",
+    ] {
+        assert!(
+            compact_service.contains(required),
+            "MCP route policy service lost Edge MCP profile boundary {required}"
+        );
+    }
+    for forbidden in [
+        "IMcpServiceProfileRepository",
+        "find_mcp_service_profile",
+    ] {
+        assert!(
+            !production_service.contains(forbidden),
+            "MCP route policy service regained Assets repository authority {forbidden}"
+        );
+    }
+
+    let adapter_path = "edge/infrastructure/assets_mcp_service_profile_access.rs";
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Edge MCP profile adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "implIEdgeMcpServiceProfileAccessforAssetsEdgeMcpServiceProfileAccessAdapter",
+        "profiles:Arc<dynIMcpServiceProfileRepository>",
+        ".find_mcp_service_profile(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Edge MCP profile adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_source(&adapter)
+            .matches("find_mcp_service_profile(")
+            .count(),
+        1,
+        "Edge MCP profile adapter must have one Assets lookup"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("AssetsEdgeMcpServiceProfileAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Edge MCP profile adapter exactly once"
+    );
+}
+
+#[test]
 fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("agents/application/agent_release_admission.rs"),
