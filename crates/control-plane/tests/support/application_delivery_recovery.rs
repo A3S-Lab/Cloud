@@ -13,8 +13,8 @@ use a3s_cloud_control_plane::modules::applications::{
     ConversationVariableRevision, CreateApplicationWrite, IApplicationRepository,
     IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
     IWorkflowApplicationEffectsPort, PostgresApplicationRepository,
-    PostgresApplicationSessionRepository, ReplayApplicationSession,
-    ReplayApplicationSessionHandler, WorkflowApplicationEffectRequest,
+    PostgresApplicationSessionRepository, ProjectsApplicationsEnvironmentAccessAdapter,
+    ReplayApplicationSession, ReplayApplicationSessionHandler, WorkflowApplicationEffectRequest,
     WorkflowApplicationEffectsService, WorkflowApplicationMessageRequest,
     WorkflowApplicationOntologyRevisionReader, WorkflowApplicationRunReference,
     WorkflowApplicationRunService, WorkflowApplicationTerminalRequest,
@@ -730,7 +730,9 @@ fn invocation_handler(executor: &PostgresExecutor) -> AdmitApplicationInvocation
         Arc::new(WorkflowApplicationOntologyRevisionReader::new(Arc::new(
             PostgresOntologyRepository::new(executor.clone()),
         ))),
-        Arc::new(PostgresProjectsRepository::new(executor.clone())),
+        Arc::new(ProjectsApplicationsEnvironmentAccessAdapter::new(Arc::new(
+            PostgresProjectsRepository::new(executor.clone()),
+        ))),
         Arc::new(WorkflowApplicationRunService::new(
             Arc::new(PostgresWorkflowDefinitionRepository::new(executor.clone())),
             Arc::new(PostgresOntologyRepository::new(executor.clone())),
