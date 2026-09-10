@@ -1415,7 +1415,10 @@ evidence, and fenced release protocol.
   `GET .../inference-usage/requests/{request_id}` via `InferenceModule`
   (`ListDailyUsageRollups` / `GetUsageRequestFact`) with
   `ResourceAccessEvaluator` environment visibility (ungranted environments
-  fail closed as NotFound). Migration `195` adds monotonic per-organization
+  fail closed as NotFound). First-principles query tests for
+  `GetUsageRequestFact` certify visible happy path, ungranted environment
+  hide, cross-environment fact hide, and missing request as NotFound.
+  Migration `195` adds monotonic per-organization
   retention authority (`inference_usage_retention_states`), hide-then-purge
   sweeps that never delete watermarks, showback fail-closed before
   `records_available_from`, and the worker-driven
