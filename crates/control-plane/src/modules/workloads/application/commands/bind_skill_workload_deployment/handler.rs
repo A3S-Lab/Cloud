@@ -2,7 +2,6 @@ use super::BindSkillWorkloadDeployment;
 use crate::modules::assets::domain::IAssetRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
@@ -10,8 +9,8 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::application::commands::skill_release::load_deployable_skill_release;
 use crate::modules::workloads::application::{
     commands::{load_direct_workload_control, validate_secret_bindings},
-    UpdateWorkloadDeploymentResult, WorkloadResourceResolver, DEPLOYMENT_WORKFLOW_NAME,
-    DEPLOYMENT_WORKFLOW_VERSION,
+    IWorkloadsSecretBindingAccess, UpdateWorkloadDeploymentResult, WorkloadResourceResolver,
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
@@ -24,14 +23,14 @@ use std::sync::Arc;
 pub struct BindSkillWorkloadDeploymentHandler {
     assets: Arc<dyn IAssetRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
-    secrets: Arc<dyn ISecretRepository>,
+    secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
 }
 
 impl BindSkillWorkloadDeploymentHandler {
     pub fn new(
         assets: Arc<dyn IAssetRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
-        secrets: Arc<dyn ISecretRepository>,
+        secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     ) -> Self {
         Self {
             assets,

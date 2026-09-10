@@ -8526,6 +8526,83 @@ fn workloads_create_deployments_isolate_fleet_behind_one_node_pool_port() {
 }
 
 #[test]
+fn workloads_secret_bindings_isolate_secrets_behind_one_owner_port() {
+    let root = module_root();
+
+    let binding_port =
+        std::fs::read_to_string(root.join("workloads/application/secret_binding_access.rs"))
+            .expect("read Workloads secret-binding port");
+    let compact_binding_port = production_source(&binding_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadsSecretBindingScope",
+        "pubtraitIWorkloadsSecretBindingAccess:Send+Sync",
+        "binding_is_admissible(",
+    ] {
+        assert!(
+            compact_binding_port.contains(required),
+            "Workloads lost its narrow Secrets binding boundary {required}"
+        );
+    }
+    assert!(!binding_port.contains("crate::modules::secrets"));
+
+    let selection =
+        std::fs::read_to_string(root.join("workloads/application/commands/secret_bindings.rs"))
+            .expect("read Workloads secret bindings");
+    let production_selection = production_source(&selection);
+    for required in [
+        "IWorkloadsSecretBindingAccess",
+        "WorkloadsSecretBindingScope::new",
+        ".binding_is_admissible(",
+    ] {
+        assert!(
+            production_selection.contains(required),
+            "secret_bindings lost owner-port wiring {required}"
+        );
+    }
+    for forbidden in ["ISecretRepository", "crate::modules::secrets"] {
+        assert!(
+            !production_selection.contains(forbidden),
+            "secret_bindings regained foreign authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workloads/application/commands/create_workload_deployment/handler.rs",
+        "workloads/application/commands/create_source_workload_deployment/handler.rs",
+        "workloads/application/commands/create_agent_workload_deployment/handler.rs",
+        "workloads/application/commands/update_workload_deployment/handler.rs",
+        "workloads/application/commands/update_agent_workload_deployment/handler.rs",
+        "workloads/application/commands/bind_skill_workload_deployment/handler.rs",
+        "workloads/application/commands/unbind_skill_workload_deployment/handler.rs",
+        "workloads/application/commands/rollback_workload_deployment/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read Workloads consumer");
+        let production = production_source(&source);
+        assert!(
+            production.contains("Arc<dyn IWorkloadsSecretBindingAccess>"),
+            "{relative} lost IWorkloadsSecretBindingAccess wiring"
+        );
+        for forbidden in ["ISecretRepository", "crate::modules::secrets"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("SecretsWorkloadsSecretBindingAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads secret-binding adapter exactly once"
+    );
+}
+
+#[test]
 fn workflow_isolates_projects_behind_owner_ports() {
     let root = module_root();
 

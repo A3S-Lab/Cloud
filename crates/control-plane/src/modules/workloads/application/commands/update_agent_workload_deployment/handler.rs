@@ -3,7 +3,6 @@ use crate::modules::artifacts::IHostedArtifactQueryPort;
 use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName,
@@ -14,8 +13,8 @@ use crate::modules::workloads::application::{
     commands::{
         load_direct_workload_control, require_acl_node_pool_selection, validate_secret_bindings,
     },
-    UpdateWorkloadDeploymentResult, WorkloadResourceResolver, DEPLOYMENT_WORKFLOW_NAME,
-    DEPLOYMENT_WORKFLOW_VERSION,
+    IWorkloadsSecretBindingAccess, UpdateWorkloadDeploymentResult, WorkloadResourceResolver,
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, WorkloadDesiredState, WorkloadRevision,
@@ -31,7 +30,7 @@ pub struct UpdateAgentWorkloadDeploymentHandler {
     assets: Arc<dyn IAssetRepository>,
     artifacts: Arc<dyn IHostedArtifactQueryPort>,
     workloads: Arc<dyn IWorkloadRepository>,
-    secrets: Arc<dyn ISecretRepository>,
+    secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
 }
 
 impl UpdateAgentWorkloadDeploymentHandler {
@@ -39,7 +38,7 @@ impl UpdateAgentWorkloadDeploymentHandler {
         assets: Arc<dyn IAssetRepository>,
         artifacts: Arc<dyn IHostedArtifactQueryPort>,
         workloads: Arc<dyn IWorkloadRepository>,
-        secrets: Arc<dyn ISecretRepository>,
+        secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     ) -> Self {
         Self {
             assets,

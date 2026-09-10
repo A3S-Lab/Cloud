@@ -8,6 +8,7 @@ pub mod queries;
 mod resource_access;
 mod runtime_execution_admission;
 mod runtime_projection;
+mod secret_binding_access;
 mod secret_materialization_authorization;
 mod workflow;
 
@@ -67,6 +68,7 @@ pub(crate) use runtime_projection::{
     project_runtime_spec_with_digest,
 };
 pub use runtime_projection::{project_replica_runtime_spec, project_runtime_spec};
+pub use secret_binding_access::{IWorkloadsSecretBindingAccess, WorkloadsSecretBindingScope};
 pub use secret_materialization_authorization::{
     IWorkloadSecretMaterializationAuthorizationQueryPort,
     WorkloadSecretMaterializationAuthorizationQuery,

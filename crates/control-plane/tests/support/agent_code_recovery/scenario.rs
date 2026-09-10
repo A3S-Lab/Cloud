@@ -248,7 +248,7 @@ async fn prepare_started_provider_scenario_with_tools(
         assets.clone(),
         artifacts.clone(),
         workloads.clone(),
-        secrets,
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(secrets)),
         Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(nodes.clone())),
     )
     .execute(

@@ -28,7 +28,7 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::workloads::domain::entities::{ServicePort, ServiceProcess, ServiceResources};
 use crate::modules::workloads::{
     FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository, InMemoryWorkloadRepository,
-    ProjectsWorkloadsEnvironmentAccessAdapter,
+    ProjectsWorkloadsEnvironmentAccessAdapter, SecretsWorkloadsSecretBindingAccessAdapter,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::DomainEventEnvelope;
@@ -89,7 +89,9 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
         },
     )));
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
-    let secrets = Arc::new(InMemorySecretRepository::new());
+    let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
+        InMemorySecretRepository::new(),
+    )));
     let create_handler = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         assets.clone(),
@@ -381,7 +383,9 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
         },
     )));
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
-    let secrets = Arc::new(InMemorySecretRepository::new());
+    let secrets = Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::new(
+        InMemorySecretRepository::new(),
+    )));
     let created = CreateAgentWorkloadDeploymentHandler::new(
         environments,
         agent_assets.clone(),

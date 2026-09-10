@@ -26,8 +26,9 @@ use a3s_cloud_control_plane::modules::sources::{
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
     FleetWorkloadsNodePoolAccessAdapter, HttpHealthCheck, IWorkloadRepository,
-    PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter, ServicePort,
-    ServiceProcess, ServiceResources, SourceWorkloadTemplate,
+    PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
+    SecretsWorkloadsSecretBindingAccessAdapter, ServicePort, ServiceProcess, ServiceResources,
+    SourceWorkloadTemplate,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -478,7 +479,7 @@ async fn create_workload_handoff(
         sources,
         builds,
         workloads,
-        secrets,
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(secrets)),
         node_pools,
     );
     let template = source_workload_template();

@@ -9,6 +9,7 @@ mod reconciliation;
 pub(crate) mod replica_deployment_materialization;
 mod replica_retirement_reconciliation;
 mod secret_rotation_reconciliation;
+mod secrets_binding_access;
 
 pub(crate) use deployment_flow::flow_step_names as deployment_flow_step_names;
 pub(crate) use deployment_flow::flow_workflow_identities as deployment_flow_workflow_identities;
@@ -44,3 +45,4 @@ pub use replica_retirement_reconciliation::{
 pub use secret_rotation_reconciliation::{
     SecretRotationRestartFailure, SecretRotationRestartReconciler, SecretRotationRestartReport,
 };
+pub use secrets_binding_access::SecretsWorkloadsSecretBindingAccessAdapter;

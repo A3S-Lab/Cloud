@@ -44,8 +44,8 @@ use a3s_cloud_control_plane::modules::workloads::{
     FleetWorkloadsNodePoolAccessAdapter, IOciArtifactResolver, OciArtifact, OciArtifactReference,
     OciArtifactResolutionError, OciRegistryCredentialReference, PostgresResourceClaimRepository,
     ProjectsWorkloadsEnvironmentAccessAdapter, RequestWorkloadStopBundle, SecretBinding,
-    SecretBindingTarget, UnroutedDeploymentRouteUpdater, WorkloadDesiredState,
-    WorkloadStopRequested,
+    SecretBindingTarget, SecretsWorkloadsSecretBindingAccessAdapter,
+    UnroutedDeploymentRouteUpdater, WorkloadDesiredState, WorkloadStopRequested,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
@@ -246,7 +246,9 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         assets.clone(),
         artifacts,
         workloads.clone(),
-        secrets,
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(
+            secrets.clone(),
+        )),
         Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(nodes.clone())),
     )
     .execute(

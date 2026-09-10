@@ -65,11 +65,23 @@ pub(super) async fn exercise_skill_binding_lifecycle(
     )
     .await?;
 
-    let bind_handler =
-        BindSkillWorkloadDeploymentHandler::new(assets.clone(), workloads.clone(), secrets.clone());
-    let unbind_handler =
-        UnbindSkillWorkloadDeploymentHandler::new(workloads.clone(), secrets.clone());
-    let rollback_handler = RollbackWorkloadDeploymentHandler::new(workloads.clone(), secrets);
+    let bind_handler = BindSkillWorkloadDeploymentHandler::new(
+        assets.clone(),
+        workloads.clone(),
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(
+            secrets.clone(),
+        )),
+    );
+    let unbind_handler = UnbindSkillWorkloadDeploymentHandler::new(
+        workloads.clone(),
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(
+            secrets.clone(),
+        )),
+    );
+    let rollback_handler = RollbackWorkloadDeploymentHandler::new(
+        workloads.clone(),
+        Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(secrets)),
+    );
     let access = workload_organization_access_for_conformance();
     let mut requested_at = canonical_timestamp(Utc::now())
         .max(initial_revision.created_at)

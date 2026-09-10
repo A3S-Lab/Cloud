@@ -353,11 +353,13 @@ use crate::modules::workloads::{
     DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
     GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadRuntimeExecutionAdmissionPort,
     IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadsEnvironmentAccess,
-    IWorkloadsNodePoolAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
-    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
+    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
+    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
     ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
-    SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
+    SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
+    StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
     WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
     WorkloadsModule,
@@ -2801,16 +2803,18 @@ fn build_management_application_with_health(
     let agent_update_workloads = Arc::clone(&workloads);
     let bind_skill_workloads = Arc::clone(&workloads);
     let unbind_skill_workloads = Arc::clone(&workloads);
-    let workload_secrets = Arc::clone(&secrets);
-    let source_workload_secrets = Arc::clone(&secrets);
-    let agent_create_workload_secrets = Arc::clone(&secrets);
-    let agent_update_workload_secrets = Arc::clone(&secrets);
-    let bind_skill_workload_secrets = Arc::clone(&secrets);
-    let unbind_skill_workload_secrets = Arc::clone(&secrets);
+    let workload_secrets: Arc<dyn IWorkloadsSecretBindingAccess> = Arc::new(
+        SecretsWorkloadsSecretBindingAccessAdapter::new(Arc::clone(&secrets)),
+    );
+    let source_workload_secrets = Arc::clone(&workload_secrets);
+    let agent_create_workload_secrets = Arc::clone(&workload_secrets);
+    let agent_update_workload_secrets = Arc::clone(&workload_secrets);
+    let bind_skill_workload_secrets = Arc::clone(&workload_secrets);
+    let unbind_skill_workload_secrets = Arc::clone(&workload_secrets);
     let update_workloads = Arc::clone(&workloads);
-    let update_workload_secrets = Arc::clone(&secrets);
+    let update_workload_secrets = Arc::clone(&workload_secrets);
     let rollback_workloads = Arc::clone(&workloads);
-    let rollback_workload_secrets = Arc::clone(&secrets);
+    let rollback_workload_secrets = Arc::clone(&workload_secrets);
     let cancel_workloads = Arc::clone(&workloads);
     let stop_workloads = Arc::clone(&workloads);
     let list_workloads = Arc::clone(&workloads);

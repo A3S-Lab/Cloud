@@ -2,14 +2,13 @@ use super::super::validate_secret_bindings;
 use super::{RollbackWorkloadDeployment, RollbackWorkloadDeploymentResult};
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, RepositoryError, WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    commands::load_direct_workload_control, WorkloadResourceResolver, DEPLOYMENT_WORKFLOW_NAME,
-    DEPLOYMENT_WORKFLOW_VERSION,
+    commands::load_direct_workload_control, IWorkloadsSecretBindingAccess,
+    WorkloadResourceResolver, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentStatus, WorkloadDesiredState,
@@ -23,13 +22,13 @@ use std::sync::Arc;
 
 pub struct RollbackWorkloadDeploymentHandler {
     workloads: Arc<dyn IWorkloadRepository>,
-    secrets: Arc<dyn ISecretRepository>,
+    secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
 }
 
 impl RollbackWorkloadDeploymentHandler {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
-        secrets: Arc<dyn ISecretRepository>,
+        secrets: Arc<dyn IWorkloadsSecretBindingAccess>,
     ) -> Self {
         Self { workloads, secrets }
     }
