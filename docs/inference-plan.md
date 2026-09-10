@@ -1488,7 +1488,12 @@ evidence, and fenced release protocol.
   succession: `ReviseInferenceRoute` with empty grants advances `policy_revision`,
   drops `grants` for the credential in the successor compile, and keeps the same
   Identity credential projection (`prefix`/`generation`, `revoked = false`) without
-  inventing `workers`. Cloud also certifies retire → Edge managed-snapshot omission:
+  inventing `workers`. Cloud also certifies rotate → revise grant-generation sync →
+  Edge managed-snapshot ACL succession: after `RotateInferenceKey` advances credential
+  `generation`, compiling the stale route grant fails closed at the contract gate;
+  `ReviseInferenceRoute` with matching `credential_generation` then succeeds with the
+  new `prefix`/`generation` and matching grant without inventing `workers` or embedding
+  either bearer. Cloud also certifies retire → Edge managed-snapshot omission:
   after `RetireInferenceRoute` the route ACL projection is empty and the successor
   compile drops `routes`/`models` while still projecting Identity credentials.
   Broader joint mixed-version / fallback conformance beyond that succession brick
