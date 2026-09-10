@@ -409,4 +409,189 @@ mod tests {
             "stale revoke must not mutate the active credential"
         );
     }
+
+    #[tokio::test]
+    async fn revoke_projection_succeeds_edge_managed_snapshot_acl_succession() {
+        use crate::modules::edge::domain::{
+            DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
+            RouteTarget, UpstreamEndpoint,
+        };
+        use crate::modules::edge::infrastructure::{
+            GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+        };
+        use crate::modules::identity::application::{
+            IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+        };
+        use crate::modules::identity::infrastructure::InferenceCredentialAclProjectionAdapter;
+        use crate::modules::shared_kernel::domain::{
+            DomainClaimId, GatewayCertificateId, GatewayScopeId, NodeId, RouteId, WorkloadId,
+            WorkloadRevisionId,
+        };
+
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let requested_at = Utc::now();
+        let created = CreateInferenceKeyHandler::new(
+            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::clone(&credentials)
+                as Arc<dyn crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository>,
+            InferenceCredentialIssuer::new(),
+            Arc::new(TestEncryption),
+        )
+        .execute(
+            CreateInferenceKey {
+                organization_id,
+                project_id,
+                environment_id,
+                expires_at: requested_at + Duration::hours(1),
+                idempotency_key: "create-for-edge-succession".into(),
+                request_id: Uuid::now_v7(),
+                requested_at,
+            },
+            context(),
+        )
+        .await
+        .expect("boot")
+        .expect("create");
+        let credential = created.credential;
+        let prefix = credential
+            .gateway_projection()
+            .expect("active projection")
+            .prefix
+            .clone();
+
+        let adapter = InferenceCredentialAclProjectionAdapter::new(credentials.clone());
+        let scope =
+            InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
+                .unwrap();
+        let baseline_projections = adapter
+            .list_inference_credential_acl_projections(&[scope.clone()])
+            .await
+            .unwrap();
+        assert_eq!(baseline_projections.len(), 1);
+        assert!(!baseline_projections[0].revoked);
+        assert_eq!(baseline_projections[0].credential_id, credential.id.as_uuid());
+        assert_eq!(baseline_projections[0].prefix, prefix);
+
+        let node_id = NodeId::new();
+        let certificate_id = GatewayCertificateId::new();
+        let issued_at = Utc::now();
+        let expires_at = issued_at + Duration::minutes(10);
+        let now = issued_at;
+        let workload_id = WorkloadId::new();
+        let workload_revision_id = WorkloadRevisionId::new();
+        let mut owned = Route::create(
+            RouteId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            GatewayScopeId::new(),
+            node_id,
+            RouteHostname::parse("api.example.com").unwrap(),
+            RoutePath::parse("/v1").unwrap(),
+            DomainClaimId::new(),
+            DomainNamePattern::parse("api.example.com").unwrap(),
+            certificate_id,
+            workload_id,
+            RouteTarget::new(
+                workload_id,
+                workload_revision_id,
+                format!("workload:{workload_id}:revision:{workload_revision_id}"),
+                1,
+                RoutePortName::parse("http").unwrap(),
+                UpstreamEndpoint::parse("http://127.0.0.1:49152").unwrap(),
+                now,
+            )
+            .unwrap(),
+            now,
+        )
+        .unwrap();
+        owned.state = RouteState::Active;
+        owned.gateway_certificate_id = Some(certificate_id);
+
+        let compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+            entrypoint_address: "0.0.0.0:8081".into(),
+            management_address: "127.0.0.1:9090".into(),
+            management_path_prefix: "/api/gateway".into(),
+            management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+            upstream_request_timeout_ms: 30_000,
+            certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+            managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+        })
+        .unwrap();
+
+        let baseline = compiler
+            .compile_certificate_convergence_with_inference_credentials(
+                GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+                Some(certificate_id),
+                &[owned.clone()],
+                &baseline_projections,
+            )
+            .unwrap();
+        assert!(baseline.acl.contains(&format!("prefix = \"{prefix}\"")));
+        assert!(baseline.acl.contains("revoked = false"));
+        assert!(!baseline.acl.contains("revoked = true"));
+        assert!(!baseline.acl.contains("\n  workers "));
+
+        let revoked = RevokeInferenceKeyHandler::new(
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+        )
+        .execute(
+            RevokeInferenceKey {
+                organization_id,
+                credential_id: credential.id,
+                expected_aggregate_version: credential.aggregate_version(),
+                idempotency_key: "revoke-for-edge-succession".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: credential.updated_at() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .expect("boot")
+        .expect("revoke");
+        assert!(revoked
+            .credential
+            .gateway_projection()
+            .expect("projection")
+            .revoked);
+
+        let successor_projections = adapter
+            .list_inference_credential_acl_projections(&[scope])
+            .await
+            .unwrap();
+        assert_eq!(successor_projections.len(), 1);
+        assert_eq!(
+            successor_projections[0].credential_id,
+            credential.id.as_uuid()
+        );
+        assert_eq!(
+            successor_projections[0].generation,
+            baseline_projections[0].generation
+        );
+        assert_eq!(successor_projections[0].prefix, prefix);
+        assert!(successor_projections[0].revoked);
+
+        let successor = compiler
+            .compile_certificate_convergence_with_inference_credentials(
+                GatewaySnapshotMetadata::new(
+                    node_id,
+                    3,
+                    Some(2),
+                    issued_at + Duration::seconds(1),
+                    expires_at + Duration::seconds(1),
+                ),
+                Some(certificate_id),
+                &[owned],
+                &successor_projections,
+            )
+            .unwrap();
+        assert!(successor.acl.contains(&format!("prefix = \"{prefix}\"")));
+        assert!(successor.acl.contains("revoked = true"));
+        assert!(!successor.acl.contains("revoked = false"));
+        assert!(!successor.acl.contains("\n  workers "));
+        assert_eq!(successor.acl.matches("inference {").count(), 1);
+    }
 }

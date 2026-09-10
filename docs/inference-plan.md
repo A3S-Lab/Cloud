@@ -1425,7 +1425,10 @@ evidence, and fenced release protocol.
   item 5). Cloud also certifies Inference revise → Edge managed-snapshot ACL
   succession locally: publish projection compiles `chat-model`, revise advances
   `policy_revision` and the successor compile replaces models/targets without
-  inventing `workers`. Broader joint mixed-version / fallback conformance beyond that
+  inventing `workers`. Cloud likewise certifies Identity revoke → Edge managed-snapshot
+  ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
+  keeps the same credential id/generation/prefix while the successor compile flips
+  to `revoked = true` for Gateway fail-closed. Broader joint mixed-version / fallback conformance beyond that
   succession brick remains open. I0.2b is not fully verified.
 
 ### I0.2c: durable usage and rollout
