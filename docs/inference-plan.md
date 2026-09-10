@@ -353,8 +353,9 @@ Initial management commands are:
 - `PublishInferenceRoute`, `ReviseInferenceRoute`, and `RetireInferenceRoute`; and
 - `RegisterExternalModelProvider` and `BindExternalProviderSecretVersion`.
 
-`CreateInferenceKey` and `RevokeInferenceKey` are Identity-owned commands
-exposed through Identity management HTTP (`ENV/inference/keys`) and the
+`CreateInferenceKey`, `RotateInferenceKey`, and `RevokeInferenceKey` are
+  Identity-owned commands
+  exposed through Identity management HTTP (`ENV/inference/keys`) and the
 Inference management facade. HTTP create/revoke are certified for write-scope,
 idempotent delivery replay (`201`/`200`), revoke `202` CAS (zero → `422`,
 stale → `409`), list/get secret hygiene, and no-store delivery headers. Revoke
@@ -410,6 +411,7 @@ Management paths are versioned under `/api/v1`. The following table uses
 | `GET ENV/inference/providers/{provider_id}` | `inference:read` | Provider descriptor and same-environment Secret version identity |
 | `POST ENV/inference/providers/{provider_id}/secret-bindings` | `inference:write` | Bind an existing immutable Secret version from this environment; does not rotate it |
 | `POST ENV/inference/keys` | `inference:write` | Create an Identity-owned inference key; return plaintext once through the idempotent creation receipt |
+| `POST ENV/inference/keys/{key_id}/rotate` | `inference:write` | Rotate an existing key in place: advance generation, replace prefix/verifier, return plaintext once through a new delivery receipt |
 | `GET ENV/inference/keys` | `inference:read` | List key identity, prefix, grants, expiry, generation and revocation; never plaintext or verifier |
 | `POST ENV/inference/keys/{key_id}/revoke` | `inference:write` | `202` revoke and converge an exact Gateway authorization snapshot |
 | `POST ENV/inference/deployments` | `inference:write` | `202` create/reconcile Operation |
@@ -1464,6 +1466,10 @@ evidence, and fenced release protocol.
   ACL succession: empty credential projections compile without `prefix`/`revoked`,
   then `CreateInferenceKey` projects `prefix` with `revoked = false` into the
   successor compile without inventing `workers` or embedding the bearer secret.
+  Cloud also certifies Identity rotate → Edge managed-snapshot ACL succession:
+  `RotateInferenceKey` keeps the same credential id while advancing `generation`
+  and replacing `prefix` in the successor compile without inventing `workers` or
+  embedding the new bearer secret.
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips

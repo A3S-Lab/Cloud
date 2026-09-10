@@ -2789,6 +2789,7 @@ fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() ->
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
     let keys = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys";
+    let rotate = format!("{keys}/{{credential_id}}/rotate");
     let revoke = format!("{keys}/{{credential_id}}/revoke");
     let get_key = "/organizations/{organization_id}/inference/keys/{credential_id}";
     let retention = "/organizations/{organization_id}/inference-usage/retention";
@@ -2823,6 +2824,24 @@ fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() ->
     let get_op = &document["paths"][get_key]["get"];
     assert_eq!(get_op["tags"], json!(["Identity"]));
     assert_eq!(get_op["summary"], json!("Get an inference key"));
+
+    let rotate_op = &document["paths"][&rotate]["post"];
+    assert_eq!(rotate_op["tags"], json!(["Identity"]));
+    assert_eq!(
+        rotate_op["summary"],
+        json!("Rotate an inference key")
+    );
+    assert!(rotate_op["responses"]["201"].is_object());
+    assert!(rotate_op["responses"]["200"].is_object());
+    assert_eq!(
+        rotate_op["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expiresAt", "expectedAggregateVersion"])
+    );
+    assert_eq!(
+        rotate_op["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedAggregateVersion"]["minimum"],
+        json!(1)
+    );
 
     let revoke_op = &document["paths"][&revoke]["post"];
     assert_eq!(revoke_op["tags"], json!(["Identity"]));

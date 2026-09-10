@@ -31,6 +31,17 @@ impl InferenceCredentialChanged {
         )
     }
 
+    pub fn rotated(
+        credential: &InferenceCredential,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        Self::envelope(
+            "identity.inference-credential.rotated",
+            credential,
+            correlation_id,
+        )
+    }
+
     pub fn revoked(
         credential: &InferenceCredential,
         correlation_id: Uuid,

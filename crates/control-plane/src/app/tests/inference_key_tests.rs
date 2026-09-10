@@ -216,6 +216,151 @@ async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Resu
 }
 
 #[tokio::test]
+async fn inference_key_rotate_is_idempotent_cas_and_secret_safe() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization =
+        bootstrap_organization(&app, "inference-key-rotate-http", "Inference key rotate").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-rotate-project",
+        "Inference Key Rotate",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-rotate-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-rotate-write",
+        "inference-key-rotate-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-rotate-read",
+        "inference-key-rotate-read",
+        INFERENCE_KEY_READ_TOKEN,
+        &[ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let collection_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let created = app
+        .call(post_json_as(
+            &collection_path,
+            "inference-key:rotate-create",
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created_json = response_json(&created)?;
+    let credential_id = created_json["data"]["credential"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing credential id".into()))?;
+    let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing aggregateVersion".into()))?;
+    let prior_prefix = created_json["data"]["credential"]["prefix"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing prefix".into()))?
+        .to_owned();
+    let prior_bearer = created_json["data"]["bearerCredential"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing bearer".into()))?
+        .to_owned();
+
+    let rotate_path = format!("{collection_path}/{credential_id}/rotate");
+    let rotate_body = json!({
+        "expectedAggregateVersion": aggregate_version,
+        "expiresAt": (Utc::now() + Duration::hours(3)).to_rfc3339(),
+    });
+    let rotate_request = || {
+        post_json_as(
+            &rotate_path,
+            "inference-key:rotate",
+            rotate_body.clone(),
+            INFERENCE_KEY_WRITE_TOKEN,
+        )
+    };
+    let rotated = app.call(rotate_request()).await?;
+    let replayed = app.call(rotate_request()).await?;
+    assert_eq!(rotated.status(), 201);
+    assert_eq!(replayed.status(), 200);
+    assert_delivery_is_not_cacheable(&rotated);
+    assert_delivery_is_not_cacheable(&replayed);
+
+    let rotated_json = response_json(&rotated)?;
+    let next_bearer = rotated_json["data"]["bearerCredential"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing rotated bearer".into()))?;
+    let next_prefix = rotated_json["data"]["credential"]["prefix"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing rotated prefix".into()))?;
+    assert_ne!(next_prefix, prior_prefix);
+    assert_ne!(next_bearer, prior_bearer);
+    assert_eq!(rotated_json["data"]["credential"]["generation"], json!(2));
+    assert_eq!(
+        rotated_json["data"]["credential"]["aggregateVersion"],
+        json!(aggregate_version + 1)
+    );
+    assert_valid_inference_bearer(next_bearer, &json!(next_prefix))?;
+    assert_eq!(
+        response_json(&replayed)?["data"]["bearerCredential"],
+        next_bearer
+    );
+    let rotated_body = String::from_utf8_lossy(rotated.body());
+    assert!(
+        !rotated_body.contains(&prior_bearer),
+        "rotated delivery must not retain the prior bearer secret"
+    );
+    assert_metadata_hides_secret_material(&rotated_json["data"]["credential"]);
+
+    let insufficient = app
+        .call(post_json_as(
+            &rotate_path,
+            "inference-key:rotate-read",
+            rotate_body.clone(),
+            INFERENCE_KEY_READ_TOKEN,
+        ))
+        .await?;
+    assert_eq!(insufficient.status(), 403);
+
+    let stale = app
+        .call(post_json_as(
+            &rotate_path,
+            "inference-key:rotate-stale",
+            json!({
+                "expectedAggregateVersion": aggregate_version,
+                "expiresAt": (Utc::now() + Duration::hours(3)).to_rfc3339(),
+            }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(stale.status(), 409);
+    assert_response_has_no_bearer(&stale, &[&prior_bearer, next_bearer]);
+    Ok(())
+}
+
+#[tokio::test]
 async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer(
 ) -> Result<()> {
     use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;

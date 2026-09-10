@@ -20,7 +20,7 @@ pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstr
 pub use inference_credential_repository::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
     IInferenceCredentialRepository, InferenceCredentialWrite, InferenceCredentialWriteReference,
-    RevokeInferenceCredentialWrite,
+    RotateInferenceCredentialWrite, RevokeInferenceCredentialWrite,
 };
 pub use membership_invitation_repository::{
     AcceptMembershipInvitationWrite, CreateMembershipInvitationWrite,

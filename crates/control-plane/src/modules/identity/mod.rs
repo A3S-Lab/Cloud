@@ -46,6 +46,9 @@ pub use application::commands::create_api_token::{
 pub use application::commands::create_inference_key::{
     CreateInferenceKey, CreateInferenceKeyHandler,
 };
+pub use application::commands::rotate_inference_key::{
+    RotateInferenceKey, RotateInferenceKeyHandler,
+};
 pub use application::commands::create_membership::{CreateMembership, CreateMembershipHandler};
 pub use application::commands::create_membership_invitation::{
     CreateMembershipInvitation, CreateMembershipInvitationHandler,

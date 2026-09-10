@@ -17,6 +17,7 @@ pub mod manage_tenant_support;
 pub mod manage_workload_trust;
 pub mod revoke_api_token;
 pub mod revoke_inference_key;
+pub mod rotate_inference_key;
 pub mod revoke_membership;
 pub mod revoke_membership_invitation;
 pub mod revoke_recipient_contact;

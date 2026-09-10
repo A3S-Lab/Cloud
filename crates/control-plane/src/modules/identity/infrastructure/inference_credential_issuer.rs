@@ -86,6 +86,13 @@ impl InferenceCredentialIssuer {
         Ok(IssuedInferenceCredential { credential, secret })
     }
 
+    /// Issues replacement prefix/secret/verifier material for an existing credential id.
+    pub async fn issue_rotation_material(
+        &self,
+    ) -> Result<(String, Zeroizing<String>, String), InferenceCredentialIssuanceError> {
+        self.generate_material().await
+    }
+
     async fn generate_material(
         &self,
     ) -> Result<(String, Zeroizing<String>, String), InferenceCredentialIssuanceError> {

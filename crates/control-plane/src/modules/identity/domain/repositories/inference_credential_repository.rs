@@ -59,6 +59,15 @@ pub struct CreateInferenceCredentialWrite {
 }
 
 #[derive(Debug, Clone)]
+pub struct RotateInferenceCredentialWrite {
+    pub credential: InferenceCredential,
+    pub receipt: InferenceCredentialDeliveryReceipt,
+    pub expected_aggregate_version: u64,
+    pub idempotency: IdempotencyRequest,
+    pub event: DomainEventEnvelope,
+}
+
+#[derive(Debug, Clone)]
 pub struct RevokeInferenceCredentialWrite {
     pub credential: InferenceCredential,
     pub expected_aggregate_version: u64,
@@ -81,6 +90,25 @@ impl CreateInferenceCredentialWrite {
             &self.credential,
             &self.event,
             "identity.inference-credential.created",
+        )
+    }
+}
+
+impl RotateInferenceCredentialWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.expected_aggregate_version == 0
+            || self.credential.revoked_at().is_some()
+            || self.expected_aggregate_version.checked_add(1)
+                != Some(self.credential.aggregate_version())
+            || self.credential.generation() <= 1
+        {
+            return Err("inference credential rotation is invalid".into());
+        }
+        self.receipt.validate_against(&self.credential)?;
+        validate_event(
+            &self.credential,
+            &self.event,
+            "identity.inference-credential.rotated",
         )
     }
 }
@@ -139,6 +167,11 @@ pub trait IInferenceCredentialLifecycleRepository: IInferenceCredentialRepositor
     async fn create_inference_credential_delivery(
         &self,
         bundle: CreateInferenceCredentialWrite,
+    ) -> Result<InferenceCredentialWrite, RepositoryError>;
+
+    async fn rotate_inference_credential(
+        &self,
+        bundle: RotateInferenceCredentialWrite,
     ) -> Result<InferenceCredentialWrite, RepositoryError>;
 
     async fn revoke_inference_credential(

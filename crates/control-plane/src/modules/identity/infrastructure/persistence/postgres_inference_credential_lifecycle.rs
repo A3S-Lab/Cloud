@@ -13,7 +13,8 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
-    InferenceCredentialWrite, InferenceCredentialWriteReference, RevokeInferenceCredentialWrite,
+    InferenceCredentialWrite, InferenceCredentialWriteReference, RotateInferenceCredentialWrite,
+    RevokeInferenceCredentialWrite,
 };
 use crate::modules::secrets::domain::EncryptedSecretValue;
 use crate::modules::shared_kernel::domain::{
@@ -64,6 +65,67 @@ impl IInferenceCredentialLifecycleRepository for PostgresIdentityRepository {
                         transaction,
                         &bundle.credential,
                         "identity.inference-credential.created",
+                        bundle.event.correlation_id,
+                        true,
+                    )
+                    .await?;
+                    store_idempotency(
+                        transaction,
+                        &bundle.idempotency,
+                        &reference(&bundle.credential),
+                    )
+                    .await?;
+                    Ok(InferenceCredentialWrite {
+                        credential: bundle.credential,
+                        receipt: Some(bundle.receipt),
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn rotate_inference_credential(
+        &self,
+        bundle: RotateInferenceCredentialWrite,
+    ) -> Result<InferenceCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(replayed) = replay(
+                        transaction,
+                        bundle.credential.organization_id,
+                        &bundle.idempotency,
+                    )
+                    .await?
+                    {
+                        return Ok(replayed);
+                    }
+                    let existing = lock_credential(
+                        transaction,
+                        bundle.credential.organization_id,
+                        bundle.credential.id,
+                    )
+                    .await?;
+                    bundle
+                        .credential
+                        .validate_transition_from(&existing, bundle.expected_aggregate_version)
+                        .map_err(RepositoryError::Conflict)?;
+                    update_credential_row(
+                        transaction,
+                        &bundle.credential,
+                        bundle.expected_aggregate_version,
+                    )
+                    .await?;
+                    delete_receipt(transaction, bundle.credential.id.as_uuid()).await?;
+                    insert_receipt(transaction, &bundle.receipt).await?;
+                    store_outbox(transaction, &bundle.event).await?;
+                    store_credential_audit(
+                        transaction,
+                        &bundle.credential,
+                        "identity.inference-credential.rotated",
                         bundle.event.correlation_id,
                         true,
                     )

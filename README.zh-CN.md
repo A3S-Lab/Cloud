@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/A3S-Lab/Cloud/actions/workflows/ci.yml/badge.svg?branch=release" /></a>
   <img alt="Rust 1.88 或更高" src="https://img.shields.io/badge/Rust-1.88%2B-1f2a23?logo=rust&amp;logoColor=white" />
-  <a href="openapi/v1.json"><img alt="REST 契约 1.85.0" src="https://img.shields.io/badge/REST_contract-1.85.0-2872b8" /></a>
+  <a href="openapi/v1.json"><img alt="REST 契约 1.87.0" src="https://img.shields.io/badge/REST_contract-1.87.0-2872b8" /></a>
   <a href="LICENSE"><img alt="MIT 许可证" src="https://img.shields.io/badge/license-MIT-b8f36b?labelColor=1f2a23" /></a>
 </p>
 

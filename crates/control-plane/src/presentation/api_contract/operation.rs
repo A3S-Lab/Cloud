@@ -1649,6 +1649,7 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/inference/keys")
         || path.ends_with("/mcp-credentials")
         || (path.contains("/mcp-credentials/") && path.ends_with("/rotate"))
+        || (path.contains("/inference/keys/") && path.ends_with("/rotate"))
         || path.ends_with("/mcp-route-policies")
         || (path.contains("/mcp-route-policies/") && path.ends_with("/revisions"))
         || is_connector_profile_mutation_path(path)

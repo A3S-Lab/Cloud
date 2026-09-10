@@ -1,11 +1,12 @@
 use crate::modules::identity::application::commands::create_inference_key::CreateInferenceKey;
 use crate::modules::identity::application::commands::revoke_inference_key::RevokeInferenceKey;
+use crate::modules::identity::application::commands::rotate_inference_key::RotateInferenceKey;
 use crate::modules::identity::application::queries::get_inference_key::GetInferenceKey;
 use crate::modules::identity::application::queries::list_inference_keys::ListInferenceKeys;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::dto::{
     CreateInferenceKeyRequest, InferenceKeyDeliveryResponse, InferenceKeyMutationResponse,
-    InferenceKeyResponse, RevokeInferenceKeyRequest,
+    InferenceKeyResponse, RotateInferenceKeyRequest, RevokeInferenceKeyRequest,
 };
 use crate::modules::identity::presentation::request_context::{mutation_identity, request_id};
 use crate::modules::identity::presentation::{
@@ -26,6 +27,8 @@ use uuid::Uuid;
 
 pub fn inference_key_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let create_bus = Arc::clone(&bus);
+    let rotate_bus = Arc::clone(&bus);
+    let revoke_bus = Arc::clone(&bus);
     ControllerDefinition::new("/organizations")?
         .with_guard(OrganizationTenantGuard)
         .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::INFERENCE_WRITE])?
@@ -65,9 +68,47 @@ pub fn inference_key_commands_controller(bus: Arc<CommandBus>) -> Result<Control
             },
         )?
         .post(
+            "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/rotate",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&rotate_bus);
+                async move {
+                    let body: RotateInferenceKeyRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = mutation_identity(&request)?;
+                    match bus
+                        .execute(RotateInferenceKey {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            environment_id: EnvironmentId::from_uuid(
+                                request.param_as::<Uuid>("environment_id")?,
+                            ),
+                            credential_id: InferenceCredentialId::from_uuid(
+                                request.param_as::<Uuid>("credential_id")?,
+                            ),
+                            expected_aggregate_version: body.expected_aggregate_version,
+                            expires_at: body.expires_at,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 201 };
+                            delivery_response(status, InferenceKeyDeliveryResponse::from(result))
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
             "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/revoke",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&revoke_bus);
                 async move {
                     let body: RevokeInferenceKeyRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = mutation_identity(&request)?;

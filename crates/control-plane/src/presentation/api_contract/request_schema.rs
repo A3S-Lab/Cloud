@@ -67,6 +67,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys" => {
             credential_expiry_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/rotate" => {
+            rotate_mcp_credential_schema()
+        }
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys/{credential_id}/revoke" => {
             expected_version_schema("expectedAggregateVersion")
         }

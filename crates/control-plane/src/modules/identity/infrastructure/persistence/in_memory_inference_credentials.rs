@@ -3,7 +3,8 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
-    IInferenceCredentialRepository, InferenceCredentialWrite, RevokeInferenceCredentialWrite,
+    IInferenceCredentialRepository, InferenceCredentialWrite, RotateInferenceCredentialWrite,
+    RevokeInferenceCredentialWrite,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, EnvironmentId, IdempotencyRequest, InferenceCredentialId, OrganizationId,
@@ -164,6 +165,64 @@ impl IInferenceCredentialLifecycleRepository for InMemoryInferenceCredentialRepo
                 "inference credential identity or lookup prefix is already in use".into(),
             ));
         }
+        state
+            .prefixes
+            .insert(bundle.credential.prefix().to_owned(), bundle.credential.id);
+        state
+            .credentials
+            .insert(bundle.credential.id, bundle.credential.clone());
+        state
+            .receipts
+            .insert(bundle.credential.id, bundle.receipt.clone());
+        remember(
+            &mut state,
+            bundle.idempotency,
+            WriteReference {
+                credential_id: bundle.credential.id,
+                generation: bundle.credential.generation(),
+            },
+        );
+        state.outbox.push(bundle.event);
+        Ok(InferenceCredentialWrite {
+            credential: bundle.credential,
+            receipt: Some(bundle.receipt),
+            replayed: false,
+        })
+    }
+
+    async fn rotate_inference_credential(
+        &self,
+        bundle: RotateInferenceCredentialWrite,
+    ) -> Result<InferenceCredentialWrite, RepositoryError> {
+        bundle.validate().map_err(RepositoryError::Conflict)?;
+        let mut state = self.state.write().await;
+        if let Some(replayed) = replay(
+            &state,
+            bundle.credential.organization_id,
+            &bundle.idempotency,
+        )? {
+            return Ok(replayed);
+        }
+        let existing = state
+            .credentials
+            .get(&bundle.credential.id)
+            .filter(|existing| existing.organization_id == bundle.credential.organization_id)
+            .cloned()
+            .ok_or(RepositoryError::NotFound)?;
+        bundle
+            .credential
+            .validate_transition_from(&existing, bundle.expected_aggregate_version)
+            .map_err(RepositoryError::Conflict)?;
+        if state
+            .prefixes
+            .get(bundle.credential.prefix())
+            .is_some_and(|id| *id != bundle.credential.id)
+        {
+            return Err(RepositoryError::Conflict(
+                "inference credential lookup prefix is already in use".into(),
+            ));
+        }
+        state.prefixes.remove(existing.prefix());
         state
             .prefixes
             .insert(bundle.credential.prefix().to_owned(), bundle.credential.id);

@@ -820,6 +820,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke an MCP credential",
         ),
         (
+            "/inference/keys/{credential_id}/rotate",
+            "Rotate an inference key",
+        ),
+        (
             "/inference/keys/{credential_id}/revoke",
             "Revoke an inference key",
         ),

@@ -224,7 +224,7 @@ use crate::modules::identity::{
     ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
     ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
     ProposeTenantSupportGrantHandler, RecipientContactVerificationDeliveryDispatcher,
-    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RevokeMembershipHandler,
+    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RotateInferenceKeyHandler, RevokeMembershipHandler,
     RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
     RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
     SmtpRecipientContactVerificationDeliveryService,
@@ -2872,6 +2872,7 @@ fn build_management_application_with_health(
     let list_mcp_credentials = Arc::clone(&mcp_credentials);
     let get_mcp_credentials = mcp_credentials;
     let create_inference_credentials = Arc::clone(&inference_credentials);
+    let rotate_inference_credentials = Arc::clone(&inference_credentials);
     let revoke_inference_credentials = Arc::clone(&inference_credentials);
     let list_inference_credentials: Arc<dyn IInferenceCredentialRepository> =
         inference_credentials.clone();
@@ -2906,6 +2907,7 @@ fn build_management_application_with_health(
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let inference_key_environments = Arc::clone(&environments);
+    let rotate_inference_key_environments = Arc::clone(&environments);
     let revoke_inference_key_environments = Arc::clone(&environments);
     let list_daily_usage_environments = Arc::clone(&environments);
     let get_usage_request_fact_environments = Arc::clone(&environments);
@@ -2980,6 +2982,7 @@ fn build_management_application_with_health(
     let rotate_secret_encryption = Arc::clone(&secret_encryption);
     let create_mcp_credential_encryption = Arc::clone(&secret_encryption);
     let create_inference_key_encryption = Arc::clone(&secret_encryption);
+    let rotate_inference_key_encryption = Arc::clone(&secret_encryption);
     let rotate_mcp_credential_encryption = secret_encryption;
     let mcp_credential_issuer: Arc<dyn IMcpCredentialIssuer> = Arc::new(McpCredentialIssuer::new());
     let rotate_mcp_credential_issuer = Arc::clone(&mcp_credential_issuer);
@@ -3072,6 +3075,14 @@ fn build_management_application_with_health(
                         create_inference_credentials,
                         InferenceCredentialIssuer::new(),
                         create_inference_key_encryption,
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RotateInferenceKey, _>(
+                    RotateInferenceKeyHandler::new(
+                        rotate_inference_key_environments,
+                        rotate_inference_credentials,
+                        InferenceCredentialIssuer::new(),
+                        rotate_inference_key_encryption,
                     ),
                 )
                 .command_handler::<crate::modules::identity::RevokeInferenceKey, _>(
