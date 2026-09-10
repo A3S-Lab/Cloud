@@ -2776,6 +2776,86 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
     Ok(())
 }
 
+#[test]
+fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() -> Result<()> {
+    let app = contract_test_application()?;
+    let document = generate_openapi_contract(&app)?;
+    let keys = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/keys";
+    let revoke = format!("{keys}/{{credential_id}}/revoke");
+    let get_key = "/organizations/{organization_id}/inference/keys/{credential_id}";
+    let retention = "/organizations/{organization_id}/inference-usage/retention";
+    let rollups = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/daily-rollups";
+    let request_fact = "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/requests/{request_id}";
+
+    let collection = &document["paths"][keys];
+    assert_eq!(collection["get"]["tags"], json!(["Identity"]));
+    assert_eq!(
+        collection["get"]["summary"],
+        json!("List inference keys")
+    );
+    assert_eq!(collection["post"]["tags"], json!(["Identity"]));
+    assert_eq!(
+        collection["post"]["summary"],
+        json!("Create an inference key")
+    );
+    assert!(collection["post"]["parameters"]
+        .as_array()
+        .is_some_and(|parameters| parameters.iter().any(|parameter| {
+            parameter["name"] == "idempotency-key"
+                && parameter["in"] == "header"
+                && parameter["required"] == true
+        })));
+    assert!(collection["post"]["responses"]["201"].is_object());
+    assert!(collection["post"]["responses"]["200"].is_object());
+    assert_eq!(
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expiresAt"])
+    );
+
+    let get_op = &document["paths"][get_key]["get"];
+    assert_eq!(get_op["tags"], json!(["Identity"]));
+    assert_eq!(get_op["summary"], json!("Get an inference key"));
+
+    let revoke_op = &document["paths"][&revoke]["post"];
+    assert_eq!(revoke_op["tags"], json!(["Identity"]));
+    assert_eq!(
+        revoke_op["summary"],
+        json!("Revoke an inference key")
+    );
+    assert!(revoke_op["responses"]["202"].is_object());
+    assert_eq!(
+        revoke_op["requestBody"]["content"]["application/json"]["schema"]["required"],
+        json!(["expectedAggregateVersion"])
+    );
+    assert_eq!(
+        revoke_op["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedAggregateVersion"]["minimum"],
+        json!(1)
+    );
+
+    let retention_op = &document["paths"][retention]["get"];
+    assert_eq!(retention_op["tags"], json!(["Inference"]));
+    assert_eq!(
+        retention_op["summary"],
+        json!("Get inference usage retention status")
+    );
+
+    let rollups_op = &document["paths"][rollups]["get"];
+    assert_eq!(rollups_op["tags"], json!(["Inference"]));
+    assert_eq!(
+        rollups_op["summary"],
+        json!("List daily inference usage rollups")
+    );
+
+    let fact_op = &document["paths"][request_fact]["get"];
+    assert_eq!(fact_op["tags"], json!(["Inference"]));
+    assert_eq!(
+        fact_op["summary"],
+        json!("Get an inference usage request fact")
+    );
+    Ok(())
+}
+
 fn contract_test_application() -> Result<BootApplication> {
     build_test_application(
         Arc::new(InMemoryIdentityRepository::new()),

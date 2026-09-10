@@ -39796,7 +39796,7 @@
     },
     "/organizations/{organization_id}/inference-usage/retention": {
       "get": {
-        "description": "List organizations through the authoritative Organizations REST boundary in the addressed organization scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "description": "Get inference usage retention status through the authoritative Inference REST boundary in the addressed organization scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
         "operationId": "get_organizations_by_organization_id_inference_usage_retention",
         "parameters": [
           {
@@ -39848,14 +39848,14 @@
             "bearerAuth": []
           }
         ],
-        "summary": "List organizations",
+        "summary": "Get inference usage retention status",
         "tags": [
-          "Organizations"
+          "Inference"
         ],
         "x-a3s-api-contract-version": "1.86.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
-        "x-a3s-response-data": "A bounded collection or page of organizations.",
+        "x-a3s-response-data": "The authoritative inference usage retention status projection.",
         "x-a3s-stability": "stable"
       }
     },
@@ -53055,7 +53055,7 @@
     },
     "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/daily-rollups": {
       "get": {
-        "description": "List environments through the authoritative Projects REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "description": "List daily inference usage rollups through the authoritative Inference REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
         "operationId": "get_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_inference_usage_daily_rollups",
         "parameters": [
           {
@@ -53129,20 +53129,20 @@
             "bearerAuth": []
           }
         ],
-        "summary": "List environments",
+        "summary": "List daily inference usage rollups",
         "tags": [
-          "Projects"
+          "Inference"
         ],
         "x-a3s-api-contract-version": "1.86.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
-        "x-a3s-response-data": "A bounded collection or page of environments.",
+        "x-a3s-response-data": "A bounded collection or page of daily inference usage rollups.",
         "x-a3s-stability": "stable"
       }
     },
     "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/requests/{request_id}": {
       "get": {
-        "description": "Get an environment through the authoritative Projects REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
+        "description": "Get an inference usage request fact through the authoritative Inference REST boundary in the addressed organization, project, and environment scope. A tenant-authorized A3S bearer token is required. Successful JSON responses use the standard A3S envelope and expose request and contract-version headers.",
         "operationId": "get_organizations_by_organization_id_projects_by_project_id_environments_by_environment_id_inference_usage_requests_by_request_id",
         "parameters": [
           {
@@ -53227,14 +53227,14 @@
             "bearerAuth": []
           }
         ],
-        "summary": "Get an environment",
+        "summary": "Get an inference usage request fact",
         "tags": [
-          "Projects"
+          "Inference"
         ],
         "x-a3s-api-contract-version": "1.86.0",
         "x-a3s-authentication": "bearer-token",
         "x-a3s-idempotent-replay": false,
-        "x-a3s-response-data": "The authoritative an environment projection.",
+        "x-a3s-response-data": "The authoritative an inference usage request fact projection.",
         "x-a3s-stability": "stable"
       }
     },

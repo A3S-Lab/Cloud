@@ -1461,7 +1461,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("/inference/keys")
     {
         "Identity"
-    } else if path.contains("/inference/") {
+    } else if path.contains("/inference/") || path.contains("inference-usage") {
         "Inference"
     } else if path.starts_with("/node-control")
         || path.contains("/nodes")

@@ -573,6 +573,17 @@ fn operation_summary(method: &str, path: &str) -> String {
         ("get", "/organizations/{organization_id}/audit-records/retention") => {
             return "Get audit retention status".into()
         }
+        ("get", "/organizations/{organization_id}/inference-usage/retention") => {
+            return "Get inference usage retention status".into()
+        }
+        (
+            "get",
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/daily-rollups",
+        ) => return "List daily inference usage rollups".into(),
+        (
+            "get",
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/requests/{request_id}",
+        ) => return "Get an inference usage request fact".into(),
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
         ("post", "/organizations/{organization_id}/plugin-registries") => {
             return "Enroll a plugin registry".into()
