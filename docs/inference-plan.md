@@ -1367,8 +1367,11 @@ evidence, and fenced release protocol.
   `POST ENV/inference/routes/{route_id}/retire`)
   with `inference:write` and required `Idempotency-Key`. Revise fail-closes on
   missing environment/route, zero/stale `expected_aggregate_version`, retired
-  heads, and Edge binding admission, and advances immutable
-  `policy_revision` without inventing workers. Authorized management
+  heads, Edge binding admission, and grant→credential admission, and advances
+  immutable `policy_revision` without inventing workers. Retire likewise
+  requires client `expectedAggregateVersion` CAS (zero → Invalid, stale →
+  Conflict) so concurrent revise versus retire cannot silently race on the
+  head version. Authorized management
   reads are composed as `ListInferenceRoutes` / `GetInferenceRoute` with
   `GET ENV/inference/routes` and `GET ENV/inference/routes/{route_id}` under
   `inference:read`: list returns non-retired heads only (cursor-paginated by

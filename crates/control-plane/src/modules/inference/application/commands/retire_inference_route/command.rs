@@ -10,6 +10,7 @@ use uuid::Uuid;
 pub struct RetireInferenceRoute {
     pub organization_id: OrganizationId,
     pub route_id: InferenceRouteId,
+    pub expected_aggregate_version: u64,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

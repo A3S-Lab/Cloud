@@ -138,12 +138,16 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     assert_eq!(published.status(), 202);
     assert_no_store(&published);
     let route_id = response_id(&published)?;
+    let aggregate_version = response_json(&published)?["data"]["aggregateVersion"]
+        .as_u64()
+        .expect("aggregateVersion");
     assert_eq!(
         response_json(&published)?["data"]["router"],
         json!("inference")
     );
 
     let retire_path = format!("{routes_path}/{route_id}/retire");
+    let retire_body = json!({ "expectedAggregateVersion": aggregate_version });
     let missing_retire_idempotency = app
         .call(
             BootRequest::new(HttpMethod::Post, &retire_path)
@@ -151,7 +155,8 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
                     "authorization",
                     format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
                 )
-                .with_header("content-type", "application/json"),
+                .with_header("content-type", "application/json")
+                .with_body(retire_body.to_string().into_bytes()),
         )
         .await?;
     assert_eq!(missing_retire_idempotency.status(), 400);
@@ -164,7 +169,8 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
                     format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
                 )
                 .with_header("content-type", "application/json")
-                .with_header("idempotency-key", "inference-route:retire"),
+                .with_header("idempotency-key", "inference-route:retire")
+                .with_body(retire_body.to_string().into_bytes()),
         )
         .await?;
     assert_eq!(retired.status(), 202);
@@ -256,6 +262,9 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
         .await?;
     assert_eq!(published.status(), 202);
     let route_id = response_id(&published)?;
+    let aggregate_version = response_json(&published)?["data"]["aggregateVersion"]
+        .as_u64()
+        .expect("aggregateVersion");
     let route_path = format!("{routes_path}/{route_id}");
 
     assert_eq!(
@@ -315,7 +324,12 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
                     format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
                 )
                 .with_header("content-type", "application/json")
-                .with_header("idempotency-key", "inference-route:retire-for-read"),
+                .with_header("idempotency-key", "inference-route:retire-for-read")
+                .with_body(
+                    json!({ "expectedAggregateVersion": aggregate_version })
+                        .to_string()
+                        .into_bytes(),
+                ),
         )
         .await?;
     assert_eq!(retired.status(), 202);

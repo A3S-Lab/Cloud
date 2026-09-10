@@ -73,6 +73,12 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes" => {
             publish_inference_route_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/revisions" => {
+            revise_inference_route_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/retire" => {
+            expected_version_schema("expectedAggregateVersion")
+        }
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-credentials" => {
             credential_expiry_schema()
         }
@@ -658,6 +664,16 @@ fn publish_inference_route_schema() -> Value {
             )
         }),
     )
+}
+
+fn revise_inference_route_schema() -> Value {
+    let mut schema = publish_inference_route_schema();
+    let required = schema["required"]
+        .as_array_mut()
+        .expect("publish schema required");
+    required.insert(0, json!("expectedAggregateVersion"));
+    schema["properties"]["expectedAggregateVersion"] = positive_integer_schema();
+    schema
 }
 
 fn create_secret_schema() -> Value {

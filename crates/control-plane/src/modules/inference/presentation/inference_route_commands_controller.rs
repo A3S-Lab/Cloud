@@ -4,7 +4,8 @@ use crate::modules::inference::application::{
     PublishInferenceRoute, RetireInferenceRoute, ReviseInferenceRoute,
 };
 use crate::modules::inference::presentation::dto::{
-    InferenceRouteResponse, PublishInferenceRouteRequest, ReviseInferenceRouteRequest,
+    InferenceRouteResponse, PublishInferenceRouteRequest, RetireInferenceRouteRequest,
+    ReviseInferenceRouteRequest,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InferenceRouteId, OrganizationId, ProjectId,
@@ -117,6 +118,7 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
             move |request: BootRequest| {
                 let bus = Arc::clone(&bus);
                 async move {
+                    let body: RetireInferenceRouteRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(RetireInferenceRoute {
@@ -126,6 +128,7 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                             route_id: InferenceRouteId::from_uuid(
                                 request.param_as::<Uuid>("route_id")?,
                             ),
+                            expected_aggregate_version: body.expected_aggregate_version,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

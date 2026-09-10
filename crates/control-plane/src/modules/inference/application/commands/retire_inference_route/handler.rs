@@ -27,9 +27,16 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<InferenceRoute>>> {
         let routes = Arc::clone(&self.routes);
         Box::pin(async move {
+            if command.expected_aggregate_version == 0 {
+                return Ok(Err(ApplicationError::Invalid(
+                    "inference route expected_aggregate_version must be greater than 0".into(),
+                )));
+            }
+
             let canonical = serde_json::to_vec(&CanonicalRetireInferenceRoute {
                 organization_id: command.organization_id,
                 route_id: command.route_id,
+                expected_aggregate_version: command.expected_aggregate_version,
             })
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
@@ -65,7 +72,13 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            let expected_aggregate_version = route.aggregate_version();
+
+            if route.aggregate_version() != command.expected_aggregate_version {
+                return Ok(Err(ApplicationError::Conflict(
+                    "inference route changed before retirement".into(),
+                )));
+            }
+
             if let Err(error) = route.retire(command.requested_at) {
                 return Ok(Err(ApplicationError::Invalid(error)));
             }
@@ -73,7 +86,7 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
             match routes
                 .retire_inference_route(RetireInferenceRouteWrite {
                     route,
-                    expected_aggregate_version,
+                    expected_aggregate_version: command.expected_aggregate_version,
                     idempotency,
                 })
                 .await
@@ -89,4 +102,5 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
 struct CanonicalRetireInferenceRoute {
     organization_id: crate::modules::shared_kernel::domain::OrganizationId,
     route_id: crate::modules::shared_kernel::domain::InferenceRouteId,
+    expected_aggregate_version: u64,
 }

@@ -268,6 +268,7 @@ async fn retire_removes_route_from_projection() {
             RetireInferenceRoute {
                 organization_id,
                 route_id: route.id,
+                expected_aggregate_version: route.aggregate_version(),
                 idempotency_key: "retire-1".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: Utc::now() + Duration::seconds(1),
@@ -441,6 +442,7 @@ async fn revise_retired_route_is_rejected() {
             RetireInferenceRoute {
                 organization_id,
                 route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
                 idempotency_key: "retire-before-revise".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: Utc::now() + Duration::seconds(1),
@@ -605,4 +607,92 @@ async fn revise_is_idempotent_for_same_key_and_body() {
     assert_eq!(first.id, second.id);
     assert_eq!(first.policy_revision(), second.policy_revision());
     assert_eq!(first.aggregate_version(), second.aggregate_version());
+}
+
+#[tokio::test]
+async fn retire_stale_and_zero_aggregate_version_fail_closed() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-retire-cas"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let zero = retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                route_id: published.id,
+                expected_aggregate_version: 0,
+                idempotency_key: "retire-zero".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(zero, ApplicationError::Invalid(_)));
+
+    let stale = retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version() + 1,
+                idempotency_key: "retire-stale".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap_err();
+    assert!(matches!(stale, ApplicationError::Conflict(_)));
+}
+
+#[tokio::test]
+async fn retire_is_idempotent_for_same_key_and_cas() {
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(routes);
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-retire-idem"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    let command = RetireInferenceRoute {
+        organization_id,
+        route_id: published.id,
+        expected_aggregate_version: published.aggregate_version(),
+        idempotency_key: "retire-same".into(),
+        request_id: Uuid::now_v7(),
+        requested_at: Utc::now() + Duration::seconds(1),
+    };
+    let first = retire
+        .execute(command.clone(), context())
+        .await
+        .unwrap()
+        .unwrap();
+    let second = retire.execute(command, context()).await.unwrap().unwrap();
+    assert_eq!(first.id, second.id);
+    assert_eq!(first.aggregate_version(), second.aggregate_version());
+    assert!(first.retired_at().is_some());
+    assert_eq!(first.retired_at(), second.retired_at());
 }

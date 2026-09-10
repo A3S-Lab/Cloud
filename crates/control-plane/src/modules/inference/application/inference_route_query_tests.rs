@@ -239,6 +239,7 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
             RetireInferenceRoute {
                 organization_id,
                 route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
                 idempotency_key: "retire-1".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: Utc::now(),

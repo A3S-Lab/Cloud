@@ -152,3 +152,9 @@ impl ReviseInferenceRouteRequest {
         ))
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RetireInferenceRouteRequest {
+    pub expected_aggregate_version: u64,
+}
