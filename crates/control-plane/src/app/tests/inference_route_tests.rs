@@ -357,6 +357,206 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_revise_requires_write_scope_cas_and_idempotency() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization =
+        bootstrap_organization(&app, "inference-route-revise", "Inference revise tenant").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-revise-project",
+        "Inference Revise",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-revise-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-revise-read-token",
+        "inference-route-revise-read",
+        INFERENCE_ROUTE_READ_TOKEN,
+        &[ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-revise-write-token",
+        "inference-route-revise-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "revise.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:revise-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:revise-publish",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "revise.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let route_id = response_id(&published)?;
+    let aggregate_version = response_json(&published)?["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing publish aggregateVersion".into()))?;
+    assert_eq!(
+        response_json(&published)?["data"]["policyRevision"],
+        json!(1)
+    );
+
+    let revise_path = format!("{routes_path}/{route_id}/revisions");
+    let revise_request = revise_body(
+        aggregate_version,
+        domain_claim_id,
+        gateway_scope_id,
+        "revise.example.com",
+        credential_id,
+        credential_generation,
+    );
+
+    let missing_idempotency = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &revise_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_body(revise_request.to_string().into_bytes()),
+        )
+        .await?;
+    assert_eq!(missing_idempotency.status(), 400);
+
+    let insufficient = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &revise_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_READ_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:revise-read")
+                .with_body(revise_request.to_string().into_bytes()),
+        )
+        .await?;
+    assert_eq!(insufficient.status(), 403);
+
+    let revised = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &revise_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:revise")
+                .with_body(revise_request.to_string().into_bytes()),
+        )
+        .await?;
+    assert_eq!(revised.status(), 202);
+    assert_no_store(&revised);
+    let revised_json = response_json(&revised)?;
+    assert_eq!(revised_json["data"]["id"], json!(route_id));
+    assert_eq!(revised_json["data"]["policyRevision"], json!(2));
+    assert_eq!(
+        revised_json["data"]["aggregateVersion"],
+        json!(aggregate_version + 1)
+    );
+    assert_eq!(
+        revised_json["data"]["models"][0]["alias"],
+        json!("chat-model-v2")
+    );
+
+    let replayed = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &revise_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:revise")
+                .with_body(revise_request.to_string().into_bytes()),
+        )
+        .await?;
+    assert_eq!(replayed.status(), 202);
+    assert_eq!(
+        response_json(&replayed)?["data"]["aggregateVersion"],
+        revised_json["data"]["aggregateVersion"]
+    );
+
+    let stale = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &revise_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:revise-stale")
+                .with_body(
+                    revise_body(
+                        aggregate_version,
+                        domain_claim_id,
+                        gateway_scope_id,
+                        "revise.example.com",
+                        credential_id,
+                        credential_generation,
+                    )
+                    .to_string()
+                    .into_bytes(),
+                ),
+        )
+        .await?;
+    assert_eq!(stale.status(), 409);
+
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,
@@ -397,6 +597,48 @@ fn publish_body(
             "bindingGeneration": 1
         }
     })
+}
+
+fn revise_body(
+    expected_aggregate_version: u64,
+    domain_claim_id: DomainClaimId,
+    gateway_scope_id: GatewayScopeId,
+    hostname: &str,
+    credential_id: Uuid,
+    credential_generation: u64,
+) -> Value {
+    let mut body = publish_body(
+        domain_claim_id,
+        gateway_scope_id,
+        hostname,
+        credential_id,
+        credential_generation,
+    );
+    body["expectedAggregateVersion"] = json!(expected_aggregate_version);
+    body["models"] = json!([{
+        "alias": "chat-model-v2",
+        "modelId": "55555555-5555-4555-8555-555555555555",
+        "targets": [{
+            "targetId": "66666666-6666-4666-8666-666666666666",
+            "service": "model-service",
+            "upstreamModel": "internal/model-v2",
+            "priority": 0,
+            "weight": 100
+        }]
+    }]);
+    body["grants"] = json!([{
+        "credentialId": credential_id,
+        "credentialGeneration": credential_generation,
+        "models": ["chat-model-v2"],
+        "endpoints": ["models", "chat-completions"],
+        "limits": {
+            "maxConcurrentRequests": 2,
+            "requestsPerMinute": 60,
+            "requestBurst": 2,
+            "tokensPerMinute": 10000
+        }
+    }]);
+    body
 }
 
 async fn create_inference_key(
