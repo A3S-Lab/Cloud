@@ -1,22 +1,22 @@
 use super::{CreateAgentConversation, CreateAgentConversationResult};
 use crate::modules::agents::application::support::{idempotency, validate_request_id};
+use crate::modules::agents::application::{AgentsEnvironmentScope, IAgentsEnvironmentAccess};
 use crate::modules::agents::domain::{
     AgentConversation, AgentConversationCreated, CreateAgentConversationWrite, IAgentRepository,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::AgentConversationId;
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CreateAgentConversationHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IAgentsEnvironmentAccess>,
     agents: Arc<dyn IAgentRepository>,
 }
 
 impl CreateAgentConversationHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IAgentsEnvironmentAccess>,
         agents: Arc<dyn IAgentRepository>,
     ) -> Self {
         Self {
@@ -75,16 +75,17 @@ impl CommandHandler<CreateAgentConversation> for CreateAgentConversationHandler 
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match AgentsEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found".into(),
                     )));

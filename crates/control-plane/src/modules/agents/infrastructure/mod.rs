@@ -4,6 +4,7 @@ mod agent_execution_flow;
 mod agent_provider;
 mod agent_release_admission;
 mod persistence;
+mod project_environment_access;
 
 pub use agent_execution_checkpoint_object_reconciler::{
     AgentExecutionCheckpointObjectReconcileReport, AgentExecutionCheckpointObjectReconciler,
@@ -24,3 +25,4 @@ pub use agent_provider::{
 };
 pub use agent_release_admission::AssetsAgentReleaseAdmissionAdapter;
 pub use persistence::{InMemoryAgentRepository, PostgresAgentRepository};
+pub use project_environment_access::ProjectsAgentsEnvironmentAccessAdapter;

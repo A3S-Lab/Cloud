@@ -15,8 +15,9 @@ use crate::modules::agents::{
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
     GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
     IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort, IAgentRepository,
-    IWorkflowAgentPort, ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
-    ListAgentExecutionCheckpointsHandler, ListAgentExecutionsHandler, StartAgentExecutionHandler,
+    IAgentsEnvironmentAccess, IWorkflowAgentPort, ListAgentApprovalCheckpointsHandler,
+    ListAgentConversationsHandler, ListAgentExecutionCheckpointsHandler,
+    ListAgentExecutionsHandler, ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
     WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
@@ -658,6 +659,9 @@ async fn build_api_worker_application(
     let _ = &inference_routes;
     let projects = adapters.projects.projects;
     let environments = adapters.projects.environments;
+    let agents_environments: Arc<dyn IAgentsEnvironmentAccess> = Arc::new(
+        ProjectsAgentsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let ontologies = adapters.workflow.ontologies;
     let workflow_definitions = adapters.workflow.workflow_definitions;
     let workflow_goals = adapters.workflow.workflow_goals;
@@ -1331,7 +1335,7 @@ async fn build_api_worker_application(
         );
         let workflow_agent_port: Arc<dyn IWorkflowAgentPort> =
             Arc::new(WorkflowAgentApplicationService::new(
-                Arc::clone(&environments),
+                Arc::clone(&agents_environments),
                 Arc::clone(&agents),
                 workflow_agent_releases,
             ));
@@ -2739,7 +2743,9 @@ fn build_management_application_with_health(
     let list_form_drafts = Arc::clone(&forms);
     let get_form_releases = Arc::clone(&forms);
     let list_form_releases = forms;
-    let agent_conversation_environments = Arc::clone(&environments);
+    let agent_conversation_environments: Arc<dyn IAgentsEnvironmentAccess> = Arc::new(
+        ProjectsAgentsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
     let workload_environments = Arc::clone(&environments);
     let source_workload_environments = Arc::clone(&environments);
     let agent_workload_environments = Arc::clone(&environments);

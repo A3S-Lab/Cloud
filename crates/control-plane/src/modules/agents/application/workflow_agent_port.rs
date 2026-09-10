@@ -1,4 +1,7 @@
-use super::{support::idempotency, AgentReleaseAdmissionRequest, IAgentReleaseAdmissionPort};
+use super::{
+    support::idempotency, AgentReleaseAdmissionRequest, AgentsEnvironmentScope,
+    IAgentReleaseAdmissionPort, IAgentsEnvironmentAccess,
+};
 use crate::modules::agents::domain::{
     AgentConversation, AgentConversationCreated, AgentConversationStatus, AgentEventContent,
     AgentExecution, AgentExecutionCancellationRequested, AgentExecutionEventDraft,
@@ -6,7 +9,6 @@ use crate::modules::agents::domain::{
     CreateAgentConversationWrite, IAgentRepository, RequestAgentExecutionCancellationWrite,
     StartAgentExecutionWrite, MAX_INLINE_AGENT_EVENT_BYTES, NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentConversationId, AgentExecutionId, AssetId, AssetReleaseId,
@@ -167,14 +169,14 @@ pub trait IWorkflowAgentPort: Send + Sync {
 
 #[derive(Clone)]
 pub struct WorkflowAgentApplicationService {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IAgentsEnvironmentAccess>,
     agents: Arc<dyn IAgentRepository>,
     releases: Arc<dyn IAgentReleaseAdmissionPort>,
 }
 
 impl WorkflowAgentApplicationService {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IAgentsEnvironmentAccess>,
         agents: Arc<dyn IAgentRepository>,
         releases: Arc<dyn IAgentReleaseAdmissionPort>,
     ) -> Self {
@@ -214,15 +216,16 @@ impl WorkflowAgentApplicationService {
         if let Some(conversation) = self.adopt_conversation(request).await? {
             return Ok(conversation);
         }
-        if self
+        let environment_scope = AgentsEnvironmentScope::new(
+            request.organization_id,
+            request.project_id,
+            request.environment_id,
+        )
+        .map_err(ApplicationError::Invalid)?;
+        if !self
             .environments
-            .find(
-                request.organization_id,
-                request.project_id,
-                request.environment_id,
-            )
+            .environment_exists(environment_scope)
             .await?
-            .is_none()
         {
             return Err(ApplicationError::NotFound("environment not found".into()));
         }

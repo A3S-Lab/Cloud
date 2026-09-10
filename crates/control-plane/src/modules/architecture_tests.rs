@@ -8177,6 +8177,60 @@ fn connectors_create_profile_isolates_projects_behind_one_environment_port() {
 }
 
 #[test]
+fn agents_environment_queries_isolate_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("agents/application/environment_access.rs"))
+            .expect("read Agents environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructAgentsEnvironmentScope",
+        "pubtraitIAgentsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Agents lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    for relative in [
+        "agents/application/commands/create_agent_conversation/handler.rs",
+        "agents/application/workflow_agent_port.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read Agents consumer");
+        let production = production_source(&source);
+        assert!(
+            production.contains("Arc<dyn IAgentsEnvironmentAccess>"),
+            "{relative} lost IAgentsEnvironmentAccess"
+        );
+        assert!(
+            production.contains(".environment_exists("),
+            "{relative} lost environment_exists admission"
+        );
+        for forbidden in ["IEnvironmentRepository", "crate::modules::projects"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsAgentsEnvironmentAccessAdapter::new(")
+            .count(),
+        2,
+        "root composition must construct the Agents environment adapter once per composition root"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

@@ -1,11 +1,12 @@
 use super::{
-    AgentExecutionReconciler, AppendAgentExecutionEvents, AppendAgentExecutionEventsHandler,
-    CancelAgentExecution, CancelAgentExecutionHandler, CreateAgentConversation,
-    CreateAgentConversationHandler, DecideAgentApprovalCheckpoint,
+    AgentExecutionReconciler, AgentsEnvironmentScope, AppendAgentExecutionEvents,
+    AppendAgentExecutionEventsHandler, CancelAgentExecution, CancelAgentExecutionHandler,
+    CreateAgentConversation, CreateAgentConversationHandler, DecideAgentApprovalCheckpoint,
     DecideAgentApprovalCheckpointHandler, GetAgentExecutionEvents, GetAgentExecutionEventsHandler,
-    IWorkflowAgentPort, ListAgentApprovalCheckpoints, ListAgentApprovalCheckpointsHandler,
-    StartAgentExecution, StartAgentExecutionHandler, WorkflowAgentApplicationService,
-    WorkflowAgentRequest, AGENT_EXECUTION_WORKFLOW_NAME, AGENT_EXECUTION_WORKFLOW_VERSION,
+    IAgentsEnvironmentAccess, IWorkflowAgentPort, ListAgentApprovalCheckpoints,
+    ListAgentApprovalCheckpointsHandler, StartAgentExecution, StartAgentExecutionHandler,
+    WorkflowAgentApplicationService, WorkflowAgentRequest, AGENT_EXECUTION_WORKFLOW_NAME,
+    AGENT_EXECUTION_WORKFLOW_VERSION,
 };
 use crate::modules::agents::domain::{
     AgentEventContent, AgentExecutionEventDraft, AgentExecutionEventKind, AgentExecutionStatus,
@@ -26,17 +27,14 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::operations::{IOperationRepository, InMemoryOperationRepository};
 use crate::modules::projects::domain::entities::Environment;
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentApprovalCheckpointId, AgentExecutionId, ApiTokenId, AssetId,
-    AssetReleaseId, EnvironmentId, GitCommitSha, IdempotencyRequest, IdempotentWrite,
-    OrganizationId, PlanRevisionId, PrincipalId, ProjectId, RepositoryError, ResourceName,
-    Sha256Digest, WorkflowRunId,
+    AssetReleaseId, EnvironmentId, GitCommitSha, OrganizationId, PlanRevisionId, PrincipalId,
+    ProjectId, RepositoryError, ResourceName, Sha256Digest, WorkflowRunId,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_cloud_contracts::DomainEventEnvelope;
 use a3s_cloud_contracts::{
     REFERENCE_ECHO_AGENT_PROVIDER_KIND, REFERENCE_ECHO_AGENT_PROVIDER_PROTOCOL_V1,
 };
@@ -129,7 +127,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
     )
     .expect("Agent Asset");
     let (release, build) = published_release(&asset, drafted_at);
-    let environments = Arc::new(TestEnvironmentRepository { environment });
+    let environments = Arc::new(TestEnvironmentAccess { environment });
     let assets = Arc::new(TestAssetRepository {
         asset: asset.clone(),
         release: release.clone(),
@@ -369,7 +367,7 @@ async fn workflow_agent_port_pins_release_replays_output_and_cancellation() {
         .expect("published artifact")
         .digest()
         .clone();
-    let environments = Arc::new(TestEnvironmentRepository { environment });
+    let environments = Arc::new(TestEnvironmentAccess { environment });
     let assets = Arc::new(TestAssetRepository {
         asset: asset.clone(),
         release: release.clone(),
@@ -520,43 +518,19 @@ fn published_release(
     (release, build)
 }
 
-struct TestEnvironmentRepository {
+struct TestEnvironmentAccess {
     environment: Environment,
 }
 
 #[async_trait]
-impl IEnvironmentRepository for TestEnvironmentRepository {
-    async fn create(
+impl IAgentsEnvironmentAccess for TestEnvironmentAccess {
+    async fn environment_exists(
         &self,
-        _environment: Environment,
-        _event: DomainEventEnvelope,
-        _idempotency: IdempotencyRequest,
-    ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
-        Err(RepositoryError::Storage("unused Environment write".into()))
-    }
-
-    async fn find(
-        &self,
-        organization_id: OrganizationId,
-        project_id: ProjectId,
-        environment_id: EnvironmentId,
-    ) -> Result<Option<Environment>, RepositoryError> {
-        Ok((self.environment.organization_id == organization_id
-            && self.environment.project_id == project_id
-            && self.environment.id == environment_id)
-            .then(|| self.environment.clone()))
-    }
-
-    async fn list(
-        &self,
-        organization_id: OrganizationId,
-        project_id: ProjectId,
-    ) -> Result<Vec<Environment>, RepositoryError> {
-        Ok((self.environment.organization_id == organization_id
-            && self.environment.project_id == project_id)
-            .then(|| self.environment.clone())
-            .into_iter()
-            .collect())
+        scope: AgentsEnvironmentScope,
+    ) -> Result<bool, RepositoryError> {
+        Ok(self.environment.organization_id == scope.organization_id()
+            && self.environment.project_id == scope.project_id()
+            && self.environment.id == scope.environment_id())
     }
 }
 
