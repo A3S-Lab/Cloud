@@ -8046,6 +8046,87 @@ fn edge_gateway_scope_commands_isolate_projects_and_fleet_behind_owner_ports() {
 }
 
 #[test]
+fn notifications_alert_policies_isolate_projects_and_fleet_behind_owner_ports() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("notifications/application/environment_access.rs"))
+            .expect("read Notifications environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructNotificationsEnvironmentScope",
+        "pubtraitINotificationsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Notifications lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    let node_port = std::fs::read_to_string(root.join("notifications/application/node_access.rs"))
+        .expect("read Notifications node port");
+    let compact_node_port = production_source(&node_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructNotificationsNodeScope",
+        "pubtraitINotificationsNodeAccess:Send+Sync",
+        "node_exists(",
+    ] {
+        assert!(
+            compact_node_port.contains(required),
+            "Notifications lost its narrow Fleet node boundary {required}"
+        );
+    }
+    assert!(!node_port.contains("crate::modules::fleet"));
+
+    let handler = std::fs::read_to_string(root.join("notifications/application/alert_policy.rs"))
+        .expect("read alert policy application");
+    let production = production_source(&handler);
+    for required in [
+        "Arc<dyn INotificationsEnvironmentAccess>",
+        "Arc<dyn INotificationsNodeAccess>",
+        ".environment_exists(",
+        ".node_exists(",
+    ] {
+        assert!(
+            production.contains(required),
+            "CreateNotificationAlertPolicy lost owner-port wiring {required}"
+        );
+    }
+    for forbidden in [
+        "IEnvironmentRepository",
+        "INodeRepository",
+        "crate::modules::projects",
+        "crate::modules::fleet",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "CreateNotificationAlertPolicy regained foreign authority {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsNotificationsEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Notifications environment adapter exactly once"
+    );
+    assert_eq!(
+        app.matches("FleetNotificationsNodeAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Notifications node adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

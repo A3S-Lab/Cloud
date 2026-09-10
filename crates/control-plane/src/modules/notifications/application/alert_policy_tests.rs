@@ -1,8 +1,8 @@
 use super::*;
+use crate::modules::fleet::domain::repositories::{INodeRepository, NodeEnrollmentDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::{
     domain::entities::EnrollmentToken,
-    domain::repositories::NodeEnrollmentDraft,
     domain::value_objects::{EnrollmentTokenCredential, NodeCapabilities, NodeName},
 };
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -10,7 +10,10 @@ use crate::modules::notifications::domain::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
     NotificationAlertPolicySpec, NotificationAlertPolicyTarget, NotificationAlertSource,
 };
-use crate::modules::notifications::InMemoryNotificationRepository;
+use crate::modules::notifications::{
+    FleetNotificationsNodeAccessAdapter, InMemoryNotificationRepository,
+    ProjectsNotificationsEnvironmentAccessAdapter,
+};
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::domain::{EnrollmentTokenId, EnvironmentId, NodeId, ProjectId};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
@@ -72,8 +75,12 @@ async fn create_replay_requires_the_environment_to_still_exist() {
 
     let result = CreateNotificationAlertPolicyHandler::new(
         notifications,
-        Arc::new(InMemoryProjectsRepository::new()),
-        Arc::new(InMemoryNodeRepository::new()),
+        Arc::new(ProjectsNotificationsEnvironmentAccessAdapter::new(
+            Arc::new(InMemoryProjectsRepository::new()),
+        )),
+        Arc::new(FleetNotificationsNodeAccessAdapter::new(Arc::new(
+            InMemoryNodeRepository::new(),
+        ))),
     )
     .execute(
         CreateNotificationAlertPolicy {
@@ -113,8 +120,10 @@ async fn create_node_policy_requires_the_exact_existing_node_and_node_grant() {
     seed_node(nodes.as_ref(), organization_id, node_id).await;
     let handler = CreateNotificationAlertPolicyHandler::new(
         notifications,
-        Arc::new(InMemoryProjectsRepository::new()),
-        nodes,
+        Arc::new(ProjectsNotificationsEnvironmentAccessAdapter::new(
+            Arc::new(InMemoryProjectsRepository::new()),
+        )),
+        Arc::new(FleetNotificationsNodeAccessAdapter::new(nodes)),
     );
     let command = |resource_access, idempotency_key: &str| CreateNotificationAlertPolicy {
         organization_id,

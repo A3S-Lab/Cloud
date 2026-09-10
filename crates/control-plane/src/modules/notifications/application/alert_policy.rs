@@ -1,11 +1,13 @@
-use crate::modules::fleet::domain::repositories::INodeRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::application::{
+    INotificationsEnvironmentAccess, INotificationsNodeAccess, NotificationsEnvironmentScope,
+    NotificationsNodeScope,
+};
 use crate::modules::notifications::domain::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
     NotificationAlertPolicy, NotificationAlertPolicyDefinition, NotificationAlertPolicyEvent,
     NotificationAlertPolicyTarget, RevokeNotificationAlertPolicyWrite,
 };
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, NotificationAlertPolicyId, OrganizationId, PrincipalId,
@@ -53,15 +55,15 @@ pub struct NotificationAlertPolicyMutationResult {
 
 pub struct CreateNotificationAlertPolicyHandler {
     notifications: Arc<dyn INotificationAlertPolicyRepository>,
-    environments: Arc<dyn IEnvironmentRepository>,
-    nodes: Arc<dyn INodeRepository>,
+    environments: Arc<dyn INotificationsEnvironmentAccess>,
+    nodes: Arc<dyn INotificationsNodeAccess>,
 }
 
 impl CreateNotificationAlertPolicyHandler {
     pub fn new(
         notifications: Arc<dyn INotificationAlertPolicyRepository>,
-        environments: Arc<dyn IEnvironmentRepository>,
-        nodes: Arc<dyn INodeRepository>,
+        environments: Arc<dyn INotificationsEnvironmentAccess>,
+        nodes: Arc<dyn INotificationsNodeAccess>,
     ) -> Self {
         Self {
             notifications,
@@ -105,38 +107,30 @@ impl CommandHandler<CreateNotificationAlertPolicy> for CreateNotificationAlertPo
                 NotificationAlertPolicyTarget::Environment {
                     project_id,
                     environment_id,
-                } => match environments
-                    .find(command.organization_id, project_id, environment_id)
-                    .await
-                {
-                    Ok(Some(environment))
-                        if environment.organization_id == command.organization_id
-                            && environment.project_id == project_id
-                            && environment.id == environment_id => {}
-                    Ok(Some(_)) => {
-                        return Err(BootError::Internal(
-                            "environment lookup returned inconsistent identity".into(),
-                        ))
+                } => {
+                    let scope = match NotificationsEnvironmentScope::new(
+                        command.organization_id,
+                        project_id,
+                        environment_id,
+                    ) {
+                        Ok(scope) => scope,
+                        Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                    };
+                    match environments.environment_exists(scope).await {
+                        Ok(true) => {}
+                        Ok(false) => return Ok(Err(alert_policy_not_found())),
+                        Err(error) => return Ok(Err(error.into())),
                     }
-                    Ok(None)
-                    | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                        return Ok(Err(alert_policy_not_found()))
-                    }
-                    Err(error) => return Ok(Err(error.into())),
-                },
+                }
                 NotificationAlertPolicyTarget::Node { node_id } => {
-                    match nodes.find(command.organization_id, node_id).await {
-                        Ok(node)
-                            if node.organization_id == command.organization_id
-                                && node.id == node_id => {}
-                        Ok(_) => {
-                            return Err(BootError::Internal(
-                                "Node lookup returned inconsistent identity".into(),
-                            ))
-                        }
-                        Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                            return Ok(Err(alert_policy_not_found()))
-                        }
+                    let scope = match NotificationsNodeScope::new(command.organization_id, node_id)
+                    {
+                        Ok(scope) => scope,
+                        Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                    };
+                    match nodes.node_exists(scope).await {
+                        Ok(true) => {}
+                        Ok(false) => return Ok(Err(alert_policy_not_found())),
                         Err(error) => return Ok(Err(error.into())),
                     }
                 }

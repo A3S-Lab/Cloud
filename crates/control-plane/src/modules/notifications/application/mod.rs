@@ -1,8 +1,10 @@
 mod alert_policy;
 mod alert_policy_queries;
+mod environment_access;
 mod get_notification;
 mod list_notifications;
 mod mark_notification_read;
+mod node_access;
 mod outbound_dispatch;
 mod outbound_smtp_dispatch;
 mod outbound_subscription;
@@ -17,6 +19,7 @@ pub use alert_policy_queries::{
     GetNotificationAlertPolicy, GetNotificationAlertPolicyHandler, ListNotificationAlertPolicies,
     ListNotificationAlertPoliciesHandler,
 };
+pub use environment_access::{INotificationsEnvironmentAccess, NotificationsEnvironmentScope};
 pub use get_notification::{GetNotification, GetNotificationHandler};
 pub use list_notifications::{
     ListNotifications, ListNotificationsHandler, DEFAULT_NOTIFICATION_LIMIT,
@@ -25,6 +28,7 @@ pub use list_notifications::{
 pub use mark_notification_read::{
     MarkNotificationRead, MarkNotificationReadHandler, MarkNotificationReadResult,
 };
+pub use node_access::{INotificationsNodeAccess, NotificationsNodeScope};
 pub use outbound_dispatch::{
     IOutboundNotificationDispatcher, OutboundNotificationDispatchResult,
     OutboundNotificationDispatcher,
