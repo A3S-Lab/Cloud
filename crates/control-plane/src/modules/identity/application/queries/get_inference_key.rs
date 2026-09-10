@@ -1,5 +1,6 @@
 use crate::modules::identity::domain::entities::InferenceCredential;
 use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{InferenceCredentialId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -9,6 +10,7 @@ use std::sync::Arc;
 pub struct GetInferenceKey {
     pub organization_id: OrganizationId,
     pub credential_id: InferenceCredentialId,
+    pub resource_access: ResourceAccessEvaluator,
 }
 
 impl Query for GetInferenceKey {
@@ -38,12 +40,135 @@ impl QueryHandler<GetInferenceKey> for GetInferenceKeyHandler {
                 .find_inference_credential(query.organization_id, query.credential_id)
                 .await
             {
-                Ok(Some(credential)) => Ok(Ok(credential)),
+                Ok(Some(credential)) => {
+                    if !query
+                        .resource_access
+                        .environment_is_visible(credential.project_id, credential.environment_id)
+                    {
+                        return Ok(Err(ApplicationError::NotFound(
+                            "inference key not found".into(),
+                        )));
+                    }
+                    Ok(Ok(credential))
+                }
                 Ok(None) => Ok(Err(ApplicationError::NotFound(
                     "inference key not found".into(),
                 ))),
                 Err(error) => Ok(Err(error.into())),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::identity::domain::entities::InferenceCredential;
+    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+    use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
+    use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId};
+    use a3s_boot::ModuleRef;
+    use chrono::{Duration, Utc};
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    fn org_wide() -> ResourceAccessEvaluator {
+        ResourceAccessEvaluator::organization_wide()
+    }
+
+    async fn seed(
+        repo: &InMemoryInferenceCredentialRepository,
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> InferenceCredential {
+        let now = Utc::now();
+        let credential = InferenceCredential::issue(
+            InferenceCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_inf_bbbbbbbbbbbbbbbb",
+            VERIFIER,
+            now + Duration::hours(1),
+            now,
+        )
+        .unwrap();
+        repo.create_inference_credential(credential.clone())
+            .await
+            .unwrap();
+        credential
+    }
+
+    #[tokio::test]
+    async fn returns_key_when_owning_environment_is_visible() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let seeded = seed(repo.as_ref(), organization_id, project_id, environment_id).await;
+        let handler = GetInferenceKeyHandler::new(repo);
+
+        let fetched = handler
+            .execute(
+                GetInferenceKey {
+                    organization_id,
+                    credential_id: seeded.id,
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.id, seeded.id);
+    }
+
+    #[tokio::test]
+    async fn hides_key_when_owning_environment_is_ungranted() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let seeded = seed(repo.as_ref(), organization_id, project_id, environment_id).await;
+        let handler = GetInferenceKeyHandler::new(repo);
+
+        let denied = handler
+            .execute(
+                GetInferenceKey {
+                    organization_id,
+                    credential_id: seeded.id,
+                    resource_access: ResourceAccessEvaluator::restricted(vec![
+                        ResourceGrantScope::Environment {
+                            project_id,
+                            environment_id: EnvironmentId::new(),
+                        },
+                    ]),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(denied, ApplicationError::NotFound(_)));
+    }
+
+    #[tokio::test]
+    async fn hides_missing_key_as_not_found() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let handler = GetInferenceKeyHandler::new(repo);
+        let denied = handler
+            .execute(
+                GetInferenceKey {
+                    organization_id: OrganizationId::new(),
+                    credential_id: InferenceCredentialId::new(),
+                    resource_access: org_wide(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap()
+            .unwrap_err();
+        assert!(matches!(denied, ApplicationError::NotFound(_)));
     }
 }

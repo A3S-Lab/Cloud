@@ -8,14 +8,17 @@ use crate::modules::identity::presentation::dto::{
     InferenceKeyResponse, RevokeInferenceKeyRequest,
 };
 use crate::modules::identity::presentation::request_context::{mutation_identity, request_id};
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
+    OrganizationTenantGuard,
+};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
     BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    RouteDefinition, AUTH_SCOPES_METADATA,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -108,6 +111,8 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let resource_access =
+                        resource_access_evaluator(&request.require_auth_principal()?)?;
                     match bus
                         .execute(ListInferenceKeys {
                             organization_id: OrganizationId::from_uuid(
@@ -119,6 +124,7 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            resource_access,
                         })
                         .await?
                     {
@@ -133,31 +139,39 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                 }
             },
         )?
-        .get(
-            "/{organization_id}/inference/keys/{credential_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetInferenceKey {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            credential_id: InferenceCredentialId::from_uuid(
-                                request.param_as::<Uuid>("credential_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(credential) => {
-                            BootResponse::json(&InferenceKeyResponse::from(credential))
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/inference/keys/{credential_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let resource_access =
+                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        match bus
+                            .execute(GetInferenceKey {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                credential_id: InferenceCredentialId::from_uuid(
+                                    request.param_as::<Uuid>("credential_id")?,
+                                ),
+                                resource_access,
+                            })
+                            .await?
+                        {
+                            Ok(credential) => {
+                                BootResponse::json(&InferenceKeyResponse::from(credential))
+                            }
+                            Err(error) => application_error_response(error, request_id),
                         }
-                        Err(error) => application_error_response(error, request_id),
                     }
-                }
-            },
-        )
+                },
+            )?,
+            // Credential ownership is resolved after load; restricted callers need
+            // coarse admission before Identity fail-closes on environment visibility.
+            DeferredResourceScope::Any,
+        )?)
 }
 
 fn delivery_response(status: u16, response: InferenceKeyDeliveryResponse) -> Result<BootResponse> {

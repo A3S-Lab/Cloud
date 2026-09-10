@@ -1333,12 +1333,16 @@ evidence, and fenced release protocol.
   the H0.2 delivery path. Cloud contracts also render typed
   `InferenceCredentialAclProjection` blocks (`render_inference_policy_acl`,
   audience `cloud-inference`, prefix `a3s_inf_`, Argon2id PHC, unique/non-
-  overlapping prefixes). Identity owns durable inference credentials
+  overlapping prefixes).   Identity owns durable inference credentials
   (migration `196`, issuer, Postgres/in-memory repositories) and exposes
   `IInferenceCredentialAclProjectionPort`; Edge managed publication paths
   (cutover, certificate convergence, MCP desired-state, route rollout,
   rollback) load those projections before compile and never store secrets.
-  Full worker publication and Cloud-certified billing tokenizer remain
+  Authorized Inference key list/get queries fail closed on environment
+  visibility (`ListInferenceKeys` / `GetInferenceKey` with
+  `ResourceAccessEvaluator`); get-by-id admits restricted callers through
+  deferred coarse scope then hides ungranted owning environments as
+  `NotFound`. Full worker publication and Cloud-certified billing tokenizer remain
   open (they require Power observation delivery and billing authority,
   not route catalog ownership). Cloud contracts now own the typed route/grant ACL projection
   compiler (`InferenceRouteAclProjection`,
