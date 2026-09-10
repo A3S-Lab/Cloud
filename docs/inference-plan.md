@@ -1357,7 +1357,13 @@ evidence, and fenced release protocol.
   through Boot CQRS (`PublishInferenceRoute` / `RetireInferenceRoute`) and
   `InferenceModule` presentation
   (`POST ENV/inference/routes`, `POST ENV/inference/routes/{route_id}/retire`)
-  with `inference:write` and required `Idempotency-Key`. `PublishInferenceRoute`
+  with `inference:write` and required `Idempotency-Key`. Authorized management
+  reads are composed as `ListInferenceRoutes` / `GetInferenceRoute` with
+  `GET ENV/inference/routes` and `GET ENV/inference/routes/{route_id}` under
+  `inference:read`: list returns non-retired heads only (cursor-paginated by
+  `route_id`), while get-by-id still returns retired heads for inspection.
+  Environment visibility fails closed as `NotFound` like usage showback.
+  `PublishInferenceRoute`
   now fail-closes through Inference-owned
   `IInferenceEdgeRouteBindingAdmissionPort` (Edge
   `EdgeInferenceRouteBindingAdmissionAdapter`) against same-environment

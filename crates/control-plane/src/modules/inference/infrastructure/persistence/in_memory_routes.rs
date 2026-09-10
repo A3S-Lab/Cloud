@@ -1,11 +1,11 @@
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
-    InferenceRouteWriteReference, PublishInferenceRouteWrite, RetireInferenceRouteWrite,
-    IInferenceRouteRepository,
+    IInferenceRouteRepository, InferenceRouteWriteReference, PublishInferenceRouteWrite,
+    RetireInferenceRouteWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, InferenceRouteId, OrganizationId, ProjectId,
-    RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, InferenceRouteId, OrganizationId,
+    ProjectId, RepositoryError,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ impl IInferenceRouteRepository for InMemoryInferenceRouteRepository {
             .cloned())
     }
 
-    async fn list_active_inference_routes_by_environment(
+    async fn list_inference_routes_by_environment(
         &self,
         organization_id: OrganizationId,
         project_id: ProjectId,
@@ -76,9 +76,7 @@ impl IInferenceRouteRepository for InMemoryInferenceRouteRepository {
     ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError> {
         write.validate().map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
-        if let Some(replayed) =
-            replay(&state, write.route.organization_id, &write.idempotency)?
-        {
+        if let Some(replayed) = replay(&state, write.route.organization_id, &write.idempotency)? {
             return Ok(replayed);
         }
         if state.routes.contains_key(&write.route.id) {
@@ -104,9 +102,7 @@ impl IInferenceRouteRepository for InMemoryInferenceRouteRepository {
     ) -> Result<IdempotentWrite<InferenceRoute>, RepositoryError> {
         write.validate().map_err(RepositoryError::Conflict)?;
         let mut state = self.state.write().await;
-        if let Some(replayed) =
-            replay(&state, write.route.organization_id, &write.idempotency)?
-        {
+        if let Some(replayed) = replay(&state, write.route.organization_id, &write.idempotency)? {
             return Ok(replayed);
         }
         let existing = state

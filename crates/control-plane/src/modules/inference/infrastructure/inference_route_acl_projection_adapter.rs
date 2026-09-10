@@ -32,7 +32,7 @@ impl IInferenceRouteAclProjectionPort for InferenceRouteAclProjectionAdapter {
         for scope in unique {
             let routes = self
                 .routes
-                .list_active_inference_routes_by_environment(
+                .list_inference_routes_by_environment(
                     scope.organization_id(),
                     scope.project_id(),
                     scope.environment_id(),

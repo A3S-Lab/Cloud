@@ -6,8 +6,8 @@ use crate::infrastructure::{
 };
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
-    InferenceRouteWriteReference, PublishInferenceRouteWrite, RetireInferenceRouteWrite,
-    IInferenceRouteRepository,
+    IInferenceRouteRepository, InferenceRouteWriteReference, PublishInferenceRouteWrite,
+    RetireInferenceRouteWrite,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::shared_kernel::domain::{
@@ -66,7 +66,7 @@ impl IInferenceRouteRepository for PostgresInferenceRouteRepository {
             .map_err(transaction_error)
     }
 
-    async fn list_active_inference_routes_by_environment(
+    async fn list_inference_routes_by_environment(
         &self,
         organization_id: OrganizationId,
         project_id: ProjectId,
@@ -83,9 +83,7 @@ impl IInferenceRouteRepository for PostgresInferenceRouteRepository {
                                 InferenceRoutes::organization_id().eq(organization_id.as_uuid()),
                             )
                             .filter(InferenceRoutes::project_id().eq(project_id.as_uuid()))
-                            .filter(
-                                InferenceRoutes::environment_id().eq(environment_id.as_uuid()),
-                            )
+                            .filter(InferenceRoutes::environment_id().eq(environment_id.as_uuid()))
                             .filter(InferenceRoutes::retired_at().is_null())
                             .order_by(InferenceRoutes::id(), OrderDirection::Asc),
                     )

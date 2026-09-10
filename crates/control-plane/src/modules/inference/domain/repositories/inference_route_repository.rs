@@ -1,7 +1,7 @@
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, IdempotentWrite, InferenceRouteId, OrganizationId, ProjectId,
-    RepositoryError,
+    EnvironmentId, IdempotencyRequest, IdempotentWrite, InferenceRouteId, OrganizationId,
+    ProjectId, RepositoryError,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -81,7 +81,12 @@ pub trait IInferenceRouteRepository: Send + Sync {
         route_id: InferenceRouteId,
     ) -> Result<Option<InferenceRoute>, RepositoryError>;
 
-    async fn list_active_inference_routes_by_environment(
+    /// List Inference route catalog heads for one environment.
+    ///
+    /// Returns **non-retired** routes only, sorted by `route_id` ascending.
+    /// Retired heads remain readable via [`Self::find_inference_route`] so
+    /// clients can inspect retirement. Optional `includeRetired` is deferred.
+    async fn list_inference_routes_by_environment(
         &self,
         organization_id: OrganizationId,
         project_id: ProjectId,

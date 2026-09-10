@@ -1,8 +1,9 @@
+use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::domain::{
     InferenceRoute, InferenceUsageDailyRollup, InferenceUsageRequestFact,
     InferenceUsageRetentionStatus,
 };
-use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
+use crate::modules::inference::InferenceRoutePage;
 use a3s_cloud_contracts::{
     InferenceEndpointAcl, InferenceGrantAclProjection, InferenceLimitsAclProjection,
     InferenceModelAclProjection, InferenceTargetAclProjection, InferenceUsageEndpointV1,
@@ -173,6 +174,22 @@ impl From<InferenceRoute> for InferenceRouteResponse {
             created_at: route.created_at(),
             updated_at: route.updated_at(),
             retired_at: route.retired_at(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InferenceRoutePageResponse {
+    pub items: Vec<InferenceRouteResponse>,
+    pub next_cursor: Option<String>,
+}
+
+impl From<InferenceRoutePage> for InferenceRoutePageResponse {
+    fn from(page: InferenceRoutePage) -> Self {
+        Self {
+            items: page.routes.into_iter().map(Into::into).collect(),
+            next_cursor: page.next_cursor,
         }
     }
 }

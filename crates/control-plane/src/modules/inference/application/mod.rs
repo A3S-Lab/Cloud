@@ -9,7 +9,7 @@ mod worker_acl_projection;
 
 pub use commands::*;
 pub use edge_route_binding_admission::{
-    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
+    IInferenceEdgeRouteBindingAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
     PermitInferenceEdgeRouteBindingAdmission, EDGE_ROUTE_BINDING_INVALID,
 };
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
@@ -26,3 +26,7 @@ mod inference_route_catalog_tests;
 #[cfg(test)]
 #[path = "inference_route_binding_admission_tests.rs"]
 mod inference_route_binding_admission_tests;
+
+#[cfg(test)]
+#[path = "inference_route_query_tests.rs"]
+mod inference_route_query_tests;

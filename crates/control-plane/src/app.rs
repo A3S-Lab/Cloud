@@ -2885,6 +2885,8 @@ fn build_management_application_with_health(
     let inference_key_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
     let publish_inference_routes = Arc::clone(&inference_routes);
+    let list_inference_routes = Arc::clone(&inference_routes);
+    let get_inference_routes = Arc::clone(&inference_routes);
     let retire_inference_routes = inference_routes;
     let create_execution_template_projects = Arc::clone(&projects);
     let list_execution_template_projects = Arc::clone(&projects);
@@ -4322,6 +4324,12 @@ fn build_management_application_with_health(
                         get_usage_request_fact,
                         inference_usage_retention_policy,
                     ),
+                )
+                .query_handler::<crate::modules::inference::ListInferenceRoutes, _>(
+                    crate::modules::inference::ListInferenceRoutesHandler::new(list_inference_routes),
+                )
+                .query_handler::<crate::modules::inference::GetInferenceRoute, _>(
+                    crate::modules::inference::GetInferenceRouteHandler::new(get_inference_routes),
                 )
                 .query_handler::<crate::modules::edge::ListDomainClaims, _>(
                     ListDomainClaimsHandler::new(list_domain_claims),

@@ -33,6 +33,10 @@ fleet/presentation/controllers/node_management_controller.rs -> identity/present
 fleet/presentation/controllers/node_pool_management_controller.rs -> identity/presentation
 fleet/presentation/controllers/node_pool_queries_controller.rs -> identity/presentation
 fleet/presentation/controllers/node_queries_controller.rs -> identity/presentation
+inference/presentation/inference_route_commands_controller.rs -> identity/presentation
+inference/presentation/inference_route_queries_controller.rs -> identity/presentation
+inference/presentation/usage_queries_controller.rs -> identity/presentation
+inference/presentation/usage_retention_controller.rs -> identity/presentation
 notifications/presentation/controller.rs -> identity/presentation
 operations/presentation/controllers/operations_query_controller.rs -> identity/presentation
 projects/presentation/controllers/project_queries_controller.rs -> identity/presentation

@@ -76,7 +76,7 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     let routes_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
     );
-    let body = publish_body(domain_claim_id, gateway_scope_id);
+    let body = publish_body(domain_claim_id, gateway_scope_id, "api.example.com");
 
     assert_eq!(
         app.call(
@@ -159,7 +159,167 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
     Ok(())
 }
 
-fn publish_body(domain_claim_id: DomainClaimId, gateway_scope_id: GatewayScopeId) -> Value {
+#[tokio::test]
+async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization =
+        bootstrap_organization(&app, "inference-route-read-http", "Inference route reads").await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-read-project",
+        "Inference Route Reads",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-read-environment",
+        "Production",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-read-token",
+        "inference-route-read",
+        INFERENCE_ROUTE_READ_TOKEN,
+        &[ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-write-token",
+        "inference-route-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "read.example.com",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:publish-for-read",
+            publish_body(domain_claim_id, gateway_scope_id, "read.example.com"),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let route_id = response_id(&published)?;
+    let route_path = format!("{routes_path}/{route_id}");
+
+    assert_eq!(
+        app.call(BootRequest::new(HttpMethod::Get, &routes_path))
+            .await?
+            .status(),
+        401
+    );
+    assert_eq!(
+        app.call(BootRequest::new(HttpMethod::Get, &route_path))
+            .await?
+            .status(),
+        401
+    );
+
+    let write_only_list = app
+        .call(BootRequest::new(HttpMethod::Get, &routes_path).with_header(
+            "authorization",
+            format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+        ))
+        .await?;
+    assert_eq!(write_only_list.status(), 403);
+
+    let listed = app
+        .call(BootRequest::new(HttpMethod::Get, &routes_path).with_header(
+            "authorization",
+            format!("Bearer {INFERENCE_ROUTE_READ_TOKEN}"),
+        ))
+        .await?;
+    assert_eq!(listed.status(), 200);
+    let listed_json = response_json(&listed)?;
+    assert_eq!(listed_json["data"]["items"].as_array().unwrap().len(), 1);
+    assert_eq!(listed_json["data"]["items"][0]["id"], json!(route_id));
+    assert!(listed_json["data"]["items"][0]["retiredAt"].is_null());
+    assert!(listed_json["data"]["nextCursor"].is_null());
+
+    let fetched = app
+        .call(BootRequest::new(HttpMethod::Get, &route_path).with_header(
+            "authorization",
+            format!("Bearer {INFERENCE_ROUTE_READ_TOKEN}"),
+        ))
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    let fetched_json = response_json(&fetched)?;
+    assert_eq!(fetched_json["data"]["id"], json!(route_id));
+    assert_eq!(fetched_json["data"]["policyRevision"], json!(1));
+    assert!(fetched_json["data"]["models"].is_array());
+    assert!(fetched_json["data"]["grants"].is_array());
+    assert!(fetched_json["data"]["binding"].is_object());
+
+    let retire_path = format!("{routes_path}/{route_id}/retire");
+    let retired = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &retire_path)
+                .with_header(
+                    "authorization",
+                    format!("Bearer {INFERENCE_ROUTE_WRITE_TOKEN}"),
+                )
+                .with_header("content-type", "application/json")
+                .with_header("idempotency-key", "inference-route:retire-for-read"),
+        )
+        .await?;
+    assert_eq!(retired.status(), 202);
+
+    let listed_after_retire = app
+        .call(BootRequest::new(HttpMethod::Get, &routes_path).with_header(
+            "authorization",
+            format!("Bearer {INFERENCE_ROUTE_READ_TOKEN}"),
+        ))
+        .await?;
+    assert_eq!(listed_after_retire.status(), 200);
+    assert!(response_json(&listed_after_retire)?["data"]["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
+
+    let fetched_retired = app
+        .call(BootRequest::new(HttpMethod::Get, &route_path).with_header(
+            "authorization",
+            format!("Bearer {INFERENCE_ROUTE_READ_TOKEN}"),
+        ))
+        .await?;
+    assert_eq!(fetched_retired.status(), 200);
+    assert!(response_json(&fetched_retired)?["data"]["retiredAt"].is_string());
+    Ok(())
+}
+
+fn publish_body(
+    domain_claim_id: DomainClaimId,
+    gateway_scope_id: GatewayScopeId,
+    hostname: &str,
+) -> Value {
     json!({
         "router": "inference",
         "models": [{
@@ -188,7 +348,7 @@ fn publish_body(domain_claim_id: DomainClaimId, gateway_scope_id: GatewayScopeId
         "binding": {
             "domainClaimId": domain_claim_id.as_uuid(),
             "gatewayScopeId": gateway_scope_id.as_uuid(),
-            "hostname": "api.example.com",
+            "hostname": hostname,
             "pathPrefix": "/v1",
             "bindingGeneration": 1
         }
