@@ -2699,6 +2699,10 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
 
     let collection = &document["paths"][base];
     assert_eq!(collection["get"]["tags"], json!(["Inference"]));
+    assert_eq!(
+        collection["get"]["summary"],
+        json!("List inference routes")
+    );
     assert!(collection["get"]["responses"]["200"].is_object());
     assert_eq!(collection["post"]["tags"], json!(["Inference"]));
     assert_eq!(
@@ -2723,6 +2727,10 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
 
     let get_route = &document["paths"][&route]["get"];
     assert_eq!(get_route["tags"], json!(["Inference"]));
+    assert_eq!(
+        get_route["summary"],
+        json!("Get an inference route")
+    );
     assert!(get_route["responses"]["200"].is_object());
 
     let revise = &document["paths"][&revisions]["post"];

@@ -584,6 +584,14 @@ fn operation_summary(method: &str, path: &str) -> String {
             "get",
             "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference-usage/requests/{request_id}",
         ) => return "Get an inference usage request fact".into(),
+        (
+            "get",
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes",
+        ) => return "List inference routes".into(),
+        (
+            "get",
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}",
+        ) => return "Get an inference route".into(),
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
         ("post", "/organizations/{organization_id}/plugin-registries") => {
             return "Enroll a plugin registry".into()
