@@ -1,6 +1,6 @@
 # A3S Ecosystem Project Roadmaps
 
-**Planning baseline: 2026-08-28.**
+**Planning baseline: 2026-09-10.**
 
 This directory assigns a product mission, ordered outcomes, dependencies,
 release evidence, and an explicit negative boundary to every project in the
@@ -13,8 +13,12 @@ The authority order is:
    implementation details and current evidence;
 2. this directory decides cross-project ownership and dependency order;
 3. the [A3S Cloud product roadmap](../../ROADMAP.md) decides when an integrated
-   Cloud capability is publicly available; and
-4. an exact-revision integration bundle decides whether several repositories
+   Cloud capability is publicly available;
+4. the [architecture optimization and execution roadmap](../architecture-optimization-roadmap.md)
+   decides Wave 0–3 execution order, dual-track `I0`, and Cloud-only backlog;
+5. the monorepo [Cloud substrate dependency roadmap](../../../../docs/cloud-substrate-dependency-roadmap.md)
+   indexes per-crate obligations for those waves; and
+6. an exact-revision integration bundle decides whether several repositories
    work together. A passing mock or an unpinned `main` branch is not that
    evidence.
 
@@ -124,14 +128,26 @@ though it is not itself a submodule.
 ## 4. Delivery waves
 
 The waves define dependency order, not teams or calendar dates. Independent
-work inside one wave can proceed in parallel.
+work inside one wave can proceed in parallel. Map these portfolio waves to the
+Cloud execution waves in
+[architecture-optimization-roadmap.md](../architecture-optimization-roadmap.md):
+
+| Portfolio wave | Cloud execution wave | Critical Cloud gates |
+| --- | --- | --- |
+| `ECO-W0` Contract freeze | Wave 0 integrity + COMP foundations | Architecture audit ratchets; `C0.4-COMP*` |
+| `ECO-W1` Execution substrate | Wave 1 | `BX0` then `PW0` |
+| `ECO-W2` Durable coordination | Wave 2 (`CD0` / Flow) | `CD0`, Flow-backed Operations |
+| `ECO-W3` Request and compute planes | Wave 1–2 publish + I0 Track B | Gateway `H0.2`+, `I0.2b`+, Power observations |
+| `ECO-W4` Agent and capability products | Wave 3 verticals | `A1`, `W0`, `FN0`, `MCP0`, `CELL0`, `U0` |
+| `ECO-W5` Platform operations | Wave 2 HA / OBS / WI | `H0.3`–`H0.5`, `H0.4-WI*`, `H0.5-OBS*` |
+| `ECO-W6` Distribution | After single-region platform | Compatibility lock, clients, installers |
 
 | Wave | Outcome | Required exit |
 | --- | --- | --- |
 | `ECO-W0` Contract freeze | ACL schemas, published contracts, owner map, operation semantics, and compatibility policy are versioned | No ambiguous owner or cross-context private import remains in the slice |
-| `ECO-W1` Execution substrate | OCI Runtime, Box, and Runtime pass the exact Task/Service capability matrix on real providers | Restart, replay, fencing, endpoint, logs, output, and cleanup evidence passes |
+| `ECO-W1` Execution substrate | OCI Runtime, Box, and Runtime pass the exact Task/Service capability matrix on real providers; Power remains unbound until `PW0` | Restart, replay, fencing, endpoint, logs, output, and cleanup evidence passes; no Docker execution fallback |
 | `ECO-W2` Durable coordination | Flow history and Cloud operation/outbox truth precede Lane/Redis dispatch | Queue loss is reconstructible and no acknowledged transition is lost |
-| `ECO-W3` Request and compute planes | Gateway snapshots, Power inference workers, object storage, CPU/GPU inventories, and workload placement compose | Stale generations cannot receive traffic or resource leases |
+| `ECO-W3` Request and compute planes | Gateway snapshots, Power inference workers (after observation delivery), object storage, CPU/GPU inventories, and workload placement compose | Stale generations cannot receive traffic or resource leases; empty `workers` fail closed until `PW0` |
 | `ECO-W4` Agent and capability products | Code, AHP, Use, registries, model supply, AaaS, WaaS, FaaS, and Durable Cell integrate | Every invocation is tenant-scoped, digest-bound, auditable, and recoverable |
 | `ECO-W5` Platform operations | Multi-tenant lifecycle, system-admin RBAC, quotas, telemetry, security, upgrades, and disaster recovery pass | Multi-replica and dependency-failure drills meet declared SLOs |
 | `ECO-W6` Distribution | Clients, tests, installers, compatibility lock, and signed artifacts describe the same release | A clean host installs, verifies, exercises, upgrades, rolls back, and removes the exact bundle |

@@ -1,8 +1,13 @@
 # Operations, Client, and Release Project Roadmaps
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 This group makes execution observable, enforceable, usable, testable, and
 installable. Client and telemetry projects remain consumers of platform truth;
 they do not become shadow control planes.
+
+Cloud Wave mapping: Wave 2 `H0.5-OBS*` / `EV0` / `POL*` for Observer+Sentry;
+Wave 2+ for clients and `compat/cloud-stack.acl` distribution.
 
 ## A3S Observer
 
@@ -21,6 +26,9 @@ Observer does not decide IAM, business authorization, desired state, or
 security judgment. It observes and enforces an explicitly supplied policy
 generation.
 
+**Cloud obligation (`H0.5-OBS*`):** kernel evidence and OTel correlation inputs
+for Operations `Incident` linkage; never mutate Cloud desired state.
+
 ## A3S Sentry
 
 **Mission:** judge runtime-security evidence through deterministic and
@@ -36,6 +44,10 @@ mechanism.
 
 Sentry is the runtime-security policy brain, not Cloud IAM, Gateway request
 authorization, a general moderation service, or the kernel enforcer.
+
+**Cloud obligation:** runtime-security judgment and signed policy receipts for
+`OBS`/`EV0`/`POL*`; Notifications and Operations own alerts/incidents—Sentry
+does not.
 
 ## A3S CLI
 
@@ -163,6 +175,10 @@ upgrade, repair, rollback, and release metadata for that graph.
 
 The root distribution is a compatibility and delivery owner, not another
 Runtime, package Registry, orchestrator, or source-of-truth database.
+
+**Cloud obligation (`COMP` / `CD0`):** keep `compat/cloud-stack.acl` exact;
+`a3s-updater` may distribute components but must **never** become a privileged
+parallel updater bypassing Delivery Pipelines for Cloud system services.
 
 ## Integration exit
 

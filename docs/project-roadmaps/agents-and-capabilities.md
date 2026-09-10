@@ -1,8 +1,13 @@
 # Agent and Capability Project Roadmaps
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 These projects define what an Agent can do, how a host supervises it, and how
 reviewed capabilities enter a running generation. They do not own Cloud
 tenancy, placement, public routing, or node execution.
+
+Cloud Wave mapping: Wave 3 verticals (`A1`, `U0`, …) after Wave 1–2 substrate
+(`BX0`/`PW0`/`CD0`/`WI`/`OBS`).
 
 ## A3S Code
 
@@ -21,6 +26,11 @@ portable recovery boundaries.
 Code owns Agent semantics, not Cloud AgentRelease/Deployment, tenant IAM,
 checkpoint authorization/retention, object storage, Runtime Unit lifecycle,
 placement, autoscaling, public routes, Function releases, or provider secrets.
+
+**Cloud obligation (`A1`):** conform to Cloud `AgentExecutionProvider` without a
+second lifecycle/scheduler; real Box recovery evidence remains a Cloud gate
+(`CAR-05` / `A1.2` pairing). Local detail:
+[Code ROADMAP](https://github.com/A3S-Lab/Code/blob/main/ROADMAP.md).
 
 ## Agent Harness Protocol
 
@@ -56,6 +66,10 @@ Use does not own Cloud Organization/Project assignment, tenant billing,
 workload placement, public routes, Runtime lifecycle, Agent sessions, or the
 source code of installed providers. Cloud stores tenant enrollment and binding
 intent; Use owns package truth and exact capability activation.
+
+**Cloud obligation (`U0`):** digest-only apply/observation through the shared
+Plugin Manager; never add a Use-owned scheduler or node channel. Local detail:
+[Use ROADMAP](https://github.com/A3S-Lab/Use/blob/main/ROADMAP.md).
 
 ## A3S Use Packages
 

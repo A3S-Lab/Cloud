@@ -7,8 +7,11 @@
 Execution order for closing these gaps lives in
 [architecture-optimization-roadmap.md](architecture-optimization-roadmap.md)
 (Wave 0 integrity, Wave 1 `BX0`/`PW0`, Wave 2 platform P0, Wave 3 verticals,
-and dual-track I0). This document remains the structural-versus-delivery gap
-authority; the optimization roadmap does not invent parallel gates.
+and dual-track I0). Per-subproject missions and Cloud obligations are in
+[project-roadmaps/](project-roadmaps/README.md) and the monorepo
+[cloud-substrate-dependency-roadmap.md](../../../docs/cloud-substrate-dependency-roadmap.md).
+This document remains the structural-versus-delivery gap authority; the
+optimization roadmap does not invent parallel gates.
 
 A3S Cloud no longer lacks a coherent product thesis. The target already covers
 AaaS, WaaS, FaaS, first-class Durable Cell collaboration, local/distributed

@@ -1,5 +1,7 @@
 # A3S Cloud Project Roadmap
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 ## A3S Cloud
 
 **Mission:** provide a self-hosted, multi-tenant, Agent-first developer platform
@@ -10,6 +12,12 @@ A3S Cloud owns product intent and durable desired state. It composes A3S
 libraries through ports, projects admitted execution to A3S Runtime over A3S
 Box, and publishes every external surface through A3S Gateway. It provides no
 Cloud management Dashboard.
+
+Execution order, dual-track `I0`, and the near-term Cloud-only backlog live in
+[architecture-optimization-roadmap.md](../architecture-optimization-roadmap.md).
+Per-crate obligations live in the monorepo
+[cloud-substrate-dependency-roadmap.md](../../../../docs/cloud-substrate-dependency-roadmap.md)
+and in this directory’s portfolio files.
 
 ## 1. Bounded-context portfolio
 
@@ -44,7 +52,8 @@ only Unit lifecycle contract.
 
 | Order | Planned outcome | Exit evidence |
 | --- | --- | --- |
-| `CLOUD-R0` | Remove architecture debt and enforce DDD/hexagonal boundaries, one repository mapping per table, one composition root, and explicit AOP pipelines | Architecture fitness gates reach zero allowlisted private cross-context imports and presentation-to-infrastructure shortcuts |
+| `CLOUD-R0` | Remove architecture debt and enforce DDD/hexagonal boundaries, one repository mapping per table, one composition root, and explicit AOP pipelines (**Wave 0**, parallel forever) | Architecture fitness gates reach zero allowlisted private cross-context imports and presentation-to-infrastructure shortcuts |
+| `CLOUD-R1` | Complete installation/Organization/Project/Environment tenancy, tenant IAM, separate system-admin RBAC, quotas, support/break-glass, and lifecycle isolation | Cross-tenant denial, last-owner, admin-without-tenant-access, quota contention, deletion, export, and restore tests pass |
 | `CLOUD-R1` | Complete installation/Organization/Project/Environment tenancy, tenant IAM, separate system-admin RBAC, quotas, support/break-glass, and lifecycle isolation | Cross-tenant denial, last-owner, admin-without-tenant-access, quota contention, deletion, export, and restore tests pass |
 | `CLOUD-R2` | Harden every API for multi-replica execution with durable idempotency, request digests, CAS, transactions, Operations, Outbox, rate shaping, cache epochs, distributed locks, and saga recovery | Duplicate, concurrent, stale, lost-response, lock-expiry, relay-replay, and cross-provider failure matrices pass |
 | `CLOUD-R3` | Complete Git, OCI, Use, model/weight, object, and artifact supply with immutable revisions, signatures, provenance, licenses, scanning, and retention | Source-to-release provenance verifies; compromised, revoked, mutable, cross-tenant, and missing-byte paths fail closed |

@@ -14,6 +14,7 @@ plans.
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
 | [Architecture optimization and execution roadmap](docs/architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity parallel track, and near-term Cloud-only backlog |
 | [Ecosystem project roadmaps](docs/project-roadmaps/README.md) | Mission, ordered outcomes, dependencies, exit evidence, and negative boundary for every A3S subproject |
+| [Cloud substrate dependency roadmap](../../docs/cloud-substrate-dependency-roadmap.md) | Monorepo index of Wave 1–3 crate obligations aligned to Cloud gates |
 | [Platform completeness review](docs/platform-gap-analysis.md) | Structural gaps versus delivery gaps, priority, owner, and proposed closure gates |
 | [AI service platform architecture](docs/ai-service-platform-architecture.md) | Canonical AaaS, WaaS, FaaS, Durable Cell, Inference, Gateway, Runtime, and Box product boundary |
 | [Technical architecture](docs/architecture.md) | Stable component ownership, control paths, consistency boundaries, deployment profiles, and failure behavior |

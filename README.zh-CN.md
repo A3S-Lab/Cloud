@@ -300,6 +300,7 @@ RUSTDOCFLAGS="-D warnings" cargo doc --workspace --no-deps
 | --- | --- |
 | [产品路线图](ROADMAP.md) | 闸门状态、依赖、证据、交付顺序 |
 | [架构优化与执行路线图](docs/architecture-optimization-roadmap.md) | 执行波次、I0 双轨、完整性并行轨 |
+| [生态子项目路线图](docs/project-roadmaps/README.md) | 各子项目 Cloud 义务与组合波次 |
 | [技术架构](docs/architecture.md) | 所有权、拓扑、一致性、失败行为 |
 | [AI 服务平台](docs/ai-service-platform-architecture.md) | AaaS / WaaS / FaaS / Cell / Inference 组合 |
 | [推理计划](docs/inference-plan.md) | I0 合约、Edge ACL、用量、Power/Box 依赖 |

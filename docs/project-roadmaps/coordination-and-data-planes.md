@@ -1,9 +1,21 @@
 # Coordination and Data-Plane Project Roadmaps
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 This group turns already-admitted intent into durable coordination, bounded
 dispatch, external traffic, model execution, and object bytes. The central
 rule is that a data plane consumes immutable desired-state projections and
 publishes observations; it does not silently become a management plane.
+
+Cloud Wave mapping:
+
+| Local outcomes | Cloud wave / gates |
+| --- | --- |
+| `FLOW-R*` | Wave 2 `CD0`; Wave 3 `W0` / Operations |
+| `LANE-R*` | Wave 2–3 pressure after durable admission |
+| `GATEWAY-R*` | Wave 1–3 publish; `I0.2b`+; `WEB0` |
+| `POWER-R*` | Wave 1 `PW0` then I0 Track B |
+| Object provider | `S0` / Cell / WEB / model supply |
 
 ## A3S Flow
 
@@ -32,6 +44,13 @@ redrive APIs, Lane admission, Workloads/Fleet placement, worker fleet rollout,
 and regional recovery remain Cloud capabilities; Flow supplies only the
 durable primitives and versioned protocols needed to implement them.
 
+### Cloud obligations
+
+| Priority | Obligation | Forbidden |
+| --- | --- | --- |
+| `CD0` | Durable stage history and receipts for Delivery Pipelines (source→build→release→promote→rollback) | Parallel Cloud updater or second workflow engine |
+| `W0` / Operations | Worker-independent replay for product adapters Cloud owns | Flow history as Agent transcript or product retry tables as truth |
+
 ## A3S Lane
 
 **Mission:** enforce priority, concurrency, pressure, and fairness for work
@@ -48,6 +67,9 @@ Lane does not own Workflow history, product retries, schedules, DLQ business
 decisions, idempotency truth, desired replicas, hard quotas, or Runtime logs.
 Its optional job, retry, repeat, Flow, and log helpers are library features, not
 parallel Cloud authorities.
+
+**Cloud obligation:** post-commit fairness for CD0/workers/pressure only.
+Redis/Lane never become quota or desired-state truth.
 
 ## A3S Gateway
 
@@ -68,6 +90,17 @@ business state, evaluates model-provider inventory, publishes a target that
 Cloud has not admitted, or becomes a second admin API. Direct public access to
 internal Cloud processes or provider services is prohibited.
 
+### Cloud obligations (Wave 1–3)
+
+| Priority | Obligation | Forbidden |
+| --- | --- | --- |
+| `H0.2`+ | Exact Cloud-managed snapshot apply/ACK, recovery, certificate/target replacement | Partial snapshots; Cloud request-byte proxy |
+| `I0.2b`+ | OpenAI-compatible dispatch, auth denial, fallback, streaming with **real** Power workers | Inventing workers when Edge snapshots omit them; storing bearers |
+| `WEB0` | Read-only static-object target for immutable Web releases | Becoming east-west mesh control or a Dashboard backend |
+| Dual-track `I0` | Keep fail-closed empty workers until `PW0` observation delivery | Marketing inference “available” on Track A alone |
+
+Local roadmap detail: [Gateway ROADMAP](https://github.com/A3S-Lab/Gateway/blob/main/ROADMAP.md).
+
 ## A3S Power
 
 **Mission:** execute model inference efficiently on selected CPU/GPU resources,
@@ -86,6 +119,19 @@ Power does not own logical Models, external provider accounts, weight licenses,
 tenant grants, ModelScope resolution, placement, quotas, autoscaling, public
 routing, or request authorization. Cloud Model Supply, Inference, Fleet, and
 Gateway retain those authorities.
+
+### Cloud `PW0` obligations (Wave 1, after `BX0`)
+
+Power is an ordinary **Box-hosted Runtime Service**, not a control plane.
+`compat/cloud-stack.acl` remains unbound for Power until `PW0` lands.
+
+| Priority | Obligation | Forbidden |
+| --- | --- | --- |
+| `PW0` | ACL-native immutable Power Service profile; MicroVM/TEE evidence; health; inference; recovery; cleanup | Second scheduler, node channel, or desired-state store |
+| Observation delivery | Versioned worker capability/observation facts Gateway and Cloud Edge can bind | Asking Cloud to invent `workers` ACL blocks or `InferenceDeployment` aggregates |
+| Lock entry | Pin into `compat/cloud-stack.acl` with Gateway/Cloud revisions together | Claiming I0 data-plane availability without Box+Gateway Verified evidence |
+
+Local roadmap detail: [Power ROADMAP](https://github.com/A3S-Lab/Power/blob/main/ROADMAP.md).
 
 ## RustFS / S3-compatible object provider
 
@@ -114,6 +160,7 @@ This group is ready when:
 - Gateway routes only a complete, versioned, admitted snapshot and is the sole
   public path;
 - a distributed Power deployment is fenced by exact model, weights, runtime,
-  topology, and worker generations; and
+  topology, and worker generations **after** `PW0` observation delivery; empty
+  workers remain fail-closed until then; and
 - object-provider loss and restore preserve manifest-to-byte integrity without
   making the provider database a product authority.

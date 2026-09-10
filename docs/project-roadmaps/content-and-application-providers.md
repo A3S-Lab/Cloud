@@ -1,10 +1,16 @@
 # Content and Application Provider Project Roadmaps
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 These projects supply reusable retrieval, memory, browser, document, science,
 hardware, and interface capabilities. Their stable output is a typed provider
 contract plus bounded evidence. A3S Use packages and activates them; A3S Code
 or Cloud products consume them. They must not acquire a second copy of tenant,
 deployment, or package authority.
+
+**Cloud adjacency:** these crates are **not** Wave 1–2 blockers (`BX0`/`PW0`/
+`CD0`/`WI`/`OBS`). They must not grow Cloud placement, PostgreSQL desired-state,
+or public-ingress authority.
 
 ## A3S Search
 

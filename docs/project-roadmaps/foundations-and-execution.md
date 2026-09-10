@@ -1,9 +1,19 @@
 # Foundations and Execution Project Roadmaps
 
+**Aligned with Cloud execution baseline: 2026-09-10.**
+
 This document plans the reusable language, application, persistence, event,
 and execution mechanisms below A3S Cloud. These projects must remain product
 neutral: Cloud composes them through ports and published contracts rather than
 moving tenant or product semantics into infrastructure libraries.
+
+Cloud Wave mapping (see
+[architecture-optimization-roadmap.md](../architecture-optimization-roadmap.md)):
+
+| Local outcomes | Cloud wave / gates |
+| --- | --- |
+| `ACL-R*`, `ORM-R*`, `BOOT-R*`, `EVENT-R*` | Wave 0 integrity + `F0` / `COMP` foundations |
+| `OCI-R*`, `BOX-R*`, `RUNTIME-R*` | Wave 1 `BX0` (release blocker); Runtime also feeds Wave 2 `WI` |
 
 ## A3S ACL
 
@@ -19,6 +29,10 @@ specification.
 
 ACL does not decide tenant policy, authorization, placement, retry, or business
 defaults. A bounded context owns those decisions and supplies the schema.
+
+**Cloud obligation:** byte-stable digests and schema stability for Edge
+snapshots, Box build plans, WI policies, and `C0.4-COMP*` skew locks. No
+TOML/HCL product-config parsers.
 
 ## A3S ORM
 
@@ -37,6 +51,9 @@ transactions, saga policy, or distributed XA. The Application layer chooses
 the transaction boundary; Cloud operations and Flow coordinate work outside
 one database commit.
 
+**Cloud obligation:** support Wave 0 “one ORM mapping authority per physical
+table” and expand/contract migration fencing used by Cloud HA/`CD0`.
+
 ## A3S Boot
 
 **Mission:** provide adapter-first modular process composition and explicit,
@@ -51,6 +68,9 @@ testable cross-cutting pipelines for Rust services.
 Boot owns aspect mechanics, not aspect policy. Cloud owns authentication,
 authorization, idempotency, rate-limit, cache, transaction, audit, and
 redaction decisions and registers those policies explicitly.
+
+**Cloud obligation:** compose `api` / `worker` / `relay` / Node Agent process
+roles without a service locator in Domain code (`F0`).
 
 ## A3S Event
 
@@ -68,6 +88,9 @@ Outbox, retry non-idempotent business work, or own workflow history. Domain
 events are committed by their bounded context; Event transports committed
 facts.
 
+**Cloud obligation:** Outbox relay transport only—never become desired-state
+or workflow-history truth.
+
 ## A3S OCI Runtime
 
 **Mission:** own the complete low-level execution and isolation lifecycle for
@@ -83,6 +106,9 @@ and service protocol.
 OCI Runtime does not pull or build images, manage registries, allocate product
 networks or volumes, schedule cluster placement, or understand Agent,
 Workflow, Function, Cell, MCP, or tenant semantics.
+
+**Cloud obligation:** hardware-backed drivers Box pins for `BX0.3` MicroVM/TEE
+paths; unsupported isolation fails before launch.
 
 ## A3S Box
 
@@ -119,6 +145,19 @@ Box does not own Cloud Workloads, Fleet placement, autoscaling, tenant quotas,
 public routes, Runtime Unit identity, product registries, or AI product
 semantics.
 
+### Cloud `BX0` obligations (Wave 1)
+
+Cloud treats Box as the **sole** node-local execution and image-build provider.
+Until `BX0` exits, Runtime/deployment/edge production claims remain provisional.
+
+| Priority | Obligation | Forbidden |
+| --- | --- | --- |
+| `BX0.3` | Complete Sandbox plus hardware MicroVM/TEE isolation and attestation evidence consumed by Cloud Node Agent | Silent isolation downgrade; Docker/Bollard execution fallback |
+| `BX0.4`–`BX0.5` | Digest-pinned Task/Service lifecycle, build path, process-death recovery, cleanup, and clean-host EXIT with real receipts | Claiming historical `R0`/`N0`/`D0`/`E0` as Box-current without re-cert |
+| Pairing | Re-certify against the locked Runtime revision after each isolation slice | Parallel lifecycle adapters inside Cloud product domains |
+
+Local roadmap detail: [Box ROADMAP](https://github.com/A3S-Lab/Box/blob/main/ROADMAP.md).
+
 ## A3S Runtime
 
 **Mission:** provide the provider-neutral, durable lifecycle contract for one
@@ -147,6 +186,16 @@ Durable Cell records, MCP protocol, model routing, placement, replicas,
 autoscaling, routes, tenancy, billing, or credentials. Those products bind an
 opaque semantics profile to the same generic lifecycle.
 
+### Cloud substrate obligations
+
+| Priority | Obligation | Forbidden |
+| --- | --- | --- |
+| `BX0` pairing | Exact-revision Box provider certification for advertised Task/Service capabilities | Inferring unadvertised capabilities |
+| `H0.4-WI*` | Opaque identity-attachment digest + provider attestation evidence without parsing product policy | Issuing credentials or owning trust-domain policy (Cloud Identity owns those) |
+| Verticals | Keep exactly two Unit classes for AaaS/WaaS/FaaS/Cell/MCP/Inference Service profiles | Product-specific Unit classes or a Workflow unit |
+
+Local roadmap detail: [Runtime ROADMAP](https://github.com/A3S-Lab/Runtime/blob/main/ROADMAP.md).
+
 ## Integration exit
 
 This group is ready for the next portfolio wave only when:
@@ -155,7 +204,8 @@ This group is ready for the next portfolio wave only when:
 - Cloud repositories use ORM primitives without leaking ORM models into Domain;
 - Domain event and Outbox commits are atomic while Event delivery remains
   replayable and replaceable;
-- Box has exactly one low-level execution path through OCI Runtime;
+- Box has exactly one low-level execution path through OCI Runtime and Cloud
+  `BX0` clean-host EXIT is Verified;
 - Runtime has exactly two Unit classes and all AI product profiles consume
   them through the same requirements contract; and
 - exact Runtime, Box, OCI Runtime, ACL, and fixture revisions pass real-host

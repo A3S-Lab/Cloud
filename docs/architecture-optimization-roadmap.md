@@ -14,6 +14,7 @@ debt baseline in [architecture-audit.md](architecture-audit.md).
 | [ROADMAP.md](../ROADMAP.md) | Gate status vocabulary and product outcomes |
 | [platform-gap-analysis.md](platform-gap-analysis.md) | Structural vs delivery gaps and P0–P2 priority |
 | [architecture-audit.md](architecture-audit.md) | Boundary debt, ratchets, convergence waves |
+| [Cloud substrate dependency roadmap](../../../docs/cloud-substrate-dependency-roadmap.md) | Per-crate Wave 1–3 obligations outside Cloud |
 | This document | Optimized execution order, dual-track I0, near-term Cloud-only backlog |
 
 Capability availability remains gate-driven. Architecture targets and module
