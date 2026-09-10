@@ -1460,7 +1460,11 @@ evidence, and fenced release protocol.
   Edge managed-snapshot ACL succession locally: publish projection compiles
   `chat-model`, revise advances
   `policy_revision` and the successor compile replaces models/targets without
-  inventing `workers`. Cloud likewise certifies Identity revoke → Edge managed-snapshot
+  inventing `workers`. Cloud also certifies Identity create → Edge managed-snapshot
+  ACL succession: empty credential projections compile without `prefix`/`revoked`,
+  then `CreateInferenceKey` projects `prefix` with `revoked = false` into the
+  successor compile without inventing `workers` or embedding the bearer secret.
+  Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips
   to `revoked = true` for Gateway fail-closed. Cloud also certifies retire → Edge
