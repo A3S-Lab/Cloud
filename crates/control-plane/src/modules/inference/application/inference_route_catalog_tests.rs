@@ -601,6 +601,170 @@ async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() 
 }
 
 #[tokio::test]
+async fn retire_projection_omits_route_from_edge_managed_snapshot_acl() {
+    use crate::modules::edge::domain::{
+        DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+        UpstreamEndpoint,
+    };
+    use crate::modules::edge::infrastructure::{
+        GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    };
+    use crate::modules::shared_kernel::domain::{
+        GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
+    };
+    use a3s_cloud_contracts::{
+        InferenceCredentialAclProjection, INFERENCE_CREDENTIAL_AUDIENCE,
+    };
+
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let publish = publish_handler(routes.clone());
+    let retire = RetireInferenceRouteHandler::new(routes.clone());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let published = publish
+        .execute(
+            publish_command(organization_id, project_id, environment_id, "publish-for-retire-edge"),
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let adapter = InferenceRouteAclProjectionAdapter::new(routes.clone());
+    let scope =
+        InferenceRouteEnvironmentScope::new(organization_id, project_id, environment_id).unwrap();
+    let baseline_projections = adapter
+        .list_inference_route_acl_projections(&[scope.clone()])
+        .await
+        .unwrap();
+    assert_eq!(baseline_projections.len(), 1);
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let now = issued_at;
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let mut owned = Route::create(
+        RouteId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        GatewayScopeId::new(),
+        node_id,
+        RouteHostname::parse("api.example.com").unwrap(),
+        RoutePath::parse("/v1").unwrap(),
+        DomainClaimId::new(),
+        DomainNamePattern::parse("api.example.com").unwrap(),
+        certificate_id,
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").unwrap(),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").unwrap(),
+            now,
+        )
+        .unwrap(),
+        now,
+    )
+    .unwrap();
+    owned.state = RouteState::Active;
+    owned.gateway_certificate_id = Some(certificate_id);
+
+    let credential = InferenceCredentialAclProjection::new(
+        Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        environment_id.as_uuid(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        "a3s_inf_abc12345",
+        VERIFIER,
+        3,
+        expires_at + Duration::hours(1),
+        false,
+    )
+    .unwrap();
+
+    let compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: "0.0.0.0:8081".into(),
+        management_address: "127.0.0.1:9090".into(),
+        management_path_prefix: "/api/gateway".into(),
+        management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+        upstream_request_timeout_ms: 30_000,
+        certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+    })
+    .unwrap();
+
+    let route_acl_id = format!("routes \"{}\"", published.id.as_uuid());
+    let baseline = compiler
+        .compile_certificate_convergence_with_inference_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            Some(certificate_id),
+            &[owned.clone()],
+            &[credential.clone()],
+            &baseline_projections,
+        )
+        .unwrap();
+    assert!(baseline.acl.contains(&route_acl_id));
+    assert!(baseline.acl.contains("models \"chat-model\""));
+
+    retire
+        .execute(
+            RetireInferenceRoute {
+                organization_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                idempotency_key: "retire-for-edge".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now() + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let successor_projections = adapter
+        .list_inference_route_acl_projections(&[scope])
+        .await
+        .unwrap();
+    assert!(
+        successor_projections.is_empty(),
+        "retired routes must leave the Edge ACL projection empty"
+    );
+
+    let successor = compiler
+        .compile_certificate_convergence_with_inference_policy(
+            GatewaySnapshotMetadata::new(
+                node_id,
+                3,
+                Some(2),
+                issued_at + Duration::seconds(1),
+                expires_at + Duration::seconds(1),
+            ),
+            Some(certificate_id),
+            &[owned],
+            &[credential],
+            &successor_projections,
+        )
+        .unwrap();
+    assert!(
+        !successor.acl.contains(&route_acl_id),
+        "successor managed snapshot must omit the retired inference route"
+    );
+    assert!(!successor.acl.contains("models \"chat-model\""));
+    assert!(!successor.acl.contains("\n  routes "));
+    assert!(!successor.acl.contains("\n  workers "));
+    assert!(successor.acl.contains("prefix = \"a3s_inf_abc12345\""));
+}
+
+#[tokio::test]
 async fn revise_retired_route_is_rejected() {
     let routes = Arc::new(InMemoryInferenceRouteRepository::default());
     let publish = publish_handler(routes.clone());
