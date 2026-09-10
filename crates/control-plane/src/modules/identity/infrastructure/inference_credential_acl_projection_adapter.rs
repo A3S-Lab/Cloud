@@ -110,4 +110,46 @@ mod tests {
         assert!(projections[0].credential_id < projections[1].credential_id);
         assert_eq!(projections[0].audience, "cloud-inference");
     }
+
+    #[tokio::test]
+    async fn projects_revoked_credentials_with_revoked_flag() {
+        let repo = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let now = Utc::now();
+        let mut credential = InferenceCredential::issue(
+            InferenceCredentialId::new(),
+            organization_id,
+            project_id,
+            environment_id,
+            "a3s_inf_cccccccccccccccc",
+            VERIFIER,
+            now + Duration::hours(2),
+            now,
+        )
+        .unwrap();
+        repo.create_inference_credential(credential.clone())
+            .await
+            .unwrap();
+        let revoked_at = credential.updated_at() + Duration::seconds(1);
+        assert!(credential.revoke(revoked_at).unwrap());
+        repo.update_inference_credential(credential.clone(), 1)
+            .await
+            .unwrap();
+
+        let adapter = InferenceCredentialAclProjectionAdapter::new(repo);
+        let scope =
+            InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
+                .unwrap();
+        let projections = adapter
+            .list_inference_credential_acl_projections(&[scope])
+            .await
+            .unwrap();
+        assert_eq!(projections.len(), 1);
+        assert!(
+            projections[0].revoked,
+            "revoked credentials must still project so Gateway can fail closed"
+        );
+    }
 }

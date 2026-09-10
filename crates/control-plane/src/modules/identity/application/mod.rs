@@ -15,6 +15,10 @@ mod workload_runtime_evidence;
 mod workload_runtime_evidence_recorder;
 mod workload_runtime_execution_authorization;
 
+#[cfg(test)]
+#[path = "empty_inference_credential_acl_projection_tests.rs"]
+mod empty_inference_credential_acl_projection_tests;
+
 pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort};
 pub use empty_inference_credential_acl_projection::EmptyInferenceCredentialAclProjectionPort;
 pub use inference_credential_delivery::{
