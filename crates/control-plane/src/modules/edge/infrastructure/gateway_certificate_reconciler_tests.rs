@@ -108,20 +108,20 @@ impl IGatewayCertificateAuthority for RecordingGatewayCertificateAuthority {
     }
 }
 
-struct Fixture {
-    repository: Arc<InMemoryEdgeRepository>,
-    compiler: GatewaySnapshotCompiler,
-    organization_id: OrganizationId,
+pub(super) struct Fixture {
+    pub(super) repository: Arc<InMemoryEdgeRepository>,
+    pub(super) compiler: GatewaySnapshotCompiler,
+    pub(super) organization_id: OrganizationId,
     project_id: ProjectId,
-    environment_id: EnvironmentId,
-    gateway_scope_id: GatewayScopeId,
-    node_id: NodeId,
+    pub(super) environment_id: EnvironmentId,
+    pub(super) gateway_scope_id: GatewayScopeId,
+    pub(super) node_id: NodeId,
     workload_id: WorkloadId,
     workload_revision_id: WorkloadRevisionId,
 }
 
 impl Fixture {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             repository: Arc::new(InMemoryEdgeRepository::new()),
             compiler: compiler(),
@@ -135,7 +135,11 @@ impl Fixture {
         }
     }
 
-    async fn verified_claim(&self, pattern: &str, now: chrono::DateTime<Utc>) -> DomainClaim {
+    pub(super) async fn verified_claim(
+        &self,
+        pattern: &str,
+        now: chrono::DateTime<Utc>,
+    ) -> DomainClaim {
         let mut claim = DomainClaim::create(
             DomainClaimId::new(),
             self.organization_id,
@@ -208,7 +212,7 @@ impl Fixture {
         claim
     }
 
-    async fn activate_route(
+    pub(super) async fn activate_route(
         &self,
         claim: &DomainClaim,
         hostname: &str,
