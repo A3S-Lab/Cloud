@@ -3,28 +3,36 @@ use super::mcp_gateway_desired_state_reconciler::{
 };
 use super::{
     CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    GatewaySnapshotMetadata, IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
-    McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler, McpGatewayReconciliationScope,
-    McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
+    GatewaySnapshotMetadata, GatewaySnapshotRouteInput, IMcpGatewayNodeProjectionPlanner,
+    IMcpGatewaySnapshotRepository, McpGatewayDesiredStateReconciler, McpGatewayProjectionAssembler,
+    McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget, McpGatewaySnapshotInputs,
     McpGatewaySnapshotReconciliationState, McpGatewaySnapshotScopeStatus,
     McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, PlanMcpGatewayNodeProjection,
     PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
 use crate::modules::edge::domain::{
-    GatewayCertificate, GatewayCertificateMaterial, GatewayPublication, GatewayPublicationState,
-    GatewayScope, GatewayScopeState,
+    DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
+    GatewayPublication, GatewayPublicationState, GatewayScope, GatewayScopeState, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
 };
-use crate::modules::identity::application::EmptyInferenceCredentialAclProjectionPort;
+use crate::modules::identity::application::{
+    EmptyInferenceCredentialAclProjectionPort, IInferenceCredentialAclProjectionPort,
+    InferenceCredentialEnvironmentScope,
+};
 use crate::modules::inference::application::{
     EmptyInferenceRouteAclProjectionPort, EmptyInferenceWorkerAclProjectionPort,
+    IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DomainClaimId, EnvironmentId, GatewayCertificateId, GatewayScopeId,
-    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, Sha256Digest,
+    NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, RouteId, Sha256Digest,
+    WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayCertificateRequest, GatewayManagementProtocol, GatewaySnapshot,
-    NodeGatewayAck,
+    InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
+    InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
+    InferenceTargetAclProjection, NodeGatewayAck, INFERENCE_CREDENTIAL_AUDIENCE,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -73,6 +81,11 @@ impl FakeDesiredStateRepository {
 
     fn staged(&self) -> Vec<StageMcpGatewaySnapshot> {
         self.staged.lock().expect("staged snapshots").clone()
+    }
+
+    fn with_active_routes(mut self, active_routes: Vec<GatewaySnapshotRouteInput>) -> Self {
+        self.inputs.active_routes = active_routes;
+        self
     }
 }
 
@@ -233,6 +246,202 @@ async fn first_empty_desired_state_does_not_claim_the_ordinary_snapshot_stream()
     assert_eq!(planner.calls.load(Ordering::SeqCst), 1);
     assert_eq!(repository.input_reads.load(Ordering::SeqCst), 0);
     assert!(repository.staged().is_empty());
+}
+
+#[tokio::test]
+async fn mcp_desired_state_stages_inference_credential_and_route_acl_without_workers() {
+    const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+    const PREFIX: &str = "a3s_inf_mcpstage01";
+    let credential_id = Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap();
+    let inference_route_id = Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap();
+
+    let now = Utc::now();
+    let scope = scope(now);
+    let node_id = scope.node_id;
+    let hostname = RouteHostname::parse("api.example.com").expect("hostname");
+    let claim_id = DomainClaimId::new();
+    let mut domain_claim = DomainClaim::create(
+        claim_id,
+        scope.organization_id,
+        scope.project_id,
+        scope.environment_id,
+        DomainNamePattern::parse(hostname.as_str()).expect("domain pattern"),
+        format!("a3s-cloud-verification={claim_id}"),
+        now - ChronoDuration::minutes(1),
+    )
+    .expect("domain claim");
+    domain_claim
+        .verify(now - ChronoDuration::seconds(1))
+        .expect("verified claim");
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let mut ordinary = Route::create(
+        RouteId::new(),
+        scope.organization_id,
+        scope.project_id,
+        scope.environment_id,
+        scope.id,
+        node_id,
+        hostname,
+        RoutePath::parse("/v1").expect("path"),
+        domain_claim.id,
+        domain_claim.pattern.clone(),
+        GatewayCertificateId::new(),
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").expect("port"),
+            UpstreamEndpoint::parse("http://127.0.0.1:8080").expect("upstream"),
+            now,
+        )
+        .expect("target"),
+        now,
+    )
+    .expect("ordinary route");
+    ordinary.state = RouteState::Active;
+
+    let repository = Arc::new(
+        FakeDesiredStateRepository::new(
+            scope.clone(),
+            McpGatewaySnapshotReconciliationState {
+                pending_publication: false,
+                latest_mcp_snapshot: Some(status(
+                    &scope,
+                    digest('a'),
+                    GatewayPublicationState::Applied,
+                    1,
+                    now - ChronoDuration::minutes(2),
+                    1,
+                )),
+            },
+            GatewayScopeState {
+                node_id,
+                last_issued_revision: 1,
+                installed_revision: Some(1),
+                aggregate_version: 1,
+            },
+        )
+        .with_active_routes(vec![GatewaySnapshotRouteInput {
+            route: ordinary,
+            domain_claim,
+        }]),
+    );
+
+    let credential = InferenceCredentialAclProjection::new(
+        credential_id,
+        scope.environment_id.as_uuid(),
+        INFERENCE_CREDENTIAL_AUDIENCE,
+        PREFIX,
+        VERIFIER,
+        3,
+        now + ChronoDuration::hours(2),
+        false,
+    )
+    .expect("credential projection");
+    let inference_route = InferenceRouteAclProjection {
+        route_id: inference_route_id,
+        router: "inference".into(),
+        environment_id: scope.environment_id.as_uuid(),
+        policy_revision: 11,
+        models: vec![InferenceModelAclProjection {
+            alias: "chat-model".into(),
+            model_id: Uuid::parse_str("55555555-5555-4555-8555-555555555555").unwrap(),
+            targets: vec![InferenceTargetAclProjection {
+                target_id: Uuid::parse_str("66666666-6666-4666-8666-666666666666").unwrap(),
+                service: "model-service".into(),
+                upstream_model: "internal/model-v1".into(),
+                priority: 0,
+                weight: 100,
+            }],
+        }],
+        grants: vec![InferenceGrantAclProjection {
+            credential_id,
+            credential_generation: 3,
+            models: vec!["chat-model".into()],
+            endpoints: vec![InferenceEndpointAcl::Models],
+            limits: InferenceLimitsAclProjection {
+                max_concurrent_requests: 2,
+                requests_per_minute: 60,
+                request_burst: 2,
+                tokens_per_minute: 10_000,
+            },
+        }],
+    };
+
+    struct StubCredentialPort {
+        projection: InferenceCredentialAclProjection,
+    }
+    #[async_trait]
+    impl IInferenceCredentialAclProjectionPort for StubCredentialPort {
+        async fn list_inference_credential_acl_projections(
+            &self,
+            _scopes: &[InferenceCredentialEnvironmentScope],
+        ) -> Result<Vec<InferenceCredentialAclProjection>, RepositoryError> {
+            Ok(vec![self.projection.clone()])
+        }
+    }
+
+    struct StubRoutePort {
+        projection: InferenceRouteAclProjection,
+    }
+    #[async_trait]
+    impl IInferenceRouteAclProjectionPort for StubRoutePort {
+        async fn list_inference_route_acl_projections(
+            &self,
+            _scopes: &[InferenceRouteEnvironmentScope],
+        ) -> Result<Vec<InferenceRouteAclProjection>, RepositoryError> {
+            Ok(vec![self.projection.clone()])
+        }
+    }
+
+    let planner = Arc::new(EmptyProjectionPlanner::default());
+    let report = reconciler_with_inference_ports(
+        repository.clone(),
+        planner,
+        Arc::new(StubCredentialPort {
+            projection: credential,
+        }),
+        Arc::new(StubRoutePort {
+            projection: inference_route,
+        }),
+    )
+    .run_once(now)
+    .await
+    .expect("inference ACL desired-state reconciliation");
+
+    assert_eq!(report.staged_snapshots, 1);
+    assert_eq!(report.unchanged_snapshots, 0);
+    assert!(report.failures.is_empty(), "failures: {:?}", report.failures);
+    let staged = repository.staged();
+    assert_eq!(staged.len(), 1);
+    let acl = &staged[0].publication().acl;
+    assert!(
+        acl.contains("inference {"),
+        "staged ACL must embed inference policy shell"
+    );
+    assert!(
+        acl.contains(&format!("prefix = \"{PREFIX}\"")),
+        "staged ACL must embed Identity credential prefix"
+    );
+    assert!(
+        acl.contains(&format!("routes \"{inference_route_id}\"")),
+        "staged ACL must embed Inference route grants"
+    );
+    assert!(
+        acl.contains("models \"chat-model\""),
+        "staged ACL must embed model grant aliases"
+    );
+    assert!(
+        !acl.contains("\n  workers ") && !acl.contains("\nworkers "),
+        "empty Power worker port must not invent workers blocks"
+    );
+    assert!(
+        !acl.contains("bearer") && !acl.contains("a3s_inf_mcpstage01."),
+        "staged ACL must not embed bearer secret material"
+    );
 }
 
 #[tokio::test]
@@ -628,12 +837,26 @@ fn reconciler(
     repository: Arc<FakeDesiredStateRepository>,
     planner: Arc<EmptyProjectionPlanner>,
 ) -> McpGatewayDesiredStateReconciler {
+    reconciler_with_inference_ports(
+        repository,
+        planner,
+        Arc::new(EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(EmptyInferenceRouteAclProjectionPort),
+    )
+}
+
+fn reconciler_with_inference_ports(
+    repository: Arc<FakeDesiredStateRepository>,
+    planner: Arc<EmptyProjectionPlanner>,
+    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
+    inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
+) -> McpGatewayDesiredStateReconciler {
     McpGatewayDesiredStateReconciler::new(
         repository,
         planner,
         compiler(),
-        Arc::new(EmptyInferenceCredentialAclProjectionPort),
-        Arc::new(EmptyInferenceRouteAclProjectionPort),
+        inference_credentials,
+        inference_routes,
         Arc::new(EmptyInferenceWorkerAclProjectionPort),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
