@@ -1389,6 +1389,9 @@ evidence, and fenced release protocol.
   `inference:read`: list returns non-retired heads only (cursor-paginated by
   `route_id`), while get-by-id still returns retired heads for inspection.
   Environment visibility fails closed as `NotFound` like usage showback.
+  HTTP list/get for routes and keys also fail closed for restricted principals
+  without an environment grant (`403`/`404`, no secret leakage). Create with a
+  missing environment UUID fails closed as `404` without persisting a credential.
   `PublishInferenceRoute`
   and `ReviseInferenceRoute`
   now fail-closes through Inference-owned
