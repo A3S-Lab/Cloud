@@ -694,8 +694,8 @@ jobs:
           }
           : >"$EVIDENCE_DIR/secret-root.txt"
           normalize_secret_root cloud-suite
-          # Matched setpriv harnesses write Box state as the sandbox identity.
-          # Keep the Runtime Secret tmpfs root-owned after reclaiming A3S_HOME.
+          # Reclaim A3S_HOME for the Sandbox real UID so device-policy-dropped owners
+          # can open Box state. Keep the Runtime Secret tmpfs root-owned for geteuid 0.
           test -n "${A3S_BOX_CI_SANDBOX_UID:-}"
           test -n "${A3S_BOX_CI_SANDBOX_GID:-}"
           sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
