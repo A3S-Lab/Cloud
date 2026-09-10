@@ -356,11 +356,13 @@ Initial management commands are:
 `CreateInferenceKey`, `RotateInferenceKey`, and `RevokeInferenceKey` are
   Identity-owned commands
   exposed through Identity management HTTP (`ENV/inference/keys`) and the
-Inference management facade. HTTP create/revoke are certified for write-scope,
-idempotent delivery replay (`201`/`200`), revoke `202` CAS (zero → `422`,
-stale → `409`), list/get secret hygiene, and no-store delivery headers. Revoke
-path-scopes like create and route retire: wrong-environment URL or missing
-environment fail closed as `NotFound` without mutating the active credential.
+Inference management facade. HTTP create/revoke/rotate are certified for
+write-scope, idempotent delivery replay (`201`/`200`), revoke `202` CAS
+(zero → `422`, stale → `409`), list/get secret hygiene, and no-store delivery
+headers. Create, revoke, and rotate path-scope like route retire:
+wrong-environment URL or missing environment fail closed as `NotFound` without
+mutating the active credential (rotate leaves `aggregateVersion`, `generation`,
+and `prefix` unchanged and never returns a bearer on the denied path).
 Create returns the bearer once through an
 encrypted delivery receipt (migration `197`); a bounded
 `InferenceCredentialDeliveryReceiptSweeper` deletes expired receipts while

@@ -361,6 +361,145 @@ async fn inference_key_rotate_is_idempotent_cas_and_secret_safe() -> Result<()> 
 }
 
 #[tokio::test]
+async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-key-rotate-scope",
+        "Inference key rotate path scope",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-rotate-scope-project",
+        "Inference Key Rotate Scope",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-rotate-scope-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    let other_environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-rotate-scope-other",
+            json!({"name": "Staging"}),
+        ))
+        .await?;
+    assert_eq!(other_environment.status(), 201);
+    let other_environment = response_id(&other_environment)?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-rotate-scope-write",
+        "inference-key-rotate-scope-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let collection_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let created = app
+        .call(post_json_as(
+            &collection_path,
+            "inference-key:rotate-scope-create",
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created_json = response_json(&created)?;
+    let credential_id = created_json["data"]["credential"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no id".into()))?;
+    let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("inference key response has no aggregateVersion".into()))?;
+    let generation = created_json["data"]["credential"]["generation"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("inference key response has no generation".into()))?;
+    let prefix = created_json["data"]["credential"]["prefix"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no prefix".into()))?
+        .to_owned();
+    let bearer = created_json["data"]["bearerCredential"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no bearer".into()))?
+        .to_owned();
+    let rotate_body = json!({
+        "expectedAggregateVersion": aggregate_version,
+        "expiresAt": (Utc::now() + Duration::hours(3)).to_rfc3339(),
+    });
+
+    let wrong_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{other_environment}/inference/keys/{credential_id}/rotate"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &wrong_path,
+            "inference-key:rotate-wrong-environment",
+            rotate_body.clone(),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 404);
+    assert_response_has_no_bearer(&rejected, &[&bearer]);
+    assert!(response_json(&rejected)?["data"]
+        .get("bearerCredential")
+        .is_none());
+
+    let missing_environment = Uuid::now_v7();
+    let missing_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/keys/{credential_id}/rotate"
+    );
+    let missing = app
+        .call(post_json_as(
+            &missing_path,
+            "inference-key:rotate-missing-environment",
+            rotate_body,
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing.status(), 404);
+    assert_response_has_no_bearer(&missing, &[&bearer]);
+    assert!(response_json(&missing)?["data"]
+        .get("bearerCredential")
+        .is_none());
+
+    let fetched = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!("/api/v1/organizations/{organization}/inference/keys/{credential_id}"),
+            )
+            .with_header(
+                "authorization",
+                format!("Bearer {INFERENCE_KEY_WRITE_TOKEN}"),
+            ),
+        )
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    let fetched_json = response_json(&fetched)?;
+    assert_eq!(fetched_json["data"]["state"], json!("active"));
+    assert_eq!(fetched_json["data"]["aggregateVersion"], json!(aggregate_version));
+    assert_eq!(fetched_json["data"]["generation"], json!(generation));
+    assert_eq!(fetched_json["data"]["prefix"], json!(prefix));
+    Ok(())
+}
+
+#[tokio::test]
 async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer(
 ) -> Result<()> {
     use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
