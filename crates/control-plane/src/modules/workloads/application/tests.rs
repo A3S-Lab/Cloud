@@ -26,7 +26,9 @@ use crate::modules::shared_kernel::domain::{
     ResourceName, Sha256Digest,
 };
 use crate::modules::workloads::domain::entities::{ServicePort, ServiceProcess, ServiceResources};
-use crate::modules::workloads::{IWorkloadRepository, InMemoryWorkloadRepository};
+use crate::modules::workloads::{
+    IWorkloadRepository, InMemoryWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
+};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -72,15 +74,17 @@ async fn agent_release_deploy_update_and_replay_reuse_the_workload_lifecycle() {
     builds.seed_build(build_one.clone()).await;
     builds.seed_build(build_two).await;
     let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
-    let environments = Arc::new(TestEnvironmentRepository {
-        environment: Environment::create(
-            organization_id,
-            project_id,
-            environment_id,
-            EnvironmentName::parse("Production").expect("Environment name"),
-            drafted_at,
-        ),
-    });
+    let environments = Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(Arc::new(
+        TestEnvironmentRepository {
+            environment: Environment::create(
+                organization_id,
+                project_id,
+                environment_id,
+                EnvironmentName::parse("Production").expect("Environment name"),
+                drafted_at,
+            ),
+        },
+    )));
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let secrets = Arc::new(InMemorySecretRepository::new());
     let create_handler = CreateAgentWorkloadDeploymentHandler::new(
@@ -362,15 +366,17 @@ async fn skill_bind_rebind_agent_update_and_unbind_preserve_exact_revision_histo
     let builds = Arc::new(InMemoryBuildRunRepository::new());
     builds.seed_build(agent_build).await;
     let artifacts = Arc::new(HostedArtifactQueryService::new(builds));
-    let environments = Arc::new(TestEnvironmentRepository {
-        environment: Environment::create(
-            organization_id,
-            project_id,
-            environment_id,
-            EnvironmentName::parse("Production").expect("Environment name"),
-            drafted_at,
-        ),
-    });
+    let environments = Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(Arc::new(
+        TestEnvironmentRepository {
+            environment: Environment::create(
+                organization_id,
+                project_id,
+                environment_id,
+                EnvironmentName::parse("Production").expect("Environment name"),
+                drafted_at,
+            ),
+        },
+    )));
     let workloads = Arc::new(InMemoryWorkloadRepository::new());
     let secrets = Arc::new(InMemorySecretRepository::new());
     let created = CreateAgentWorkloadDeploymentHandler::new(

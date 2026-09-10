@@ -3,6 +3,7 @@ mod identity_runtime_execution_admission;
 mod node_drain_reconciliation;
 mod oci_registry;
 mod persistence;
+mod project_environment_access;
 mod reconciliation;
 pub(crate) mod replica_deployment_materialization;
 mod replica_retirement_reconciliation;
@@ -26,6 +27,7 @@ pub use persistence::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, PostgresResourceClaimRepository,
     PostgresWorkloadRepository,
 };
+pub use project_environment_access::ProjectsWorkloadsEnvironmentAccessAdapter;
 pub use reconciliation::{
     IWorkloadRuntimeControl, WorkloadReconciliationFailure, WorkloadReconciliationReport,
     WorkloadRuntimeReconciler,

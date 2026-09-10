@@ -1,6 +1,7 @@
 mod agent_release_admission;
 mod bound_runtime_claim;
 pub mod commands;
+mod environment_access;
 mod owner_snapshot;
 pub mod queries;
 mod resource_access;
@@ -45,6 +46,7 @@ pub use commands::update_agent_workload_deployment::{
 pub use commands::update_workload_deployment::{
     UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult,
 };
+pub use environment_access::{IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope};
 pub use queries::{
     DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
     GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,

@@ -244,7 +244,7 @@ async fn prepare_started_provider_scenario_with_tools(
     let workload_requested_at =
         canonical_timestamp(Utc::now()).max(published.updated_at + Duration::milliseconds(1));
     let workload = CreateAgentWorkloadDeploymentHandler::new(
-        projects.clone(),
+        Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(projects.clone())),
         assets.clone(),
         artifacts.clone(),
         workloads.clone(),

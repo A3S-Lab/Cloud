@@ -8383,6 +8383,77 @@ fn executions_isolate_projects_behind_owner_ports() {
 }
 
 #[test]
+fn workloads_create_deployments_isolate_projects_behind_one_environment_port() {
+    let root = module_root();
+
+    let environment_port =
+        std::fs::read_to_string(root.join("workloads/application/environment_access.rs"))
+            .expect("read Workloads environment port");
+    let compact_environment_port = production_source(&environment_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadsEnvironmentScope",
+        "pubtraitIWorkloadsEnvironmentAccess:Send+Sync",
+        "environment_exists(",
+    ] {
+        assert!(
+            compact_environment_port.contains(required),
+            "Workloads lost its narrow Projects environment boundary {required}"
+        );
+    }
+    assert!(!environment_port.contains("crate::modules::projects"));
+
+    for (relative, required) in [
+        (
+            "workloads/application/commands/create_workload_deployment/handler.rs",
+            &[
+                "Arc<dyn IWorkloadsEnvironmentAccess>",
+                ".environment_exists(",
+            ][..],
+        ),
+        (
+            "workloads/application/commands/create_source_workload_deployment/handler.rs",
+            &[
+                "Arc<dyn IWorkloadsEnvironmentAccess>",
+                ".environment_exists(",
+            ][..],
+        ),
+        (
+            "workloads/application/commands/create_agent_workload_deployment/handler.rs",
+            &[
+                "Arc<dyn IWorkloadsEnvironmentAccess>",
+                ".environment_exists(",
+            ][..],
+        ),
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read Workloads consumer");
+        let production = production_source(&source);
+        for item in required {
+            assert!(
+                production.contains(item),
+                "{relative} lost owner-port wiring {item}"
+            );
+        }
+        for forbidden in ["IEnvironmentRepository", "crate::modules::projects"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign authority {forbidden}"
+            );
+        }
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    assert_eq!(
+        app.matches("ProjectsWorkloadsEnvironmentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads environment adapter exactly once"
+    );
+}
+
+#[test]
 fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let root = module_root();
     let identity_port =

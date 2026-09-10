@@ -4,16 +4,17 @@ use crate::modules::assets::{load_deployable_agent_release, IAssetRepository};
 use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DeploymentId, IdempotencyRequest, OperationId, ResourceName, WorkloadId, WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, RepositoryError, ResourceName, WorkloadId,
+    WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
     admit_deployable_agent_release,
     commands::{validate_node_pool_selection, validate_secret_bindings},
-    CreateWorkloadDeploymentResult, DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    CreateWorkloadDeploymentResult, IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope,
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
@@ -26,7 +27,7 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CreateAgentWorkloadDeploymentHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IWorkloadsEnvironmentAccess>,
     assets: Arc<dyn IAssetRepository>,
     artifacts: Arc<dyn IHostedArtifactQueryPort>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -36,7 +37,7 @@ pub struct CreateAgentWorkloadDeploymentHandler {
 
 impl CreateAgentWorkloadDeploymentHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IWorkloadsEnvironmentAccess>,
         assets: Arc<dyn IAssetRepository>,
         artifacts: Arc<dyn IHostedArtifactQueryPort>,
         workloads: Arc<dyn IWorkloadRepository>,
@@ -124,16 +125,17 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match WorkloadsEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found".into(),
                     )))

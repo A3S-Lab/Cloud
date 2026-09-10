@@ -3,7 +3,6 @@ use crate::modules::artifacts::{BuildRunStatus, IBuildRunRepository};
 use crate::modules::fleet::domain::repositories::INodePoolRepository;
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::secrets::domain::ISecretRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -13,7 +12,8 @@ use crate::modules::shared_kernel::domain::{
 use crate::modules::sources::domain::ISourceRevisionRepository;
 use crate::modules::workloads::application::{
     commands::{validate_node_pool_selection, validate_secret_bindings},
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope, DEPLOYMENT_WORKFLOW_NAME,
+    DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, ExternalBuildReference, OciArtifact, Workload, WorkloadControlSpec,
@@ -27,7 +27,7 @@ use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct CreateSourceWorkloadDeploymentHandler {
-    environments: Arc<dyn IEnvironmentRepository>,
+    environments: Arc<dyn IWorkloadsEnvironmentAccess>,
     sources: Arc<dyn ISourceRevisionRepository>,
     builds: Arc<dyn IBuildRunRepository>,
     workloads: Arc<dyn IWorkloadRepository>,
@@ -37,7 +37,7 @@ pub struct CreateSourceWorkloadDeploymentHandler {
 
 impl CreateSourceWorkloadDeploymentHandler {
     pub fn new(
-        environments: Arc<dyn IEnvironmentRepository>,
+        environments: Arc<dyn IWorkloadsEnvironmentAccess>,
         sources: Arc<dyn ISourceRevisionRepository>,
         builds: Arc<dyn IBuildRunRepository>,
         workloads: Arc<dyn IWorkloadRepository>,
@@ -71,16 +71,17 @@ impl CommandHandler<CreateSourceWorkloadDeployment> for CreateSourceWorkloadDepl
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
-            match environments
-                .find(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                )
-                .await
-            {
-                Ok(Some(_)) => {}
-                Ok(None) => {
+            let environment_scope = match WorkloadsEnvironmentScope::new(
+                command.organization_id,
+                command.project_id,
+                command.environment_id,
+            ) {
+                Ok(scope) => scope,
+                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+            };
+            match environments.environment_exists(environment_scope).await {
+                Ok(true) => {}
+                Ok(false) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found".into(),
                     )))

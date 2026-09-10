@@ -350,8 +350,9 @@ use crate::modules::workloads::{
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
-    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver, ReplicaDeploymentMaterializer,
+    IWorkloadsEnvironmentAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
+    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
     ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, StopWorkloadHandler, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeploymentHandler,
@@ -2753,9 +2754,11 @@ fn build_management_application_with_health(
     let agent_conversation_environments: Arc<dyn IAgentsEnvironmentAccess> = Arc::new(
         ProjectsAgentsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
-    let workload_environments = Arc::clone(&environments);
-    let source_workload_environments = Arc::clone(&environments);
-    let agent_workload_environments = Arc::clone(&environments);
+    let workload_environments: Arc<dyn IWorkloadsEnvironmentAccess> = Arc::new(
+        ProjectsWorkloadsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
+    );
+    let source_workload_environments = Arc::clone(&workload_environments);
+    let agent_workload_environments = Arc::clone(&workload_environments);
     let edge_environments: Arc<dyn IEdgeEnvironmentAccess> = Arc::new(
         ProjectsEdgeEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );

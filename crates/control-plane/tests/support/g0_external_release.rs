@@ -13,7 +13,6 @@ use a3s_cloud_control_plane::modules::artifacts::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodePoolRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
-use a3s_cloud_control_plane::modules::projects::domain::repositories::IEnvironmentRepository;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{ISecretRepository, PostgresSecretRepository};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -27,8 +26,8 @@ use a3s_cloud_control_plane::modules::sources::{
 };
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler, HttpHealthCheck,
-    IWorkloadRepository, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
-    SourceWorkloadTemplate,
+    IWorkloadRepository, PostgresWorkloadRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
+    ServicePort, ServiceProcess, ServiceResources, SourceWorkloadTemplate,
 };
 use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -461,8 +460,9 @@ async fn create_workload_handoff(
     inputs: &GateInputs,
     requested_at: DateTime<Utc>,
 ) -> TestResult<a3s_cloud_control_plane::modules::workloads::CreateSourceWorkloadDeploymentResult> {
-    let environments: Arc<dyn IEnvironmentRepository> =
-        Arc::new(PostgresProjectsRepository::new(executor.clone()));
+    let environments = Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(Arc::new(
+        PostgresProjectsRepository::new(executor.clone()),
+    )));
     let sources: Arc<dyn ISourceRevisionRepository> =
         Arc::new(PostgresSourceRevisionRepository::new(executor.clone()));
     let builds: Arc<dyn IBuildRunRepository> = builds;

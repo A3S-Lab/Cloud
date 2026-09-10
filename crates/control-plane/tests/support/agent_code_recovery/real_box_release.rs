@@ -39,11 +39,12 @@ use a3s_cloud_control_plane::modules::workloads::application::{
     STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
-    IOciArtifactResolver, OciArtifact, OciArtifactReference, OciArtifactResolutionError,
-    OciRegistryCredentialReference, PostgresResourceClaimRepository, RequestWorkloadStopBundle,
-    SecretBinding, SecretBindingTarget, UnroutedDeploymentRouteUpdater, WorkloadDesiredState,
-    WorkloadStopRequested,
+    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler, DeploymentFlowConfig,
+    DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus, IOciArtifactResolver,
+    OciArtifact, OciArtifactReference, OciArtifactResolutionError, OciRegistryCredentialReference,
+    PostgresResourceClaimRepository, ProjectsWorkloadsEnvironmentAccessAdapter,
+    RequestWorkloadStopBundle, SecretBinding, SecretBindingTarget, UnroutedDeploymentRouteUpdater,
+    WorkloadDesiredState, WorkloadStopRequested,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
@@ -240,7 +241,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     let inventory = record_inventory(nodes.as_ref(), node_id, agent_instance_id).await?;
 
     let workload = CreateAgentWorkloadDeploymentHandler::new(
-        projects,
+        Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(projects)),
         assets.clone(),
         artifacts,
         workloads.clone(),
