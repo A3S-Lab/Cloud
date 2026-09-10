@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod queries;
 
+mod plugin_assignment_operation_scheduler;
 mod plugin_assignment_reconciler;
 
 pub use commands::{
@@ -8,6 +9,10 @@ pub use commands::{
     EnrollPluginRegistryHandler, EnrollPluginRegistryResult, RecordPluginPlanProjection,
     RecordPluginPlanProjectionHandler, SetPluginAssignment, SetPluginAssignmentHandler,
     SetPluginAssignmentResult,
+};
+pub use plugin_assignment_operation_scheduler::{
+    IPluginAssignmentOperationScheduler, PluginAssignmentOperationRequest,
+    PluginAssignmentOperationScheduleOutcome,
 };
 pub use plugin_assignment_reconciler::{
     PluginAssignmentReconcileReport, PluginAssignmentReconciler, PLUGIN_ASSIGNMENT_WORKFLOW_NAME,

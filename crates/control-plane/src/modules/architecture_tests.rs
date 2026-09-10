@@ -8712,6 +8712,138 @@ fn agents_isolate_operations_behind_owner_port() {
 }
 
 #[test]
+fn plugins_isolate_operations_behind_owner_port() {
+    let root = module_root();
+
+    let port_path = "plugins/application/plugin_assignment_operation_scheduler.rs";
+    let port = std::fs::read_to_string(root.join(port_path))
+        .expect("read Plugins operation scheduling port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIPluginAssignmentOperationScheduler:Send+Sync",
+        "asyncfnschedule(&self,request:PluginAssignmentOperationRequest,)->Result<PluginAssignmentOperationScheduleOutcome,RepositoryError>;",
+        "operation_id:OperationId",
+        "organization_id:OrganizationId",
+        "assignment_id:PluginAssignmentId",
+        "assignment_generation:u64",
+        "requested_at:DateTime<Utc>",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Plugins operation port lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Plugins operation port leaked Operations authority {forbidden}"
+        );
+    }
+
+    let adapter_path = "plugins/infrastructure/plugin_assignment_operation_scheduler.rs";
+    let mut operation_sites = BTreeSet::new();
+    let mut boundary_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("plugins") {
+            return;
+        }
+        if source.contains("crate::modules::operations") {
+            operation_sites.insert(display(relative));
+        }
+        if matches!(
+            layer(relative),
+            Some("application" | "domain" | "presentation")
+        ) {
+            for forbidden in [
+                "crate::modules::operations",
+                "IOperationRepository",
+                "OperationSubject",
+                "WorkflowIdentity",
+            ] {
+                if source.contains(forbidden) {
+                    boundary_violations.insert(format!(
+                        "{} contains foreign authority {forbidden}",
+                        display(relative)
+                    ));
+                }
+            }
+        }
+    });
+    assert!(
+        boundary_violations.is_empty(),
+        "Plugins bypassed its bounded Operations contract:\n{}",
+        boundary_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    assert_eq!(
+        operation_sites,
+        lines(adapter_path),
+        "Plugins must reach Operations through one Infrastructure adapter module"
+    );
+
+    let reconciler = std::fs::read_to_string(
+        root.join("plugins/application/plugin_assignment_reconciler.rs"),
+    )
+    .expect("read Plugins reconciler");
+    let production_reconciler = production_source(&reconciler);
+    let compact_reconciler = production_reconciler.split_whitespace().collect::<String>();
+    for required in [
+        "operation_scheduler:Arc<dynIPluginAssignmentOperationScheduler>",
+        "PluginAssignmentOperationRequest::new(",
+        ".operation_scheduler.schedule(request).await",
+    ] {
+        assert!(
+            compact_reconciler.contains(required),
+            "Plugins reconciler lost inward scheduling boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::operations",
+        "IOperationRepository",
+        "OperationSubject",
+        "WorkflowIdentity",
+        "serde_json",
+    ] {
+        assert!(
+            !production_reconciler.contains(forbidden),
+            "Plugins reconciler rebuilt Operations authority {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(root.join(adapter_path))
+        .expect("read Plugins operation adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "implIPluginAssignmentOperationSchedulerforOperationsPluginAssignmentOperationScheduler",
+        "operations:Arc<dynIOperationRepository>",
+        "OperationSubject::new(\"plugin_assignment\",request.assignment_id().as_uuid())",
+        "WorkflowIdentity::new(PLUGIN_ASSIGNMENT_WORKFLOW_NAME,PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,)",
+        "Self::from_operation_scheduler(",
+        "Self::with_operation_scheduler_and_schedule(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Plugins operation adapter lost boundary behavior {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".enqueue(").count(),
+        1,
+        "Plugins operation adapter must have one enqueue mechanism"
+    );
+}
+
+#[test]
 fn workloads_create_deployments_isolate_projects_behind_one_environment_port() {
     let root = module_root();
 

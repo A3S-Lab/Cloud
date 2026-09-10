@@ -1,9 +1,8 @@
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::repositories::IOperationRepository;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
+use crate::modules::plugins::application::{
+    IPluginAssignmentOperationScheduler, PluginAssignmentOperationRequest,
+};
 use crate::modules::plugins::domain::repositories::IPluginAssignmentRepository;
 use crate::modules::shared_kernel::domain::RepositoryError;
-use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::watch;
@@ -20,27 +19,27 @@ pub struct PluginAssignmentReconcileReport {
 
 pub struct PluginAssignmentReconciler {
     assignments: Arc<dyn IPluginAssignmentRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    operation_scheduler: Arc<dyn IPluginAssignmentOperationScheduler>,
     interval: Duration,
     batch_size: usize,
 }
 
 impl PluginAssignmentReconciler {
-    pub fn new(
+    pub fn from_operation_scheduler(
         assignments: Arc<dyn IPluginAssignmentRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IPluginAssignmentOperationScheduler>,
     ) -> Self {
         Self {
             assignments,
-            operations,
+            operation_scheduler,
             interval: Duration::from_secs(1),
             batch_size: 100,
         }
     }
 
-    pub fn with_schedule(
+    pub fn with_operation_scheduler_and_schedule(
         assignments: Arc<dyn IPluginAssignmentRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operation_scheduler: Arc<dyn IPluginAssignmentOperationScheduler>,
         interval: Duration,
         batch_size: usize,
     ) -> Result<Self, String> {
@@ -52,7 +51,7 @@ impl PluginAssignmentReconciler {
         }
         Ok(Self {
             assignments,
-            operations,
+            operation_scheduler,
             interval,
             batch_size,
         })
@@ -71,26 +70,15 @@ impl PluginAssignmentReconciler {
             let Some(operation_id) = assignment.current_operation_id else {
                 continue;
             };
-            let operation = OperationRequest::new(
+            let request = PluginAssignmentOperationRequest::new(
                 operation_id,
                 assignment.organization_id,
-                OperationSubject::new("plugin_assignment", assignment.id.as_uuid())
-                    .map_err(RepositoryError::Storage)?,
-                WorkflowIdentity::new(
-                    PLUGIN_ASSIGNMENT_WORKFLOW_NAME,
-                    PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
-                )
-                .map_err(RepositoryError::Storage)?,
-                json!({
-                    "organizationId": assignment.organization_id,
-                    "assignmentId": assignment.id,
-                    "operationId": operation_id,
-                    "assignmentGeneration": assignment.assignment_generation,
-                }),
+                assignment.id,
+                assignment.assignment_generation,
                 assignment.updated_at,
             );
-            match self.operations.enqueue(operation).await {
-                Ok(write) if write.replayed => report.replayed += 1,
+            match self.operation_scheduler.schedule(request).await {
+                Ok(outcome) if outcome.replayed() => report.replayed += 1,
                 Ok(_) => report.started += 1,
                 Err(error) => report.failures.push(format!(
                     "could not enqueue plugin assignment {} operation: {error}",
