@@ -2906,6 +2906,7 @@ fn build_management_application_with_health(
     let source_workload_builds = builds;
     let execution_environments = Arc::clone(&environments);
     let inference_key_environments = Arc::clone(&environments);
+    let revoke_inference_key_environments = Arc::clone(&environments);
     let publish_inference_route_environments = Arc::clone(&environments);
     let revise_inference_route_environments = Arc::clone(&environments);
     let retire_inference_route_environments = Arc::clone(&environments);
@@ -3068,7 +3069,10 @@ fn build_management_application_with_health(
                     ),
                 )
                 .command_handler::<crate::modules::identity::RevokeInferenceKey, _>(
-                    RevokeInferenceKeyHandler::new(revoke_inference_credentials),
+                    RevokeInferenceKeyHandler::new(
+                        revoke_inference_key_environments,
+                        revoke_inference_credentials,
+                    ),
                 )
                 .command_handler::<crate::modules::inference::PublishInferenceRoute, _>(
                     crate::modules::inference::PublishInferenceRouteHandler::new(

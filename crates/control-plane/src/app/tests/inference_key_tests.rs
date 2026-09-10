@@ -507,6 +507,122 @@ async fn inference_key_create_missing_environment_fails_closed_as_not_found() ->
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_key_revoke_rejects_wrong_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let app = build_test_application(identity, projects)?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-key-revoke-scope",
+        "Inference key revoke path scope",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-key-revoke-scope-project",
+        "Inference Key Revoke Scope",
+    )
+    .await?;
+    let environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-revoke-scope-environment",
+            json!({"name": "Production"}),
+        ))
+        .await?;
+    assert_eq!(environment.status(), 201);
+    let environment = response_id(&environment)?;
+    let other_environment = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/projects/{project}/environments"),
+            "inference-key-revoke-scope-other",
+            json!({"name": "Staging"}),
+        ))
+        .await?;
+    assert_eq!(other_environment.status(), 201);
+    let other_environment = response_id(&other_environment)?;
+
+    create_api_token(
+        &app,
+        &organization,
+        "inference-key-revoke-scope-write",
+        "inference-key-revoke-scope-write",
+        INFERENCE_KEY_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let collection_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let created = app
+        .call(post_json_as(
+            &collection_path,
+            "inference-key:revoke-scope-create",
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(created.status(), 201);
+    let created_json = response_json(&created)?;
+    let credential_id = created_json["data"]["credential"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("inference key response has no id".into()))?;
+    let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("inference key response has no aggregateVersion".into()))?;
+
+    let wrong_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{other_environment}/inference/keys/{credential_id}/revoke"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &wrong_path,
+            "inference-key:revoke-wrong-environment",
+            json!({ "expectedAggregateVersion": aggregate_version }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(rejected.status(), 404);
+
+    let missing_environment = Uuid::now_v7();
+    let missing_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_environment}/inference/keys/{credential_id}/revoke"
+    );
+    let missing = app
+        .call(post_json_as(
+            &missing_path,
+            "inference-key:revoke-missing-environment",
+            json!({ "expectedAggregateVersion": aggregate_version }),
+            INFERENCE_KEY_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing.status(), 404);
+
+    let fetched = app
+        .call(
+            BootRequest::new(
+                HttpMethod::Get,
+                format!("/api/v1/organizations/{organization}/inference/keys/{credential_id}"),
+            )
+            .with_header(
+                "authorization",
+                format!("Bearer {INFERENCE_KEY_WRITE_TOKEN}"),
+            ),
+        )
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    assert_eq!(
+        response_json(&fetched)?["data"]["state"],
+        json!("active"),
+        "path-scoped revoke failures must leave the credential active"
+    );
+    Ok(())
+}
+
 fn replayed_revoke_json_replayed(response: &BootResponse) -> Result<bool> {
     response_json(response)?["data"]["replayed"]
         .as_bool()

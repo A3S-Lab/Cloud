@@ -76,6 +76,12 @@ pub fn inference_key_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            environment_id: EnvironmentId::from_uuid(
+                                request.param_as::<Uuid>("environment_id")?,
+                            ),
                             credential_id: InferenceCredentialId::from_uuid(
                                 request.param_as::<Uuid>("credential_id")?,
                             ),

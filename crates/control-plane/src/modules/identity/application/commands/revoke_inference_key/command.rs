@@ -1,6 +1,8 @@
 use crate::modules::identity::application::InferenceCredentialMutationResult;
 use crate::modules::shared_kernel::application::ApplicationResult;
-use crate::modules::shared_kernel::domain::{InferenceCredentialId, OrganizationId};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
+};
 use a3s_boot::Command;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -9,6 +11,8 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct RevokeInferenceKey {
     pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
     pub credential_id: InferenceCredentialId,
     pub expected_aggregate_version: u64,
     pub idempotency_key: String,

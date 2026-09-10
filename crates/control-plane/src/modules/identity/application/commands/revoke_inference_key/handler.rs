@@ -4,6 +4,7 @@ use crate::modules::identity::domain::events::InferenceCredentialChanged;
 use crate::modules::identity::domain::repositories::{
     IInferenceCredentialLifecycleRepository, RevokeInferenceCredentialWrite,
 };
+use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::IdempotencyRequest;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
@@ -11,12 +12,19 @@ use serde::Serialize;
 use std::sync::Arc;
 
 pub struct RevokeInferenceKeyHandler {
+    environments: Arc<dyn IEnvironmentRepository>,
     credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
 }
 
 impl RevokeInferenceKeyHandler {
-    pub fn new(credentials: Arc<dyn IInferenceCredentialLifecycleRepository>) -> Self {
-        Self { credentials }
+    pub fn new(
+        environments: Arc<dyn IEnvironmentRepository>,
+        credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
+    ) -> Self {
+        Self {
+            environments,
+            credentials,
+        }
     }
 }
 
@@ -29,6 +37,7 @@ impl CommandHandler<RevokeInferenceKey> for RevokeInferenceKeyHandler {
         'static,
         a3s_boot::Result<ApplicationResult<InferenceCredentialMutationResult>>,
     > {
+        let environments = Arc::clone(&self.environments);
         let credentials = Arc::clone(&self.credentials);
         Box::pin(async move {
             if command.expected_aggregate_version == 0 {
@@ -36,16 +45,37 @@ impl CommandHandler<RevokeInferenceKey> for RevokeInferenceKeyHandler {
                     "expected inference credential aggregate version must be positive".into(),
                 )));
             }
+            match environments
+                .find(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                )
+                .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) => {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "environment not found in organization and project".into(),
+                    )))
+                }
+                Err(error) => return Ok(Err(error.into())),
+            }
             let canonical = serde_json::to_vec(&CanonicalRevokeInferenceKey {
                 organization_id: command.organization_id,
+                project_id: command.project_id,
+                environment_id: command.environment_id,
                 credential_id: command.credential_id,
                 expected_aggregate_version: command.expected_aggregate_version,
             })
             .map_err(|error| BootError::Internal(error.to_string()))?;
             let idempotency = match IdempotencyRequest::new(
                 format!(
-                    "organizations/{}/inference/keys/{}/revoke",
-                    command.organization_id, command.credential_id
+                    "organizations/{}/projects/{}/environments/{}/inference/keys/{}/revoke",
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.credential_id
                 ),
                 command.idempotency_key,
                 &canonical,
@@ -70,8 +100,13 @@ impl CommandHandler<RevokeInferenceKey> for RevokeInferenceKeyHandler {
                 .find_inference_credential(command.organization_id, command.credential_id)
                 .await
             {
-                Ok(Some(value)) => value,
-                Ok(None) => {
+                Ok(Some(value))
+                    if value.project_id == command.project_id
+                        && value.environment_id == command.environment_id =>
+                {
+                    value
+                }
+                Ok(_) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "inference key not found".into(),
                     )))
@@ -119,6 +154,8 @@ impl CommandHandler<RevokeInferenceKey> for RevokeInferenceKeyHandler {
 #[derive(Serialize)]
 struct CanonicalRevokeInferenceKey {
     organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+    project_id: crate::modules::shared_kernel::domain::ProjectId,
+    environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
     credential_id: crate::modules::shared_kernel::domain::InferenceCredentialId,
     expected_aggregate_version: u64,
 }
@@ -189,6 +226,66 @@ mod tests {
             _project_id: ProjectId,
         ) -> Result<Vec<Environment>, RepositoryError> {
             Ok(Vec::new())
+        }
+    }
+
+    struct MissingEnvironmentRepository;
+
+    #[async_trait]
+    impl IEnvironmentRepository for MissingEnvironmentRepository {
+        async fn create(
+            &self,
+            environment: Environment,
+            _event: DomainEventEnvelope,
+            _idempotency: crate::modules::shared_kernel::domain::IdempotencyRequest,
+        ) -> Result<IdempotentWrite<Environment>, RepositoryError> {
+            Ok(IdempotentWrite {
+                value: environment,
+                replayed: false,
+            })
+        }
+
+        async fn find(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> Result<Option<Environment>, RepositoryError> {
+            Ok(None)
+        }
+
+        async fn list(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+        ) -> Result<Vec<Environment>, RepositoryError> {
+            Ok(Vec::new())
+        }
+    }
+
+    fn revoke_handler(
+        credentials: &Arc<InMemoryInferenceCredentialRepository>,
+    ) -> RevokeInferenceKeyHandler {
+        RevokeInferenceKeyHandler::new(
+            Arc::new(AlwaysPresentEnvironmentRepository),
+            Arc::clone(credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+        )
+    }
+
+    fn revoke_command(
+        credential: &crate::modules::identity::domain::entities::InferenceCredential,
+        expected_aggregate_version: u64,
+        idempotency_key: &str,
+    ) -> RevokeInferenceKey {
+        RevokeInferenceKey {
+            organization_id: credential.organization_id,
+            project_id: credential.project_id,
+            environment_id: credential.environment_id,
+            credential_id: credential.id,
+            expected_aggregate_version,
+            idempotency_key: idempotency_key.into(),
+            request_id: Uuid::now_v7(),
+            requested_at: credential.updated_at() + Duration::seconds(1),
         }
     }
 
@@ -271,23 +368,14 @@ mod tests {
     async fn revoke_marks_gateway_projection_revoked() {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let credential = create_active_key(&credentials).await;
-        let revoked = RevokeInferenceKeyHandler::new(
-            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
-        )
-        .execute(
-            RevokeInferenceKey {
-                organization_id: credential.organization_id,
-                credential_id: credential.id,
-                expected_aggregate_version: credential.aggregate_version(),
-                idempotency_key: "revoke-once".into(),
-                request_id: Uuid::now_v7(),
-                requested_at: credential.updated_at() + Duration::seconds(1),
-            },
-            context(),
-        )
-        .await
-        .expect("boot")
-        .expect("revoke");
+        let revoked = revoke_handler(&credentials)
+            .execute(
+                revoke_command(&credential, credential.aggregate_version(), "revoke-once"),
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect("revoke");
 
         assert!(
             revoked
@@ -314,17 +402,8 @@ mod tests {
     async fn revoke_idempotent_replay_returns_same_revoked_credential() {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let credential = create_active_key(&credentials).await;
-        let command = RevokeInferenceKey {
-            organization_id: credential.organization_id,
-            credential_id: credential.id,
-            expected_aggregate_version: credential.aggregate_version(),
-            idempotency_key: "revoke-replay".into(),
-            request_id: Uuid::now_v7(),
-            requested_at: credential.updated_at() + Duration::seconds(1),
-        };
-        let handler = RevokeInferenceKeyHandler::new(
-            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
-        );
+        let command = revoke_command(&credential, credential.aggregate_version(), "revoke-replay");
+        let handler = revoke_handler(&credentials);
         let first = handler
             .execute(command.clone(), context())
             .await
@@ -354,23 +433,23 @@ mod tests {
     #[tokio::test]
     async fn missing_key_fails_closed_as_not_found() {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
-        let error = RevokeInferenceKeyHandler::new(
-            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
-        )
-        .execute(
-            RevokeInferenceKey {
-                organization_id: OrganizationId::new(),
-                credential_id: InferenceCredentialId::new(),
-                expected_aggregate_version: 1,
-                idempotency_key: "revoke-missing".into(),
-                request_id: Uuid::now_v7(),
-                requested_at: Utc::now(),
-            },
-            context(),
-        )
-        .await
-        .expect("boot")
-        .expect_err("missing key");
+        let error = revoke_handler(&credentials)
+            .execute(
+                RevokeInferenceKey {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    environment_id: EnvironmentId::new(),
+                    credential_id: InferenceCredentialId::new(),
+                    expected_aggregate_version: 1,
+                    idempotency_key: "revoke-missing".into(),
+                    request_id: Uuid::now_v7(),
+                    requested_at: Utc::now(),
+                },
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect_err("missing key");
         assert!(matches!(error, ApplicationError::NotFound(_)));
     }
 
@@ -378,23 +457,18 @@ mod tests {
     async fn stale_aggregate_version_fails_closed_as_conflict() {
         let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
         let credential = create_active_key(&credentials).await;
-        let error = RevokeInferenceKeyHandler::new(
-            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>
-        )
-        .execute(
-            RevokeInferenceKey {
-                organization_id: credential.organization_id,
-                credential_id: credential.id,
-                expected_aggregate_version: credential.aggregate_version() + 1,
-                idempotency_key: "revoke-stale".into(),
-                request_id: Uuid::now_v7(),
-                requested_at: credential.updated_at() + Duration::seconds(1),
-            },
-            context(),
-        )
-        .await
-        .expect("boot")
-        .expect_err("stale version");
+        let error = revoke_handler(&credentials)
+            .execute(
+                revoke_command(
+                    &credential,
+                    credential.aggregate_version() + 1,
+                    "revoke-stale",
+                ),
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect_err("stale version");
         assert!(matches!(error, ApplicationError::Conflict(_)));
         let listed = credentials
             .list_inference_credentials_by_environment(
@@ -407,6 +481,76 @@ mod tests {
         assert!(
             listed[0].revoked_at().is_none(),
             "stale revoke must not mutate the active credential"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoke_rejects_wrong_environment_path_as_not_found() {
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let credential = create_active_key(&credentials).await;
+        let error = revoke_handler(&credentials)
+            .execute(
+                RevokeInferenceKey {
+                    organization_id: credential.organization_id,
+                    project_id: credential.project_id,
+                    environment_id: EnvironmentId::new(),
+                    credential_id: credential.id,
+                    expected_aggregate_version: credential.aggregate_version(),
+                    idempotency_key: "revoke-wrong-env".into(),
+                    request_id: Uuid::now_v7(),
+                    requested_at: credential.updated_at() + Duration::seconds(1),
+                },
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect_err("wrong environment path");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
+        let listed = credentials
+            .list_inference_credentials_by_environment(
+                credential.organization_id,
+                credential.project_id,
+                credential.environment_id,
+            )
+            .await
+            .expect("list");
+        assert!(
+            listed[0].revoked_at().is_none(),
+            "wrong-environment revoke must not mutate the active credential"
+        );
+    }
+
+    #[tokio::test]
+    async fn revoke_rejects_missing_environment_as_not_found() {
+        let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+        let credential = create_active_key(&credentials).await;
+        let error = RevokeInferenceKeyHandler::new(
+            Arc::new(MissingEnvironmentRepository),
+            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+        )
+        .execute(
+            revoke_command(
+                &credential,
+                credential.aggregate_version(),
+                "revoke-missing-env",
+            ),
+            context(),
+        )
+        .await
+        .expect("boot")
+        .expect_err("missing environment");
+        assert!(matches!(error, ApplicationError::NotFound(_)));
+        let listed = credentials
+            .list_inference_credentials_by_environment(
+                credential.organization_id,
+                credential.project_id,
+                credential.environment_id,
+            )
+            .await
+            .expect("list");
+        assert!(
+            listed[0].revoked_at().is_none(),
+            "missing-environment revoke must not mutate the active credential"
         );
     }
 
@@ -535,23 +679,18 @@ mod tests {
         assert!(!baseline.acl.contains("revoked = true"));
         assert!(!baseline.acl.contains("\n  workers "));
 
-        let revoked = RevokeInferenceKeyHandler::new(
-            Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
-        )
-        .execute(
-            RevokeInferenceKey {
-                organization_id,
-                credential_id: credential.id,
-                expected_aggregate_version: credential.aggregate_version(),
-                idempotency_key: "revoke-for-edge-succession".into(),
-                request_id: Uuid::now_v7(),
-                requested_at: credential.updated_at() + Duration::seconds(1),
-            },
-            context(),
-        )
-        .await
-        .expect("boot")
-        .expect("revoke");
+        let revoked = revoke_handler(&credentials)
+            .execute(
+                revoke_command(
+                    &credential,
+                    credential.aggregate_version(),
+                    "revoke-for-edge-succession",
+                ),
+                context(),
+            )
+            .await
+            .expect("boot")
+            .expect("revoke");
         assert!(revoked
             .credential
             .gateway_projection()
