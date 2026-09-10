@@ -15,7 +15,9 @@ use crate::modules::executions::ExecutionReconciler;
 use crate::modules::fleet::{
     LogCompactionWorker, LogRetentionWorker, NodeAvailabilityReconciler, NodeControlServer,
 };
-use crate::modules::identity::A3sEventRecipientContactVerificationConsumer;
+use crate::modules::identity::{
+    A3sEventRecipientContactVerificationConsumer, InferenceCredentialDeliveryReceiptSweeper,
+};
 use crate::modules::inference::InferenceUsageRetentionWorker;
 use crate::modules::integration_events::OutboxRelay;
 use crate::modules::notifications::A3sEventOutboundNotificationConsumer;
@@ -72,6 +74,7 @@ struct WorkerProcesses {
     workload_reconciler: WorkloadRuntimeReconciler,
     audit_retention_worker: AuditRetentionWorker,
     inference_usage_retention_worker: InferenceUsageRetentionWorker,
+    inference_credential_delivery_receipt_sweeper: InferenceCredentialDeliveryReceiptSweeper,
     log_retention_worker: LogRetentionWorker,
     log_compaction_worker: LogCompactionWorker,
     automation_schedule_worker: Option<AutomationScheduleWorker>,
@@ -116,6 +119,7 @@ impl ControlPlaneWorkers {
         workload_reconciler: WorkloadRuntimeReconciler,
         audit_retention_worker: AuditRetentionWorker,
         inference_usage_retention_worker: InferenceUsageRetentionWorker,
+        inference_credential_delivery_receipt_sweeper: InferenceCredentialDeliveryReceiptSweeper,
         log_retention_worker: LogRetentionWorker,
         log_compaction_worker: LogCompactionWorker,
         automation_schedule_worker: Option<AutomationScheduleWorker>,
@@ -153,6 +157,7 @@ impl ControlPlaneWorkers {
                 workload_reconciler,
                 audit_retention_worker,
                 inference_usage_retention_worker,
+                inference_credential_delivery_receipt_sweeper,
                 log_retention_worker,
                 log_compaction_worker,
                 automation_schedule_worker,
@@ -317,6 +322,7 @@ impl ControlPlane {
                 workload_reconciler,
                 audit_retention_worker,
                 inference_usage_retention_worker,
+                inference_credential_delivery_receipt_sweeper,
                 log_retention_worker,
                 log_compaction_worker,
                 automation_schedule_worker,
@@ -476,6 +482,12 @@ impl ControlPlane {
                 "inference usage retention worker",
                 shutdown_receiver.clone(),
                 move |shutdown| inference_usage_retention_worker.run(shutdown),
+            );
+            spawn_worker(
+                &mut workers,
+                "inference credential receipt sweeper",
+                shutdown_receiver.clone(),
+                move |shutdown| inference_credential_delivery_receipt_sweeper.run(shutdown),
             );
             spawn_worker(
                 &mut workers,

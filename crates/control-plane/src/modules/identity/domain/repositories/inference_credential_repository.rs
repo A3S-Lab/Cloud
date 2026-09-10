@@ -145,4 +145,12 @@ pub trait IInferenceCredentialLifecycleRepository: IInferenceCredentialRepositor
         &self,
         bundle: RevokeInferenceCredentialWrite,
     ) -> Result<InferenceCredentialWrite, RepositoryError>;
+
+    /// Permanently removes expired one-time delivery material while leaving
+    /// the credential aggregate and its idempotency record intact.
+    async fn sweep_expired_inference_credential_delivery_receipts(
+        &self,
+        expired_at: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<usize, RepositoryError>;
 }

@@ -8,10 +8,11 @@ pub use application::{
     ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
     IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
     IRecipientContactVerificationDispatcher, IWorkloadRuntimeEvidenceCandidatePort,
-    IWorkloadRuntimeExecutionAuthorizationQueryPort, InferenceCredentialDeliveryResult,
-    InferenceCredentialEnvironmentScope, InferenceCredentialMutationResult,
-    RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
-    RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
+    IWorkloadRuntimeExecutionAuthorizationQueryPort, InferenceCredentialDeliveryReceiptSweeper,
+    InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
+    InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
+    RecipientContactVerificationDispatchResult, RecordWorkloadRuntimeEvidence,
+    WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
     WorkloadRuntimeExecutionAuthorizationQuery, WorkloadRuntimeExecutionAuthorizationQueryService,
 };
 

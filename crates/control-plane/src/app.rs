@@ -1780,6 +1780,13 @@ async fn build_api_worker_application(
                 config.inference.retention_record_batch_size,
             )
             .map_err(ControlPlaneStartupError::InferenceMaintenance)?;
+        let inference_credential_delivery_receipt_sweeper =
+            crate::modules::identity::InferenceCredentialDeliveryReceiptSweeper::new(
+                Arc::clone(&inference_credentials),
+                Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
+                100,
+            )
+            .map_err(ControlPlaneStartupError::InferenceMaintenance)?;
         let log_compaction_worker = LogCompactionWorker::new(
             log_retention_repository,
             Duration::from_millis(config.logs.tombstone_retention_ms),
@@ -1891,6 +1898,7 @@ async fn build_api_worker_application(
             workload_reconciler,
             audit_retention_worker,
             inference_usage_retention_worker,
+            inference_credential_delivery_receipt_sweeper,
             log_retention_worker,
             log_compaction_worker,
             None,

@@ -356,7 +356,10 @@ Initial management commands are:
 `CreateInferenceKey` and `RevokeInferenceKey` are Identity-owned commands
 exposed through Identity management HTTP (`ENV/inference/keys`) and the
 Inference management facade. Create returns the bearer once through an
-encrypted delivery receipt (migration `197`); revoke flips the Gateway ACL
+encrypted delivery receipt (migration `197`); a bounded
+`InferenceCredentialDeliveryReceiptSweeper` deletes expired receipts while
+leaving credential aggregates and idempotency records intact so plaintext
+cannot be recovered after expiry. Revoke flips the Gateway ACL
 projection to `revoked`. Inference stores grants that reference the resulting
 credential ID; it never stores the key verifier or plaintext secret.
 

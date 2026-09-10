@@ -4,7 +4,7 @@ use super::postgres_inference_credentials::{
 };
 use super::postgres_inference_credentials_schema::InferenceCredentialDeliveryReceipts;
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, require_one_row,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation, require_one_row,
     store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
     PostgresPersistenceError,
 };
@@ -16,8 +16,10 @@ use crate::modules::identity::domain::repositories::{
     InferenceCredentialWrite, InferenceCredentialWriteReference, RevokeInferenceCredentialWrite,
 };
 use crate::modules::secrets::domain::EncryptedSecretValue;
-use crate::modules::shared_kernel::domain::{IdempotencyRequest, OrganizationId, RepositoryError};
-use a3s_orm::{delete_from, insert_into, select_from, PostgresTransaction};
+use crate::modules::shared_kernel::domain::{
+    canonical_timestamp, IdempotencyRequest, OrganizationId, RepositoryError,
+};
+use a3s_orm::{delete_from, insert_into, select_from, OrderDirection, PostgresTransaction};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -154,6 +156,60 @@ impl IInferenceCredentialLifecycleRepository for PostgresIdentityRepository {
             .await
             .map_err(transaction_error)
     }
+
+    async fn sweep_expired_inference_credential_delivery_receipts(
+        &self,
+        expired_at: DateTime<Utc>,
+        limit: usize,
+    ) -> Result<usize, RepositoryError> {
+        let expired_at = canonical_timestamp(expired_at);
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "inference credential delivery receipt sweep limit is invalid".into(),
+            ));
+        }
+        let limit = u64::try_from(limit).map_err(|_| {
+            RepositoryError::Conflict(
+                "inference credential delivery receipt sweep limit is invalid".into(),
+            )
+        })?;
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(
+                    async move { sweep_expired_receipts(transaction, expired_at, limit).await },
+                )
+            })
+            .await
+            .map_err(transaction_error)
+    }
+}
+
+async fn sweep_expired_receipts(
+    transaction: &PostgresTransaction,
+    expired_at: DateTime<Utc>,
+    limit: u64,
+) -> Result<usize, PostgresPersistenceError> {
+    let credential_ids = fetch_all::<Uuid, _>(
+        transaction,
+        select_from::<InferenceCredentialDeliveryReceipts>()
+            .select(InferenceCredentialDeliveryReceipts::credential_id())
+            .filter(InferenceCredentialDeliveryReceipts::expires_at().lte(expired_at))
+            .order_by(
+                InferenceCredentialDeliveryReceipts::expires_at(),
+                OrderDirection::Asc,
+            )
+            .order_by(
+                InferenceCredentialDeliveryReceipts::credential_id(),
+                OrderDirection::Asc,
+            )
+            .limit(limit)
+            .for_update(),
+    )
+    .await?;
+    for credential_id in &credential_ids {
+        delete_receipt(transaction, *credential_id).await?;
+    }
+    Ok(credential_ids.len())
 }
 
 async fn replay(

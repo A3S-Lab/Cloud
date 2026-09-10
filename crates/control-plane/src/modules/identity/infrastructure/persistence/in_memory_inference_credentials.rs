@@ -6,8 +6,8 @@ use crate::modules::identity::domain::repositories::{
     IInferenceCredentialRepository, InferenceCredentialWrite, RevokeInferenceCredentialWrite,
 };
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotencyRequest, InferenceCredentialId, OrganizationId, ProjectId,
-    RepositoryError,
+    canonical_timestamp, EnvironmentId, IdempotencyRequest, InferenceCredentialId, OrganizationId,
+    ProjectId, RepositoryError,
 };
 use a3s_cloud_contracts::DomainEventEnvelope;
 use async_trait::async_trait;
@@ -241,6 +241,32 @@ impl IInferenceCredentialLifecycleRepository for InMemoryInferenceCredentialRepo
             replayed: false,
         })
     }
+
+    async fn sweep_expired_inference_credential_delivery_receipts(
+        &self,
+        expired_at: chrono::DateTime<chrono::Utc>,
+        limit: usize,
+    ) -> Result<usize, RepositoryError> {
+        let expired_at = canonical_timestamp(expired_at);
+        if limit == 0 || limit > 10_000 {
+            return Err(RepositoryError::Conflict(
+                "inference credential delivery receipt sweep limit is invalid".into(),
+            ));
+        }
+        let mut state = self.state.write().await;
+        let mut expired = state
+            .receipts
+            .iter()
+            .filter(|(_, receipt)| receipt.expires_at <= expired_at)
+            .map(|(credential_id, receipt)| (*credential_id, receipt.expires_at))
+            .collect::<Vec<_>>();
+        expired.sort_by_key(|(credential_id, expires_at)| (*expires_at, *credential_id));
+        expired.truncate(limit);
+        for (credential_id, _) in &expired {
+            state.receipts.remove(credential_id);
+        }
+        Ok(expired.len())
+    }
 }
 
 fn replay(
@@ -372,6 +398,104 @@ mod tests {
         )
         .unwrap();
         let err = repo.create_inference_credential(second).await.unwrap_err();
+        assert!(matches!(err, RepositoryError::Conflict(_)));
+    }
+
+    #[tokio::test]
+    async fn sweeps_expired_delivery_receipts_in_bounded_expiry_order() {
+        use crate::modules::secrets::domain::EncryptedSecretValue;
+
+        let repository = InMemoryInferenceCredentialRepository::default();
+        let organization_id = OrganizationId::new();
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let now = Utc::now();
+        let issue = |suffix: &str| {
+            InferenceCredential::issue(
+                InferenceCredentialId::new(),
+                organization_id,
+                project_id,
+                environment_id,
+                format!("a3s_inf_{suffix}"),
+                VERIFIER,
+                now + Duration::hours(2),
+                now - Duration::minutes(20),
+            )
+            .unwrap()
+        };
+        let first = repository
+            .create_inference_credential(issue("aaaaaaaaaaaaaaaa"))
+            .await
+            .unwrap();
+        let second = repository
+            .create_inference_credential(issue("bbbbbbbbbbbbbbbb"))
+            .await
+            .unwrap();
+        let active = repository
+            .create_inference_credential(issue("cccccccccccccccc"))
+            .await
+            .unwrap();
+        let receipt = |credential: &InferenceCredential, expires_at| {
+            InferenceCredentialDeliveryReceipt::new(
+                credential.organization_id,
+                credential.id,
+                credential.generation(),
+                EncryptedSecretValue::new("test-key", "encrypted-value").unwrap(),
+                expires_at,
+                credential.updated_at(),
+            )
+            .unwrap()
+        };
+        {
+            let mut state = repository.state.write().await;
+            state.receipts.insert(
+                first.id,
+                receipt(&first, now - Duration::minutes(10)),
+            );
+            state.receipts.insert(
+                second.id,
+                receipt(&second, now - Duration::minutes(5)),
+            );
+            state
+                .receipts
+                .insert(active.id, receipt(&active, now + Duration::minutes(5)));
+        }
+
+        assert_eq!(
+            repository
+                .sweep_expired_inference_credential_delivery_receipts(now, 1)
+                .await
+                .unwrap(),
+            1
+        );
+        {
+            let state = repository.state.read().await;
+            assert!(!state.receipts.contains_key(&first.id));
+            assert!(state.receipts.contains_key(&second.id));
+            assert!(state.receipts.contains_key(&active.id));
+            assert!(state.credentials.contains_key(&first.id));
+        }
+        assert_eq!(
+            repository
+                .sweep_expired_inference_credential_delivery_receipts(now, 100)
+                .await
+                .unwrap(),
+            1
+        );
+        let state = repository.state.read().await;
+        assert!(!state.receipts.contains_key(&second.id));
+        assert!(state.receipts.contains_key(&active.id));
+        assert!(state.credentials.contains_key(&second.id));
+        assert!(state.credentials.contains_key(&active.id));
+    }
+
+    #[tokio::test]
+    async fn sweep_rejects_unbounded_limit() {
+        let repository = InMemoryInferenceCredentialRepository::default();
+        let err = repository
+            .sweep_expired_inference_credential_delivery_receipts(Utc::now(), 0)
+            .await
+            .unwrap_err();
         assert!(matches!(err, RepositoryError::Conflict(_)));
     }
 }
