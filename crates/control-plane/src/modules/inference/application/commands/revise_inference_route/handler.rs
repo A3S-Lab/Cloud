@@ -71,33 +71,6 @@ impl CommandHandler<ReviseInferenceRoute> for ReviseInferenceRouteHandler {
                 Err(error) => return Ok(Err(error.into())),
             }
 
-            match edge_route_bindings
-                .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                    command.binding.clone(),
-                ))
-                .await
-            {
-                Ok(()) => {}
-                Err(error) => return Ok(Err(error)),
-            }
-
-            match grant_credentials
-                .admit(InferenceGrantCredentialAdmissionRequest::new(
-                    command.organization_id,
-                    command.project_id,
-                    command.environment_id,
-                    command.grants.clone(),
-                    command.requested_at,
-                ))
-                .await
-            {
-                Ok(()) => {}
-                Err(error) => return Ok(Err(error)),
-            }
-
             let canonical = serde_json::to_vec(&CanonicalReviseInferenceRoute {
                 organization_id: command.organization_id,
                 project_id: command.project_id,
@@ -156,6 +129,33 @@ impl CommandHandler<ReviseInferenceRoute> for ReviseInferenceRouteHandler {
                 return Ok(Err(ApplicationError::Conflict(
                     "inference route changed before revision".into(),
                 )));
+            }
+
+            match edge_route_bindings
+                .admit(InferenceEdgeRouteBindingAdmissionRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.binding.clone(),
+                ))
+                .await
+            {
+                Ok(()) => {}
+                Err(error) => return Ok(Err(error)),
+            }
+
+            match grant_credentials
+                .admit(InferenceGrantCredentialAdmissionRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.grants.clone(),
+                    command.requested_at,
+                ))
+                .await
+            {
+                Ok(()) => {}
+                Err(error) => return Ok(Err(error)),
             }
 
             if let Err(error) = route.revise(

@@ -1381,9 +1381,12 @@ evidence, and fenced release protocol.
   with `inference:write` and required `Idempotency-Key`. Revise fail-closes on
   missing environment/route, zero/stale `expected_aggregate_version`, retired
   heads, Edge binding admission, and grant→credential admission, and advances
-  immutable `policy_revision` without inventing workers. HTTP
-  `POST .../inference/routes/{route_id}/revisions` is certified for write-scope,
-  idempotent replay, policy-revision advance, and stale CAS `409`. Retire likewise
+  immutable `policy_revision` without inventing workers. Path-scope runs before
+  binding/grant admission so wrong-environment URL or missing environment fail
+  closed as `NotFound` without leaking admission errors or mutating the head.
+  HTTP `POST .../inference/routes/{route_id}/revisions` is certified for
+  write-scope, idempotent replay, policy-revision advance, stale CAS `409`, and
+  path-scope `404`. Retire likewise
   requires client `expectedAggregateVersion` CAS (zero → Invalid, stale →
   Conflict) so concurrent revise versus retire cannot silently race on the
   head version, and path-scopes like revise: wrong-environment URL or missing

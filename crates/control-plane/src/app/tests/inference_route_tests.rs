@@ -1376,6 +1376,161 @@ async fn inference_route_retire_rejects_wrong_environment_path_as_not_found() ->
     Ok(())
 }
 
+#[tokio::test]
+async fn inference_route_revise_rejects_wrong_environment_path_as_not_found() -> Result<()> {
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let projects = Arc::new(InMemoryProjectsRepository::new());
+    let edge = Arc::new(InMemoryEdgeRepository::new());
+    let app = build_test_application_with_edge(identity, projects, Arc::clone(&edge))?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-route-revise-scope-http",
+        "Inference revise path scope",
+    )
+    .await?;
+    let project = create_project(
+        &app,
+        &organization,
+        "inference-route-revise-scope-project",
+        "Inference Revise Scope",
+    )
+    .await?;
+    let environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-revise-scope-environment",
+        "Production",
+    )
+    .await?;
+    let other_environment = create_environment(
+        &app,
+        &organization,
+        &project,
+        "inference-route-revise-scope-other",
+        "Staging",
+    )
+    .await?;
+    create_api_token(
+        &app,
+        &organization,
+        "inference-route-revise-scope-write-token",
+        "inference-route-revise-scope-write",
+        INFERENCE_ROUTE_WRITE_TOKEN,
+        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        None,
+    )
+    .await?;
+
+    let organization_id = OrganizationId::from_uuid(parse_uuid(&organization, "organization")?);
+    let project_id = ProjectId::from_uuid(parse_uuid(&project, "project")?);
+    let environment_id = EnvironmentId::from_uuid(parse_uuid(&environment, "environment")?);
+    let (domain_claim_id, gateway_scope_id) = seed_verified_binding(
+        &edge,
+        organization_id,
+        project_id,
+        environment_id,
+        "revise-scope.example.com",
+    )
+    .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:revise-scope-create-key",
+    )
+    .await?;
+
+    let routes_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
+    );
+    let published = app
+        .call(post_json_as(
+            &routes_path,
+            "inference-route:revise-scope-publish",
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-scope.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(published.status(), 202);
+    let published_json = response_json(&published)?;
+    let route_id = published_json["data"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing route id".into()))?
+        .to_owned();
+    let aggregate_version = published_json["data"]["aggregateVersion"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing aggregateVersion".into()))?;
+    let policy_revision = published_json["data"]["policyRevision"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing policyRevision".into()))?;
+
+    let wrong_revise_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{other_environment}/inference/routes/{route_id}/revisions"
+    );
+    let rejected = app
+        .call(post_json_as(
+            &wrong_revise_path,
+            "inference-route:revise-wrong-environment",
+            revise_body(
+                aggregate_version,
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-scope.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(
+        rejected.status(),
+        404,
+        "wrong-environment revise must NotFound before Edge binding admission, got {}",
+        rejected.status()
+    );
+
+    let missing_env = Uuid::now_v7();
+    let missing_revise_path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{missing_env}/inference/routes/{route_id}/revisions"
+    );
+    let missing = app
+        .call(post_json_as(
+            &missing_revise_path,
+            "inference-route:revise-missing-environment",
+            revise_body(
+                aggregate_version,
+                domain_claim_id,
+                gateway_scope_id,
+                "revise-scope.example.com",
+                credential_id,
+                credential_generation,
+            ),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(missing.status(), 404);
+
+    let fetched = app
+        .call(get_as(
+            format!("{routes_path}/{route_id}"),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(fetched.status(), 200);
+    let fetched_json = response_json(&fetched)?;
+    assert_eq!(fetched_json["data"]["aggregateVersion"], json!(aggregate_version));
+    assert_eq!(fetched_json["data"]["policyRevision"], json!(policy_revision));
+    Ok(())
+}
+
 fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,
