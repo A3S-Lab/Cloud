@@ -1519,6 +1519,12 @@ evidence, and fenced release protocol.
   `192`/`193`), validates lifecycle facts fail-closed (no prompts/secrets),
   holds wrong-`after` without advertising out-of-batch tips, and proves
   enrolled-node mTLS over a live `NodeControlServer` HTTPS listener.
+  The shared `a3s.gateway.usage-batch.v1` contract now matches Gateway by
+  applying the `after` succession check only to the first record, so lawful
+  multi-record continuations validate. Domain ledger first-principles tests
+  certify empty-stream holes advertise the missing sequence-1 gap without
+  inserting tip invention, fill/replay advances ACK without double-insert, and
+  multi-record continuation after a matching tip advances the watermark.
   Migration `194` plus domain projection persist request facts and
   rebuildable daily rollups from newly inserted lifecycle events
   (`project_inserted_usage_records` / `PostgresInferenceUsageRepository`

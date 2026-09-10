@@ -109,22 +109,28 @@ impl InferenceUsageBatchV1 {
         let mut current_epoch = None;
         let mut last_sequence: Option<u64> = None;
         let mut event_ids = HashSet::new();
-        for record in &self.records {
+        for (index, record) in self.records.iter().enumerate() {
             record.validate()?;
             if self.after == Some(record.cursor) {
                 return Err("inference usage batch repeats its after cursor".into());
             }
-            if let Some(after) = self.after {
-                if after.boot_epoch == record.cursor.boot_epoch {
-                    let expected = after
-                        .sequence
-                        .checked_add(1)
-                        .ok_or_else(|| "usage batch after cursor overflows".to_string())?;
-                    if record.cursor.sequence != expected {
-                        return Err(
-                            "inference usage batch does not immediately follow its after cursor"
-                                .into(),
-                        );
+            // Only the first record must immediately follow `after`. Later
+            // records are constrained by same-epoch contiguity below. Matching
+            // Gateway `UsageIngestBatch::validate` keeps the Cloud contract from
+            // rejecting lawful multi-record continuations.
+            if index == 0 {
+                if let Some(after) = self.after {
+                    if after.boot_epoch == record.cursor.boot_epoch {
+                        let expected = after
+                            .sequence
+                            .checked_add(1)
+                            .ok_or_else(|| "usage batch after cursor overflows".to_string())?;
+                        if record.cursor.sequence != expected {
+                            return Err(
+                                "inference usage batch does not immediately follow its after cursor"
+                                    .into(),
+                            );
+                        }
                     }
                 }
             }

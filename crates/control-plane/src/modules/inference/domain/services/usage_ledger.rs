@@ -326,6 +326,137 @@ mod tests {
     }
 
     #[test]
+    fn empty_stream_hole_advertises_gap_and_replay_advances_without_double_insert() {
+        // First principles: an empty ledger never invents missing spool prefixes.
+        // A batch that starts above sequence 1 must advertise the missing cursor,
+        // hold the watermark, and insert nothing. Filling the prefix then the
+        // previously-skipped tip advances ACK without double-counting digests.
+        let epoch = Uuid::from_u128(1);
+        let gateway_id = Uuid::from_u128(2);
+        let state = InferenceUsageLedgerState::default();
+        let skipped = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 3,
+        };
+        let hole = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id,
+            batch_id: Uuid::from_u128(30),
+            after: None,
+            records: vec![record(skipped, Uuid::from_u128(30))],
+        };
+        let advertised = apply_inference_usage_batch(&state, &hole).unwrap();
+        assert_eq!(advertised.receipt.acknowledged_through, None);
+        assert_eq!(
+            advertised.receipt.gaps,
+            vec![InferenceUsageCursorV1 {
+                boot_epoch: epoch,
+                sequence: 1
+            }]
+        );
+        assert!(advertised.inserted_event_ids.is_empty());
+        assert_eq!(advertised.next, state);
+        advertised
+            .receipt
+            .validate_for(&hole)
+            .expect("gap receipt must remain contract-valid");
+
+        let fill = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id,
+            batch_id: Uuid::from_u128(31),
+            after: None,
+            records: vec![
+                record(
+                    InferenceUsageCursorV1 {
+                        boot_epoch: epoch,
+                        sequence: 1,
+                    },
+                    Uuid::from_u128(31),
+                ),
+                record(
+                    InferenceUsageCursorV1 {
+                        boot_epoch: epoch,
+                        sequence: 2,
+                    },
+                    Uuid::from_u128(32),
+                ),
+                record(skipped, Uuid::from_u128(30)),
+            ],
+        };
+        let advanced = apply_inference_usage_batch(&advertised.next, &fill).unwrap();
+        assert_eq!(advanced.receipt.acknowledged_through, Some(skipped));
+        assert!(advanced.receipt.gaps.is_empty());
+        assert_eq!(
+            advanced.inserted_event_ids,
+            vec![
+                Uuid::from_u128(31),
+                Uuid::from_u128(32),
+                Uuid::from_u128(30)
+            ]
+        );
+        assert_eq!(advanced.next.events.len(), 3);
+
+        // Exact redelivery of the filled window must not invent a fourth event.
+        let redelivery = apply_inference_usage_batch(&advanced.next, &fill).unwrap();
+        assert_eq!(redelivery.receipt.acknowledged_through, Some(skipped));
+        assert!(redelivery.inserted_event_ids.is_empty());
+        assert_eq!(redelivery.next.events.len(), 3);
+    }
+
+    #[test]
+    fn multi_record_continuation_after_matching_tip_advances_watermark() {
+        let epoch = Uuid::from_u128(1);
+        let gateway_id = Uuid::from_u128(2);
+        let tip = InferenceUsageCursorV1 {
+            boot_epoch: epoch,
+            sequence: 2,
+        };
+        let mut state = InferenceUsageLedgerState {
+            watermark: Some(tip),
+            events: HashMap::new(),
+        };
+        state
+            .events
+            .insert(Uuid::from_u128(20), "deadbeef".repeat(8));
+        let batch = InferenceUsageBatchV1 {
+            schema: InferenceUsageBatchV1::SCHEMA.into(),
+            gateway_id,
+            batch_id: Uuid::from_u128(40),
+            after: Some(tip),
+            records: vec![
+                record(
+                    InferenceUsageCursorV1 {
+                        boot_epoch: epoch,
+                        sequence: 3,
+                    },
+                    Uuid::from_u128(41),
+                ),
+                record(
+                    InferenceUsageCursorV1 {
+                        boot_epoch: epoch,
+                        sequence: 4,
+                    },
+                    Uuid::from_u128(42),
+                ),
+            ],
+        };
+        let applied = apply_inference_usage_batch(&state, &batch).unwrap();
+        assert_eq!(
+            applied.receipt.acknowledged_through,
+            Some(InferenceUsageCursorV1 {
+                boot_epoch: epoch,
+                sequence: 4
+            })
+        );
+        assert!(applied.receipt.gaps.is_empty());
+        assert_eq!(
+            applied.inserted_event_ids,
+            vec![Uuid::from_u128(41), Uuid::from_u128(42)]
+        );
+    }
+
+    #[test]
     fn digest_conflict_is_rejected() {
         let epoch = Uuid::from_u128(1);
         let event_id = Uuid::from_u128(10);

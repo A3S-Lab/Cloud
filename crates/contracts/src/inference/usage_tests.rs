@@ -73,6 +73,27 @@ fn usage_batch_requires_after_to_be_immediately_followed() {
 }
 
 #[test]
+fn usage_batch_allows_contiguous_multi_record_continuation_after_tip() {
+    // Gateway validates `after` only against the first record. Cloud must not
+    // reject a lawful two-record continuation that advances tip → tip+1 → tip+2.
+    let epoch = Uuid::from_u128(1);
+    let tip = cursor(epoch, 4);
+    let batch = InferenceUsageBatchV1 {
+        schema: INFERENCE_USAGE_BATCH_SCHEMA_V1.into(),
+        gateway_id: Uuid::from_u128(2),
+        batch_id: Uuid::from_u128(7),
+        after: Some(tip),
+        records: vec![
+            record(epoch, 5, br#"{"kind":"request_started"}"#),
+            record(epoch, 6, br#"{"kind":"request_terminal"}"#),
+        ],
+    };
+    batch
+        .validate()
+        .expect("contiguous multi-record continuation after tip");
+}
+
+#[test]
 fn usage_batch_rejects_invalid_payload_bounds_and_digest() {
     let mut invalid = batch();
     invalid.records[0].payload_base64 = "%%%".into();
