@@ -1422,7 +1422,10 @@ evidence, and fenced release protocol.
   successors, expected-revision CAS rejection, unknown-tokenizer retention
   with prior runtime ready; Gateway
   `docs/first-principles-test-plan.md` §I0.2b
-  item 5). Broader joint mixed-version / fallback conformance beyond that
+  item 5). Cloud also certifies Inference revise → Edge managed-snapshot ACL
+  succession locally: publish projection compiles `chat-model`, revise advances
+  `policy_revision` and the successor compile replaces models/targets without
+  inventing `workers`. Broader joint mixed-version / fallback conformance beyond that
   succession brick remains open. I0.2b is not fully verified.
 
 ### I0.2c: durable usage and rollout
