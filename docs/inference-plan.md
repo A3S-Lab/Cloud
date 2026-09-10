@@ -1476,7 +1476,13 @@ evidence, and fenced release protocol.
   Cloud also certifies Identity rotate → Edge managed-snapshot ACL succession:
   `RotateInferenceKey` keeps the same credential id while advancing `generation`
   and replacing `prefix` in the successor compile without inventing `workers` or
-  embedding the new bearer secret.
+  embedding the new bearer secret. Cloud also certifies the live MCP desired-state
+  reconciler path: with an ordinary Route in scope, stub Identity credential and
+  Inference route ACL ports, and `EmptyInferenceWorkerAclProjectionPort`,
+  `McpGatewayDesiredStateReconciler` stages one snapshot whose ACL embeds
+  `inference {`, the projected `prefix`, and route grants/models while omitting
+  any `workers` block and bearer secret material (port load → compile → stage,
+  not compiler-only).
   Cloud likewise certifies Identity revoke → Edge managed-snapshot
   ACL succession: CreateInferenceKey projects `revoked = false`, RevokeInferenceKey
   keeps the same credential id/generation/prefix while the successor compile flips
