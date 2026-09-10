@@ -1,6 +1,7 @@
 mod api_token_verifier;
 mod inference_credential_acl_projection_adapter;
 mod inference_credential_issuer;
+mod inference_grant_credential_admission;
 mod openid_connect_provider;
 pub mod persistence;
 mod recipient_contact_proof;
@@ -16,6 +17,7 @@ pub use inference_credential_issuer::{
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
     IssuedInferenceCredential,
 };
+pub use inference_grant_credential_admission::IdentityInferenceGrantCredentialAdmissionAdapter;
 pub use openid_connect_provider::OpenIdConnectProviderService;
 pub use recipient_contact_proof::HmacRecipientContactProofService;
 pub use recipient_contact_verification_event_consumer::{

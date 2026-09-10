@@ -2,6 +2,7 @@ pub mod commands;
 mod edge_route_binding_admission;
 mod empty_inference_route_acl_projection;
 mod empty_inference_worker_acl_projection;
+mod grant_credential_admission;
 mod inference_usage_retention_worker;
 pub mod queries;
 mod route_acl_projection;
@@ -11,6 +12,10 @@ pub use commands::*;
 pub use edge_route_binding_admission::{
     IInferenceEdgeRouteBindingAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
     PermitInferenceEdgeRouteBindingAdmission, EDGE_ROUTE_BINDING_INVALID,
+};
+pub use grant_credential_admission::{
+    IInferenceGrantCredentialAdmissionPort, InferenceGrantCredentialAdmissionRequest,
+    PermitInferenceGrantCredentialAdmission, INFERENCE_GRANT_CREDENTIAL_INVALID,
 };
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
 pub use empty_inference_worker_acl_projection::{
@@ -28,6 +33,10 @@ mod inference_route_catalog_tests;
 #[cfg(test)]
 #[path = "inference_route_binding_admission_tests.rs"]
 mod inference_route_binding_admission_tests;
+
+#[cfg(test)]
+#[path = "inference_route_grant_credential_admission_tests.rs"]
+mod inference_route_grant_credential_admission_tests;
 
 #[cfg(test)]
 #[path = "inference_route_query_tests.rs"]

@@ -11,8 +11,8 @@ use crate::modules::edge::infrastructure::EdgeInferenceRouteBindingAdmissionAdap
 use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::inference::application::{
     InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
-    IInferenceRouteAclProjectionPort, PublishInferenceRoute, PublishInferenceRouteHandler,
-    EDGE_ROUTE_BINDING_INVALID,
+    IInferenceRouteAclProjectionPort, PermitInferenceGrantCredentialAdmission,
+    PublishInferenceRoute, PublishInferenceRouteHandler, EDGE_ROUTE_BINDING_INVALID,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -210,6 +210,7 @@ fn publish_handler(
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
         Arc::new(EdgeInferenceRouteBindingAdmissionAdapter::new(edge)),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
     )
 }
 

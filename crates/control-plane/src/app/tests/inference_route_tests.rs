@@ -72,11 +72,25 @@ async fn inference_route_publish_and_retire_require_write_scope_and_idempotency(
         "api.example.com",
     )
     .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:create-key",
+    )
+    .await?;
 
     let routes_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
     );
-    let body = publish_body(domain_claim_id, gateway_scope_id, "api.example.com");
+    let body = publish_body(
+        domain_claim_id,
+        gateway_scope_id,
+        "api.example.com",
+        credential_id,
+        credential_generation,
+    );
 
     assert_eq!(
         app.call(
@@ -214,6 +228,14 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
         "read.example.com",
     )
     .await?;
+    let (credential_id, credential_generation) = create_inference_key(
+        &app,
+        &organization,
+        &project,
+        &environment,
+        "inference-route:create-key-for-read",
+    )
+    .await?;
 
     let routes_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/routes"
@@ -222,7 +244,13 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
         .call(post_json_as(
             &routes_path,
             "inference-route:publish-for-read",
-            publish_body(domain_claim_id, gateway_scope_id, "read.example.com"),
+            publish_body(
+                domain_claim_id,
+                gateway_scope_id,
+                "read.example.com",
+                credential_id,
+                credential_generation,
+            ),
             INFERENCE_ROUTE_WRITE_TOKEN,
         ))
         .await?;
@@ -319,6 +347,8 @@ fn publish_body(
     domain_claim_id: DomainClaimId,
     gateway_scope_id: GatewayScopeId,
     hostname: &str,
+    credential_id: Uuid,
+    credential_generation: u64,
 ) -> Value {
     json!({
         "router": "inference",
@@ -334,8 +364,8 @@ fn publish_body(
             }]
         }],
         "grants": [{
-            "credentialId": "33333333-3333-4333-8333-333333333333",
-            "credentialGeneration": 3,
+            "credentialId": credential_id,
+            "credentialGeneration": credential_generation,
             "models": ["chat-model"],
             "endpoints": ["models", "chat-completions"],
             "limits": {
@@ -353,6 +383,40 @@ fn publish_body(
             "bindingGeneration": 1
         }
     })
+}
+
+async fn create_inference_key(
+    app: &BootApplication,
+    organization: &str,
+    project: &str,
+    environment: &str,
+    idempotency_key: &str,
+) -> Result<(Uuid, u64)> {
+    let path = format!(
+        "/api/v1/organizations/{organization}/projects/{project}/environments/{environment}/inference/keys"
+    );
+    let response = app
+        .call(post_json_as(
+            &path,
+            idempotency_key,
+            json!({ "expiresAt": (Utc::now() + Duration::hours(2)).to_rfc3339() }),
+            INFERENCE_ROUTE_WRITE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(response.status(), 201);
+    let body = response_json(&response)?;
+    let credential_id = body["data"]["credential"]["id"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("missing inference key id".into()))
+        .and_then(parse_uuid_label)?;
+    let generation = body["data"]["credential"]["generation"]
+        .as_u64()
+        .ok_or_else(|| BootError::Internal("missing inference key generation".into()))?;
+    Ok((credential_id, generation))
+}
+
+fn parse_uuid_label(value: &str) -> Result<Uuid> {
+    parse_uuid(value, "inference credential")
 }
 
 async fn seed_verified_binding(

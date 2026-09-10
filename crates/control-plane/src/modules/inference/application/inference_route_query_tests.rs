@@ -4,8 +4,9 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::inference::application::{
     GetInferenceRoute, GetInferenceRouteHandler, ListInferenceRoutes, ListInferenceRoutesHandler,
-    PermitInferenceEdgeRouteBindingAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
-    RetireInferenceRoute, RetireInferenceRouteHandler, DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
+    PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
+    PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
+    RetireInferenceRouteHandler, DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -123,6 +124,7 @@ fn publish_handler(routes: Arc<InMemoryInferenceRouteRepository>) -> PublishInfe
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
         Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
     )
 }
 

@@ -217,7 +217,8 @@ use crate::modules::identity::{
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
     GetWorkloadIdentityPolicyRevisionHandler, IInferenceCredentialAclProjectionPort,
-    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
+    IdentityModule, IdentityInferenceGrantCredentialAdmissionAdapter, InferenceCredentialIssuer,
+    InspectCurrentTrustDomainProviderHandler,
     ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
     ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
     ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
@@ -2866,6 +2867,12 @@ fn build_management_application_with_health(
     let revoke_inference_credentials = Arc::clone(&inference_credentials);
     let list_inference_credentials: Arc<dyn IInferenceCredentialRepository> =
         inference_credentials.clone();
+    let publish_inference_route_grants: Arc<
+        dyn crate::modules::inference::IInferenceGrantCredentialAdmissionPort,
+    > = Arc::new(IdentityInferenceGrantCredentialAdmissionAdapter::new(
+        Arc::clone(&list_inference_credentials),
+    ));
+    let revise_inference_route_grants = Arc::clone(&publish_inference_route_grants);
     let get_inference_credentials: Arc<dyn IInferenceCredentialRepository> = inference_credentials;
     let create_secrets = Arc::clone(&secrets);
     let rotate_secrets = Arc::clone(&secrets);
@@ -3059,6 +3066,7 @@ fn build_management_application_with_health(
                         publish_inference_route_environments,
                         publish_inference_routes,
                         publish_inference_route_bindings,
+                        publish_inference_route_grants,
                     ),
                 )
                 .command_handler::<crate::modules::inference::ReviseInferenceRoute, _>(
@@ -3066,6 +3074,7 @@ fn build_management_application_with_health(
                         revise_inference_route_environments,
                         revise_inference_routes,
                         revise_inference_route_bindings,
+                        revise_inference_route_grants,
                     ),
                 )
                 .command_handler::<crate::modules::inference::RetireInferenceRoute, _>(

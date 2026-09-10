@@ -2,9 +2,9 @@
 
 use crate::modules::inference::application::{
     IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope,
-    PermitInferenceEdgeRouteBindingAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
-    RetireInferenceRoute, RetireInferenceRouteHandler, ReviseInferenceRoute,
-    ReviseInferenceRouteHandler,
+    PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
+    PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
+    RetireInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::{
@@ -143,6 +143,7 @@ fn publish_handler(
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
         Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
     )
 }
 
@@ -151,6 +152,7 @@ fn revise_handler(routes: Arc<InMemoryInferenceRouteRepository>) -> ReviseInfere
         Arc::new(AlwaysPresentEnvironmentRepository),
         routes,
         Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+        Arc::new(PermitInferenceGrantCredentialAdmission),
     )
 }
 

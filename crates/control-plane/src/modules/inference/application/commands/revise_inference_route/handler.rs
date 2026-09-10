@@ -1,6 +1,7 @@
 use super::ReviseInferenceRoute;
 use crate::modules::inference::application::{
-    InferenceEdgeRouteBindingAdmissionRequest, IInferenceEdgeRouteBindingAdmissionPort,
+    InferenceEdgeRouteBindingAdmissionRequest, InferenceGrantCredentialAdmissionRequest,
+    IInferenceEdgeRouteBindingAdmissionPort, IInferenceGrantCredentialAdmissionPort,
 };
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::repositories::{
@@ -17,6 +18,7 @@ pub struct ReviseInferenceRouteHandler {
     environments: Arc<dyn IEnvironmentRepository>,
     routes: Arc<dyn IInferenceRouteRepository>,
     edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
+    grant_credentials: Arc<dyn IInferenceGrantCredentialAdmissionPort>,
 }
 
 impl ReviseInferenceRouteHandler {
@@ -24,11 +26,13 @@ impl ReviseInferenceRouteHandler {
         environments: Arc<dyn IEnvironmentRepository>,
         routes: Arc<dyn IInferenceRouteRepository>,
         edge_route_bindings: Arc<dyn IInferenceEdgeRouteBindingAdmissionPort>,
+        grant_credentials: Arc<dyn IInferenceGrantCredentialAdmissionPort>,
     ) -> Self {
         Self {
             environments,
             routes,
             edge_route_bindings,
+            grant_credentials,
         }
     }
 }
@@ -42,6 +46,7 @@ impl CommandHandler<ReviseInferenceRoute> for ReviseInferenceRouteHandler {
         let environments = Arc::clone(&self.environments);
         let routes = Arc::clone(&self.routes);
         let edge_route_bindings = Arc::clone(&self.edge_route_bindings);
+        let grant_credentials = Arc::clone(&self.grant_credentials);
         Box::pin(async move {
             if command.expected_aggregate_version == 0 {
                 return Ok(Err(ApplicationError::Invalid(
@@ -72,6 +77,20 @@ impl CommandHandler<ReviseInferenceRoute> for ReviseInferenceRouteHandler {
                     command.project_id,
                     command.environment_id,
                     command.binding.clone(),
+                ))
+                .await
+            {
+                Ok(()) => {}
+                Err(error) => return Ok(Err(error)),
+            }
+
+            match grant_credentials
+                .admit(InferenceGrantCredentialAdmissionRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.grants.clone(),
+                    command.requested_at,
                 ))
                 .await
             {

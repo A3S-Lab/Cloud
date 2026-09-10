@@ -148,10 +148,11 @@ pub use infrastructure::persistence::{
 };
 pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
-    A3sEventRecipientContactVerificationConsumer, InferenceCredentialAclProjectionAdapter,
-    InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
-    IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
-    SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
+    A3sEventRecipientContactVerificationConsumer, IdentityInferenceGrantCredentialAdmissionAdapter,
+    InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuanceError,
+    InferenceCredentialIssueRequest, InferenceCredentialIssuer, IssuedInferenceCredential,
+    OwnerWorkloadRuntimeEvidenceAdapter, SmtpRecipientContactVerificationCredentials,
+    SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
