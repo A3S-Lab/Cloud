@@ -866,6 +866,402 @@ async fn create_key_and_publish_route_succeed_joint_edge_managed_snapshot_acl_su
 }
 
 #[tokio::test]
+async fn rotate_then_revise_route_bumps_grant_generation_in_edge_managed_snapshot_acl_succession() {
+    use crate::modules::edge::domain::{
+        DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
+        UpstreamEndpoint,
+    };
+    use crate::modules::edge::infrastructure::{
+        GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    };
+    use crate::modules::identity::application::commands::create_inference_key::{
+        CreateInferenceKey, CreateInferenceKeyHandler,
+    };
+    use crate::modules::identity::application::commands::rotate_inference_key::{
+        RotateInferenceKey, RotateInferenceKeyHandler,
+    };
+    use crate::modules::identity::application::{
+        IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
+    };
+    use crate::modules::identity::domain::repositories::IInferenceCredentialLifecycleRepository;
+    use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
+    use crate::modules::identity::infrastructure::{
+        InferenceCredentialAclProjectionAdapter, InferenceCredentialIssuer,
+    };
+    use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
+    use crate::modules::secrets::domain::{
+        EncryptedSecretValue, ISecretEncryptionService, SecretEncryptionError,
+    };
+    use crate::modules::shared_kernel::domain::{
+        GatewayCertificateId, NodeId, RouteId, WorkloadId, WorkloadRevisionId,
+    };
+    use base64::engine::general_purpose::STANDARD_NO_PAD;
+    use base64::Engine as _;
+    use sha2::{Digest, Sha256};
+
+    struct TestEncryption;
+
+    #[async_trait]
+    impl ISecretEncryptionService for TestEncryption {
+        async fn encrypt(
+            &self,
+            plaintext: &[u8],
+            context: &[u8],
+        ) -> Result<EncryptedSecretValue, SecretEncryptionError> {
+            let context_digest = format!("{:x}", Sha256::digest(context));
+            EncryptedSecretValue::new(
+                "test:base64",
+                format!("v1:{context_digest}:{}", STANDARD_NO_PAD.encode(plaintext)),
+            )
+            .map_err(SecretEncryptionError::Rejected)
+        }
+
+        async fn decrypt(
+            &self,
+            value: &EncryptedSecretValue,
+            context: &[u8],
+        ) -> Result<Vec<u8>, SecretEncryptionError> {
+            let mut parts = value.ciphertext().splitn(3, ':');
+            let version = parts.next();
+            let context_digest = parts.next();
+            let encoded = parts.next();
+            let expected_context_digest = format!("{:x}", Sha256::digest(context));
+            if version != Some("v1") || context_digest != Some(expected_context_digest.as_str()) {
+                return Err(SecretEncryptionError::Rejected(
+                    "test ciphertext context mismatch".into(),
+                ));
+            }
+            STANDARD_NO_PAD
+                .decode(encoded.unwrap_or_default())
+                .map_err(|error| SecretEncryptionError::Rejected(error.to_string()))
+        }
+
+        async fn health(&self) -> Result<bool, SecretEncryptionError> {
+            Ok(true)
+        }
+    }
+
+    let credentials = Arc::new(InMemoryInferenceCredentialRepository::default());
+    let routes = Arc::new(InMemoryInferenceRouteRepository::default());
+    let organization_id = OrganizationId::new();
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let requested_at = Utc::now();
+
+    let credential_adapter = InferenceCredentialAclProjectionAdapter::new(credentials.clone());
+    let route_adapter = InferenceRouteAclProjectionAdapter::new(routes.clone());
+    let credential_scope =
+        InferenceCredentialEnvironmentScope::new(organization_id, project_id, environment_id)
+            .unwrap();
+    let route_scope =
+        InferenceRouteEnvironmentScope::new(organization_id, project_id, environment_id).unwrap();
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let now = issued_at;
+    let workload_id = WorkloadId::new();
+    let workload_revision_id = WorkloadRevisionId::new();
+    let mut owned = Route::create(
+        RouteId::new(),
+        organization_id,
+        project_id,
+        environment_id,
+        GatewayScopeId::new(),
+        node_id,
+        RouteHostname::parse("api.example.com").unwrap(),
+        RoutePath::parse("/v1").unwrap(),
+        DomainClaimId::new(),
+        DomainNamePattern::parse("api.example.com").unwrap(),
+        certificate_id,
+        workload_id,
+        RouteTarget::new(
+            workload_id,
+            workload_revision_id,
+            format!("workload:{workload_id}:revision:{workload_revision_id}"),
+            1,
+            RoutePortName::parse("http").unwrap(),
+            UpstreamEndpoint::parse("http://127.0.0.1:49152").unwrap(),
+            now,
+        )
+        .unwrap(),
+        now,
+    )
+    .unwrap();
+    owned.state = RouteState::Active;
+    owned.gateway_certificate_id = Some(certificate_id);
+
+    let compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: "0.0.0.0:8081".into(),
+        management_address: "127.0.0.1:9090".into(),
+        management_path_prefix: "/api/gateway".into(),
+        management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+        upstream_request_timeout_ms: 30_000,
+        certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+    })
+    .unwrap();
+
+    let created = CreateInferenceKeyHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+        InferenceCredentialIssuer::new(),
+        Arc::new(TestEncryption),
+    )
+    .execute(
+        CreateInferenceKey {
+            organization_id,
+            project_id,
+            environment_id,
+            expires_at: requested_at + Duration::hours(1),
+            idempotency_key: "create-for-rotate-revise-edge".into(),
+            request_id: Uuid::now_v7(),
+            requested_at,
+        },
+        context(),
+    )
+    .await
+    .expect("boot")
+    .expect("create");
+    let prior_prefix = created
+        .credential
+        .gateway_projection()
+        .expect("projection")
+        .prefix
+        .clone();
+    let credential_id = created.credential.id.as_uuid();
+    let prior_generation = created.credential.generation();
+    assert_eq!(prior_generation, 1);
+
+    let grant_admission = Arc::new(IdentityInferenceGrantCredentialAdmissionAdapter::new(
+        credentials.clone(),
+    ));
+    let publish = PublishInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+        Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+        Arc::clone(&grant_admission)
+            as Arc<dyn crate::modules::inference::application::IInferenceGrantCredentialAdmissionPort>,
+    );
+    let published = publish
+        .execute(
+            PublishInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![InferenceGrantAclProjection {
+                    credential_id,
+                    credential_generation: prior_generation,
+                    models: vec!["chat-model".into()],
+                    endpoints: vec![
+                        InferenceEndpointAcl::Models,
+                        InferenceEndpointAcl::ChatCompletions,
+                    ],
+                    limits: InferenceLimitsAclProjection {
+                        max_concurrent_requests: 2,
+                        requests_per_minute: 60,
+                        request_burst: 2,
+                        tokens_per_minute: 10_000,
+                    },
+                }],
+                binding: sample_binding(),
+                idempotency_key: "publish-for-rotate-revise-edge".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+
+    let baseline_credentials = credential_adapter
+        .list_inference_credential_acl_projections(&[credential_scope.clone()])
+        .await
+        .unwrap();
+    let baseline_routes = route_adapter
+        .list_inference_route_acl_projections(&[route_scope.clone()])
+        .await
+        .unwrap();
+    let baseline = compiler
+        .compile_certificate_convergence_with_inference_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            Some(certificate_id),
+            &[owned.clone()],
+            &baseline_credentials,
+            &baseline_routes,
+        )
+        .unwrap();
+    assert!(baseline.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
+    assert!(baseline.acl.contains("generation = 1"));
+    assert!(baseline.acl.contains("credential_generation = 1"));
+    assert!(baseline.acl.contains(&format!("grants \"{credential_id}\"")));
+    assert!(!baseline.acl.contains("\n  workers "));
+
+    let rotate_at = Utc::now() + Duration::seconds(1);
+    let rotated = RotateInferenceKeyHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        Arc::clone(&credentials) as Arc<dyn IInferenceCredentialLifecycleRepository>,
+        InferenceCredentialIssuer::new(),
+        Arc::new(TestEncryption),
+    )
+    .execute(
+        RotateInferenceKey {
+            organization_id,
+            project_id,
+            environment_id,
+            credential_id: created.credential.id,
+            expected_aggregate_version: created.credential.aggregate_version(),
+            expires_at: rotate_at + Duration::hours(2),
+            idempotency_key: "rotate-for-revise-edge".into(),
+            request_id: Uuid::now_v7(),
+            requested_at: rotate_at,
+        },
+        context(),
+    )
+    .await
+    .expect("boot")
+    .expect("rotate");
+    assert_eq!(rotated.credential.generation(), 2);
+    let new_prefix = rotated
+        .credential
+        .gateway_projection()
+        .expect("projection")
+        .prefix
+        .clone();
+    assert_ne!(new_prefix, prior_prefix);
+
+    let rotated_credentials = credential_adapter
+        .list_inference_credential_acl_projections(&[credential_scope.clone()])
+        .await
+        .unwrap();
+    let stale_routes = route_adapter
+        .list_inference_route_acl_projections(&[route_scope.clone()])
+        .await
+        .unwrap();
+    assert_eq!(rotated_credentials[0].generation, 2);
+    assert_eq!(stale_routes[0].grants[0].credential_generation, 1);
+    let mismatched = compiler.compile_certificate_convergence_with_inference_policy(
+        GatewaySnapshotMetadata::new(
+            node_id,
+            3,
+            Some(2),
+            issued_at + Duration::seconds(1),
+            expires_at + Duration::seconds(1),
+        ),
+        Some(certificate_id),
+        &[owned.clone()],
+        &rotated_credentials,
+        &stale_routes,
+    );
+    let mismatch_error = mismatched.expect_err(
+        "rotated credential generation must fail closed against stale grant generation",
+    );
+    assert!(
+        mismatch_error.contains("credential_generation")
+            && mismatch_error.contains("does not match"),
+        "unexpected compile error: {mismatch_error}"
+    );
+
+    let revise = ReviseInferenceRouteHandler::new(
+        Arc::new(AlwaysPresentEnvironmentRepository),
+        routes.clone(),
+        Arc::new(PermitInferenceEdgeRouteBindingAdmission),
+        grant_admission,
+    );
+    let revised = revise
+        .execute(
+            ReviseInferenceRoute {
+                organization_id,
+                project_id,
+                environment_id,
+                route_id: published.id,
+                expected_aggregate_version: published.aggregate_version(),
+                router: "inference".into(),
+                models: vec![sample_model()],
+                grants: vec![InferenceGrantAclProjection {
+                    credential_id,
+                    credential_generation: 2,
+                    models: vec!["chat-model".into()],
+                    endpoints: vec![
+                        InferenceEndpointAcl::Models,
+                        InferenceEndpointAcl::ChatCompletions,
+                    ],
+                    limits: InferenceLimitsAclProjection {
+                        max_concurrent_requests: 2,
+                        requests_per_minute: 60,
+                        request_burst: 2,
+                        tokens_per_minute: 10_000,
+                    },
+                }],
+                binding: sample_binding(),
+                idempotency_key: "revise-grant-generation-for-edge".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: rotate_at + Duration::seconds(1),
+            },
+            context(),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(revised.policy_revision(), 2);
+
+    let successor_credentials = credential_adapter
+        .list_inference_credential_acl_projections(&[credential_scope])
+        .await
+        .unwrap();
+    let successor_routes = route_adapter
+        .list_inference_route_acl_projections(&[route_scope])
+        .await
+        .unwrap();
+    assert_eq!(successor_credentials[0].generation, 2);
+    assert_eq!(successor_credentials[0].prefix, new_prefix);
+    assert!(!successor_credentials[0].revoked);
+    assert_eq!(successor_routes[0].grants[0].credential_generation, 2);
+
+    let successor = compiler
+        .compile_certificate_convergence_with_inference_policy(
+            GatewaySnapshotMetadata::new(
+                node_id,
+                4,
+                Some(3),
+                issued_at + Duration::seconds(2),
+                expires_at + Duration::seconds(2),
+            ),
+            Some(certificate_id),
+            &[owned],
+            &successor_credentials,
+            &successor_routes,
+        )
+        .unwrap();
+    assert!(successor.acl.contains(&format!("prefix = \"{new_prefix}\"")));
+    assert!(!successor.acl.contains(&format!("prefix = \"{prior_prefix}\"")));
+    assert!(successor.acl.contains("generation = 2"));
+    assert!(successor.acl.contains("credential_generation = 2"));
+    assert!(!successor.acl.contains("credential_generation = 1"));
+    assert!(successor.acl.contains(&format!("grants \"{credential_id}\"")));
+    assert!(successor.acl.contains("models \"chat-model\""));
+    assert!(successor.acl.contains(&format!(
+        "routes \"{}\"",
+        published.id.as_uuid()
+    )));
+    assert!(successor.acl.contains("revoked = false"));
+    assert!(!successor.acl.contains("\n  workers "));
+    assert_eq!(successor.acl.matches("inference {").count(), 1);
+    assert!(
+        !successor.acl.contains(created.bearer_credential()),
+        "successor ACL must not embed the pre-rotate bearer"
+    );
+    assert!(
+        !successor.acl.contains(rotated.bearer_credential()),
+        "successor ACL must not embed the rotated bearer"
+    );
+}
+
+#[tokio::test]
 async fn revise_projection_succeeds_edge_managed_snapshot_acl_without_workers() {
     use crate::modules::edge::domain::{
         DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget,
