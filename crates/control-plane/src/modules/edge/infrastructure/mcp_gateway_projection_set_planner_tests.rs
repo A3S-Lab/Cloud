@@ -101,8 +101,7 @@ fn input(
         policy: fixture.policy.clone(),
         domain_claim,
         profile_binding: fixture.profile.clone(),
-        revision: fixture.revision.clone(),
-        workload_aggregate_version: 2,
+        revision_binding: fixture.revision.clone(),
     }
 }
 
@@ -180,7 +179,10 @@ async fn plans_the_complete_active_set_for_one_receiving_gateway() {
         planned.route_versions()[0].route_id(),
         fixture.policy.spec().route_id
     );
-    assert_eq!(planned.route_versions()[0].workload_aggregate_version(), 2);
+    assert_eq!(
+        planned.route_versions()[0].workload_aggregate_version(),
+        fixture.revision.workload_aggregate_version()
+    );
     assert_eq!(
         planned.route_versions()[0].domain_claim_id(),
         fixture.policy.spec().domain_claim_id

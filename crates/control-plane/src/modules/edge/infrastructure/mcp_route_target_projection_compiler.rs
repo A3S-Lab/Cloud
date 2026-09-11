@@ -1,7 +1,8 @@
 use crate::modules::edge::domain::services::ResolvedRouteTarget;
-use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
-use crate::modules::edge::domain::McpRoutePolicy;
-use crate::modules::workloads::domain::entities::WorkloadRevision;
+use crate::modules::edge::domain::{
+    EdgeMcpServiceProfileProjectionBinding, EdgeMcpWorkloadRevisionProjectionBinding,
+    McpRoutePolicy,
+};
 use a3s_cloud_contracts::{McpRoutePolicyProjection, McpTargetProjection};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use uuid::Uuid;
@@ -58,36 +59,17 @@ impl McpRouteTargetProjectionCompiler {
         &self,
         policy: &McpRoutePolicy,
         profile: &EdgeMcpServiceProfileProjectionBinding,
-        revision: &WorkloadRevision,
+        revision: &EdgeMcpWorkloadRevisionProjectionBinding,
         router: impl Into<String>,
         mut candidates: Vec<McpRouteTargetCandidate>,
     ) -> Result<McpRoutePolicyProjection, String> {
         let router = router.into();
         validate_router(&router)?;
-        let binding = revision
-            .mcp_binding()
-            .ok_or_else(|| "MCP route requires a release-bound Workload revision".to_owned())?;
+        revision.validate()?;
+        revision.matches_profile(profile)?;
+        revision.matches_policy_spec(policy.spec())?;
         let policy_spec = policy.spec();
 
-        if revision.id.as_uuid().is_nil()
-            || revision.workload_id.as_uuid().is_nil()
-            || revision.generation == 0
-        {
-            return Err("MCP route Workload revision identity is invalid".into());
-        }
-        if binding.organization_id() != policy_spec.organization_id
-            || revision.workload_id != policy_spec.workload_id
-            || binding.asset_id() != policy_spec.asset_id
-            || binding.asset_release_id() != policy_spec.asset_release_id
-            || binding.profile_digest() != &policy_spec.profile_digest
-            || binding.profile_digest() != profile.digest()
-        {
-            return Err(
-                "MCP route policy, Workload revision, release, and Service profile differ".into(),
-            );
-        }
-
-        validate_bound_template(revision, profile)?;
         if candidates.is_empty() || candidates.len() > MAX_MCP_ROUTE_TARGETS {
             return Err("MCP route requires between one and 64 healthy Runtime targets".into());
         }
@@ -113,12 +95,12 @@ impl McpRouteTargetProjectionCompiler {
                 McpTargetProjection {
                     target_id,
                     node_id: candidate.resolved.node_id.as_uuid(),
-                    asset_release_id: binding.asset_release_id().as_uuid(),
+                    asset_release_id: revision.asset_release_id().as_uuid(),
                     unit_id: candidate.resolved.target.runtime_unit_id,
                     generation: candidate.resolved.target.runtime_generation,
                     service: format!("mcp-target-{}", target_id.simple()),
                     endpoint: candidate.resolved.target.upstream.as_str().to_owned(),
-                    profile_digest: binding.profile_digest().to_string(),
+                    profile_digest: revision.profile_digest().to_string(),
                     priority: candidate.priority,
                     weight: candidate.weight,
                 }
@@ -140,32 +122,8 @@ fn validate_router(router: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_bound_template(
-    revision: &WorkloadRevision,
-    profile: &EdgeMcpServiceProfileProjectionBinding,
-) -> Result<(), String> {
-    profile.validate()?;
-    let template = revision.resolved_template()?;
-    template.validate()?;
-    if !template
-        .ports
-        .iter()
-        .any(|port| port.name == profile.runtime_port())
-    {
-        return Err("MCP Workload does not declare the bound profile Runtime port".into());
-    }
-    let health = template
-        .health
-        .as_ref()
-        .ok_or_else(|| "MCP Workload requires the bound profile HTTP health check".to_owned())?;
-    if health.port_name != profile.runtime_port() || health.path != profile.health_path() {
-        return Err("MCP Workload health check differs from the bound Service profile".into());
-    }
-    Ok(())
-}
-
 fn validate_candidates(
-    revision: &WorkloadRevision,
+    revision: &EdgeMcpWorkloadRevisionProjectionBinding,
     profile: &EdgeMcpServiceProfileProjectionBinding,
     candidates: &[McpRouteTargetCandidate],
 ) -> Result<(), String> {
@@ -179,10 +137,10 @@ fn validate_candidates(
         target.validate_for(resolved.workload_id)?;
         if resolved.node_id.as_uuid().is_nil()
             || !nodes.insert(resolved.node_id)
-            || resolved.workload_id != revision.workload_id
-            || target.workload_revision_id != revision.id
-            || target.has_canonical_runtime_identity(revision.workload_id)
-                && target.runtime_generation != revision.generation
+            || resolved.workload_id != revision.workload_id()
+            || target.workload_revision_id != revision.revision_id()
+            || target.has_canonical_runtime_identity(revision.workload_id())
+                && target.runtime_generation != revision.generation()
             || target.port_name.as_str() != profile.runtime_port()
         {
             return Err(
@@ -227,18 +185,19 @@ pub(super) mod tests {
         McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec,
     };
     use crate::modules::edge::domain::services::ResolvedRouteTarget;
-    use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
     use crate::modules::edge::domain::{
+        EdgeMcpServiceProfileProjectionBinding, EdgeMcpWorkloadRevisionProjectionBinding,
         McpRoutePolicySpec, RouteHostname, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
+    use crate::modules::edge::infrastructure::workloads_mcp_workload_revision_access::admit_mcp_workload_revision_projection_binding;
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId, NodeId,
-        OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
+        OrganizationId, ProjectId, ResourceName, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
         HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact, ServicePort, ServiceProcess,
-        ServiceResources, ServiceTemplate, WorkloadRevision,
+        ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
     };
     use a3s_cloud_contracts::{McpGrantProjection, McpLimitsProjection, MCP_PROTOCOL_VERSION};
     use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -248,7 +207,8 @@ pub(super) mod tests {
         pub(in crate::modules::edge::infrastructure) profile:
             EdgeMcpServiceProfileProjectionBinding,
         pub(in crate::modules::edge::infrastructure) policy: McpRoutePolicy,
-        pub(in crate::modules::edge::infrastructure) revision: WorkloadRevision,
+        pub(in crate::modules::edge::infrastructure) revision:
+            EdgeMcpWorkloadRevisionProjectionBinding,
     }
 
     fn uuid(value: &str) -> Uuid {
@@ -346,6 +306,20 @@ pub(super) mod tests {
             created_at: now(),
         })
         .expect("profile binding");
+        let mut workload = Workload::create(
+            workload_id,
+            organization_id,
+            ProjectId::from_uuid(uuid("77777777-7777-4777-8777-777777777777")),
+            EnvironmentId::from_uuid(uuid("88888888-8888-4888-8888-888888888888")),
+            ResourceName::parse("MCP runtime").expect("name"),
+            now(),
+        );
+        workload
+            .activate(revision_id, now())
+            .expect("activate revision");
+        let revision =
+            admit_mcp_workload_revision_projection_binding(&workload, &revision, &profile)
+                .expect("revision binding");
         let admission = crate::modules::edge::domain::EdgeMcpServiceProfileAdmission::new(
             profile.digest().clone(),
             profile.endpoint_path(),
@@ -420,13 +394,13 @@ pub(super) mod tests {
         port: u16,
     ) -> ResolvedRouteTarget {
         ResolvedRouteTarget {
-            workload_id: fixture.revision.workload_id,
+            workload_id: fixture.revision.workload_id(),
             node_id,
             target: RouteTarget::new(
-                fixture.revision.workload_id,
-                fixture.revision.id,
+                fixture.revision.workload_id(),
+                fixture.revision.revision_id(),
                 fixture.revision.runtime_unit_id(),
-                fixture.revision.generation,
+                fixture.revision.generation(),
                 RoutePortName::parse("mcp").expect("port name"),
                 UpstreamEndpoint::parse(format!("http://127.0.0.1:{port}")).expect("endpoint"),
                 now(),
@@ -443,14 +417,15 @@ pub(super) mod tests {
         port: u16,
     ) -> ResolvedRouteTarget {
         ResolvedRouteTarget {
-            workload_id: fixture.revision.workload_id,
+            workload_id: fixture.revision.workload_id(),
             node_id,
             target: RouteTarget::new(
-                fixture.revision.workload_id,
-                fixture.revision.id,
+                fixture.revision.workload_id(),
+                fixture.revision.revision_id(),
                 format!(
                     "workload:{}:replica:{replica_id}:revision:{}",
-                    fixture.revision.workload_id, fixture.revision.id
+                    fixture.revision.workload_id(),
+                    fixture.revision.revision_id()
                 ),
                 generation,
                 RoutePortName::parse("mcp").expect("port name"),
@@ -500,12 +475,7 @@ pub(super) mod tests {
         assert_eq!(projection.targets[0].node_id, first_node.as_uuid());
         assert_eq!(
             projection.targets[0].asset_release_id,
-            fixture
-                .revision
-                .mcp_binding()
-                .expect("binding")
-                .asset_release_id()
-                .as_uuid()
+            fixture.revision.asset_release_id().as_uuid()
         );
         assert_eq!(
             projection.targets[0].profile_digest,
@@ -517,7 +487,7 @@ pub(super) mod tests {
         );
         assert_eq!(
             projection.targets[0].generation,
-            fixture.revision.generation
+            fixture.revision.generation()
         );
         assert_eq!(projection.targets[0].endpoint, "http://127.0.0.1:49152/");
         assert!(projection.targets[0].service.starts_with("mcp-target-"));
@@ -551,7 +521,7 @@ pub(super) mod tests {
         assert_eq!(projection.targets.len(), 2);
         assert_eq!(
             projection.targets[0].generation,
-            fixture.revision.generation
+            fixture.revision.generation()
         );
         assert_eq!(projection.targets[1].generation, 11);
         assert!(projection.targets[1]
@@ -569,25 +539,31 @@ pub(super) mod tests {
         let node_id = NodeId::new();
         let candidate =
             McpRouteTargetCandidate::new(target(&fixture, node_id, 49152), 0, 1).expect("target");
-        let mut unbound = fixture.revision.clone();
-        unbound = WorkloadRevision::create(
-            unbound.id,
-            unbound.workload_id,
-            unbound.generation,
-            unbound.resolved_template().expect("template").clone(),
-            unbound.created_at,
+        let mismatched = EdgeMcpWorkloadRevisionProjectionBinding::new(
+            fixture.revision.revision_id(),
+            fixture.revision.workload_id(),
+            fixture.revision.generation(),
+            fixture.revision.created_at(),
+            fixture.revision.organization_id(),
+            AssetId::new(),
+            fixture.revision.asset_release_id(),
+            fixture.revision.profile_digest().clone(),
+            fixture.revision.runtime_port(),
+            fixture.revision.runtime_port(),
+            fixture.revision.health_path(),
+            fixture.revision.workload_aggregate_version(),
+            fixture.revision.workload_updated_at(),
         )
-        .expect("unbound revision");
+        .expect("mismatched revision");
         assert!(McpRouteTargetProjectionCompiler
             .compile(
                 &fixture.policy,
                 &fixture.profile,
-                &unbound,
+                &mismatched,
                 "mcp",
                 vec![candidate.clone()],
             )
-            .expect_err("unbound revision")
-            .contains("release-bound"));
+            .is_err());
 
         let mut malformed_unit = candidate.clone();
         malformed_unit.resolved.target.runtime_unit_id = "free-form-runtime-unit".into();

@@ -1,11 +1,12 @@
 use crate::modules::edge::domain::services::IRouteTargetReader;
-use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
-use crate::modules::edge::domain::{GatewayScope, McpRoutePolicy, RoutePortName};
+use crate::modules::edge::domain::{
+    EdgeMcpServiceProfileProjectionBinding, EdgeMcpWorkloadRevisionProjectionBinding, GatewayScope,
+    McpRoutePolicy, RoutePortName,
+};
 use crate::modules::edge::infrastructure::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeId, RepositoryError};
-use crate::modules::workloads::domain::entities::WorkloadRevision;
 use a3s_cloud_contracts::McpRoutePolicyProjection;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
@@ -14,7 +15,7 @@ use std::sync::Arc;
 pub struct PlanMcpRouteProjection {
     pub policy: McpRoutePolicy,
     pub profile_binding: EdgeMcpServiceProfileProjectionBinding,
-    pub revision: WorkloadRevision,
+    pub revision_binding: EdgeMcpWorkloadRevisionProjectionBinding,
     pub scope: GatewayScope,
     /// Physical Gateway that will receive the node-local projection.
     pub gateway_node_id: NodeId,
@@ -53,7 +54,7 @@ impl McpRouteProjectionPlanner {
                 policy_spec.organization_id,
                 policy_spec.project_id,
                 policy_spec.environment_id,
-                request.revision.id,
+                request.revision_binding.revision_id(),
                 &port_name,
                 &request.scope.member_node_ids,
                 observed_at,
@@ -76,7 +77,7 @@ impl McpRouteProjectionPlanner {
             .compile(
                 &request.policy,
                 profile_binding,
-                &request.revision,
+                &request.revision_binding,
                 router,
                 candidates,
             )
@@ -94,6 +95,14 @@ impl McpRouteProjectionPlanner {
             .profile_binding
             .validate()
             .map_err(RepositoryError::Conflict)?;
+        request
+            .revision_binding
+            .validate()
+            .map_err(RepositoryError::Conflict)?;
+        request
+            .revision_binding
+            .matches_profile(&request.profile_binding)
+            .map_err(RepositoryError::Conflict)?;
         if !request.scope.contains_member(request.gateway_node_id) {
             return Err(RepositoryError::Conflict(
                 "MCP route projection Gateway must be a desired scope member".into(),
@@ -110,14 +119,14 @@ impl McpRouteProjectionPlanner {
             || profile_binding.organization_id() != policy_spec.organization_id
             || profile_binding.asset_id() != policy_spec.asset_id
             || profile_binding.asset_release_id() != policy_spec.asset_release_id
-            || request.revision.workload_id != policy_spec.workload_id
+            || request.revision_binding.workload_id() != policy_spec.workload_id
         {
             return Err(RepositoryError::Conflict(
                 "MCP route policy, Gateway scope, Service profile, and Workload differ".into(),
             ));
         }
         if observed_at < request.policy.updated_at()
-            || observed_at < request.revision.created_at
+            || observed_at < request.revision_binding.created_at()
             || observed_at < profile_binding.created_at()
             || observed_at >= policy_spec.expires_at
         {
@@ -271,7 +280,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: scope(&fixture, node_id),
                 gateway_node_id: node_id,
                 observed_at: now(),
@@ -285,7 +294,7 @@ mod tests {
                 organization_id: policy_spec.organization_id,
                 project_id: policy_spec.project_id,
                 environment_id: policy_spec.environment_id,
-                revision_id: fixture.revision.id,
+                revision_id: fixture.revision.revision_id(),
                 port_name: RoutePortName::parse("mcp").expect("port name"),
                 observed_at: now(),
             })
@@ -315,7 +324,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: replicated_scope(&fixture, primary, secondary),
                 gateway_node_id: secondary,
                 observed_at: now(),
@@ -345,7 +354,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: wrong_scope,
                 gateway_node_id: node_id,
                 observed_at: now(),
@@ -360,7 +369,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: scope(&fixture, node_id),
                 gateway_node_id: NodeId::new(),
                 observed_at: now(),
@@ -387,7 +396,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: scope(&fixture, scope_node_id),
                 gateway_node_id: scope_node_id,
                 observed_at: fixture.policy.spec().expires_at,
@@ -401,7 +410,7 @@ mod tests {
             .plan(PlanMcpRouteProjection {
                 policy: fixture.policy.clone(),
                 profile_binding: profile_binding(&fixture),
-                revision: fixture.revision.clone(),
+                revision_binding: fixture.revision.clone(),
                 scope: scope(&fixture, scope_node_id),
                 gateway_node_id: scope_node_id,
                 observed_at: now(),

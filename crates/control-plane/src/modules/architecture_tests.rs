@@ -10838,6 +10838,97 @@ fn edge_mcp_gateway_projection_owns_profile_binding_facts() {
 }
 
 #[test]
+fn edge_mcp_gateway_projection_owns_workload_revision_binding_facts() {
+    let root = module_root();
+
+    let domain_input = std::fs::read_to_string(
+        root.join("edge/domain/services/mcp_route_projection_input_reader.rs"),
+    )
+    .expect("read MCP route projection input Domain");
+    let production_domain = production_source(&domain_input);
+    assert!(
+        production_domain.contains("EdgeMcpWorkloadRevisionProjectionBinding"),
+        "MCP projection Domain lost owned Workload revision binding"
+    );
+    for forbidden in [
+        "crate::modules::workloads",
+        "entities::WorkloadRevision",
+        "WorkloadDesiredState",
+    ] {
+        assert!(
+            !production_domain.contains(forbidden),
+            "MCP projection Domain leaked Workloads type {forbidden}"
+        );
+    }
+
+    let owned = std::fs::read_to_string(
+        root.join("edge/domain/value_objects/mcp_workload_revision_projection_binding.rs"),
+    )
+    .expect("read owned MCP Workload revision projection binding");
+    let compact_owned = production_source(&owned)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeMcpWorkloadRevisionProjectionBinding",
+        "fnvalidate(&self)->Result<(),String>",
+        "fnrevision_id(&self)->WorkloadRevisionId",
+        "fnworkload_id(&self)->WorkloadId",
+        "fngeneration(&self)->u64",
+        "fnprofile_digest(&self)->&Sha256Digest",
+        "fnruntime_port(&self)->&str",
+        "fnhealth_path(&self)->&str",
+        "fnworkload_aggregate_version(&self)->u64",
+    ] {
+        assert!(
+            compact_owned.contains(required),
+            "owned MCP Workload revision projection binding lost minimum surface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::workloads",
+        "ServiceTemplate",
+        "McpWorkloadRevisionBinding",
+    ] {
+        assert!(
+            !production_source(&owned).contains(forbidden),
+            "owned MCP Workload revision projection binding leaked Workloads authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/mcp_route_projection_planner.rs",
+        "edge/infrastructure/mcp_route_target_projection_compiler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("EdgeMcpWorkloadRevisionProjectionBinding"),
+            "{relative} lost owned MCP Workload revision projection binding"
+        );
+        assert!(
+            !production
+                .contains("use crate::modules::workloads::domain::entities::WorkloadRevision;"),
+            "{relative} regained Workloads WorkloadRevision import"
+        );
+    }
+
+    let reader = std::fs::read_to_string(
+        root.join("edge/infrastructure/mcp_route_projection_input_reader.rs"),
+    )
+    .expect("read MCP projection input reader");
+    let production_reader = production_source(&reader);
+    assert!(
+        production_reader.contains("admit_mcp_workload_revision_projection_binding("),
+        "MCP projection input reader stopped mapping through the Workloads ACA"
+    );
+    assert!(
+        !production_reader.contains("revision: revision,"),
+        "MCP projection input reader still embeds foreign WorkloadRevision in production output"
+    );
+}
+
+#[test]
 fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
     let root = module_root();
 

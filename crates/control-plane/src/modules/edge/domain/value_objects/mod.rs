@@ -3,6 +3,7 @@ mod gateway_rollout_policy;
 mod gateway_snapshot_runtime_settings;
 mod mcp_service_profile_admission;
 mod mcp_service_profile_projection_binding;
+mod mcp_workload_revision_projection_binding;
 mod route_hostname;
 mod route_path;
 mod route_port_name;
@@ -14,6 +15,7 @@ pub use gateway_rollout_policy::{GatewayRolloutPolicy, MAX_GATEWAY_SCOPE_MEMBERS
 pub(crate) use gateway_snapshot_runtime_settings::GatewaySnapshotRuntimeSettings;
 pub use mcp_service_profile_admission::EdgeMcpServiceProfileAdmission;
 pub use mcp_service_profile_projection_binding::EdgeMcpServiceProfileProjectionBinding;
+pub use mcp_workload_revision_projection_binding::EdgeMcpWorkloadRevisionProjectionBinding;
 pub use route_hostname::RouteHostname;
 pub use route_path::RoutePath;
 pub use route_port_name::RoutePortName;

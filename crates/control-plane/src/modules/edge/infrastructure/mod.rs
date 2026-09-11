@@ -37,6 +37,7 @@ mod project_environment_access;
 mod route_target_reader;
 mod runtime_http_upstream;
 mod vault_gateway_certificate_authority;
+mod workloads_mcp_workload_revision_access;
 
 #[cfg(test)]
 mod gateway_certificate_reconciler_tests;

@@ -276,7 +276,7 @@ impl McpGatewayProjectionSetPlanner {
                     || spec.environment_id != request.scope.environment_id
                     || spec.gateway_scope_id != request.scope.id
                     || spec.expires_at <= observed_at
-                    || input.workload_aggregate_version == 0
+                    || input.revision_binding.workload_aggregate_version() == 0
                     || input.domain_claim.id != spec.domain_claim_id
                     || input.domain_claim.organization_id != spec.organization_id
                     || input.domain_claim.project_id != spec.project_id
@@ -317,8 +317,8 @@ impl McpGatewayProjectionSetPlanner {
                 policy_revision: input.policy.policy_revision(),
                 policy_digest: input.policy.policy_digest().clone(),
                 workload_id: input.policy.spec().workload_id,
-                workload_aggregate_version: input.workload_aggregate_version,
-                active_revision_id: input.revision.id,
+                workload_aggregate_version: input.revision_binding.workload_aggregate_version(),
+                active_revision_id: input.revision_binding.revision_id(),
                 domain_claim_id: input.domain_claim.id,
                 domain_claim_aggregate_version: input.domain_claim.aggregate_version,
                 domain_pattern: input.domain_claim.pattern.clone(),
@@ -339,7 +339,7 @@ impl McpGatewayProjectionSetPlanner {
             self.routes.plan_for_reconciliation(PlanMcpRouteProjection {
                 policy: input.policy,
                 profile_binding: input.profile_binding,
-                revision: input.revision,
+                revision_binding: input.revision_binding,
                 scope: request.scope.clone(),
                 gateway_node_id: request.gateway_node_id,
                 observed_at,

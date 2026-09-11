@@ -428,7 +428,7 @@ mod tests {
         PlanMcpRouteProjection {
             policy: fixture.policy.clone(),
             profile_binding: profile_binding(fixture),
-            revision: fixture.revision.clone(),
+            revision_binding: fixture.revision.clone(),
             scope: scope(fixture, node_id),
             gateway_node_id: node_id,
             observed_at: now(),

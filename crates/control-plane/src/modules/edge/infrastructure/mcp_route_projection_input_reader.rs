@@ -6,14 +6,12 @@ use crate::modules::edge::domain::services::{
     IMcpRouteProjectionInputReader, ResolvedMcpRouteProjectionInput,
 };
 use crate::modules::edge::domain::{
-    DomainClaim, DomainClaimState, EdgeMcpServiceProfileProjectionBinding, GatewayScope,
-    McpRoutePolicy,
+    DomainClaim, DomainClaimState, EdgeMcpServiceProfileProjectionBinding,
+    EdgeMcpWorkloadRevisionProjectionBinding, GatewayScope, McpRoutePolicy,
 };
 use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
+use crate::modules::edge::infrastructure::workloads_mcp_workload_revision_access::admit_mcp_workload_revision_projection_binding;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError};
-use crate::modules::workloads::domain::entities::{
-    Workload, WorkloadDesiredState, WorkloadRevision,
-};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -100,21 +98,22 @@ impl McpRouteProjectionInputReader {
             .map_err(|error| {
                 missing_as_storage(error, "active MCP Workload lost its active revision")
             })?;
+        let revision_binding =
+            admit_mcp_workload_revision_projection_binding(&workload, &revision, &profile_binding)
+                .map_err(RepositoryError::Conflict)?;
         validate_materialized_input(
             scope,
             &policy,
             &domain_claim,
             &profile_binding,
-            &workload,
-            &revision,
+            &revision_binding,
             observed_at,
         )?;
         Ok(ResolvedMcpRouteProjectionInput {
             policy,
             domain_claim,
             profile_binding,
-            revision,
-            workload_aggregate_version: workload.aggregate_version,
+            revision_binding,
         })
     }
 }
@@ -164,13 +163,21 @@ fn validate_materialized_input(
     policy: &McpRoutePolicy,
     domain_claim: &DomainClaim,
     profile_binding: &EdgeMcpServiceProfileProjectionBinding,
-    workload: &Workload,
-    revision: &WorkloadRevision,
+    revision_binding: &EdgeMcpWorkloadRevisionProjectionBinding,
     observed_at: DateTime<Utc>,
 ) -> Result<(), RepositoryError> {
     profile_binding
         .validate()
         .map_err(RepositoryError::Storage)?;
+    revision_binding
+        .validate()
+        .map_err(RepositoryError::Storage)?;
+    revision_binding
+        .matches_profile(profile_binding)
+        .map_err(RepositoryError::Conflict)?;
+    revision_binding
+        .matches_policy_spec(policy.spec())
+        .map_err(RepositoryError::Conflict)?;
     let observed_at = canonical_timestamp(observed_at);
     let spec = policy.spec();
     if spec.organization_id != scope.organization_id
@@ -186,8 +193,8 @@ fn validate_materialized_input(
     if policy.updated_at() > observed_at
         || domain_claim.updated_at > observed_at
         || profile_binding.created_at() > observed_at
-        || workload.updated_at > observed_at
-        || revision.created_at > observed_at
+        || revision_binding.workload_updated_at() > observed_at
+        || revision_binding.created_at() > observed_at
     {
         return Err(RepositoryError::Conflict(
             "MCP projection materialization predates its desired state".into(),
@@ -208,38 +215,6 @@ fn validate_materialized_input(
             "active MCP route does not have exact verified domain authority".into(),
         ));
     }
-    if workload.id != spec.workload_id
-        || workload.organization_id != spec.organization_id
-        || workload.project_id != spec.project_id
-        || workload.environment_id != spec.environment_id
-        || workload.desired_state != WorkloadDesiredState::Running
-        || workload.aggregate_version == 0
-        || workload.active_revision_id != Some(revision.id)
-        || revision.workload_id != workload.id
-    {
-        return Err(RepositoryError::Conflict(
-            "active MCP route does not resolve to its running Workload revision".into(),
-        ));
-    }
-    let binding = revision.mcp_binding().ok_or_else(|| {
-        RepositoryError::Conflict("active MCP route Workload revision is not release-bound".into())
-    })?;
-    if profile_binding.organization_id() != spec.organization_id
-        || profile_binding.asset_id() != spec.asset_id
-        || profile_binding.asset_release_id() != spec.asset_release_id
-        || profile_binding.digest() != &spec.profile_digest
-        || binding.organization_id() != spec.organization_id
-        || binding.asset_id() != spec.asset_id
-        || binding.asset_release_id() != spec.asset_release_id
-        || binding.profile_digest() != &spec.profile_digest
-    {
-        return Err(RepositoryError::Conflict(
-            "active MCP route, Service profile, and Workload release binding differ".into(),
-        ));
-    }
-    revision
-        .resolved_template()
-        .map_err(RepositoryError::Conflict)?;
     Ok(())
 }
 
@@ -275,12 +250,6 @@ mod tests {
         .expect("scope")
     }
 
-    fn profile_binding(
-        fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
-    ) -> crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding {
-        fixture.profile.clone()
-    }
-
     fn domain_claim(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
     ) -> DomainClaim {
@@ -301,25 +270,6 @@ mod tests {
         claim
     }
 
-    fn workload(
-        fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
-    ) -> Workload {
-        let spec = fixture.policy.spec();
-        let mut workload = Workload::create(
-            spec.workload_id,
-            spec.organization_id,
-            spec.project_id,
-            spec.environment_id,
-            crate::modules::shared_kernel::domain::ResourceName::parse("MCP runtime")
-                .expect("name"),
-            now(),
-        );
-        workload
-            .activate(fixture.revision.id, now())
-            .expect("activate revision");
-        workload
-    }
-
     #[test]
     fn accepts_only_the_exact_running_release_bound_revision() {
         let fixture = fixture();
@@ -327,8 +277,7 @@ mod tests {
             &scope(&fixture),
             &fixture.policy,
             &domain_claim(&fixture),
-            &profile_binding(&fixture),
-            &workload(&fixture),
+            &fixture.profile,
             &fixture.revision,
             now(),
         )
@@ -336,53 +285,9 @@ mod tests {
     }
 
     #[test]
-    fn rejects_stopped_or_different_active_workload_state() {
-        let fixture = fixture();
-        let scope = scope(&fixture);
-        let claim = domain_claim(&fixture);
-        let profile = profile_binding(&fixture);
-        let mut stopped = workload(&fixture);
-        stopped.request_stop(now()).expect("stop");
-        assert!(matches!(
-            validate_materialized_input(
-                &scope,
-                &fixture.policy,
-                &claim,
-                &profile,
-                &stopped,
-                &fixture.revision,
-                now(),
-            ),
-            Err(RepositoryError::Conflict(_))
-        ));
-
-        let mut different = workload(&fixture);
-        different
-            .activate(
-                crate::modules::shared_kernel::domain::WorkloadRevisionId::new(),
-                now(),
-            )
-            .expect("different revision");
-        assert!(matches!(
-            validate_materialized_input(
-                &scope,
-                &fixture.policy,
-                &claim,
-                &profile,
-                &different,
-                &fixture.revision,
-                now(),
-            ),
-            Err(RepositoryError::Conflict(_))
-        ));
-    }
-
-    #[test]
     fn rejects_revoked_or_cross_tenant_domain_authority() {
         let fixture = fixture();
         let scope = scope(&fixture);
-        let profile = profile_binding(&fixture);
-        let workload = workload(&fixture);
         let mut revoked = domain_claim(&fixture);
         revoked.revoke("revoked", now()).expect("revoke claim");
         assert!(matches!(
@@ -390,8 +295,7 @@ mod tests {
                 &scope,
                 &fixture.policy,
                 &revoked,
-                &profile,
-                &workload,
+                &fixture.profile,
                 &fixture.revision,
                 now(),
             ),
@@ -405,9 +309,40 @@ mod tests {
                 &scope,
                 &fixture.policy,
                 &foreign,
-                &profile,
-                &workload,
+                &fixture.profile,
                 &fixture.revision,
+                now(),
+            ),
+            Err(RepositoryError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_revision_binding_that_diverges_from_policy_or_profile() {
+        let fixture = fixture();
+        let diverged = EdgeMcpWorkloadRevisionProjectionBinding::new(
+            fixture.revision.revision_id(),
+            crate::modules::shared_kernel::domain::WorkloadId::new(),
+            fixture.revision.generation(),
+            fixture.revision.created_at(),
+            fixture.revision.organization_id(),
+            fixture.revision.asset_id(),
+            fixture.revision.asset_release_id(),
+            fixture.revision.profile_digest().clone(),
+            fixture.revision.runtime_port(),
+            fixture.revision.runtime_port(),
+            fixture.revision.health_path(),
+            fixture.revision.workload_aggregate_version(),
+            fixture.revision.workload_updated_at(),
+        )
+        .expect("diverged revision");
+        assert!(matches!(
+            validate_materialized_input(
+                &scope(&fixture),
+                &fixture.policy,
+                &domain_claim(&fixture),
+                &fixture.profile,
+                &diverged,
                 now(),
             ),
             Err(RepositoryError::Conflict(_))
