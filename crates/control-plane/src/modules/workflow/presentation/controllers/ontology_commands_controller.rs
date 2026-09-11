@@ -1,5 +1,5 @@
 use super::request::{
-    actor_principal_id, ontology_acl, request_identity, resource_access, revision_control,
+    actor_principal_id, ontology_acl, request_identity, workflow_access, revision_control,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
@@ -63,7 +63,7 @@ pub fn ontology_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                         let ontology_id =
                             OntologyId::from_uuid(request.param_as::<Uuid>("ontology_id")?);
-                        let resource_access = resource_access(&request)?;
+                        let access = workflow_access(&request)?;
                         let acl = ontology_acl(&request)?;
                         let (expected_version, migration_rule_id) = revision_control(&request)?;
                         let actor_principal_id = actor_principal_id(&request)?;
@@ -72,7 +72,7 @@ pub fn ontology_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             .execute(ReviseOntology {
                                 organization_id,
                                 ontology_id,
-                                resource_access,
+                                access,
                                 acl,
                                 expected_version,
                                 migration_rule_id,

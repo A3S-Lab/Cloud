@@ -4,8 +4,7 @@
 //! remains the only component allowed to interpret or apply the opaque DSL
 //! operation bytes.
 
-use super::resource_access;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use super::resource_access::{self, WorkflowAccess};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::PrincipalId;
 use crate::modules::workflow::domain::{
@@ -26,7 +25,7 @@ const AUTHORING_NOT_FOUND: &str = "Workflow authoring journal not found";
 pub struct CreateWorkflowAuthoringJournalRequest {
     pub key: WorkflowAuthoringJournalKey,
     pub initial_snapshot: WorkflowAuthoringSnapshot,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
     /// Authenticated Cloud actor recorded in the shared audit trail.
     pub actor_principal_id: PrincipalId,
     /// Stable request/correlation identity for Outbox and audit records.
@@ -53,7 +52,7 @@ impl CreateWorkflowAuthoringJournalRequest {
 pub struct AppendWorkflowAuthoringRequest {
     pub key: WorkflowAuthoringJournalKey,
     pub operation: WorkflowAuthoringOperation,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
     /// Authenticated Cloud actor recorded in the shared audit trail.
     pub actor_principal_id: PrincipalId,
     /// Stable request/correlation identity for Outbox and audit records.
@@ -75,7 +74,7 @@ impl AppendWorkflowAuthoringRequest {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GetWorkflowAuthoringJournalRequest {
     pub key: WorkflowAuthoringJournalKey,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
 }
 
 impl GetWorkflowAuthoringJournalRequest {
@@ -90,7 +89,7 @@ pub struct PageWorkflowAuthoringRequest {
     pub key: WorkflowAuthoringJournalKey,
     pub after_sequence: Option<u64>,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
 }
 
 impl PageWorkflowAuthoringRequest {
@@ -176,14 +175,14 @@ impl WorkflowAuthoringApplicationService {
     async fn authorize(
         &self,
         key: WorkflowAuthoringJournalKey,
-        resource_access: &ResourceAccessEvaluator,
+        access: &WorkflowAccess,
     ) -> ApplicationResult<()> {
         key.validate().map_err(ApplicationError::Invalid)?;
         let definition = resource_access::workflow_definition(
             self.workflows.as_ref(),
             key.organization_id,
             key.workflow_definition_id,
-            resource_access,
+            access,
         )
         .await?;
         // The definition lookup is organization-scoped, while the journal key
@@ -198,9 +197,9 @@ impl WorkflowAuthoringApplicationService {
     async fn read_authorized_journal(
         &self,
         key: WorkflowAuthoringJournalKey,
-        resource_access: &ResourceAccessEvaluator,
+        access: &WorkflowAccess,
     ) -> ApplicationResult<WorkflowAuthoringJournal> {
-        self.authorize(key, resource_access).await?;
+        self.authorize(key, access).await?;
         let journal = self
             .journals
             .find(key)
@@ -224,7 +223,7 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         request
             .validate_identity()
             .map_err(ApplicationError::Invalid)?;
-        self.authorize(request.key, &request.resource_access)
+        self.authorize(request.key, &request.access)
             .await?;
         request
             .initial_snapshot
@@ -264,7 +263,7 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         request
             .validate_identity()
             .map_err(ApplicationError::Invalid)?;
-        self.authorize(request.key, &request.resource_access)
+        self.authorize(request.key, &request.access)
             .await?;
         request
             .operation
@@ -340,7 +339,7 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         request
             .validate_identity()
             .map_err(ApplicationError::Invalid)?;
-        self.read_authorized_journal(request.key, &request.resource_access)
+        self.read_authorized_journal(request.key, &request.access)
             .await
     }
 
@@ -351,7 +350,7 @@ impl IWorkflowAuthoringApplicationPort for WorkflowAuthoringApplicationService {
         request
             .validate_identity()
             .map_err(ApplicationError::Invalid)?;
-        self.authorize(request.key, &request.resource_access)
+        self.authorize(request.key, &request.access)
             .await?;
         if !(1..=WORKFLOW_AUTHORING_MAX_PAGE_SIZE).contains(&request.limit) {
             return Err(ApplicationError::Invalid(format!(

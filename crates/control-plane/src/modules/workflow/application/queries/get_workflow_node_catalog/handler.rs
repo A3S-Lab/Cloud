@@ -1,5 +1,4 @@
 use super::GetWorkflowNodeCatalog;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workflow::application::{IWorkflowProjectAccess, WorkflowProjectScope};
@@ -37,9 +36,7 @@ impl QueryHandler<GetWorkflowNodeCatalog> for GetWorkflowNodeCatalogHandler {
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
-            if !query.resource_access.allows(ResourceGrantScope::Project {
-                project_id: query.project_id,
-            }) {
+            if !query.access.project_is_visible(query.project_id) {
                 return Ok(Err(ApplicationError::NotFound("project not found".into())));
             }
             Ok(WorkflowNodeCatalog::checked_in().map_err(ApplicationError::Internal))

@@ -27,7 +27,7 @@ impl QueryHandler<GetWorkflowRevision> for GetWorkflowRevisionHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.workflow_definition_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {

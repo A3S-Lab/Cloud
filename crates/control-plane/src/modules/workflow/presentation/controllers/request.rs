@@ -1,16 +1,19 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::access_projection::workflow_access as project_workflow_access;
 use crate::modules::identity::presentation::{
     authenticated_actor, authenticated_credential_actor, resource_access_evaluator,
     AuthenticatedCredentialActor,
 };
 use crate::modules::shared_kernel::domain::PrincipalId;
+use crate::modules::workflow::application::WorkflowAccess;
 use crate::modules::workflow::domain::{ONTOLOGY_MAX_ACL_BYTES, WORKFLOW_GOAL_MAX_ACL_BYTES};
 use crate::presentation::A3S_ACL_MEDIA_TYPE;
 pub(super) use crate::presentation::{request_id, request_identity};
 use a3s_boot::{BootError, BootRequest, Result};
 
-pub(super) fn resource_access(request: &BootRequest) -> Result<ResourceAccessEvaluator> {
-    resource_access_evaluator(&request.require_auth_principal()?)
+pub(super) fn workflow_access(request: &BootRequest) -> Result<WorkflowAccess> {
+    Ok(project_workflow_access(&resource_access_evaluator(
+        &request.require_auth_principal()?,
+    )?))
 }
 
 pub(super) fn actor_principal_id(request: &BootRequest) -> Result<PrincipalId> {

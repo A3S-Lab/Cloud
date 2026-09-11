@@ -7629,6 +7629,145 @@ fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_
 }
 
 #[test]
+fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("workflow/application/resource_access.rs"))
+        .expect("read Workflow resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumWorkflowAccessScope",
+        "pubstructWorkflowAccess",
+        "access.project_is_visible(project_id)",
+        "pub(crate)asyncfnworkflow_run(",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Workflow lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Workflow resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workflow/application/queries/get_workflow_run/query.rs",
+        "workflow/application/commands/cancel_workflow_run/command.rs",
+        "workflow/application/workflow_authoring.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: WorkflowAccess")
+                || production.contains("access: &WorkflowAccess"),
+            "{relative} stopped carrying Workflow-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnworkflow_access(",
+        "WorkflowAccess::organization_wide()",
+        "WorkflowAccess::restricted(",
+        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Workflow access mapping {required}"
+        );
+    }
+
+    let request = std::fs::read_to_string(
+        root.join("workflow/presentation/controllers/request.rs"),
+    )
+    .expect("read Workflow presentation request helpers");
+    assert!(
+        production_source(&request).contains("project_workflow_access(&resource_access_evaluator("),
+        "Workflow request helper must project Identity into WorkflowAccess"
+    );
+
+    for relative in [
+        "workflow/presentation/controllers/workflow_queries_controller.rs",
+        "workflow/presentation/controllers/workflow_commands_controller.rs",
+        "workflow/presentation/controllers/ontology_queries_controller.rs",
+        "workflow/presentation/controllers/ontology_commands_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("workflow_access(&request)"),
+            "{relative} must project Identity into WorkflowAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access(")
+                && !production.contains("resource_access: workflow_access("),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    for relative in [
+        "../presentation/management_mcp/workflow.rs",
+        "../presentation/management_mcp/ontology.rs",
+    ] {
+        let source = std::fs::read_to_string(
+            root.parent()
+                .expect("src directory")
+                .join(relative.trim_start_matches("../")),
+        )
+        .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("access: workflow_access(&resource_access)"),
+            "{relative} must project Identity into WorkflowAccess"
+        );
+        assert!(
+            !production.contains("resource_access,"),
+            "{relative} must not pass ResourceAccessEvaluator into Application commands"
+        );
+    }
+
+    let operation_access = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("infrastructure/operation_resource_access.rs"),
+    )
+    .expect("read root Operation resource access adapter");
+    let production_operation = production_source(&operation_access);
+    assert!(
+        production_operation.contains("workflow_access_from_operation(access)"),
+        "Operation subject resolver lost WorkflowAccess mapping"
+    );
+    assert!(
+        !production_operation.contains("identity_evaluator_for_legacy_subjects"),
+        "Operation subject resolver must drop the legacy Identity bridge entirely"
+    );
+}
+
+#[test]
 fn forms_access_and_project_ownership_have_one_bounded_authority() {
     let root = module_root();
     let access_path = "forms/application/resource_access.rs";

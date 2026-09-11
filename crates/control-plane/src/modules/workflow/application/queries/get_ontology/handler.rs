@@ -27,7 +27,7 @@ impl QueryHandler<GetOntology> for GetOntologyHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.ontology_id,
-                &query.resource_access,
+                &query.access,
             )
             .await)
         })

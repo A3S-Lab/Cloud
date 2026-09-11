@@ -1,4 +1,4 @@
-use super::request::{request_id, resource_access};
+use super::request::{request_id, workflow_access};
 use crate::modules::identity::presentation::{
     with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
 };
@@ -71,7 +71,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 ontology_id: OntologyId::from_uuid(
                                     request.param_as::<Uuid>("ontology_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -98,7 +98,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 ontology_id: OntologyId::from_uuid(
                                     request.param_as::<Uuid>("ontology_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -133,7 +133,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 revision_id: OntologyRevisionId::from_uuid(
                                     request.param_as::<Uuid>("revision_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -166,7 +166,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 to_revision_id: OntologyRevisionId::from_uuid(
                                     request.param_as::<Uuid>("to_revision_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {

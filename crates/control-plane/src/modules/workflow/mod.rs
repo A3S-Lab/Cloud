@@ -80,14 +80,16 @@ pub use application::{
     HumanTaskMutationResult, IHumanTaskFormPort, IWorkflowAuthoringApplicationPort,
     IWorkflowAuthoringFlowPort, IWorkflowCompositeExecutionPort,
     IWorkflowDefinitionPublicationPort, IWorkflowEnvironmentAccess, IWorkflowProjectAccess,
-    OntologyMutationResult, PageWorkflowAuthoringRequest, WorkflowAuthoringApplicationService,
-    WorkflowCompositeExecutionApplicationService, WorkflowCompositeExecutionRequest,
-    WorkflowDefinitionMutationResult, WorkflowDefinitionPublicationProvenance,
-    WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService,
-    WorkflowEnvironmentScope, WorkflowGoalMutationResult, WorkflowPayloadAcl, WorkflowProjectScope,
-    WorkflowRunMutationResult, WorkflowRunReconcileFailure, WorkflowRunReconcileReport,
-    WorkflowRunReconciler, WorkflowSemanticContractAcls,
+    OntologyMutationResult, PageWorkflowAuthoringRequest, WorkflowAccess,
+    WorkflowAuthoringApplicationService, WorkflowCompositeExecutionApplicationService,
+    WorkflowCompositeExecutionRequest, WorkflowDefinitionMutationResult,
+    WorkflowDefinitionPublicationProvenance, WorkflowDefinitionPublicationRequest,
+    WorkflowDefinitionPublicationService, WorkflowEnvironmentScope, WorkflowGoalMutationResult,
+    WorkflowPayloadAcl, WorkflowProjectScope, WorkflowRunMutationResult,
+    WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
+    WorkflowSemanticContractAcls,
 };
+pub(crate) use application::WorkflowAccessScope;
 
 pub use domain::{
     AcceptedHumanTaskSubmission, AppendWorkflowAuthoringOperation, AssignmentPolicyRef,

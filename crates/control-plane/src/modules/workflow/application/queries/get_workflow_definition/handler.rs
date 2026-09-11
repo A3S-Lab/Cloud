@@ -27,7 +27,7 @@ impl QueryHandler<GetWorkflowDefinition> for GetWorkflowDefinitionHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.workflow_definition_id,
-                &query.resource_access,
+                &query.access,
             )
             .await)
         })

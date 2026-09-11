@@ -16,6 +16,7 @@ use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::search::{SearchVisibility, SearchVisibilityScope};
 use crate::modules::secrets::{SecretAccess, SecretAccessScope};
+use crate::modules::workflow::{WorkflowAccess, WorkflowAccessScope};
 use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
 
 pub(crate) fn asset_access(resource_access: &ResourceAccessEvaluator) -> AssetAccess {
@@ -232,12 +233,28 @@ pub(crate) fn agent_access(resource_access: &ResourceAccessEvaluator) -> AgentAc
     )
 }
 
+pub(crate) fn workflow_access(resource_access: &ResourceAccessEvaluator) -> WorkflowAccess {
+    if resource_access.is_organization_wide() {
+        return WorkflowAccess::organization_wide();
+    }
+    WorkflowAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(WorkflowAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         agent_access, artifact_access, asset_access, developer_workflow_access, execution_access,
         form_access, operation_access, search_visibility, secret_access, user_file_access,
-        workload_access,
+        workflow_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -510,5 +527,29 @@ mod tests {
         assert!(!access.environment_is_visible(ProjectId::new(), environment_id));
         assert!(agent_access(&ResourceAccessEvaluator::organization_wide())
             .environment_is_visible(ProjectId::new(), EnvironmentId::new()));
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_workflows_owned_projection() {
+        let project_id = ProjectId::new();
+        let access = workflow_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id: EnvironmentId::new(),
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.project_is_visible(project_id));
+        assert!(!access.project_is_visible(ProjectId::new()));
+        assert!(!access.is_organization_wide());
+        assert_eq!(access.granted_scopes().count(), 1);
+        assert!(
+            workflow_access(&ResourceAccessEvaluator::organization_wide())
+                .project_is_visible(ProjectId::new())
+        );
     }
 }

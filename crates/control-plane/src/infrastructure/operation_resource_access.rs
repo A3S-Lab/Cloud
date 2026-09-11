@@ -7,8 +7,6 @@ use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::executions::application::resource_access::ExecutionResourceAccess;
 use crate::modules::executions::domain::IExecutionRepository;
 use crate::modules::executions::{ExecutionAccess, ExecutionAccessScope};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::application::resource_access::IOperationResourceAccess;
 use crate::modules::operations::domain::value_objects::OperationSubject;
 use crate::modules::operations::{OperationAccess, OperationAccessScope};
@@ -19,6 +17,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workflow::application::resource_access::workflow_run;
 use crate::modules::workflow::domain::IWorkflowRunRepository;
+use crate::modules::workflow::{WorkflowAccess, WorkflowAccessScope};
 use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
@@ -122,13 +121,13 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                 )
             }
             Some(OperationSubjectKind::WorkflowRun) => {
-                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                let workflows_access = workflow_access_from_operation(access);
                 visible(
                     workflow_run(
                         self.workflow_runs.as_ref(),
                         organization_id,
                         WorkflowRunId::from_uuid(subject.id()),
-                        &evaluator,
+                        &workflows_access,
                     )
                     .await,
                 )
@@ -236,21 +235,15 @@ fn agent_access_from_operation(access: &OperationAccess) -> AgentAccess {
     }))
 }
 
-/// Temporary bridge for subject owners that still evaluate Identity grant types.
-/// Lives only in this root composition adapter until Workflow owns a projection.
-fn identity_evaluator_for_legacy_subjects(access: &OperationAccess) -> ResourceAccessEvaluator {
+fn workflow_access_from_operation(access: &OperationAccess) -> WorkflowAccess {
     if access.is_organization_wide() {
-        return ResourceAccessEvaluator::organization_wide();
+        return WorkflowAccess::organization_wide();
     }
-    ResourceAccessEvaluator::restricted(access.granted_scopes().map(|scope| match scope {
-        OperationAccessScope::Project { project_id } => ResourceGrantScope::Project { project_id },
-        OperationAccessScope::Environment {
-            project_id,
-            environment_id,
-        } => ResourceGrantScope::Environment {
-            project_id,
-            environment_id,
-        },
+    WorkflowAccess::restricted(access.granted_scopes().filter_map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => {
+            Some(WorkflowAccessScope::Project { project_id })
+        }
+        OperationAccessScope::Environment { .. } => None,
     }))
 }
 

@@ -43,7 +43,7 @@ impl CommandHandler<ReviseOntology> for ReviseOntologyHandler {
                 ontologies.as_ref(),
                 command.organization_id,
                 command.ontology_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {

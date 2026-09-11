@@ -1,6 +1,6 @@
 use super::request::{
     actor_principal_id, credential_actor, expected_version, request_id, request_identity,
-    resource_access, workflow_goal_acl,
+    workflow_access, workflow_goal_acl,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
@@ -88,7 +88,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                         let workflow_definition_id = WorkflowDefinitionId::from_uuid(
                             request.param_as::<Uuid>("workflow_definition_id")?,
                         );
-                        let resource_access = resource_access(&request)?;
+                        let access = workflow_access(&request)?;
                         let expected_version = expected_version(&request)?;
                         let actor_principal_id = actor_principal_id(&request)?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
@@ -96,7 +96,7 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             .execute(ReviseWorkflowDefinition {
                                 organization_id,
                                 workflow_definition_id,
-                                resource_access,
+                                access,
                                 expected_version,
                                 definition_acl,
                                 payloads,
@@ -202,14 +202,14 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             crate::modules::shared_kernel::domain::WorkflowRunId::from_uuid(
                                 request.param_as::<Uuid>("workflow_run_id")?,
                             );
-                        let resource_access = resource_access(&request)?;
+                        let access = workflow_access(&request)?;
                         let actor_principal_id = actor_principal_id(&request)?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
                         match bus
                             .execute(CancelWorkflowRun {
                                 organization_id,
                                 workflow_run_id,
-                                resource_access,
+                                access,
                                 reason: body.reason,
                                 actor_principal_id,
                                 idempotency_key,
@@ -271,14 +271,14 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                             OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                         let human_task_id =
                             HumanTaskId::from_uuid(request.param_as::<Uuid>("human_task_id")?);
-                        let resource_access = resource_access(&request)?;
+                        let access = workflow_access(&request)?;
                         let actor = credential_actor(&request)?;
                         let request_id = request_id(&request)?;
                         match bus
                             .execute(SubmitHumanTask {
                                 organization_id,
                                 human_task_id,
-                                resource_access,
+                                access,
                                 submission,
                                 actor_principal_id: actor.principal_id,
                                 credential_id: actor.credential_id,
@@ -306,7 +306,7 @@ async fn change_human_task_assignment(
 ) -> Result<BootResponse> {
     let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
     let human_task_id = HumanTaskId::from_uuid(request.param_as::<Uuid>("human_task_id")?);
-    let resource_access = resource_access(&request)?;
+    let access = workflow_access(&request)?;
     let expected_version = expected_version(&request)?;
     let actor_principal_id = actor_principal_id(&request)?;
     let (idempotency_key, request_id) = request_identity(&request)?;
@@ -314,7 +314,7 @@ async fn change_human_task_assignment(
         .execute(ChangeHumanTaskAssignment {
             organization_id,
             human_task_id,
-            resource_access,
+            access,
             action,
             expected_version,
             actor_principal_id,

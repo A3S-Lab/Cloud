@@ -53,7 +53,7 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                 human_tasks.as_ref(),
                 command.organization_id,
                 command.human_task_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {

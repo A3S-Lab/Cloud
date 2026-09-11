@@ -1,8 +1,8 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OntologyId, OntologyRevisionId, OrganizationId};
 use crate::modules::workflow::domain::OntologyDiff;
 use a3s_boot::Query;
+use crate::modules::workflow::application::WorkflowAccess;
 
 #[derive(Debug, Clone)]
 pub struct DiffOntologyRevisions {
@@ -10,7 +10,7 @@ pub struct DiffOntologyRevisions {
     pub ontology_id: OntologyId,
     pub from_revision_id: OntologyRevisionId,
     pub to_revision_id: OntologyRevisionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
 }
 
 impl Query for DiffOntologyRevisions {

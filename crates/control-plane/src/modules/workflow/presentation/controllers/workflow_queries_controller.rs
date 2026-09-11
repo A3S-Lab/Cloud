@@ -1,4 +1,4 @@
-use super::request::{actor_principal_id, request_id, resource_access};
+use super::request::{actor_principal_id, request_id, workflow_access};
 use crate::modules::identity::presentation::{
     with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
 };
@@ -61,7 +61,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             project_id: ProjectId::from_uuid(
                                 request.param_as::<Uuid>("project_id")?,
                             ),
-                            resource_access: resource_access(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -116,7 +116,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_definition_id: WorkflowDefinitionId::from_uuid(
                                     request.param_as::<Uuid>("workflow_definition_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -145,7 +145,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_definition_id: WorkflowDefinitionId::from_uuid(
                                     request.param_as::<Uuid>("workflow_definition_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -180,7 +180,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_revision_id: WorkflowRevisionId::from_uuid(
                                     request.param_as::<Uuid>("workflow_revision_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -235,7 +235,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_goal_id: WorkflowGoalId::from_uuid(
                                     request.param_as::<Uuid>("workflow_goal_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -265,7 +265,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 plan_revision_id: PlanRevisionId::from_uuid(
                                     request.param_as::<Uuid>("plan_revision_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -324,7 +324,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             ),
                             status: parameters.status,
                             limit: parameters.limit,
-                            resource_access: resource_access(&request)?,
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {
@@ -355,7 +355,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                     request.param_as::<Uuid>("human_task_id")?,
                                 ),
                                 actor_principal_id: actor_principal_id(&request)?,
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -382,7 +382,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_run_id: WorkflowRunId::from_uuid(
                                     request.param_as::<Uuid>("workflow_run_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -411,7 +411,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                     request.param_as::<Uuid>("workflow_run_id")?,
                                 ),
                                 timeout: Duration::from_secs(parameters.timeout_seconds),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -438,7 +438,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_run_id: WorkflowRunId::from_uuid(
                                     request.param_as::<Uuid>("workflow_run_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -467,7 +467,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_run_id: WorkflowRunId::from_uuid(
                                     request.param_as::<Uuid>("workflow_run_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -496,7 +496,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 workflow_run_id: WorkflowRunId::from_uuid(
                                     request.param_as::<Uuid>("workflow_run_id")?,
                                 ),
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {
@@ -526,7 +526,7 @@ pub fn workflow_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                                 ),
                                 after_sequence: parameters.after_sequence,
                                 limit: parameters.limit,
-                                resource_access: resource_access(&request)?,
+                                access: workflow_access(&request)?,
                             })
                             .await?
                         {

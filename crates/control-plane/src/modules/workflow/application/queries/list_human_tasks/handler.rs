@@ -30,7 +30,7 @@ impl QueryHandler<ListHumanTasks> for ListHumanTasksHandler {
                 ))));
             }
             if let Err(error) =
-                resource_access::human_task_project(query.project_id, &query.resource_access)
+                resource_access::human_task_project(query.project_id, &query.access)
             {
                 return Ok(Err(error));
             }

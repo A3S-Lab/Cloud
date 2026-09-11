@@ -1,4 +1,3 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, WorkflowDefinitionId};
 use crate::modules::workflow::application::{
@@ -6,12 +5,13 @@ use crate::modules::workflow::application::{
 };
 use a3s_boot::Command;
 use uuid::Uuid;
+use crate::modules::workflow::application::WorkflowAccess;
 
 #[derive(Debug, Clone)]
 pub struct ReviseWorkflowDefinition {
     pub organization_id: OrganizationId,
     pub workflow_definition_id: WorkflowDefinitionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
     pub expected_version: u64,
     pub definition_acl: String,
     pub payloads: Vec<WorkflowPayloadAcl>,

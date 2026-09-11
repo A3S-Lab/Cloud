@@ -55,7 +55,7 @@ impl CommandHandler<ReviseWorkflowDefinition> for ReviseWorkflowDefinitionHandle
                 workflows.as_ref(),
                 command.organization_id,
                 command.workflow_definition_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {

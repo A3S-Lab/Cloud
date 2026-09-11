@@ -43,7 +43,7 @@ impl QueryHandler<GetWorkflowRunHistory> for GetWorkflowRunHistoryHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.workflow_run_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {

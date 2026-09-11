@@ -27,7 +27,7 @@ impl QueryHandler<GetHumanTask> for GetHumanTaskHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.human_task_id,
-                &query.resource_access,
+                &query.access,
             )
             .await;
             Ok(record.and_then(|record| {

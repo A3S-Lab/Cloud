@@ -27,7 +27,7 @@ impl QueryHandler<GetPlanRevision> for GetPlanRevisionHandler {
                 repository.as_ref(),
                 query.organization_id,
                 query.workflow_goal_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {

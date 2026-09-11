@@ -32,7 +32,7 @@ impl CommandHandler<CancelWorkflowRun> for CancelWorkflowRunHandler {
                 runs.as_ref(),
                 command.organization_id,
                 command.workflow_run_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {

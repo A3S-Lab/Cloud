@@ -39,6 +39,8 @@ pub use workflow_definition_publication::{
 pub use workflow_run_reconciler::{
     WorkflowRunReconcileFailure, WorkflowRunReconcileReport, WorkflowRunReconciler,
 };
+pub use resource_access::WorkflowAccess;
+pub(crate) use resource_access::WorkflowAccessScope;
 
 use crate::modules::workflow::domain::{
     HumanTaskRecord, OntologyDiff, OntologyRecord, WorkflowDefinitionRecord, WorkflowGoalRecord,

@@ -1,17 +1,17 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, WorkflowDefinitionId, WorkflowRevisionId,
 };
 use crate::modules::workflow::domain::WorkflowRevision;
 use a3s_boot::Query;
+use crate::modules::workflow::application::WorkflowAccess;
 
 #[derive(Debug, Clone)]
 pub struct GetWorkflowRevision {
     pub organization_id: OrganizationId,
     pub workflow_definition_id: WorkflowDefinitionId,
     pub workflow_revision_id: WorkflowRevisionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
 }
 
 impl Query for GetWorkflowRevision {

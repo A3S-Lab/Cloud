@@ -7,7 +7,6 @@ use super::{
     IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
     WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService, WorkflowPayloadAcl,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::projects::domain::events::ProjectCreated;
 use crate::modules::projects::domain::repositories::IProjectRepository;
@@ -36,6 +35,7 @@ use chrono::Duration;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
+use crate::modules::workflow::application::WorkflowAccess;
 
 const CREATE_KEY: &str = "historic-definition";
 const REVISE_KEY: &str = "historic-revision";
@@ -430,7 +430,7 @@ fn revision_command(
     ReviseWorkflowDefinition {
         organization_id: fixture.organization_id,
         workflow_definition_id: fixture.definition.id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: WorkflowAccess::organization_wide(),
         expected_version: 1,
         definition_acl: record.revision.contract.canonical_acl().to_owned(),
         payloads: payload_acls(fixture),

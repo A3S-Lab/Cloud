@@ -3,8 +3,6 @@ use super::{
     GetWorkflowAuthoringJournalRequest, IWorkflowAuthoringApplicationPort,
     IWorkflowAuthoringFlowPort, PageWorkflowAuthoringRequest, WorkflowAuthoringApplicationService,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError,
@@ -27,6 +25,7 @@ use std::sync::{
 };
 use tokio::sync::Mutex;
 use uuid::Uuid;
+use crate::modules::workflow::application::WorkflowAccess;
 
 struct DefinitionRepository {
     definition: WorkflowDefinition,
@@ -283,7 +282,7 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -295,7 +294,7 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
         .append_operation(AppendWorkflowAuthoringRequest {
             key: fixture.key,
             operation: operation("op-1", &fixture.initial),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -315,7 +314,7 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
         .append_operation(AppendWorkflowAuthoringRequest {
             key: fixture.key,
             operation: operation("op-1", &fixture.initial),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -329,7 +328,7 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
         .service
         .get_journal(GetWorkflowAuthoringJournalRequest {
             key: fixture.key,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
         })
         .await
         .expect("get journal");
@@ -342,7 +341,7 @@ async fn authoring_service_validates_once_and_replays_without_reapplying_flow() 
             key: fixture.key,
             after_sequence: None,
             limit: 10,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
         })
         .await
         .expect("page operations");
@@ -363,7 +362,7 @@ async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -375,7 +374,7 @@ async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
         .append_operation(AppendWorkflowAuthoringRequest {
             key: fixture.key,
             operation: operation("bounded", &fixture.initial),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -388,7 +387,7 @@ async fn append_path_uses_head_and_operation_index_without_full_journal_read() {
         .service
         .get_journal(GetWorkflowAuthoringJournalRequest {
             key: fixture.key,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
         })
         .await;
     assert!(matches!(
@@ -406,12 +405,7 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
-            resource_access: ResourceAccessEvaluator::restricted([
-                ResourceGrantScope::Environment {
-                    project_id: fixture.key.project_id,
-                    environment_id: crate::modules::shared_kernel::domain::EnvironmentId::new(),
-                },
-            ]),
+            access: WorkflowAccess::restricted([]),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -424,7 +418,7 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -436,7 +430,7 @@ async fn authorization_and_cas_checks_happen_before_flow_application() {
         .append_operation(AppendWorkflowAuthoringRequest {
             key: fixture.key,
             operation: operation("stale", &stale_base),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -453,7 +447,7 @@ async fn flow_rejection_is_not_written_and_page_limits_are_checked() {
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial.clone(),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: actor(),
             request_id: request_id(),
         })
@@ -466,7 +460,7 @@ async fn flow_rejection_is_not_written_and_page_limits_are_checked() {
             key: fixture.key,
             after_sequence: None,
             limit: 0,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
         })
         .await;
     assert!(matches!(invalid_limit, Err(ApplicationError::Invalid(_))));
@@ -480,7 +474,7 @@ async fn invalid_audit_context_is_rejected_before_authorization_or_flow() {
         .create_journal(CreateWorkflowAuthoringJournalRequest {
             key: fixture.key,
             initial_snapshot: fixture.initial,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
             actor_principal_id: PrincipalId::from_uuid(Uuid::nil()),
             request_id: Uuid::nil(),
         })
@@ -503,7 +497,7 @@ async fn project_identity_drift_is_hidden_as_not_found() {
         .service
         .get_journal(GetWorkflowAuthoringJournalRequest {
             key: wrong_key,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: WorkflowAccess::organization_wide(),
         })
         .await;
     assert!(matches!(result, Err(ApplicationError::NotFound(_))));

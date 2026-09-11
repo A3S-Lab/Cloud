@@ -1,8 +1,8 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, Sha256Digest, WorkflowRunId};
 use a3s_boot::Query;
 use chrono::{DateTime, Utc};
+use crate::modules::workflow::application::WorkflowAccess;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkflowRunOutput {
@@ -16,7 +16,7 @@ pub struct WorkflowRunOutput {
 pub struct GetWorkflowRunOutput {
     pub organization_id: OrganizationId,
     pub workflow_run_id: WorkflowRunId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: WorkflowAccess,
 }
 
 impl Query for GetWorkflowRunOutput {
