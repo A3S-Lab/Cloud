@@ -26,7 +26,7 @@ use a3s_cloud_control_plane::modules::connectors::{
 use a3s_cloud_control_plane::modules::executions::{
     Execution, IWorkflowExecutionPort, WorkflowExecutionRequest,
 };
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
+use a3s_cloud_control_plane::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::shared_kernel::application::{
     ApplicationError, ApplicationResult,
@@ -409,7 +409,7 @@ pub(super) async fn exercise_application_delivery_recovery(
         })
         .await?;
 
-    let resource_access = ResourceAccessEvaluator::organization_wide();
+    let access = ApplicationAccess::organization_wide();
     let opened = AdmitApplicationSessionHandler::new(
         Arc::new(PostgresApplicationRepository::new(executor.clone())),
         Arc::new(PostgresApplicationSessionRepository::new(executor.clone())),
@@ -422,7 +422,7 @@ pub(super) async fn exercise_application_delivery_recovery(
             release_id: release.id,
             initial_variables: json!({"locale": "en-US"}),
             actor_principal_id: actor,
-            resource_access: resource_access.clone(),
+            access: access.clone(),
             idempotency_key: "postgres-session".into(),
         },
         cqrs_context(),
@@ -442,7 +442,7 @@ pub(super) async fn exercise_application_delivery_recovery(
             release_id: release.id,
             initial_variables: json!({"locale": "en-US"}),
             actor_principal_id: actor,
-            resource_access: resource_access.clone(),
+            access: access.clone(),
             idempotency_key: "postgres-session".into(),
         },
         cqrs_context(),
@@ -469,7 +469,7 @@ pub(super) async fn exercise_application_delivery_recovery(
         }),
         timeout_seconds: Some(120),
         actor_principal_id: actor,
-        resource_access: resource_access.clone(),
+        access: access.clone(),
         idempotency_key: "postgres-invocation".into(),
     };
     let admitted = invocation_handler(&executor)
@@ -660,7 +660,7 @@ pub(super) async fn exercise_application_delivery_recovery(
             after_sequence: 0,
             limit: Some(10),
             actor_principal_id: actor,
-            resource_access,
+            access,
         },
         cqrs_context(),
     )

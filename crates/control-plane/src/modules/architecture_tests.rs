@@ -3016,6 +3016,121 @@ fn fleet_list_and_pool_paths_isolate_identity_behind_one_context_owned_access_pr
 }
 
 #[test]
+fn applications_queries_commands_and_delivery_isolate_identity_behind_one_context_owned_access_projection()
+{
+    let root = module_root();
+
+    let access =
+        std::fs::read_to_string(root.join("applications/application/resource_access.rs"))
+            .expect("read Applications resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pubenumApplicationAccessScope",
+        "pubstructApplicationAccess",
+        "project_is_authorized",
+        "environment_is_visible",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Applications lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Applications resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "applications/application/commands.rs",
+        "applications/application/queries.rs",
+        "applications/application/preset_workflow.rs",
+        "applications/application/delivery_commands.rs",
+        "applications/application/delivery_queries.rs",
+        "applications/application/session_commands.rs",
+        "applications/application/invocation_commands.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: ApplicationAccess"),
+            "{relative} stopped carrying Applications-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnapplication_access(",
+        "ApplicationAccess::organization_wide()",
+        "ApplicationAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Applications access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "applications/presentation/controller.rs",
+        "applications/presentation/delivery_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("application_access(&resource_access_evaluator("),
+            "{relative} must project Identity into ApplicationAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator")
+                && !production.contains("resource_access,"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/applications.rs"),
+    )
+    .expect("read Applications Management MCP adapter");
+    let production_mcp = production_source(&mcp);
+    assert!(
+        production_mcp
+            .matches("access: application_access(&resource_access)")
+            .count()
+            >= 14,
+        "Applications MCP must project every resource-authorized tool into ApplicationAccess"
+    );
+    assert!(
+        !production_mcp.contains("resource_access,"),
+        "Applications MCP must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

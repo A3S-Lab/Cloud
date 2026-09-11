@@ -5,8 +5,7 @@ use crate::modules::applications::domain::{
     ApplicationResponseMode, ApplicationWorkflowBinding, ApplicationWorkflowRevisionEvidence,
 };
 use crate::modules::applications::infrastructure::InMemoryApplicationRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PrincipalId, ProjectId, Sha256Digest, WorkflowDefinitionId,
@@ -14,8 +13,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use async_trait::async_trait;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 struct ExactWorkflowEvidence {
@@ -66,9 +65,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
         description: "Project-scoped support experience".into(),
         release_acl: initial_contract.canonical_acl().into(),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
-            project_id,
-        }]),
+        access: ApplicationAccess::restricted([ApplicationAccessScope::Project { project_id }]),
         idempotency_key: "application-create".into(),
         request_id: Uuid::now_v7(),
     };
@@ -83,12 +80,10 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
     let denied = create_handler
         .execute(
             CreateApplication {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ApplicationAccess::restricted([ApplicationAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..create.clone()
             },
             context(),
@@ -130,7 +125,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
         expected_version: 1,
         release_acl: second_contract.canonical_acl().into(),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         idempotency_key: "application-publish-2".into(),
         request_id: Uuid::now_v7(),
     };
@@ -161,7 +156,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 expected_version: 1,
                 release_acl: contract(&evidence, '3').canonical_acl().into(),
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
                 idempotency_key: "application-stale".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -184,7 +179,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 expected_version: 2,
                 release_acl: drifted.canonical_acl().into(),
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
                 idempotency_key: "application-drifted-workflow".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -201,7 +196,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 organization_id,
                 project_id,
                 application_id: created.record.application.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -216,12 +211,10 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 organization_id,
                 project_id,
                 application_id: created.record.application.id,
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ApplicationAccess::restricted([ApplicationAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
             },
             context(),
         )
@@ -235,7 +228,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 organization_id,
                 project_id,
                 limit: None,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -251,7 +244,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 project_id,
                 application_id: created.record.application.id,
                 limit: Some(50),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -268,7 +261,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_release_history() {
                 organization_id,
                 project_id,
                 limit: Some(MAXIMUM_APPLICATION_LIST_LIMIT + 1),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )

@@ -5,6 +5,7 @@
 //! consumer application and domain layers never depend on Identity grant types.
 
 use crate::modules::agents::{AgentAccess, AgentAccessScope};
+use crate::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::assets::AssetAccess;
 use crate::modules::developer_workflows::{DeveloperWorkflowAccess, DeveloperWorkflowAccessScope};
@@ -226,6 +227,27 @@ pub(crate) fn fleet_access(resource_access: &ResourceAccessEvaluator) -> FleetAc
     )
 }
 
+pub(crate) fn application_access(resource_access: &ResourceAccessEvaluator) -> ApplicationAccess {
+    if resource_access.is_organization_wide() {
+        return ApplicationAccess::organization_wide();
+    }
+    ApplicationAccess::restricted(resource_access.granted_scopes().filter_map(
+        |scope| match scope {
+            ResourceGrantScope::Project { project_id } => {
+                Some(ApplicationAccessScope::Project { project_id })
+            }
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            } => Some(ApplicationAccessScope::Environment {
+                project_id,
+                environment_id,
+            }),
+            ResourceGrantScope::Node { .. } => None,
+        },
+    ))
+}
+
 pub(crate) fn execution_access(resource_access: &ResourceAccessEvaluator) -> ExecutionAccess {
     if resource_access.is_organization_wide() {
         return ExecutionAccess::organization_wide();
@@ -291,9 +313,9 @@ pub(crate) fn workflow_access(resource_access: &ResourceAccessEvaluator) -> Work
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_access, artifact_access, asset_access, developer_workflow_access, execution_access,
-        fleet_access, form_access, operation_access, project_access, search_visibility,
-        secret_access, user_file_access, workflow_access, workload_access,
+        agent_access, application_access, artifact_access, asset_access, developer_workflow_access,
+        execution_access, fleet_access, form_access, operation_access, project_access,
+        search_visibility, secret_access, user_file_access, workflow_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -654,6 +676,41 @@ mod tests {
         assert!(
             fleet_access(&ResourceAccessEvaluator::organization_wide())
                 .node_is_visible(NodeId::new())
+        );
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_applications_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = application_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.project_is_authorized(project_id));
+        assert!(access.environment_is_visible(project_id, environment_id));
+        assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
+        assert_eq!(access.granted_scopes().count(), 2);
+
+        let environment_only = application_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+        ]));
+        assert!(!environment_only.project_is_authorized(project_id));
+        assert!(environment_only.environment_is_visible(project_id, environment_id));
+        assert!(!environment_only.environment_is_visible(project_id, EnvironmentId::new()));
+        assert!(
+            application_access(&ResourceAccessEvaluator::organization_wide())
+                .project_is_authorized(ProjectId::new())
         );
     }
 }

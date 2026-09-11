@@ -1,9 +1,9 @@
 use super::delivery_access::{invocation_not_found, project_member_session};
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationEndUser, ApplicationInvocation, ApplicationMessage, ApplicationSession,
     ConversationVariableRevision, IApplicationSessionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationSessionId, OrganizationId, PrincipalId,
@@ -23,7 +23,7 @@ pub struct GetApplicationSession {
     pub application_id: ApplicationId,
     pub session_id: ApplicationSessionId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for GetApplicationSession {
@@ -66,7 +66,7 @@ impl QueryHandler<GetApplicationSession> for GetApplicationSessionHandler {
                 query.application_id,
                 query.session_id,
                 query.actor_principal_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {
@@ -95,7 +95,7 @@ pub struct GetApplicationInvocation {
     pub session_id: ApplicationSessionId,
     pub invocation_id: ApplicationInvocationId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for GetApplicationInvocation {
@@ -128,7 +128,7 @@ impl QueryHandler<GetApplicationInvocation> for GetApplicationInvocationHandler 
                 query.application_id,
                 query.session_id,
                 query.actor_principal_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {
@@ -186,7 +186,7 @@ pub struct ReplayApplicationSession {
     pub after_sequence: u64,
     pub limit: Option<usize>,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for ReplayApplicationSession {
@@ -231,7 +231,7 @@ impl QueryHandler<ReplayApplicationSession> for ReplayApplicationSessionHandler 
                 query.application_id,
                 query.session_id,
                 query.actor_principal_id,
-                &query.resource_access,
+                &query.access,
             )
             .await
             {

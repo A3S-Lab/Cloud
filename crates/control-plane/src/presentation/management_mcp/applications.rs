@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::access_projection::application_access;
 use crate::modules::applications::presentation::{
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationMutationResponse,
@@ -193,7 +194,7 @@ pub async fn create(
             description: arguments.description,
             release_acl: arguments.release_acl,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -224,7 +225,7 @@ pub async fn publish_release(
             expected_version: arguments.expected_version,
             release_acl: arguments.release_acl,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -251,7 +252,7 @@ pub async fn list(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             limit: Some(arguments.limit),
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -279,7 +280,7 @@ pub async fn get(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             application_id: ApplicationId::from_uuid(arguments.application_id),
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -303,7 +304,7 @@ pub async fn list_releases(
             project_id: ProjectId::from_uuid(arguments.project_id),
             application_id: ApplicationId::from_uuid(arguments.application_id),
             limit: Some(arguments.limit),
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -332,7 +333,7 @@ pub async fn get_release(
             project_id: ProjectId::from_uuid(arguments.project_id),
             application_id: ApplicationId::from_uuid(arguments.application_id),
             release_id: ApplicationReleaseId::from_uuid(arguments.release_id),
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -359,7 +360,7 @@ pub async fn open_session(
             release_id: ApplicationReleaseId::from_uuid(arguments.release_id),
             initial_variables: arguments.initial_variables,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
         })
         .await?
@@ -388,7 +389,7 @@ pub async fn get_session(
             application_id: ApplicationId::from_uuid(arguments.application_id),
             session_id: ApplicationSessionId::from_uuid(arguments.session_id),
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -424,7 +425,7 @@ pub async fn close_session(
             session_id: ApplicationSessionId::from_uuid(session_id),
             expected_version,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             closed_at: Utc::now(),
         })
         .await?
@@ -449,7 +450,7 @@ pub async fn request_invocation(
     let response_mode = match ApplicationResponseMode::parse(&arguments.response_mode) {
         Ok(value) => value,
         Err(error) => {
-            return tool_result::application_error(ApplicationError::Invalid(error), request_id)
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id);
         }
     };
     match bus
@@ -465,7 +466,7 @@ pub async fn request_invocation(
             input: arguments.input,
             timeout_seconds: arguments.timeout_seconds,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
         })
         .await?
@@ -495,7 +496,7 @@ pub async fn get_invocation(
             session_id: ApplicationSessionId::from_uuid(arguments.session_id),
             invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -533,7 +534,7 @@ pub async fn cancel_invocation(
             invocation_id: ApplicationInvocationId::from_uuid(invocation_id),
             expected_version,
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
             requested_at: Utc::now(),
         })
         .await?
@@ -564,7 +565,7 @@ pub async fn list_messages(
             after_sequence: arguments.after_sequence,
             limit: Some(arguments.limit),
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {
@@ -598,7 +599,7 @@ pub async fn replay_session(
             after_sequence: arguments.after_sequence,
             limit: Some(arguments.limit),
             actor_principal_id,
-            resource_access,
+            access: application_access(&resource_access),
         })
         .await?
     {

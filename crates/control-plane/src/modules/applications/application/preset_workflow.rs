@@ -3,8 +3,8 @@ use super::preset_workflow_port::{
     IApplicationPresetWorkflowPort,
 };
 use super::resource_access::project;
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::ApplicationExperience;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, OrganizationId, PrincipalId, ProjectId,
@@ -22,7 +22,7 @@ pub struct CompileApplicationPresetWorkflow {
     pub experience: ApplicationExperience,
     pub target: ApplicationPresetTarget,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -52,7 +52,7 @@ impl CommandHandler<CompileApplicationPresetWorkflow> for CompileApplicationPres
     > {
         let workflows = Arc::clone(&self.workflows);
         Box::pin(async move {
-            if let Err(error) = project(command.project_id, &command.resource_access) {
+            if let Err(error) = project(command.project_id, &command.access) {
                 return Ok(Err(error));
             }
             let request = ApplicationPresetWorkflowRequest {

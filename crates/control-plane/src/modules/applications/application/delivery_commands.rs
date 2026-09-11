@@ -5,6 +5,7 @@ use super::{
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
     IApplicationWorkflowRunPort,
 };
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, ApplicationAudience, ApplicationEndUser,
     ApplicationInvocation, ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority,
@@ -13,7 +14,6 @@ use crate::modules::applications::domain::{
     IApplicationRepository, IApplicationSessionRepository, OpenApplicationSessionWrite,
     RequestApplicationInvocationWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationReleaseId, ApplicationSessionId,
@@ -41,7 +41,7 @@ pub struct OpenApplicationSession {
     pub session_id: ApplicationSessionId,
     pub initial_variables: Value,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub opened_at: DateTime<Utc>,
 }
 
@@ -87,7 +87,7 @@ impl CommandHandler<OpenApplicationSession> for OpenApplicationSessionHandler {
         let applications = Arc::clone(&self.applications);
         let sessions = Arc::clone(&self.sessions);
         Box::pin(async move {
-            if let Err(error) = project(command.project_id, &command.resource_access) {
+            if let Err(error) = project(command.project_id, &command.access) {
                 return Ok(Err(error));
             }
             if command.organization_id.as_uuid().is_nil()
@@ -129,7 +129,7 @@ impl CommandHandler<OpenApplicationSession> for OpenApplicationSessionHandler {
                 .await
             {
                 Ok(Some(_)) => {
-                    return Ok(replay_open_session(sessions.as_ref(), &release, &command).await)
+                    return Ok(replay_open_session(sessions.as_ref(), &release, &command).await);
                 }
                 Ok(None) | Err(RepositoryError::NotFound) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -231,7 +231,7 @@ pub struct CloseApplicationSession {
     pub session_id: ApplicationSessionId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub closed_at: DateTime<Utc>,
 }
 
@@ -282,7 +282,7 @@ impl CommandHandler<CloseApplicationSession> for CloseApplicationSessionHandler 
                 command.application_id,
                 command.session_id,
                 command.actor_principal_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {
@@ -388,7 +388,7 @@ pub struct RequestApplicationInvocation {
     pub environment_id: Option<EnvironmentId>,
     pub timeout_seconds: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub requested_at: DateTime<Utc>,
 }
 
@@ -445,7 +445,7 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                 command.application_id,
                 command.session_id,
                 command.actor_principal_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {
@@ -463,7 +463,7 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                     Ok(_) => {
                         return Ok(Err(ApplicationError::Conflict(
                             "admitted Application WorkflowRun timeout drifted".into(),
-                        )))
+                        )));
                     }
                     Err(error) => return Ok(Err(error)),
                 };
@@ -571,7 +571,7 @@ impl CommandHandler<RequestApplicationInvocation> for RequestApplicationInvocati
                         Ok(_) => {
                             return Ok(Err(ApplicationError::Internal(
                                 "Application invocation repository returned drifted request".into(),
-                            )))
+                            )));
                         }
                         Err(error) => {
                             let recovered = sessions
@@ -643,7 +643,7 @@ pub struct CancelApplicationInvocation {
     pub invocation_id: ApplicationInvocationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub requested_at: DateTime<Utc>,
 }
 
@@ -699,7 +699,7 @@ impl CommandHandler<CancelApplicationInvocation> for CancelApplicationInvocation
                 command.application_id,
                 command.session_id,
                 command.actor_principal_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {
@@ -741,7 +741,7 @@ impl CommandHandler<CancelApplicationInvocation> for CancelApplicationInvocation
             {
                 Ok(Some(value)) if value.session_id == command.session_id => value,
                 Ok(Some(_)) | Ok(None) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(invocation_not_found()))
+                    return Ok(Err(invocation_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -749,7 +749,7 @@ impl CommandHandler<CancelApplicationInvocation> for CancelApplicationInvocation
                 ApplicationInvocationStatus::Succeeded | ApplicationInvocationStatus::Failed => {
                     return Ok(Err(ApplicationError::Conflict(
                         "terminal Application invocation cannot be cancelled".into(),
-                    )))
+                    )));
                 }
                 ApplicationInvocationStatus::Cancelled => {
                     let first_successor = command.expected_version.saturating_add(1);
@@ -915,7 +915,7 @@ async fn replay_open_session(
         command.application_id,
         command.session_id,
         command.actor_principal_id,
-        &command.resource_access,
+        &command.access,
     )
     .await?;
     access

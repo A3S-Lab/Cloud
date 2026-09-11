@@ -21,7 +21,7 @@ use crate::modules::applications::domain::{
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,
@@ -406,7 +406,7 @@ impl Fixture {
             session_id,
             initial_variables: json!({"locale": "en-US"}),
             actor_principal_id: self.actor,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: ApplicationAccess::organization_wide(),
             opened_at: self.created_at + Duration::seconds(1),
         }
     }
@@ -432,7 +432,7 @@ impl Fixture {
             environment_id: Some(self.environment_id),
             timeout_seconds: 3_600,
             actor_principal_id: self.actor,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: ApplicationAccess::organization_wide(),
             requested_at: self.created_at + Duration::seconds(2),
         }
     }
@@ -529,7 +529,7 @@ async fn session_open_authorizes_before_replay_and_fences_principal_identity() {
 
     let mut denied = fixture.open(session_id);
     denied.initial_variables = json!("not an object");
-    denied.resource_access = ResourceAccessEvaluator::restricted([]);
+    denied.access = ApplicationAccess::restricted([]);
     let denied = handler
         .execute(denied, context())
         .await
@@ -617,7 +617,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
         opened.session.aggregate_version,
     );
     denied_invalid.timeout_seconds = 0;
-    denied_invalid.resource_access = ResourceAccessEvaluator::restricted([]);
+    denied_invalid.access = ApplicationAccess::restricted([]);
     assert!(matches!(
         handler
             .execute(denied_invalid, context())
@@ -689,7 +689,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
                 application_id: fixture.application_id,
                 session_id,
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -708,7 +708,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
                 session_id,
                 invocation_id,
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -728,7 +728,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
                 after_sequence: 0,
                 limit: Some(1),
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             context(),
         )
@@ -748,7 +748,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
         after_sequence: u64::MAX,
         limit: Some(0),
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::restricted([]),
+        access: ApplicationAccess::restricted([]),
     };
     assert!(matches!(
         replay_handler
@@ -757,7 +757,7 @@ async fn invocation_request_composes_once_and_supports_authorized_cursor_replay(
             .expect("query framework"),
         Err(ApplicationError::NotFound(_))
     ));
-    hidden_invalid_cursor.resource_access = ResourceAccessEvaluator::organization_wide();
+    hidden_invalid_cursor.access = ApplicationAccess::organization_wide();
     assert!(matches!(
         replay_handler
             .execute(hidden_invalid_cursor, context())
@@ -806,7 +806,7 @@ async fn cancellation_and_close_replay_without_second_state_authority() {
         invocation_id: requested.invocation.id,
         expected_version: requested.invocation.aggregate_version,
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         requested_at: fixture.created_at + Duration::seconds(3),
     };
     let cancelled = cancel_handler
@@ -862,7 +862,7 @@ async fn cancellation_and_close_replay_without_second_state_authority() {
         session_id,
         expected_version: active.aggregate_version,
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         closed_at: fixture.created_at + Duration::seconds(4),
     };
     let closed = close_handler
@@ -949,7 +949,7 @@ async fn failed_start_remains_cancellable_and_unbound_cancellation_terminalizes(
         invocation_id,
         expected_version: admitted.aggregate_version,
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         requested_at: fixture.created_at + Duration::seconds(3),
     };
     let terminal = cancel_handler
@@ -1031,7 +1031,7 @@ async fn ambiguous_repository_commits_are_resolved_as_exact_replays() {
                 session_id,
                 expected_version: current.aggregate_version,
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
                 closed_at: fixture.created_at + Duration::seconds(3),
             },
             context(),

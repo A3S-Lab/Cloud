@@ -1,11 +1,11 @@
 use super::resource_access::{application_not_found, project};
 use super::{ApplicationMutationResult, IApplicationWorkflowRevisionPort};
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     Application, ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
     ApplicationReleasePublished, CreateApplicationWrite, IApplicationRepository,
     PublishApplicationReleaseWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, IdempotencyRequest, OrganizationId, PrincipalId,
@@ -25,7 +25,7 @@ pub struct CreateApplication {
     pub description: String,
     pub release_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -61,7 +61,7 @@ impl CommandHandler<CreateApplication> for CreateApplicationHandler {
         let applications = Arc::clone(&self.applications);
         let workflows = Arc::clone(&self.workflows);
         Box::pin(async move {
-            if let Err(error) = project(command.project_id, &command.resource_access) {
+            if let Err(error) = project(command.project_id, &command.access) {
                 return Ok(Err(error));
             }
             let name = match ResourceName::parse(command.name) {
@@ -174,7 +174,7 @@ pub struct PublishApplicationRelease {
     pub expected_version: u64,
     pub release_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -210,7 +210,7 @@ impl CommandHandler<PublishApplicationRelease> for PublishApplicationReleaseHand
         let applications = Arc::clone(&self.applications);
         let workflows = Arc::clone(&self.workflows);
         Box::pin(async move {
-            if let Err(error) = project(command.project_id, &command.resource_access) {
+            if let Err(error) = project(command.project_id, &command.access) {
                 return Ok(Err(error));
             }
             if command.expected_version == 0 {
@@ -273,7 +273,7 @@ impl CommandHandler<PublishApplicationRelease> for PublishApplicationReleaseHand
             {
                 Ok(Some(value)) => value,
                 Ok(None) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(application_not_found()))
+                    return Ok(Err(application_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -295,7 +295,7 @@ impl CommandHandler<PublishApplicationRelease> for PublishApplicationReleaseHand
                 Ok(None) | Err(RepositoryError::NotFound) => {
                     return Err(BootError::Internal(
                         "Application current release is missing".into(),
-                    ))
+                    ));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };

@@ -5,13 +5,12 @@ use super::{
 };
 use crate::modules::applications::domain::ApplicationExperience;
 use crate::modules::applications::infrastructure::WorkflowApplicationPresetCompiler;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::applications::{ApplicationAccess, ApplicationAccessScope};
+use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::projects::domain::events::ProjectCreated;
 use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::projects::domain::value_objects::ProjectName;
-use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ApplicationId, AssetId, AssetReleaseId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -270,7 +269,7 @@ async fn command_authorizes_before_compilation_and_user_authored_modes_fail_clos
         experience: ApplicationExperience::NewAgent,
         target: agent_target('7'),
         actor_principal_id: PrincipalId::new(),
-        resource_access: ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+        access: ApplicationAccess::restricted([ApplicationAccessScope::Environment {
             project_id,
             environment_id: EnvironmentId::new(),
         }]),
@@ -287,17 +286,19 @@ async fn command_authorizes_before_compilation_and_user_authored_modes_fail_clos
             "Application project not found".into()
         ))
     );
-    assert!(workflows
-        .list(organization_id, project_id)
-        .await
-        .expect("list Workflows")
-        .is_empty());
+    assert!(
+        workflows
+            .list(organization_id, project_id)
+            .await
+            .expect("list Workflows")
+            .is_empty()
+    );
 
     let authored = handler
         .execute(
             CompileApplicationPresetWorkflow {
                 experience: ApplicationExperience::Chatflow,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
                 ..command
             },
             context(),
@@ -305,11 +306,13 @@ async fn command_authorizes_before_compilation_and_user_authored_modes_fail_clos
         .await
         .expect("command framework");
     assert!(matches!(authored, Err(ApplicationError::Invalid(_))));
-    assert!(workflows
-        .list(organization_id, project_id)
-        .await
-        .expect("list Workflows")
-        .is_empty());
+    assert!(
+        workflows
+            .list(organization_id, project_id)
+            .await
+            .expect("list Workflows")
+            .is_empty()
+    );
 }
 
 #[test]

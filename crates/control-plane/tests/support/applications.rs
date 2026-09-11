@@ -11,8 +11,7 @@ use a3s_cloud_control_plane::modules::applications::{
     PublishApplicationReleaseHandler, PublishApplicationReleaseWrite,
     WorkflowApplicationReleaseEvidenceReader,
 };
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
-use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
+use a3s_cloud_control_plane::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, IdempotencyRequest, OrganizationId, PrincipalId,
     ProjectId, RepositoryError, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
@@ -473,7 +472,7 @@ async fn exercise_authorized_application_cqrs(
         description: "Exact Workflow-backed Application CQRS".into(),
         release_acl: initial_contract.canonical_acl().into(),
         actor_principal_id: actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         idempotency_key: "application-cqrs-create".into(),
         request_id: Uuid::now_v7(),
     };
@@ -492,8 +491,8 @@ async fn exercise_authorized_application_cqrs(
     let denied = create_handler
         .execute(
             CreateApplication {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Project {
+                access: ApplicationAccess::restricted([
+                    ApplicationAccessScope::Project {
                         project_id: ProjectId::new(),
                     },
                 ]),
@@ -530,7 +529,7 @@ async fn exercise_authorized_application_cqrs(
         expected_version: 1,
         release_acl: cqrs_contract(&evidence, '2').canonical_acl().into(),
         actor_principal_id: actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ApplicationAccess::organization_wide(),
         idempotency_key: "application-cqrs-publish-2".into(),
         request_id: Uuid::now_v7(),
     };
@@ -552,7 +551,7 @@ async fn exercise_authorized_application_cqrs(
                 organization_id,
                 project_id,
                 application_id: created.record.application.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             cqrs_context(),
         )
@@ -566,7 +565,7 @@ async fn exercise_authorized_application_cqrs(
                 project_id,
                 application_id: created.record.application.id,
                 limit: Some(50),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ApplicationAccess::organization_wide(),
             },
             cqrs_context(),
         )

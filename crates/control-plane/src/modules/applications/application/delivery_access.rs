@@ -1,8 +1,8 @@
 use super::resource_access::project;
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationAudience, ApplicationEndUser, ApplicationSession, IApplicationSessionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationSessionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
@@ -23,9 +23,9 @@ pub(super) async fn project_member_session(
     application_id: ApplicationId,
     session_id: ApplicationSessionId,
     actor_principal_id: PrincipalId,
-    resource_access: &ResourceAccessEvaluator,
+    access: &ApplicationAccess,
 ) -> ApplicationResult<AuthorizedApplicationSession> {
-    project(project_id, resource_access)?;
+    project(project_id, access)?;
     if organization_id.as_uuid().is_nil()
         || project_id.as_uuid().is_nil()
         || application_id.as_uuid().is_nil()

@@ -1,17 +1,17 @@
 use super::delivery_commands::{OpenApplicationSession, OpenApplicationSessionHandler};
 use super::delivery_identity::{idempotency, session_id};
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationEndUser, ApplicationSession, IApplicationRepository, IApplicationSessionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId,
-    ProjectId,
+    ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId, ProjectId,
+    canonical_json_bounded,
 };
 use a3s_boot::{Command, CommandHandler, CqrsContext};
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 const APPLICATION_SESSION_ADMISSION_MAX_BYTES: usize = 300 * 1024;
@@ -26,7 +26,7 @@ pub struct AdmitApplicationSession {
     pub release_id: ApplicationReleaseId,
     pub initial_variables: Value,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub idempotency_key: String,
 }
 
@@ -111,7 +111,7 @@ impl CommandHandler<AdmitApplicationSession> for AdmitApplicationSessionHandler 
                         session_id: session_id(end_user_id, &request),
                         initial_variables: command.initial_variables,
                         actor_principal_id: command.actor_principal_id,
-                        resource_access: command.resource_access,
+                        access: command.access,
                         opened_at: Utc::now(),
                     },
                     context,

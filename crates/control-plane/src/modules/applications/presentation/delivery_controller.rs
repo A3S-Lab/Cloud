@@ -5,15 +5,15 @@ use super::delivery_dto::{
     ApplicationSessionReplayResponse, ApplicationSessionResponse, OpenApplicationSessionRequest,
     RequestApplicationInvocationRequest,
 };
+use crate::access_projection::application_access;
 use crate::modules::applications::application::{
     AdmitApplicationInvocation, AdmitApplicationSession, CancelApplicationInvocation,
-    CloseApplicationSession, GetApplicationInvocation, GetApplicationSession,
-    ReplayApplicationSession, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
-    MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    CloseApplicationSession, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, GetApplicationInvocation,
+    GetApplicationSession, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT, ReplayApplicationSession,
 };
 use crate::modules::applications::domain::ApplicationResponseMode;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationReleaseId, ApplicationSessionId,
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, ProjectId,
@@ -22,8 +22,8 @@ use crate::presentation::{
     actor_principal_id, application_error_response, request_id, request_identity,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    QueryBus, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -59,9 +59,7 @@ pub fn application_delivery_commands_controller(
                             release_id: ApplicationReleaseId::from_uuid(body.release_id),
                             initial_variables: body.initial_variables,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                             idempotency_key,
                         })
                         .await?
@@ -108,9 +106,7 @@ pub fn application_delivery_commands_controller(
                             input: body.input,
                             timeout_seconds: body.timeout_seconds,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                             idempotency_key,
                         })
                         .await?
@@ -148,9 +144,7 @@ pub fn application_delivery_commands_controller(
                             ),
                             expected_version: body.expected_version,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                             closed_at: Utc::now(),
                         })
                         .await?
@@ -190,9 +184,7 @@ pub fn application_delivery_commands_controller(
                             ),
                             expected_version: body.expected_version,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                             requested_at: Utc::now(),
                         })
                         .await?
@@ -226,7 +218,7 @@ pub fn application_delivery_queries_controller(bus: Arc<QueryBus>) -> Result<Con
                         application_id: ApplicationId::from_uuid(request.param_as::<Uuid>("application_id")?),
                         session_id: ApplicationSessionId::from_uuid(request.param_as::<Uuid>("session_id")?),
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(&request.require_auth_principal()?)?,
+                        access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                     }).await? {
                         Ok(result) => {
                             BootResponse::json(&ApplicationSessionResponse::from(result.session))
@@ -253,7 +245,7 @@ pub fn application_delivery_queries_controller(bus: Arc<QueryBus>) -> Result<Con
                             .unwrap_or_default(),
                         limit: Some(limit),
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(&request.require_auth_principal()?)?,
+                        access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                     }).await? {
                         Ok(result) => BootResponse::json(&ApplicationSessionReplayResponse::from(result)),
                         Err(error) => application_error_response(error, request_id),
@@ -274,7 +266,7 @@ pub fn application_delivery_queries_controller(bus: Arc<QueryBus>) -> Result<Con
                         session_id: ApplicationSessionId::from_uuid(request.param_as::<Uuid>("session_id")?),
                         invocation_id: ApplicationInvocationId::from_uuid(request.param_as::<Uuid>("invocation_id")?),
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(&request.require_auth_principal()?)?,
+                        access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                     }).await? {
                         Ok(invocation) => BootResponse::json(&ApplicationInvocationResponse::from(invocation)),
                         Err(error) => application_error_response(error, request_id),
@@ -299,7 +291,7 @@ pub fn application_delivery_queries_controller(bus: Arc<QueryBus>) -> Result<Con
                             .unwrap_or_default(),
                         limit: Some(limit),
                         actor_principal_id: actor_principal_id(&request)?,
-                        resource_access: resource_access_evaluator(&request.require_auth_principal()?)?,
+                        access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                     }).await? {
                         Ok(result) => BootResponse::json(
                             &result

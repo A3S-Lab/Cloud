@@ -29,10 +29,10 @@ pub use delivery_commands::{
     RequestApplicationInvocationHandler, RequestApplicationInvocationResult,
 };
 pub use delivery_queries::{
-    GetApplicationInvocation, GetApplicationInvocationHandler, GetApplicationSession,
-    GetApplicationSessionHandler, GetApplicationSessionResult, ReplayApplicationSession,
-    ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
-    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, GetApplicationInvocation,
+    GetApplicationInvocationHandler, GetApplicationSession, GetApplicationSessionHandler,
+    GetApplicationSessionResult, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    ReplayApplicationSession, ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
 };
 pub use environment_access::{ApplicationsEnvironmentScope, IApplicationsEnvironmentAccess};
 pub use invocation_commands::{
@@ -55,10 +55,11 @@ pub use preset_workflow_port::{
     IApplicationPresetWorkflowPort,
 };
 pub use queries::{
-    GetApplication, GetApplicationHandler, GetApplicationRelease, GetApplicationReleaseHandler,
-    ListApplicationReleases, ListApplicationReleasesHandler, ListApplications,
-    ListApplicationsHandler, DEFAULT_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+    DEFAULT_APPLICATION_LIST_LIMIT, GetApplication, GetApplicationHandler, GetApplicationRelease,
+    GetApplicationReleaseHandler, ListApplicationReleases, ListApplicationReleasesHandler,
+    ListApplications, ListApplicationsHandler, MAXIMUM_APPLICATION_LIST_LIMIT,
 };
+pub use resource_access::{ApplicationAccess, ApplicationAccessScope};
 pub use result::ApplicationMutationResult;
 pub use session_commands::{
     AdmitApplicationSession, AdmitApplicationSessionHandler, ApplicationSessionMutationResult,

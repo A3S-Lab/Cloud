@@ -2,13 +2,14 @@ use super::dto::{
     ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
     CreateApplicationRequest, PublishApplicationReleaseRequest,
 };
+use crate::access_projection::application_access;
 use crate::modules::applications::application::{
-    CreateApplication, GetApplication, GetApplicationRelease, ListApplicationReleases,
-    ListApplications, PublishApplicationRelease, DEFAULT_APPLICATION_LIST_LIMIT,
-    MAXIMUM_APPLICATION_LIST_LIMIT,
+    CreateApplication, DEFAULT_APPLICATION_LIST_LIMIT, GetApplication, GetApplicationRelease,
+    ListApplicationReleases, ListApplications, MAXIMUM_APPLICATION_LIST_LIMIT,
+    PublishApplicationRelease,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, OrganizationId, ProjectId,
 };
@@ -16,8 +17,8 @@ use crate::presentation::{
     actor_principal_id, application_error_response, request_id, request_identity,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    QueryBus, Result,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -46,9 +47,9 @@ pub fn application_commands_controller(bus: Arc<CommandBus>) -> Result<Controlle
                             description: body.description,
                             release_acl: body.release_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: application_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -88,9 +89,9 @@ pub fn application_commands_controller(bus: Arc<CommandBus>) -> Result<Controlle
                             expected_version: body.expected_version,
                             release_acl: body.release_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: application_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -133,9 +134,7 @@ pub fn application_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDe
                                 request.param_as::<Uuid>("project_id")?,
                             ),
                             limit: Some(limit),
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                         })
                         .await?
                     {
@@ -167,9 +166,7 @@ pub fn application_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDe
                             application_id: ApplicationId::from_uuid(
                                 request.param_as::<Uuid>("application_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                         })
                         .await?
                     {
@@ -200,9 +197,7 @@ pub fn application_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDe
                                 request.param_as::<Uuid>("application_id")?,
                             ),
                             limit: Some(limit),
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                         })
                         .await?
                     {
@@ -237,9 +232,7 @@ pub fn application_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDe
                             release_id: ApplicationReleaseId::from_uuid(
                                 request.param_as::<Uuid>("release_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access: application_access(&resource_access_evaluator(&request.require_auth_principal()?)?),
                         })
                         .await?
                     {

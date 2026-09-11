@@ -1,8 +1,8 @@
 use super::resource_access::{application_not_found, project, release_not_found};
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     Application, ApplicationRelease, IApplicationRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, OrganizationId, ProjectId, RepositoryError,
@@ -18,7 +18,7 @@ pub struct GetApplication {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub application_id: ApplicationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for GetApplication {
@@ -43,7 +43,7 @@ impl QueryHandler<GetApplication> for GetApplicationHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Application>>> {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = project(query.project_id, &query.resource_access) {
+            if let Err(error) = project(query.project_id, &query.access) {
                 return Ok(Err(error));
             }
             match applications
@@ -67,7 +67,7 @@ pub struct ListApplications {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub limit: Option<usize>,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for ListApplications {
@@ -92,7 +92,7 @@ impl QueryHandler<ListApplications> for ListApplicationsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<Application>>>> {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = project(query.project_id, &query.resource_access) {
+            if let Err(error) = project(query.project_id, &query.access) {
                 return Ok(Err(error));
             }
             let limit = match list_limit(query.limit) {
@@ -113,7 +113,7 @@ pub struct GetApplicationRelease {
     pub project_id: ProjectId,
     pub application_id: ApplicationId,
     pub release_id: ApplicationReleaseId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for GetApplicationRelease {
@@ -138,7 +138,7 @@ impl QueryHandler<GetApplicationRelease> for GetApplicationReleaseHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<ApplicationRelease>>> {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = project(query.project_id, &query.resource_access) {
+            if let Err(error) = project(query.project_id, &query.access) {
                 return Ok(Err(error));
             }
             match applications
@@ -164,7 +164,7 @@ pub struct ListApplicationReleases {
     pub project_id: ProjectId,
     pub application_id: ApplicationId,
     pub limit: Option<usize>,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
 }
 
 impl Query for ListApplicationReleases {
@@ -190,7 +190,7 @@ impl QueryHandler<ListApplicationReleases> for ListApplicationReleasesHandler {
     {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = project(query.project_id, &query.resource_access) {
+            if let Err(error) = project(query.project_id, &query.access) {
                 return Ok(Err(error));
             }
             let limit = match list_limit(query.limit) {

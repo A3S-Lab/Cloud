@@ -6,19 +6,19 @@ use super::resource_access::environment;
 use super::{
     ApplicationWorkflowRunEvidence, IApplicationOntologyRevisionPort, IApplicationWorkflowRunPort,
 };
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
-    ApplicationInvocation, ApplicationResponseMode, IApplicationRepository,
-    IApplicationSessionRepository, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, ApplicationInvocation, ApplicationResponseMode,
+    IApplicationRepository, IApplicationSessionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, ApplicationId, ApplicationSessionId, EnvironmentId, OntologyId,
-    OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
+    ApplicationId, ApplicationSessionId, EnvironmentId, OntologyId, OntologyRevisionId,
+    OrganizationId, PrincipalId, ProjectId, RepositoryError, canonical_json_bounded,
 };
 use a3s_boot::{Command, CommandHandler, CqrsContext};
 use chrono::Utc;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 const APPLICATION_INVOCATION_ADMISSION_OVERHEAD_BYTES: usize = 16 * 1024;
@@ -39,7 +39,7 @@ pub struct AdmitApplicationInvocation {
     pub input: Value,
     pub timeout_seconds: Option<u64>,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ApplicationAccess,
     pub idempotency_key: String,
 }
 
@@ -102,15 +102,14 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                 command.application_id,
                 command.session_id,
                 command.actor_principal_id,
-                &command.resource_access,
+                &command.access,
             )
             .await
             {
                 return Ok(Err(error));
             }
             if let Some(environment_id) = command.environment_id {
-                if let Err(error) =
-                    environment(command.project_id, environment_id, &command.resource_access)
+                if let Err(error) = environment(command.project_id, environment_id, &command.access)
                 {
                     return Ok(Err(error));
                 }
@@ -127,7 +126,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                     Ok(false) | Err(RepositoryError::NotFound) => {
                         return Ok(Err(ApplicationError::NotFound(
                             "Application environment not found".into(),
-                        )))
+                        )));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }
@@ -198,7 +197,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                     command.application_id,
                     command.session_id,
                     command.actor_principal_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
                 {
@@ -224,7 +223,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                             environment_id: command.environment_id,
                             timeout_seconds,
                             actor_principal_id: command.actor_principal_id,
-                            resource_access: command.resource_access.clone(),
+                            access: command.access.clone(),
                             requested_at: effective_requested_at,
                         },
                         context.clone(),
@@ -236,7 +235,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                             invocation: result.invocation,
                             workflow: result.workflow,
                             replayed: result.invocation_replayed,
-                        }))
+                        }));
                     }
                     Err(error @ ApplicationError::Conflict(_)) => {
                         match sessions
@@ -259,7 +258,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                             command.application_id,
                             command.session_id,
                             command.actor_principal_id,
-                            &command.resource_access,
+                            &command.access,
                         )
                         .await
                         {
@@ -278,7 +277,7 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                             command.application_id,
                             command.session_id,
                             command.actor_principal_id,
-                            &command.resource_access,
+                            &command.access,
                         )
                         .await
                         {
