@@ -87,6 +87,9 @@ pub fn execution_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             revision_id: ExecutionTemplateRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
+                            access: execution_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                         })
                         .await?
                     {

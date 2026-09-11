@@ -367,7 +367,14 @@ pub async fn execute(
         }
         ManagementTool::ExecutionTemplatesGet => {
             let arguments = arguments::parse::<GetExecutionTemplateArguments>(arguments).ok()?;
-            execution_templates::get(query_bus, organization_id, arguments, request_id).await
+            execution_templates::get(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::ConnectorProfilesCreate => {
             let arguments = arguments::parse::<CreateConnectorProfileArguments>(arguments).ok()?;

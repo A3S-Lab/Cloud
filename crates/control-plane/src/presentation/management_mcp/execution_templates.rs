@@ -105,6 +105,7 @@ pub async fn get(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: GetExecutionTemplateArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -113,6 +114,7 @@ pub async fn get(
             project_id: ProjectId::from_uuid(arguments.project_id),
             template_id: ExecutionTemplateId::from_uuid(arguments.template_id),
             revision_id: ExecutionTemplateRevisionId::from_uuid(arguments.revision_id),
+            access: execution_access(&resource_access),
         })
         .await?
     {

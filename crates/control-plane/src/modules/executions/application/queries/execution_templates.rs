@@ -15,6 +15,7 @@ pub struct GetExecutionTemplate {
     pub project_id: ProjectId,
     pub template_id: ExecutionTemplateId,
     pub revision_id: ExecutionTemplateRevisionId,
+    pub access: ExecutionAccess,
 }
 
 impl Query for GetExecutionTemplate {
@@ -40,6 +41,11 @@ impl QueryHandler<GetExecutionTemplate> for GetExecutionTemplateHandler {
     {
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
+            if !query.access.project_is_visible(query.project_id) {
+                return Ok(Err(ApplicationError::NotFound(
+                    "execution template revision not found".into(),
+                )));
+            }
             match templates
                 .find(
                     query.organization_id,
@@ -146,6 +152,32 @@ mod tests {
         ) -> Result<bool, crate::modules::shared_kernel::domain::RepositoryError> {
             Ok(true)
         }
+    }
+
+    #[tokio::test]
+    async fn restricted_query_fails_closed_before_getting_an_ungranted_project() {
+        let handler =
+            GetExecutionTemplateHandler::new(Arc::new(InMemoryExecutionTemplateRepository::new()));
+        let result = handler
+            .execute(
+                GetExecutionTemplate {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    template_id: ExecutionTemplateId::new(),
+                    revision_id: ExecutionTemplateRevisionId::new(),
+                    access: ExecutionAccess::restricted([ExecutionAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message))
+                if message == "execution template revision not found"
+        ));
     }
 
     #[tokio::test]
