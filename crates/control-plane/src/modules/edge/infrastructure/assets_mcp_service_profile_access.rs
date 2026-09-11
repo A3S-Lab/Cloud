@@ -19,6 +19,19 @@ impl AssetsEdgeMcpServiceProfileAccessAdapter {
     pub fn new(profiles: Arc<dyn IMcpServiceProfileRepository>) -> Self {
         Self { profiles }
     }
+
+    async fn load_binding(
+        &self,
+        scope: EdgeMcpServiceProfileScope,
+    ) -> Result<Option<McpServiceProfileBinding>, RepositoryError> {
+        self.profiles
+            .find_mcp_service_profile(
+                scope.organization_id(),
+                scope.asset_id(),
+                scope.asset_release_id(),
+            )
+            .await
+    }
 }
 
 #[async_trait]
@@ -28,14 +41,21 @@ impl IEdgeMcpServiceProfileAccess for AssetsEdgeMcpServiceProfileAccessAdapter {
         scope: EdgeMcpServiceProfileScope,
     ) -> Result<Option<EdgeMcpServiceProfileAdmission>, RepositoryError> {
         Ok(self
-            .profiles
-            .find_mcp_service_profile(
-                scope.organization_id(),
-                scope.asset_id(),
-                scope.asset_release_id(),
-            )
+            .load_binding(scope)
             .await?
             .map(|binding| admit_mcp_service_profile(&binding.profile))
+            .transpose()
+            .map_err(RepositoryError::Conflict)?)
+    }
+
+    async fn find_projection_binding(
+        &self,
+        scope: EdgeMcpServiceProfileScope,
+    ) -> Result<Option<EdgeMcpServiceProfileProjectionBinding>, RepositoryError> {
+        Ok(self
+            .load_binding(scope)
+            .await?
+            .map(|binding| admit_mcp_service_profile_projection_binding(&binding))
             .transpose()
             .map_err(RepositoryError::Conflict)?)
     }

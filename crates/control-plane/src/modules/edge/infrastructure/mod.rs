@@ -159,3 +159,4 @@ pub use project_environment_access::ProjectsEdgeEnvironmentAccessAdapter;
 pub(crate) use runtime_http_upstream::gateway_http_upstream;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;
 pub use workloads_fleet_route_target_access::WorkloadsFleetRouteTargetAccessAdapter;
+pub use workloads_mcp_workload_revision_access::WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter;

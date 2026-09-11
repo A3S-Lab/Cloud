@@ -10644,6 +10644,7 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         "pubstructEdgeMcpServiceProfileScope",
         "pubtraitIEdgeMcpServiceProfileAccess:Send+Sync",
         "asyncfnfind_bound_profile(&self,scope:EdgeMcpServiceProfileScope,)->Result<Option<EdgeMcpServiceProfileAdmission>,RepositoryError>;",
+        "asyncfnfind_projection_binding(&self,scope:EdgeMcpServiceProfileScope,)->Result<Option<EdgeMcpServiceProfileProjectionBinding>,RepositoryError>;",
     ] {
         assert!(
             compact_port.contains(required),
@@ -10724,6 +10725,7 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         ".find_mcp_service_profile(",
         "fnadmit_mcp_service_profile(",
         "fnadmit_mcp_service_profile_projection_binding(",
+        "asyncfnfind_projection_binding(",
         "EdgeMcpServiceProfileAdmission",
         "EdgeMcpServiceProfileProjectionBinding",
     ] {
@@ -10828,13 +10830,26 @@ fn edge_mcp_gateway_projection_owns_profile_binding_facts() {
     .expect("read MCP projection input reader");
     let production_reader = production_source(&reader);
     assert!(
-        production_reader.contains("admit_mcp_service_profile_projection_binding("),
-        "MCP projection input reader stopped mapping through the Assets ACA"
+        production_reader.contains("find_projection_binding("),
+        "MCP projection input reader stopped reading profile bindings through the Edge port"
     );
     assert!(
-        !production_reader.contains("McpServiceProfileBinding {"),
-        "MCP projection input reader still constructs Assets bindings in production"
+        production_reader.contains("find_active_revision_binding("),
+        "MCP projection input reader stopped reading revision bindings through the Edge port"
     );
+    for forbidden in [
+        "IMcpServiceProfileRepository",
+        "IWorkloadRepository",
+        "admit_mcp_service_profile_projection_binding(",
+        "admit_mcp_workload_revision_projection_binding(",
+        "crate::modules::assets",
+        "crate::modules::workloads",
+    ] {
+        assert!(
+            !production_reader.contains(forbidden),
+            "MCP projection input reader regained foreign materialization authority {forbidden}"
+        );
+    }
 }
 
 #[test]
@@ -10919,12 +10934,77 @@ fn edge_mcp_gateway_projection_owns_workload_revision_binding_facts() {
     .expect("read MCP projection input reader");
     let production_reader = production_source(&reader);
     assert!(
-        production_reader.contains("admit_mcp_workload_revision_projection_binding("),
-        "MCP projection input reader stopped mapping through the Workloads ACA"
+        production_reader.contains("find_active_revision_binding("),
+        "MCP projection input reader stopped reading revision bindings through the Edge port"
     );
     assert!(
         !production_reader.contains("revision: revision,"),
         "MCP projection input reader still embeds foreign WorkloadRevision in production output"
+    );
+    assert!(
+        !production_reader.contains("IWorkloadRepository"),
+        "MCP projection input reader regained Workloads repository authority"
+    );
+}
+
+#[test]
+fn edge_mcp_gateway_projection_isolates_workload_revision_materialization() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("edge/application/mcp_workload_revision_projection_access.rs"),
+    )
+    .expect("read Edge MCP revision projection port");
+    let production_port = production_source(&port);
+    let compact_port = production_port.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructEdgeMcpWorkloadRevisionProjectionScope",
+        "pubtraitIEdgeMcpWorkloadRevisionProjectionAccess:Send+Sync",
+        "asyncfnfind_active_revision_binding(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge MCP revision projection port lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "IWorkloadRepository",
+        "crate::modules::workloads",
+        "Postgres",
+        "InMemory",
+    ] {
+        assert!(
+            !production_port.contains(forbidden),
+            "Edge MCP revision projection port leaked Workloads authority {forbidden}"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("edge/infrastructure/workloads_mcp_workload_revision_access.rs"),
+    )
+    .expect("read Edge MCP revision projection adapter");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter",
+        "impl IEdgeMcpWorkloadRevisionProjectionAccess",
+        "IWorkloadRepository",
+        "admit_mcp_workload_revision_projection_binding(",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Edge MCP revision projection adapter lost quarantine surface {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the revision projection ACA exactly once"
     );
 }
 

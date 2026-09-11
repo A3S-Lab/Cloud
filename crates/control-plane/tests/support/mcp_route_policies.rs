@@ -16,22 +16,23 @@ use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, StageRoutePublication,
 };
 use a3s_cloud_control_plane::modules::edge::{
-    CompileMcpGatewaySnapshot, CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim,
-    DomainNamePattern, EdgeMcpServiceProfileAdmission, FleetGatewayCommandQueue,
-    GatewayCertificateMaterial, GatewayCertificateState, GatewayNodeDesiredStatePlanner,
-    GatewayPublicationState, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
-    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
-    GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialLifecycleRepository,
-    IMcpCredentialRepository, IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository,
-    IRouteTargetReader, McpCredential, McpCredentialDeliveryReceipt,
-    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
-    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
-    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
-    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    MutateMcpRoutePolicyWrite, PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet,
-    PlannedMcpGatewayNodeProjection, PostgresEdgeRepository, ResolvedRouteTarget,
-    ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName, RouteTarget,
-    StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
+    AssetsEdgeMcpServiceProfileAccessAdapter, CompileMcpGatewaySnapshot,
+    CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
+    EdgeMcpServiceProfileAdmission, FleetGatewayCommandQueue, GatewayCertificateMaterial,
+    GatewayCertificateState, GatewayNodeDesiredStatePlanner, GatewayPublicationState,
+    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
+    GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
+    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpCredentialRepository,
+    IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
+    McpCredentialDeliveryReceipt, McpGatewayDesiredStateReconciler,
+    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
+    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
+    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
+    McpRouteTargetProjectionCompiler, MutateMcpRoutePolicyWrite, PlanManagedGatewayRouteRollout,
+    PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection, PostgresEdgeRepository,
+    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName,
+    RouteTarget, StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim,
+    UpstreamEndpoint, WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
@@ -989,8 +990,14 @@ pub async fn exercise(
     let desired_inputs = Arc::new(McpRouteProjectionInputReader::new(
         desired_edge.clone(),
         desired_edge.clone(),
-        Arc::new(assets.clone()),
-        Arc::new(workloads.clone()),
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::new(
+            assets.clone(),
+        ))),
+        Arc::new(
+            WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
+                workloads.clone(),
+            )),
+        ),
     ));
     let desired_route_planner = McpRouteProjectionPlanner::new(
         Arc::new(FixtureRouteTargetReader::single(workload_id)),
@@ -1326,8 +1333,14 @@ async fn plan_gateway_snapshot(
     let input_reader = Arc::new(McpRouteProjectionInputReader::new(
         shared_edge.clone(),
         shared_edge.clone(),
-        Arc::new(assets.clone()),
-        Arc::new(workloads.clone()),
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::new(
+            assets.clone(),
+        ))),
+        Arc::new(
+            WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
+                workloads.clone(),
+            )),
+        ),
     ));
     let route_planner = McpRouteProjectionPlanner::new(
         Arc::new(FixtureRouteTargetReader::single(workload_id)),

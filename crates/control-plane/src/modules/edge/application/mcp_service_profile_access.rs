@@ -1,4 +1,6 @@
-use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
+use crate::modules::edge::domain::{
+    EdgeMcpServiceProfileAdmission, EdgeMcpServiceProfileProjectionBinding,
+};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
 };
@@ -52,13 +54,19 @@ impl EdgeMcpServiceProfileScope {
     }
 }
 
-/// Edge-owned read port for Assets MCP Service profile admission facts.
+/// Edge-owned read port for Assets MCP Service profile admission and Gateway
+/// projection binding facts.
 #[async_trait]
 pub trait IEdgeMcpServiceProfileAccess: Send + Sync {
     async fn find_bound_profile(
         &self,
         scope: EdgeMcpServiceProfileScope,
     ) -> Result<Option<EdgeMcpServiceProfileAdmission>, RepositoryError>;
+
+    async fn find_projection_binding(
+        &self,
+        scope: EdgeMcpServiceProfileScope,
+    ) -> Result<Option<EdgeMcpServiceProfileProjectionBinding>, RepositoryError>;
 }
 
 #[cfg(test)]

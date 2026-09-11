@@ -5,6 +5,7 @@ mod mcp_credential_delivery_receipt_sweeper;
 mod mcp_credential_encryption;
 mod mcp_route_policy_service;
 mod mcp_service_profile_access;
+mod mcp_workload_revision_projection_access;
 mod node_access;
 pub mod queries;
 mod resource_access;
@@ -18,6 +19,9 @@ pub use mcp_credential_delivery_receipt_sweeper::McpCredentialDeliveryReceiptSwe
 pub use mcp_credential_encryption::IEdgeMcpCredentialEncryption;
 pub use mcp_route_policy_service::McpRoutePolicyApplicationService;
 pub use mcp_service_profile_access::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
+pub use mcp_workload_revision_projection_access::{
+    EdgeMcpWorkloadRevisionProjectionScope, IEdgeMcpWorkloadRevisionProjectionAccess,
+};
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};
 
 pub use commands::{

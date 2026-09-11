@@ -10,9 +10,10 @@ pub use application::{
     EdgeEnvironmentScope, EdgeNodeScope, GetDomainClaim, GetDomainClaimHandler, GetMcpCredential,
     GetMcpCredentialHandler, GetMcpRoutePolicy, GetMcpRoutePolicyHandler, GetRoute,
     GetRouteHandler, IEdgeEnvironmentAccess, IEdgeMcpCredentialEncryption,
-    IEdgeMcpServiceProfileAccess, IEdgeNodeAccess, ListDomainClaims, ListDomainClaimsHandler,
-    ListGatewayCertificates, ListGatewayCertificatesHandler, ListGatewayScopes,
-    ListGatewayScopesHandler, ListMcpCredentials, ListMcpCredentialsHandler, ListMcpRoutePolicies,
+    IEdgeMcpServiceProfileAccess, IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess,
+    ListDomainClaims, ListDomainClaimsHandler, ListGatewayCertificates,
+    ListGatewayCertificatesHandler, ListGatewayScopes, ListGatewayScopesHandler,
+    ListMcpCredentials, ListMcpCredentialsHandler, ListMcpRoutePolicies,
     ListMcpRoutePoliciesHandler, ListRoutes, ListRoutesHandler,
     McpCredentialDeliveryReceiptSweeper, McpCredentialDeliveryResult, McpCredentialMutationResult,
     McpRoutePolicyApplicationService, PublishRoute, PublishRouteHandler, PublishRouteResult,
@@ -89,6 +90,7 @@ pub use infrastructure::{
     PlannedMcpGatewayProjectionSet, ProjectsEdgeEnvironmentAccessAdapter,
     SecretsEdgeMcpCredentialEncryptionAdapter, StageManagedRoutePublication,
     StageMcpGatewaySnapshot, VaultGatewayCertificateAuthority,
+    WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter,
     WorkloadsFleetRouteTargetAccessAdapter,
 };
 pub use presentation::EdgeModule;

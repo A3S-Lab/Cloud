@@ -1,4 +1,7 @@
-use crate::modules::assets::domain::repositories::IMcpServiceProfileRepository;
+use crate::modules::edge::application::{
+    EdgeMcpServiceProfileScope, EdgeMcpWorkloadRevisionProjectionScope,
+    IEdgeMcpServiceProfileAccess, IEdgeMcpWorkloadRevisionProjectionAccess,
+};
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
@@ -9,10 +12,7 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, EdgeMcpServiceProfileProjectionBinding,
     EdgeMcpWorkloadRevisionProjectionBinding, GatewayScope, McpRoutePolicy,
 };
-use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
-use crate::modules::edge::infrastructure::workloads_mcp_workload_revision_access::admit_mcp_workload_revision_projection_binding;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError};
-use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use futures_util::{stream, StreamExt, TryStreamExt};
@@ -24,22 +24,22 @@ const MATERIALIZATION_CONCURRENCY: usize = 16;
 pub struct McpRouteProjectionInputReader {
     policies: Arc<dyn IMcpRoutePolicyRepository>,
     edge: Arc<dyn IEdgeRepository>,
-    profiles: Arc<dyn IMcpServiceProfileRepository>,
-    workloads: Arc<dyn IWorkloadRepository>,
+    profiles: Arc<dyn IEdgeMcpServiceProfileAccess>,
+    revisions: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess>,
 }
 
 impl McpRouteProjectionInputReader {
     pub fn new(
         policies: Arc<dyn IMcpRoutePolicyRepository>,
         edge: Arc<dyn IEdgeRepository>,
-        profiles: Arc<dyn IMcpServiceProfileRepository>,
-        workloads: Arc<dyn IWorkloadRepository>,
+        profiles: Arc<dyn IEdgeMcpServiceProfileAccess>,
+        revisions: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess>,
     ) -> Self {
         Self {
             policies,
             edge,
             profiles,
-            workloads,
+            revisions,
         }
     }
 
@@ -60,47 +60,28 @@ impl McpRouteProjectionInputReader {
                     "active MCP route policy lost its referenced DomainClaim",
                 )
             })?;
-        let profile_binding = admit_mcp_service_profile_projection_binding(
-            &self
-                .profiles
-                .find_mcp_service_profile(
-                    spec.organization_id,
-                    spec.asset_id,
-                    spec.asset_release_id,
-                )
-                .await?
-                .ok_or_else(|| {
-                    RepositoryError::Storage(
-                        "active MCP route policy lost its immutable Service profile".into(),
-                    )
-                })?,
+        let profile_scope = EdgeMcpServiceProfileScope::new(
+            spec.organization_id,
+            spec.asset_id,
+            spec.asset_release_id,
         )
         .map_err(RepositoryError::Conflict)?;
-        let workload = self
-            .workloads
-            .find_workload(spec.organization_id, spec.workload_id)
-            .await
-            .map_err(|error| {
-                missing_as_storage(
-                    error,
-                    "active MCP route policy lost its referenced Workload",
+        let profile_binding = self
+            .profiles
+            .find_projection_binding(profile_scope)
+            .await?
+            .ok_or_else(|| {
+                RepositoryError::Storage(
+                    "active MCP route policy lost its immutable Service profile".into(),
                 )
             })?;
-        let revision_id = workload.active_revision_id.ok_or_else(|| {
-            RepositoryError::Conflict(
-                "active MCP route policy Workload has no active revision".into(),
-            )
-        })?;
-        let revision = self
-            .workloads
-            .find_revision(spec.organization_id, revision_id)
-            .await
-            .map_err(|error| {
-                missing_as_storage(error, "active MCP Workload lost its active revision")
-            })?;
-        let revision_binding =
-            admit_mcp_workload_revision_projection_binding(&workload, &revision, &profile_binding)
+        let revision_scope =
+            EdgeMcpWorkloadRevisionProjectionScope::new(spec.organization_id, spec.workload_id)
                 .map_err(RepositoryError::Conflict)?;
+        let revision_binding = self
+            .revisions
+            .find_active_revision_binding(revision_scope, &profile_binding)
+            .await?;
         validate_materialized_input(
             scope,
             &policy,

@@ -142,7 +142,8 @@ use crate::modules::edge::{
     GatewayRolloutRollbackCompiler, GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler,
     GatewaySnapshotCompilerConfig, GetDomainClaimHandler, GetMcpCredentialHandler,
     GetMcpRoutePolicyHandler, GetRouteHandler, IEdgeEnvironmentAccess,
-    IEdgeMcpCredentialEncryption, IEdgeNodeAccess, ListDomainClaimsHandler,
+    IEdgeMcpCredentialEncryption, IEdgeMcpServiceProfileAccess,
+    IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess, ListDomainClaimsHandler,
     ListGatewayCertificatesHandler, ListGatewayScopesHandler, ListMcpCredentialsHandler,
     ListMcpRoutePoliciesHandler, ListRoutesHandler, LocalDomainOwnershipVerifier,
     LocalGatewayCertificateAuthority, McpCredentialDeliveryReceiptSweeper, McpCredentialIssuer,
@@ -153,7 +154,8 @@ use crate::modules::edge::{
     ProjectsEdgeEnvironmentAccessAdapter, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
     RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
     SecretsEdgeMcpCredentialEncryptionAdapter, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadsFleetRouteTargetAccessAdapter,
+    VerifyDomainClaimHandler, WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter,
+    WorkloadsFleetRouteTargetAccessAdapter,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
@@ -992,11 +994,19 @@ async fn build_api_worker_application(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
+    let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> =
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(
+            &mcp_profiles,
+        )));
+    let mcp_revision_access: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess> =
+        Arc::new(WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(
+            Arc::clone(&workloads),
+        ));
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         Arc::clone(&mcp_route_policy_repository),
         Arc::clone(&routes),
-        Arc::clone(&mcp_profiles),
-        Arc::clone(&workloads),
+        Arc::clone(&mcp_profile_access),
+        Arc::clone(&mcp_revision_access),
     ));
     let mcp_route_planner = McpRouteProjectionPlanner::new(
         Arc::clone(&route_targets),
@@ -1450,9 +1460,7 @@ async fn build_api_worker_application(
         ));
         let mcp_route_policies = Arc::new(McpRoutePolicyApplicationService::new(
             mcp_route_policy_repository,
-            Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(
-                &mcp_profiles,
-            ))),
+            Arc::clone(&mcp_profile_access),
         ));
         let asset_git = Arc::new(
             AssetGitApplicationService::new(

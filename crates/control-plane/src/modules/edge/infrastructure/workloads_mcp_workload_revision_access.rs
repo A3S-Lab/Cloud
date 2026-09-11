@@ -1,9 +1,64 @@
+use crate::modules::edge::application::{
+    EdgeMcpWorkloadRevisionProjectionScope, IEdgeMcpWorkloadRevisionProjectionAccess,
+};
 use crate::modules::edge::domain::{
     EdgeMcpServiceProfileProjectionBinding, EdgeMcpWorkloadRevisionProjectionBinding,
 };
+use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::domain::entities::{
     Workload, WorkloadDesiredState, WorkloadRevision,
 };
+use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use async_trait::async_trait;
+use std::sync::Arc;
+
+/// Sole anti-corruption adapter from Edge MCP revision projection to Workloads.
+#[derive(Clone)]
+pub struct WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter {
+    workloads: Arc<dyn IWorkloadRepository>,
+}
+
+impl WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter {
+    pub fn new(workloads: Arc<dyn IWorkloadRepository>) -> Self {
+        Self { workloads }
+    }
+}
+
+#[async_trait]
+impl IEdgeMcpWorkloadRevisionProjectionAccess
+    for WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter
+{
+    async fn find_active_revision_binding(
+        &self,
+        scope: EdgeMcpWorkloadRevisionProjectionScope,
+        profile: &EdgeMcpServiceProfileProjectionBinding,
+    ) -> Result<EdgeMcpWorkloadRevisionProjectionBinding, RepositoryError> {
+        let workload = self
+            .workloads
+            .find_workload(scope.organization_id(), scope.workload_id())
+            .await
+            .map_err(|error| {
+                missing_as_storage(
+                    error,
+                    "active MCP route policy lost its referenced Workload",
+                )
+            })?;
+        let revision_id = workload.active_revision_id.ok_or_else(|| {
+            RepositoryError::Conflict(
+                "active MCP route policy Workload has no active revision".into(),
+            )
+        })?;
+        let revision = self
+            .workloads
+            .find_revision(scope.organization_id(), revision_id)
+            .await
+            .map_err(|error| {
+                missing_as_storage(error, "active MCP Workload lost its active revision")
+            })?;
+        admit_mcp_workload_revision_projection_binding(&workload, &revision, profile)
+            .map_err(RepositoryError::Conflict)
+    }
+}
 
 /// Map a running Workloads revision into the Edge-owned MCP projection fact.
 pub(crate) fn admit_mcp_workload_revision_projection_binding(
@@ -72,6 +127,13 @@ pub(crate) fn admit_mcp_workload_revision_projection_binding(
     )?;
     owned.matches_profile(profile)?;
     Ok(owned)
+}
+
+fn missing_as_storage(error: RepositoryError, message: &str) -> RepositoryError {
+    match error {
+        RepositoryError::NotFound => RepositoryError::Storage(message.into()),
+        error => error,
+    }
 }
 
 #[cfg(test)]

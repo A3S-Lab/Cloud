@@ -170,8 +170,14 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     let inputs = Arc::new(McpRouteProjectionInputReader::new(
         shared_edge.clone(),
         shared_edge.clone(),
-        Arc::new((*fixture.assets).clone()),
-        Arc::new((*fixture.workloads).clone()),
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::new(
+            (*fixture.assets).clone(),
+        ))),
+        Arc::new(
+            WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
+                (*fixture.workloads).clone(),
+            )),
+        ),
     ));
     let target_reader = FixtureRouteTargetReader::single(fixture.workload_id)
         .with_revision(second_workload.revision_id, second_workload.workload_id);
@@ -285,8 +291,14 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
     let inputs = Arc::new(McpRouteProjectionInputReader::new(
         shared_edge.clone(),
         shared_edge.clone(),
-        Arc::new((*fixture.assets).clone()),
-        Arc::new((*fixture.workloads).clone()),
+        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::new(
+            (*fixture.assets).clone(),
+        ))),
+        Arc::new(
+            WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
+                (*fixture.workloads).clone(),
+            )),
+        ),
     ));
     let target_reader = FixtureRouteTargetReader::single(fixture.workload_id)
         .with_revision(second_workload.revision_id, second_workload.workload_id);
