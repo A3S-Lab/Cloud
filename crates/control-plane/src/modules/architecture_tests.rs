@@ -2804,6 +2804,7 @@ fn assets_access_and_owner_scope_have_one_bounded_authority() {
     for relative in [
         "assets/application/commands/archive_asset/mod.rs",
         "assets/application/commands/bind_mcp_service_profile/mod.rs",
+        "assets/application/commands/create_asset/mod.rs",
         "assets/application/commands/create_release/mod.rs",
         "assets/application/commands/receive_pack/mod.rs",
         "assets/application/commands/yank_release/mod.rs",

@@ -1,14 +1,14 @@
 use crate::modules::artifacts::{
     INodeArtifactStore, NodeArtifactDescriptor, NodeArtifactStoreError,
 };
-use crate::modules::assets::application::resource_access::{AssetAccess, AssetResourceAccess};
 use crate::modules::assets::application::IAssetOrganizationAccess;
+use crate::modules::assets::application::resource_access::{AssetAccess, AssetResourceAccess};
 use crate::modules::assets::domain::{
     Asset, AssetArchived, AssetCreated, AssetGitRepositoryError, AssetKind, AssetRelease,
     AssetReleaseArtifact, AssetReleaseDrafted, AssetReleasePublished, AssetReleaseState,
     AssetReleaseVersion, AssetReleaseWrite, AssetState, AssetWrite, CreateAssetReleaseWrite,
     CreateAssetWrite, HostedAssetBuildRequested, IAssetGitRepository, IAssetRepository,
-    TransitionAssetReleaseWrite, TransitionAssetWrite, SKILL_BUNDLE_MEDIA_TYPE,
+    SKILL_BUNDLE_MEDIA_TYPE, TransitionAssetReleaseWrite, TransitionAssetWrite,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -48,12 +48,16 @@ impl AssetCatalogApplicationService {
     pub async fn create_asset(
         &self,
         organization_id: OrganizationId,
+        access: &AssetAccess,
         name: String,
         kind: String,
         idempotency_key: String,
         request_id: Uuid,
     ) -> ApplicationResult<AssetWrite> {
         validate_request_id(request_id)?;
+        if !access.organization_catalog_is_visible() {
+            return Err(ApplicationError::NotFound("organization not found".into()));
+        }
         self.organizations
             .require_organization(organization_id)
             .await?;
@@ -184,12 +188,12 @@ impl AssetCatalogApplicationService {
             (AssetKind::Skill, true) => {
                 return Err(ApplicationError::Conflict(
                     "Skill releases cannot contain a Workload build recipe".into(),
-                ))
+                ));
             }
             (AssetKind::Agent | AssetKind::Mcp, false) => {
                 return Err(ApplicationError::Conflict(
                     "Agent and MCP releases require a pinned build recipe".into(),
-                ))
+                ));
             }
         }
         let release = AssetRelease::draft(

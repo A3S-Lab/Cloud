@@ -6,9 +6,9 @@ use crate::modules::assets::presentation::dto::{
     AssetReleaseResponse, AssetResponse, CreateAssetReleaseRequest, CreateAssetRequest,
 };
 use crate::presentation::{
-    application_error_response, asset_access, organization_tenant_asset_write_controller,
-    request_identity, resource_access_evaluator, with_deferred_resource_scope,
-    DeferredResourceScope,
+    DeferredResourceScope, application_error_response, asset_access,
+    organization_tenant_asset_write_controller, request_identity, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use a3s_boot::{
     BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
@@ -26,10 +26,14 @@ pub fn asset_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
             async move {
                 let body: CreateAssetRequest = request.json_with_content_type()?;
                 let organization_id = organization_id(&request)?;
+                let access = asset_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?);
                 let (idempotency_key, request_id) = request_identity(&request)?;
                 match bus
                     .execute(CreateAsset {
                         organization_id,
+                        access,
                         name: body.name,
                         kind: body.kind,
                         idempotency_key,

@@ -9,8 +9,8 @@ use crate::modules::assets::domain::{
     AssetGitRpcResponse, AssetGitService, AssetGitWriteJournal, AssetGitWriteLease,
     AssetManifestAdmission, AssetRelease, AssetReleaseArtifact, AssetReleaseState,
     AssetReleaseVersion, AssetReleaseWrite, AssetWrite, CreateAssetReleaseWrite, CreateAssetWrite,
-    IAssetGitRepository, IAssetRepository, TransitionAssetReleaseWrite, TransitionAssetWrite,
-    SKILL_BUNDLE_MEDIA_TYPE,
+    IAssetGitRepository, IAssetRepository, SKILL_BUNDLE_MEDIA_TYPE, TransitionAssetReleaseWrite,
+    TransitionAssetWrite,
 };
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::domain::repositories::{
@@ -481,9 +481,24 @@ fn service() -> (
 async fn organization_scoped_assets_fail_closed_for_restricted_access() {
     let (organization_id, store, service) = service();
     let organization_wide = AssetAccess::organization_wide();
+    let restricted = AssetAccess::restricted();
+    assert!(matches!(
+        service
+            .create_asset(
+                organization_id,
+                &restricted,
+                "catalog-denied".into(),
+                "agent".into(),
+                "create-denied".into(),
+                Uuid::now_v7(),
+            )
+            .await,
+        Err(ApplicationError::NotFound(message)) if message == "organization not found"
+    ));
     let asset = service
         .create_asset(
             organization_id,
+            &organization_wide,
             "catalog-restricted".into(),
             "agent".into(),
             "create-restricted-fixture".into(),
@@ -492,13 +507,14 @@ async fn organization_scoped_assets_fail_closed_for_restricted_access() {
         .await
         .expect("create Asset fixture")
         .asset;
-    let restricted = AssetAccess::restricted();
 
-    assert!(service
-        .list_assets(organization_id, &restricted)
-        .await
-        .expect("restricted list")
-        .is_empty());
+    assert!(
+        service
+            .list_assets(organization_id, &restricted)
+            .await
+            .expect("restricted list")
+            .is_empty()
+    );
     assert!(matches!(
         service
             .get_asset(organization_id, asset.id, &restricted)
@@ -535,6 +551,7 @@ async fn hosted_release_uses_the_admitted_manifest_digest() {
     let asset = service
         .create_asset(
             organization_id,
+            &access,
             "catalog-agent".into(),
             "agent".into(),
             "create-agent".into(),
@@ -569,6 +586,7 @@ async fn skill_release_publishes_the_exact_git_bundle_without_a_build_run() {
     let asset = service
         .create_asset(
             organization_id,
+            &access,
             "catalog-skill".into(),
             "skill".into(),
             "create-skill".into(),
@@ -617,6 +635,7 @@ async fn yanked_release_remains_exactly_addressable_but_is_not_selectable() {
     let asset = service
         .create_asset(
             organization_id,
+            &access,
             "catalog-skill".into(),
             "skill".into(),
             "create-skill".into(),

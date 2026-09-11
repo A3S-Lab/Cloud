@@ -1,4 +1,4 @@
-use crate::modules::assets::application::AssetCatalogApplicationService;
+use crate::modules::assets::application::{AssetAccess, AssetCatalogApplicationService};
 use crate::modules::assets::domain::AssetWrite;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -9,6 +9,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct CreateAsset {
     pub organization_id: OrganizationId,
+    pub access: AssetAccess,
     pub name: String,
     pub kind: String,
     pub idempotency_key: String,
@@ -40,6 +41,7 @@ impl CommandHandler<CreateAsset> for CreateAssetHandler {
             Ok(service
                 .create_asset(
                     command.organization_id,
+                    &command.access,
                     command.name,
                     command.kind,
                     command.idempotency_key,
