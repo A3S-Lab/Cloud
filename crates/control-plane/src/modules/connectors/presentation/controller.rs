@@ -8,27 +8,28 @@ use super::dto::{
     RevokeConnectorRevisionRequest,
 };
 use super::request::{actor_principal_id, request_id, request_identity};
+use crate::access_projection::connector_access;
 use crate::modules::connectors::application::{
-    CreateConnectorProfile, GetConnectorExecutionAttempt, GetConnectorExecutionAttemptResolution,
-    GetConnectorProfile, GetConnectorRevision, GetConnectorRevisionRevocation,
-    ListConnectorProfiles, ListConnectorRevisions, ListUnresolvedConnectorExecutionAttempts,
+    CreateConnectorProfile, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, GetConnectorExecutionAttempt,
+    GetConnectorExecutionAttemptResolution, GetConnectorProfile, GetConnectorRevision,
+    GetConnectorRevisionRevocation, ListConnectorProfiles, ListConnectorRevisions,
+    ListUnresolvedConnectorExecutionAttempts, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
     ResolveConnectorExecutionAttempt, ReviseConnectorProfile, RevokeConnectorRevision,
-    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
 use crate::modules::connectors::domain::{
     ConnectorExecutionAttemptCursor, DEFAULT_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
     MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId,
-    ProjectId,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
+    canonical_timestamp,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    QueryBus, Result,
 };
 use chrono::Utc;
 use serde::Deserialize;
@@ -64,9 +65,9 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             name: body.name,
                             definition_acl: body.definition_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -108,9 +109,9 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             expected_version: body.expected_version,
                             definition_acl: body.definition_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -154,9 +155,9 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             ),
                             reason: body.reason,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -202,9 +203,9 @@ pub fn connector_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             attempt_id: request.param_as::<Uuid>("attempt_id")?,
                             reason: body.reason,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -255,9 +256,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             limit,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -292,9 +293,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             profile_id: ConnectorProfileId::from_uuid(
                                 request.param_as::<Uuid>("profile_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -328,9 +329,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 request.param_as::<Uuid>("profile_id")?,
                             ),
                             limit,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -368,9 +369,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             revision_id: ConnectorRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -405,9 +406,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             revision_id: ConnectorRevisionId::from_uuid(
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -458,9 +459,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             ),
                             after,
                             limit: parameters.limit,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -499,9 +500,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
                             attempt_id: request.param_as::<Uuid>("attempt_id")?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -540,9 +541,9 @@ pub fn connector_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 request.param_as::<Uuid>("revision_id")?,
                             ),
                             attempt_id: request.param_as::<Uuid>("attempt_id")?,
-                            resource_access: resource_access_evaluator(
+                            access: connector_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {

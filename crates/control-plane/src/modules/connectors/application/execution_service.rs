@@ -6,14 +6,14 @@ use crate::modules::connectors::domain::{
     ConnectorExecutionReceipt, ConnectorExecutionRequest, ConnectorExecutionReservation,
     ConnectorResponseObjectReference, IConnectorExecutionAttemptRepository,
     IConnectorExecutionPreparationPort, IConnectorProfileRepository, IConnectorResponseObjectStore,
-    ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
     MAXIMUM_CONNECTOR_EXECUTION_OUTCOME_SECONDS, MAXIMUM_CONNECTOR_EXECUTION_RESERVATION_SECONDS,
+    ReserveConnectorExecutionAttempt, SettleConnectorExecutionAttempt,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId,
-    ProjectId, RepositoryError, Sha256Digest,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
+    RepositoryError, Sha256Digest, canonical_timestamp,
 };
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::fmt;
@@ -58,7 +58,7 @@ pub struct ExecuteConnectorAttempt {
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
     pub request: ConnectorExecutionRequest,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
     /// Caller-generated and stable for an ambiguous reservation call only.
     /// It is not a provider idempotency key and changes after lease expiry.
     pub fence_token: Uuid,
@@ -199,11 +199,7 @@ impl ConnectorExecutionApplicationService {
         retain_response_object: bool,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
         validate_command(&command)?;
-        environment(
-            command.project_id,
-            command.environment_id,
-            &command.resource_access,
-        )?;
+        environment(command.project_id, command.environment_id, &command.access)?;
         let revision = self
             .profiles
             .find_revision(
@@ -243,16 +239,16 @@ impl ConnectorExecutionApplicationService {
             ConnectorExecutionReservation::Busy(record) => {
                 return Ok(ConnectorExecutionAttemptResult::Reserved {
                     lease_expires_at: record.attempt.lease_expires_at(),
-                })
+                });
             }
             ConnectorExecutionReservation::InFlight(record) => return in_flight_result(&record),
             ConnectorExecutionReservation::Indeterminate(record) => {
-                return indeterminate_result(&record)
+                return indeterminate_result(&record);
             }
             ConnectorExecutionReservation::Completed(record) => {
                 return self
                     .completed_from_record(record, true, retain_response_object)
-                    .await
+                    .await;
             }
         };
 
@@ -405,13 +401,13 @@ impl ConnectorExecutionApplicationService {
     pub async fn settle_known(
         &self,
         settlement: SettleConnectorExecutionAttempt,
-        resource_access: &ResourceAccessEvaluator,
+        access: &ConnectorAccess,
     ) -> ApplicationResult<ConnectorExecutionAttemptResult> {
         settlement.validate().map_err(ApplicationError::Invalid)?;
         environment(
             settlement.fence.binding().project_id(),
             settlement.fence.binding().environment_id(),
-            resource_access,
+            access,
         )?;
         let write = self
             .attempts
@@ -617,7 +613,6 @@ mod tests {
         ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
         InMemoryConnectorProfileRepository,
     };
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{
         IdempotencyRequest, IdempotentWrite, PrincipalId, ResourceName,
     };
@@ -869,7 +864,7 @@ mod tests {
                 b"request".to_vec(),
             )
             .expect("request"),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: ConnectorAccess::organization_wide(),
             fence_token: Uuid::now_v7(),
             requested_at,
         }
@@ -1144,7 +1139,7 @@ mod tests {
         assert_eq!(fixture.dispatches.load(Ordering::SeqCst), 1);
         assert!(matches!(
             service
-                .settle_known(pending, &ResourceAccessEvaluator::organization_wide())
+                .settle_known(pending, &ConnectorAccess::organization_wide())
                 .await
                 .expect("settle known"),
             ConnectorExecutionAttemptResult::Completed { .. }
@@ -1302,11 +1297,10 @@ mod tests {
         )
         .expect("service");
         let mut command = command(&fixture.revision, canonical_timestamp(Utc::now()));
-        command.resource_access =
-            ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
-                project_id: fixture.revision.project_id,
-                environment_id: EnvironmentId::new(),
-            }]);
+        command.access = ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+            project_id: fixture.revision.project_id,
+            environment_id: EnvironmentId::new(),
+        }]);
         assert!(matches!(
             service.execute(command).await,
             Err(ApplicationError::NotFound(_))

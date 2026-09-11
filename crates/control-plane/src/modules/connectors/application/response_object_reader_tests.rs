@@ -14,12 +14,11 @@ use crate::modules::connectors::domain::{
 use crate::modules::connectors::infrastructure::{
     ConnectorResponseObjectStore, InMemoryConnectorExecutionRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId,
-    PrincipalId, ProjectId, Sha256Digest,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, PrincipalId, ProjectId,
+    Sha256Digest, canonical_timestamp,
 };
 use async_trait::async_trait;
 use chrono::{Duration, Utc};
@@ -66,12 +65,10 @@ impl ResponseFixture {
     fn read(&self) -> ReadConnectorResponseObject {
         ReadConnectorResponseObject {
             reference: self.reference.clone(),
-            resource_access: ResourceAccessEvaluator::restricted([
-                ResourceGrantScope::Environment {
-                    project_id: self.reference.project_id,
-                    environment_id: self.reference.environment_id,
-                },
-            ]),
+            access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                project_id: self.reference.project_id,
+                environment_id: self.reference.environment_id,
+            }]),
         }
     }
 }
@@ -197,7 +194,7 @@ async fn environment_authorization_and_terminal_evidence_precede_object_access()
     let terminal = fixture(true, true).await;
     let denied = ReadConnectorResponseObject {
         reference: terminal.reference.clone(),
-        resource_access: ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+        access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
             project_id: terminal.reference.project_id,
             environment_id: EnvironmentId::new(),
         }]),

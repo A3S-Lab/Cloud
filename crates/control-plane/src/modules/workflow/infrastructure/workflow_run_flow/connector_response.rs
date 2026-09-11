@@ -1,8 +1,8 @@
 use super::{execution, WorkflowLocalStepResult};
 use crate::modules::connectors::domain::ConnectorResponseObjectReference;
-use crate::modules::connectors::{IConnectorResponseObjectPort, ReadConnectorResponseObject};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::connectors::{
+    ConnectorAccess, ConnectorAccessScope, IConnectorResponseObjectPort, ReadConnectorResponseObject,
+};
 use crate::modules::shared_kernel::domain::canonical_json_bounded;
 use crate::modules::workflow::domain::{
     flow_step_id, CapabilityType, ResolvedWorkflowRunStep, WorkflowConnectorAttemptEvidence,
@@ -161,7 +161,7 @@ pub(super) async fn consume_response(
     let reference = input.connector_reference()?;
     let request = ReadConnectorResponseObject {
         reference: reference.clone(),
-        resource_access: ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+        access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
             project_id: reference.project_id,
             environment_id: reference.environment_id,
         }]),

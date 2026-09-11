@@ -1,8 +1,8 @@
 use super::resource_access::{environment, profile_not_found, revision_not_found};
+use crate::modules::connectors::ConnectorAccess;
 use crate::modules::connectors::domain::{
     ConnectorProfile, ConnectorRecord, ConnectorRevision, IConnectorProfileRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
@@ -20,7 +20,7 @@ pub struct GetConnectorProfile {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub profile_id: ConnectorProfileId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorProfile {
@@ -45,11 +45,7 @@ impl QueryHandler<GetConnectorProfile> for GetConnectorProfileHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<ConnectorRecord>>> {
         let connectors = Arc::clone(&self.connectors);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(load_record(
@@ -70,7 +66,7 @@ pub struct ListConnectorProfiles {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for ListConnectorProfiles {
@@ -99,11 +95,7 @@ impl QueryHandler<ListConnectorProfiles> for ListConnectorProfilesHandler {
             if let Err(error) = validate_list_limit(query.limit) {
                 return Ok(Err(error));
             }
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(connectors
@@ -126,7 +118,7 @@ pub struct GetConnectorRevision {
     pub environment_id: EnvironmentId,
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorRevision {
@@ -151,11 +143,7 @@ impl QueryHandler<GetConnectorRevision> for GetConnectorRevisionHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<ConnectorRevision>>> {
         let connectors = Arc::clone(&self.connectors);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(
@@ -185,7 +173,7 @@ pub struct ListConnectorRevisions {
     pub environment_id: EnvironmentId,
     pub profile_id: ConnectorProfileId,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for ListConnectorRevisions {
@@ -214,11 +202,7 @@ impl QueryHandler<ListConnectorRevisions> for ListConnectorRevisionsHandler {
             if let Err(error) = validate_list_limit(query.limit) {
                 return Ok(Err(error));
             }
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             match connectors
@@ -286,7 +270,7 @@ async fn load_record(
         Ok(None) | Err(RepositoryError::NotFound) => {
             return Err(ApplicationError::Internal(
                 "Connector profile current revision is missing".into(),
-            ))
+            ));
         }
         Err(error) => return Err(error.into()),
     };

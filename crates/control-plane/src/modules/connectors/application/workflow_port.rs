@@ -5,12 +5,11 @@ use crate::modules::connectors::domain::{
     ConnectorExecutionEvidence, ConnectorExecutionOutcome, ConnectorExecutionRequest,
     ConnectorResponseObjectReference, MAXIMUM_CONNECTOR_BODY_BYTES,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, canonical_timestamp, ConnectorProfileId, ConnectorRevisionId,
-    EnvironmentId, OrganizationId, PlanRevisionId, ProjectId, Sha256Digest, WorkflowRunId,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, PlanRevisionId,
+    ProjectId, Sha256Digest, WorkflowRunId, canonical_json_bounded, canonical_timestamp,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -260,7 +259,7 @@ impl WorkflowConnectorApplicationService {
         &self,
         request: &WorkflowConnectorAttemptRequest,
         connector_request: &ConnectorExecutionRequest,
-        resource_access: &ResourceAccessEvaluator,
+        access: &ConnectorAccess,
         result: ConnectorExecutionAttemptResult,
     ) -> ApplicationResult<WorkflowConnectorAttemptResult> {
         let result = match result {
@@ -269,10 +268,7 @@ impl WorkflowConnectorApplicationService {
                 response_object,
                 ..
             } => {
-                let settled = self
-                    .executions
-                    .settle_known(settlement, resource_access)
-                    .await?;
+                let settled = self.executions.settle_known(settlement, access).await?;
                 match settled {
                     ConnectorExecutionAttemptResult::Completed {
                         evidence,
@@ -344,11 +340,10 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
         let connector_request = request
             .connector_request()
             .map_err(ApplicationError::Invalid)?;
-        let resource_access =
-            ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
-                project_id: request.project_id,
-                environment_id: request.environment_id,
-            }]);
+        let access = ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+            project_id: request.project_id,
+            environment_id: request.environment_id,
+        }]);
         let command = ExecuteConnectorAttempt {
             organization_id: request.organization_id,
             project_id: request.project_id,
@@ -356,7 +351,7 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
             profile_id: request.connector_profile_id,
             revision_id: request.connector_revision_id,
             request: connector_request.clone(),
-            resource_access: resource_access.clone(),
+            access: access.clone(),
             fence_token: Uuid::now_v7(),
             requested_at: canonical_timestamp(Utc::now()),
         };
@@ -372,7 +367,7 @@ impl IWorkflowConnectorPort for WorkflowConnectorApplicationService {
                     .await?
             }
         };
-        self.normalize_result(request, &connector_request, &resource_access, result)
+        self.normalize_result(request, &connector_request, &access, result)
             .await
     }
 }

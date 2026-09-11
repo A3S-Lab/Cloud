@@ -8,6 +8,7 @@ use crate::modules::agents::{AgentAccess, AgentAccessScope};
 use crate::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::assets::AssetAccess;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::developer_workflows::{DeveloperWorkflowAccess, DeveloperWorkflowAccessScope};
 use crate::modules::durable_cells::{DurableCellAccess, DurableCellAccessScope};
 use crate::modules::executions::{ExecutionAccess, ExecutionAccessScope};
@@ -290,6 +291,29 @@ pub(crate) fn durable_cell_access(resource_access: &ResourceAccessEvaluator) -> 
     ))
 }
 
+pub(crate) fn connector_access(resource_access: &ResourceAccessEvaluator) -> ConnectorAccess {
+    if resource_access.is_organization_wide() {
+        return ConnectorAccess::organization_wide();
+    }
+    ConnectorAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(ConnectorAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
 pub(crate) fn execution_access(resource_access: &ResourceAccessEvaluator) -> ExecutionAccess {
     if resource_access.is_organization_wide() {
         return ExecutionAccess::organization_wide();
@@ -355,10 +379,10 @@ pub(crate) fn workflow_access(resource_access: &ResourceAccessEvaluator) -> Work
 #[cfg(test)]
 mod tests {
     use super::{
-        agent_access, application_access, artifact_access, asset_access, developer_workflow_access,
-        durable_cell_access, execution_access, fleet_access, form_access, notification_access,
-        operation_access, project_access, search_visibility, secret_access, user_file_access,
-        workflow_access, workload_access,
+        agent_access, application_access, artifact_access, asset_access, connector_access,
+        developer_workflow_access, durable_cell_access, execution_access, fleet_access,
+        form_access, notification_access, operation_access, project_access, search_visibility,
+        secret_access, user_file_access, workflow_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -811,6 +835,38 @@ mod tests {
         assert!(
             durable_cell_access(&ResourceAccessEvaluator::organization_wide())
                 .is_organization_wide()
+        );
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_connectors_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = connector_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.environment_is_visible(project_id, environment_id));
+        assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
+        assert_eq!(access.granted_scopes().count(), 2);
+
+        let environment_only = connector_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+        ]));
+        assert!(environment_only.environment_is_visible(project_id, environment_id));
+        assert!(!environment_only.environment_is_visible(project_id, EnvironmentId::new()));
+        assert!(
+            connector_access(&ResourceAccessEvaluator::organization_wide()).is_organization_wide()
         );
     }
 }

@@ -4,7 +4,7 @@ use crate::modules::connectors::domain::{
     IConnectorExecutionEvidenceRepository, IConnectorProfileRepository,
     MAXIMUM_CONNECTOR_EXECUTION_EVIDENCE_PAGE_SIZE,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
@@ -22,7 +22,7 @@ pub struct GetConnectorExecutionEvidence {
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
     pub attempt_id: Uuid,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorExecutionEvidence {
@@ -55,7 +55,7 @@ impl QueryHandler<GetConnectorExecutionEvidence> for GetConnectorExecutionEviden
                 query.profile_id,
                 query.revision_id,
                 Some(query.attempt_id),
-                &query.resource_access,
+                &query.access,
             ) {
                 return Ok(Err(error));
             }
@@ -89,7 +89,7 @@ pub struct ListConnectorExecutionEvidence {
     pub revision_id: ConnectorRevisionId,
     pub after: Option<ConnectorExecutionEvidenceCursor>,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for ListConnectorExecutionEvidence {
@@ -132,7 +132,7 @@ impl QueryHandler<ListConnectorExecutionEvidence> for ListConnectorExecutionEvid
                 query.profile_id,
                 query.revision_id,
                 None,
-                &query.resource_access,
+                &query.access,
             ) {
                 return Ok(Err(error));
             }
@@ -196,9 +196,9 @@ fn authorize_and_validate(
     profile_id: ConnectorProfileId,
     revision_id: ConnectorRevisionId,
     attempt_id: Option<Uuid>,
-    evaluator: &ResourceAccessEvaluator,
+    access: &ConnectorAccess,
 ) -> ApplicationResult<()> {
-    environment(project_id, environment_id, evaluator)?;
+    environment(project_id, environment_id, access)?;
     if organization_id.as_uuid().is_nil()
         || project_id.as_uuid().is_nil()
         || environment_id.as_uuid().is_nil()
@@ -228,7 +228,6 @@ mod tests {
     use crate::modules::connectors::infrastructure::{
         InMemoryConnectorExecutionEvidenceRepository, InMemoryConnectorProfileRepository,
     };
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{IdempotencyRequest, PrincipalId, ResourceName};
     use a3s_boot::{ModuleRef, QueryHandler};
     use chrono::{Duration, Utc};
@@ -376,7 +375,7 @@ mod tests {
             revision_id: revision.id,
             after: None,
             limit: 2,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: ConnectorAccess::organization_wide(),
         };
         let first = handler
             .execute(query.clone(), context())
@@ -411,7 +410,7 @@ mod tests {
                     profile_id,
                     revision_id: revision.id,
                     attempt_id: expected[0].attempt_id(),
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: ConnectorAccess::organization_wide(),
                 },
                 context(),
             )
@@ -428,12 +427,10 @@ mod tests {
                     profile_id,
                     revision_id: revision.id,
                     attempt_id: expected[0].attempt_id(),
-                    resource_access: ResourceAccessEvaluator::restricted([
-                        ResourceGrantScope::Environment {
-                            project_id,
-                            environment_id: EnvironmentId::new(),
-                        },
-                    ]),
+                    access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    }]),
                 },
                 context(),
             )

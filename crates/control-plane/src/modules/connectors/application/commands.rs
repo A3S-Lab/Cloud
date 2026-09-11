@@ -1,6 +1,7 @@
+use super::ConnectorProfileMutationResult;
 use super::resource_access::{environment, environment_not_found, profile_not_found};
 use super::secret_references::validate_definition_secret_references;
-use super::ConnectorProfileMutationResult;
+use crate::modules::connectors::ConnectorAccess;
 use crate::modules::connectors::application::{
     ConnectorsEnvironmentScope, IConnectorsEnvironmentAccess,
 };
@@ -9,7 +10,6 @@ use crate::modules::connectors::domain::{
     ConnectorRevisionPublished, CreateConnectorProfileWrite, IConnectorProfileRepository,
     ReviseConnectorProfileWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::secrets::IExactSecretVersionAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -30,7 +30,7 @@ pub struct CreateConnectorProfile {
     pub name: String,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -72,11 +72,9 @@ impl CommandHandler<CreateConnectorProfile> for CreateConnectorProfileHandler {
         let connectors = Arc::clone(&self.connectors);
         let secret_access = Arc::clone(&self.secret_access);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             let name = match ResourceName::parse(command.name) {
@@ -140,7 +138,7 @@ impl CommandHandler<CreateConnectorProfile> for CreateConnectorProfileHandler {
                 Ok(true) => {}
                 Ok(false)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(environment_not_found()))
+                    return Ok(Err(environment_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -207,7 +205,7 @@ pub struct ReviseConnectorProfile {
     pub expected_version: u64,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -245,11 +243,9 @@ impl CommandHandler<ReviseConnectorProfile> for ReviseConnectorProfileHandler {
         let connectors = Arc::clone(&self.connectors);
         let secret_access = Arc::clone(&self.secret_access);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             if command.expected_version == 0 {
@@ -319,7 +315,7 @@ impl CommandHandler<ReviseConnectorProfile> for ReviseConnectorProfileHandler {
                 Ok(Some(value)) => value,
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(profile_not_found()))
+                    return Ok(Err(profile_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -343,7 +339,7 @@ impl CommandHandler<ReviseConnectorProfile> for ReviseConnectorProfileHandler {
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
                     return Err(BootError::Internal(
                         "Connector profile current revision is missing".into(),
-                    ))
+                    ));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };

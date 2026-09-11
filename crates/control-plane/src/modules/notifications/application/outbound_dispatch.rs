@@ -1,13 +1,11 @@
 use crate::modules::connectors::{
-    ConnectorExecutionApplicationService, ConnectorExecutionAttemptResult,
-    ConnectorExecutionEvidence, ConnectorExecutionOutcome, ExecuteConnectorAttempt,
+    ConnectorAccess, ConnectorAccessScope, ConnectorExecutionApplicationService,
+    ConnectorExecutionAttemptResult, ConnectorExecutionEvidence, ConnectorExecutionOutcome,
+    ExecuteConnectorAttempt,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
-    outbound_notification_attempt_id, IOutboundNotificationRequestAdapter,
-    OutboundNotificationChannel, OutboundNotificationDelivery,
-    MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
+    IOutboundNotificationRequestAdapter, MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
+    OutboundNotificationChannel, OutboundNotificationDelivery, outbound_notification_attempt_id,
 };
 use crate::modules::notifications::infrastructure::{
     SignedWebhookNotificationAdapter, SlackCompatibleNotificationAdapter,
@@ -131,11 +129,10 @@ impl OutboundNotificationDispatcher {
                 "Connector notification delivery requires an exact Connector target".into(),
             )
         })?;
-        let resource_access =
-            ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
-                project_id: target.project_id,
-                environment_id: target.environment_id,
-            }]);
+        let access = ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+            project_id: target.project_id,
+            environment_id: target.environment_id,
+        }]);
 
         for generation in 1..=maximum_generation {
             let attempt_id = outbound_notification_attempt_id(delivery.id(), generation)
@@ -152,7 +149,7 @@ impl OutboundNotificationDispatcher {
                     profile_id: target.profile_id,
                     revision_id: target.revision_id,
                     request,
-                    resource_access: resource_access.clone(),
+                    access: access.clone(),
                     fence_token: Uuid::now_v7(),
                     requested_at: canonical_timestamp(Utc::now()),
                 })
@@ -209,7 +206,7 @@ impl OutboundNotificationDispatcher {
                 ConnectorExecutionAttemptResult::SettlementPending { settlement, .. } => {
                     let settled = self
                         .connectors
-                        .settle_known(settlement, &resource_access)
+                        .settle_known(settlement, &access)
                         .await?;
                     match settled {
                         ConnectorExecutionAttemptResult::Completed {

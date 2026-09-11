@@ -7,8 +7,7 @@ use crate::modules::connectors::domain::{
 use crate::modules::connectors::infrastructure::{
     InMemoryConnectorProfileRepository, ProjectsConnectorsEnvironmentAccessAdapter,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::events::EnvironmentCreated;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -18,8 +17,8 @@ use crate::modules::secrets::domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretRepository, Secret, SecretChanged,
     TransitionSecretVersion,
 };
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::secrets::exact_secret_version_access;
+use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName,
@@ -82,7 +81,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
         name: "Incident delivery".into(),
         definition_acl: secret_definition(destination.id, 1, 1_000),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
         idempotency_key: "create-incident-delivery".into(),
         request_id: Uuid::now_v7(),
     };
@@ -96,12 +95,10 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
     let denied_replay = create_handler
         .execute(
             CreateConnectorProfile {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..create.clone()
             },
             context(),
@@ -188,7 +185,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
         expected_version: 1,
         definition_acl: literal_definition("revised", 2_000),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
         idempotency_key: "revise-incident-delivery".into(),
         request_id: Uuid::now_v7(),
     };
@@ -215,7 +212,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 project_id,
                 environment_id,
                 profile_id: created.record.profile.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )
@@ -231,12 +228,10 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 project_id,
                 environment_id,
                 profile_id: created.record.profile.id,
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
             },
             context(),
         )
@@ -251,7 +246,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 project_id,
                 environment_id,
                 limit: 50,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )
@@ -267,7 +262,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 project_id,
                 environment_id,
                 limit: MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT + 1,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )
@@ -286,7 +281,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 environment_id,
                 profile_id: created.record.profile.id,
                 limit: 50,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )
@@ -305,7 +300,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 environment_id,
                 profile_id: created.record.profile.id,
                 limit: 0,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )
@@ -321,7 +316,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_history() {
                 environment_id,
                 profile_id: created.record.profile.id,
                 revision_id: created.record.revision.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             context(),
         )

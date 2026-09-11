@@ -1,11 +1,11 @@
 use super::{
     execution_service::ConnectorExecutionApplicationService, resource_access::environment,
 };
+use crate::modules::connectors::ConnectorAccess;
 use crate::modules::connectors::domain::{
     ConnectorResponseObjectError, ConnectorResponseObjectReference,
     IConnectorExecutionAttemptRepository, IConnectorResponseObjectStore,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{RepositoryError, Sha256Digest};
 use async_trait::async_trait;
@@ -18,7 +18,7 @@ use std::fmt;
 #[derive(Clone)]
 pub struct ReadConnectorResponseObject {
     pub reference: ConnectorResponseObjectReference,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl fmt::Debug for ReadConnectorResponseObject {
@@ -129,7 +129,7 @@ pub(super) async fn read_response_object(
     environment(
         reference.project_id,
         reference.environment_id,
-        &request.resource_access,
+        &request.access,
     )?;
     reference.validate().map_err(ApplicationError::Invalid)?;
 

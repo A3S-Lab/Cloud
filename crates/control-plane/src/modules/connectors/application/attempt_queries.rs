@@ -1,10 +1,10 @@
 use super::resource_access::{attempt_not_found, environment, revision_not_found};
+use crate::modules::connectors::ConnectorAccess;
 use crate::modules::connectors::domain::{
     ConnectorExecutionAttemptCursor, ConnectorExecutionAttemptPage,
     ConnectorExecutionAttemptRecord, IConnectorExecutionAttemptRepository,
     IConnectorProfileRepository, MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
@@ -22,7 +22,7 @@ pub struct GetConnectorExecutionAttempt {
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
     pub attempt_id: Uuid,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorExecutionAttempt {
@@ -57,7 +57,7 @@ impl QueryHandler<GetConnectorExecutionAttempt> for GetConnectorExecutionAttempt
                 query.profile_id,
                 query.revision_id,
                 Some(query.attempt_id),
-                &query.resource_access,
+                &query.access,
             ) {
                 return Ok(Err(error));
             }
@@ -91,7 +91,7 @@ pub struct ListUnresolvedConnectorExecutionAttempts {
     pub revision_id: ConnectorRevisionId,
     pub after: Option<ConnectorExecutionAttemptCursor>,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for ListUnresolvedConnectorExecutionAttempts {
@@ -133,7 +133,7 @@ impl QueryHandler<ListUnresolvedConnectorExecutionAttempts>
                 query.profile_id,
                 query.revision_id,
                 None,
-                &query.resource_access,
+                &query.access,
             ) {
                 return Ok(Err(error));
             }
@@ -197,9 +197,9 @@ fn authorize_and_validate(
     profile_id: ConnectorProfileId,
     revision_id: ConnectorRevisionId,
     attempt_id: Option<Uuid>,
-    evaluator: &ResourceAccessEvaluator,
+    access: &ConnectorAccess,
 ) -> ApplicationResult<()> {
-    environment(project_id, environment_id, evaluator)?;
+    environment(project_id, environment_id, access)?;
     if organization_id.as_uuid().is_nil()
         || project_id.as_uuid().is_nil()
         || environment_id.as_uuid().is_nil()

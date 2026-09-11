@@ -26,11 +26,12 @@ pub use execution_service::{
     ConnectorExecutionServiceOptions, ExecuteConnectorAttempt,
 };
 pub use queries::{
-    GetConnectorProfile, GetConnectorProfileHandler, GetConnectorRevision,
-    GetConnectorRevisionHandler, ListConnectorProfiles, ListConnectorProfilesHandler,
-    ListConnectorRevisions, ListConnectorRevisionsHandler, DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT,
+    DEFAULT_CONNECTOR_PROFILE_LIST_LIMIT, GetConnectorProfile, GetConnectorProfileHandler,
+    GetConnectorRevision, GetConnectorRevisionHandler, ListConnectorProfiles,
+    ListConnectorProfilesHandler, ListConnectorRevisions, ListConnectorRevisionsHandler,
     MAXIMUM_CONNECTOR_PROFILE_LIST_LIMIT,
 };
+pub use resource_access::{ConnectorAccess, ConnectorAccessScope};
 pub use response_object_reader::{
     ConnectorResponseObjectContent, IConnectorResponseObjectPort, ReadConnectorResponseObject,
 };
@@ -40,9 +41,9 @@ pub use revision_revocation::{
     GetConnectorRevisionRevocationHandler, RevokeConnectorRevision, RevokeConnectorRevisionHandler,
 };
 pub use workflow_port::{
-    IWorkflowConnectorPort, WorkflowConnectorApplicationService, WorkflowConnectorAttemptAuthority,
-    WorkflowConnectorAttemptPurpose, WorkflowConnectorAttemptRequest,
-    WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode, WORKFLOW_CONNECTOR_CAPABILITY,
+    IWorkflowConnectorPort, WORKFLOW_CONNECTOR_CAPABILITY, WorkflowConnectorApplicationService,
+    WorkflowConnectorAttemptAuthority, WorkflowConnectorAttemptPurpose,
+    WorkflowConnectorAttemptRequest, WorkflowConnectorAttemptResult, WorkflowConnectorResponseMode,
 };
 
 #[cfg(test)]

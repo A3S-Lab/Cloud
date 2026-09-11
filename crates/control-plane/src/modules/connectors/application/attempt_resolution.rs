@@ -1,10 +1,10 @@
 use super::resource_access::{attempt_not_found, attempt_resolution_not_found, environment};
 use crate::modules::connectors::domain::{
-    normalize_connector_execution_attempt_resolution_reason, ConnectorExecutionAttemptResolution,
-    ConnectorExecutionAttemptResolved, IConnectorExecutionAttemptRepository,
-    IConnectorExecutionAttemptResolutionRepository, ResolveConnectorExecutionAttemptWrite,
+    ConnectorExecutionAttemptResolution, ConnectorExecutionAttemptResolved,
+    IConnectorExecutionAttemptRepository, IConnectorExecutionAttemptResolutionRepository,
+    ResolveConnectorExecutionAttemptWrite, normalize_connector_execution_attempt_resolution_reason,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -26,7 +26,7 @@ pub struct ResolveConnectorExecutionAttempt {
     pub attempt_id: Uuid,
     pub reason: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -64,11 +64,9 @@ impl CommandHandler<ResolveConnectorExecutionAttempt> for ResolveConnectorExecut
         let attempts = Arc::clone(&self.attempts);
         let resolutions = Arc::clone(&self.resolutions);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             if command.attempt_id.is_nil() {
@@ -184,7 +182,7 @@ pub struct GetConnectorExecutionAttemptResolution {
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
     pub attempt_id: Uuid,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorExecutionAttemptResolution {
@@ -214,11 +212,7 @@ impl QueryHandler<GetConnectorExecutionAttemptResolution>
     > {
         let resolutions = Arc::clone(&self.resolutions);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             if query.attempt_id.is_nil() {
@@ -300,10 +294,9 @@ mod tests {
         IConnectorExecutionAttemptRepository, ReserveConnectorExecutionAttempt,
     };
     use crate::modules::connectors::infrastructure::InMemoryConnectorExecutionRepository;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{
-        canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
-        OrganizationId, ProjectId,
+        ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
+        canonical_timestamp,
     };
     use a3s_boot::ModuleRef;
     use chrono::Duration;
@@ -385,7 +378,7 @@ mod tests {
             attempt_id: request.attempt_id(),
             reason: "  provider outcome unavailable  ".into(),
             actor_principal_id: PrincipalId::new(),
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: ConnectorAccess::organization_wide(),
             idempotency_key: "resolve-exact-attempt".into(),
             request_id: Uuid::now_v7(),
         };
@@ -400,12 +393,10 @@ mod tests {
         let denied = handler
             .execute(
                 ResolveConnectorExecutionAttempt {
-                    resource_access: ResourceAccessEvaluator::restricted([
-                        ResourceGrantScope::Environment {
-                            project_id: revision.project_id,
-                            environment_id: EnvironmentId::new(),
-                        },
-                    ]),
+                    access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                        project_id: revision.project_id,
+                        environment_id: EnvironmentId::new(),
+                    }]),
                     ..command.clone()
                 },
                 context(),

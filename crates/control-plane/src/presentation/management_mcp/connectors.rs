@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::access_projection::connector_access;
 use crate::modules::connectors::presentation::{
     ConnectorProfileMutationResponse, ConnectorProfileRecordResponse, ConnectorProfileResponse,
     ConnectorRevisionResponse,
@@ -98,7 +99,7 @@ pub async fn create_profile(
             name: arguments.name,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: connector_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -130,7 +131,7 @@ pub async fn revise_profile(
             expected_version: arguments.expected_version,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: connector_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -158,7 +159,7 @@ pub async fn list_profiles(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             limit: arguments.limit,
-            resource_access,
+            access: connector_access(&resource_access),
         })
         .await?
     {
@@ -187,7 +188,7 @@ pub async fn get_profile(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             profile_id: ConnectorProfileId::from_uuid(arguments.profile_id),
-            resource_access,
+            access: connector_access(&resource_access),
         })
         .await?
     {
@@ -214,7 +215,7 @@ pub async fn list_revisions(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             profile_id: ConnectorProfileId::from_uuid(arguments.profile_id),
             limit: arguments.limit,
-            resource_access,
+            access: connector_access(&resource_access),
         })
         .await?
     {
@@ -244,7 +245,7 @@ pub async fn get_revision(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             profile_id: ConnectorProfileId::from_uuid(arguments.profile_id),
             revision_id: ConnectorRevisionId::from_uuid(arguments.revision_id),
-            resource_access,
+            access: connector_access(&resource_access),
         })
         .await?
     {

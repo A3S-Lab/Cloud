@@ -1,10 +1,10 @@
 use super::resource_access::{environment, revision_not_found, revision_revocation_not_found};
+use crate::modules::connectors::ConnectorAccess;
 use crate::modules::connectors::domain::{
-    normalize_connector_revision_revocation_reason, ConnectorRevisionRevocation,
-    ConnectorRevisionRevoked, IConnectorProfileRepository, IConnectorRevisionRevocationRepository,
-    RevokeConnectorRevisionWrite,
+    ConnectorRevisionRevocation, ConnectorRevisionRevoked, IConnectorProfileRepository,
+    IConnectorRevisionRevocationRepository, RevokeConnectorRevisionWrite,
+    normalize_connector_revision_revocation_reason,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
@@ -25,7 +25,7 @@ pub struct RevokeConnectorRevision {
     pub revision_id: ConnectorRevisionId,
     pub reason: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -63,11 +63,9 @@ impl CommandHandler<RevokeConnectorRevision> for RevokeConnectorRevisionHandler 
         let profiles = Arc::clone(&self.profiles);
         let revocations = Arc::clone(&self.revocations);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             let reason =
@@ -170,7 +168,7 @@ pub struct GetConnectorRevisionRevocation {
     pub environment_id: EnvironmentId,
     pub profile_id: ConnectorProfileId,
     pub revision_id: ConnectorRevisionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ConnectorAccess,
 }
 
 impl Query for GetConnectorRevisionRevocation {
@@ -198,11 +196,7 @@ impl QueryHandler<GetConnectorRevisionRevocation> for GetConnectorRevisionRevoca
     > {
         let revocations = Arc::clone(&self.revocations);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(

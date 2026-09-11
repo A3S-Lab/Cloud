@@ -23,8 +23,7 @@ use a3s_cloud_control_plane::modules::connectors::{
     ReviseConnectorProfile, ReviseConnectorProfileHandler, ReviseConnectorProfileWrite,
     RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
 };
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
-use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
+use a3s_cloud_control_plane::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{
     CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
@@ -263,24 +262,28 @@ pub(super) async fn exercise_connector_profile_persistence(
             .await?,
         Some(current_profile.clone())
     );
-    assert!(repository
-        .find(
-            organization_id,
-            project_id,
-            EnvironmentId::new(),
-            profile_id,
-        )
-        .await?
-        .is_none());
-    assert!(repository
-        .find(
-            OrganizationId::new(),
-            project_id,
-            environment_id,
-            profile_id,
-        )
-        .await?
-        .is_none());
+    assert!(
+        repository
+            .find(
+                organization_id,
+                project_id,
+                EnvironmentId::new(),
+                profile_id,
+            )
+            .await?
+            .is_none()
+    );
+    assert!(
+        repository
+            .find(
+                OrganizationId::new(),
+                project_id,
+                environment_id,
+                profile_id,
+            )
+            .await?
+            .is_none()
+    );
     assert_eq!(
         repository
             .list_revisions(organization_id, project_id, environment_id, profile_id, 50)
@@ -569,7 +572,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
             .canonical_acl()
             .to_owned(),
         actor_principal_id: actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
         idempotency_key: "connector-application-create".into(),
         request_id: Uuid::now_v7(),
     };
@@ -587,12 +590,10 @@ pub(super) async fn exercise_connector_application_and_materialization(
     let denied_replay = create_handler
         .execute(
             CreateConnectorProfile {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..create.clone()
             },
             connector_context(),
@@ -677,7 +678,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
         expected_version: 1,
         definition_acl: literal_definition_acl(7_500)?,
         actor_principal_id: actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
         idempotency_key: "connector-application-revise".into(),
         request_id: Uuid::now_v7(),
     };
@@ -724,7 +725,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
                 project_id,
                 environment_id,
                 profile_id: created.record.profile.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             connector_context(),
         )
@@ -738,7 +739,7 @@ pub(super) async fn exercise_connector_application_and_materialization(
                 environment_id,
                 profile_id: created.record.profile.id,
                 limit: 50,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             connector_context(),
         )
@@ -1030,7 +1031,7 @@ pub(super) async fn exercise_connector_execution_evidence(
         revision_id: revision.id,
         after: None,
         limit: 2,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
     };
     let first = list_handler
         .execute(list.clone(), connector_context())
@@ -1054,12 +1055,10 @@ pub(super) async fn exercise_connector_execution_evidence(
     let denied = list_handler
         .execute(
             ListConnectorExecutionEvidence {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..list
             },
             connector_context(),
@@ -1078,17 +1077,19 @@ pub(super) async fn exercise_connector_execution_evidence(
         )
         .await?;
     assert_eq!(recovered, Some(accepted.clone()));
-    assert!(evidence
-        .find(
-            OrganizationId::new(),
-            project_id,
-            environment_id,
-            profile_id,
-            revision.id,
-            accepted.attempt_id(),
-        )
-        .await?
-        .is_none());
+    assert!(
+        evidence
+            .find(
+                OrganizationId::new(),
+                project_id,
+                environment_id,
+                profile_id,
+                revision.id,
+                accepted.attempt_id(),
+            )
+            .await?
+            .is_none()
+    );
 
     let concurrent_request = ConnectorExecutionRequest::new(
         revision.id,
@@ -1274,7 +1275,7 @@ pub(super) async fn exercise_connector_execution_evidence(
                 profile_id,
                 revision_id: revision.id,
                 attempt_id: reserved_request.attempt_id(),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: ConnectorAccess::organization_wide(),
             },
             connector_context(),
         )
@@ -1296,7 +1297,7 @@ pub(super) async fn exercise_connector_execution_evidence(
         revision_id: revision.id,
         after: None,
         limit: 1,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ConnectorAccess::organization_wide(),
     };
     let unresolved_first = attempt_list_handler
         .execute(unresolved.clone(), connector_context())
@@ -1335,12 +1336,10 @@ pub(super) async fn exercise_connector_execution_evidence(
     let denied_attempts = attempt_list_handler
         .execute(
             ListUnresolvedConnectorExecutionAttempts {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: ConnectorAccess::restricted([ConnectorAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..unresolved.clone()
             },
             connector_context(),
@@ -1396,9 +1395,11 @@ pub(super) async fn exercise_connector_execution_evidence(
             .count(),
         1
     );
-    assert!(concurrent_resolutions
-        .iter()
-        .all(|result| result.value == resolution));
+    assert!(
+        concurrent_resolutions
+            .iter()
+            .all(|result| result.value == resolution)
+    );
     let resolution_replay = attempts.resolve_indeterminate(resolution_write).await?;
     assert!(resolution_replay.replayed);
     assert_eq!(resolution_replay.value, resolution);
