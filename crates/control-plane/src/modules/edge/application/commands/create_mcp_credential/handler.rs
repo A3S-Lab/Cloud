@@ -55,6 +55,14 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
         let issuer = Arc::clone(&self.issuer);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "MCP credentials not found".into(),
+                )));
+            }
             let environment_scope = match EdgeEnvironmentScope::new(
                 command.organization_id,
                 command.project_id,
@@ -68,7 +76,7 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -97,7 +105,7 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                 Ok(Some(write)) => {
                     return Ok(encryption
                         .recover_delivery(write, command.requested_at)
-                        .await)
+                        .await);
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -139,14 +147,14 @@ impl CommandHandler<CreateMcpCredential> for CreateMcpCredentialHandler {
                     Ok(write) => {
                         return Ok(encryption
                             .recover_delivery(write, command.requested_at)
-                            .await)
+                            .await);
                     }
                     Err(error)
                         if identity_collision(&error) && attempt + 1 < MAX_IDENTITY_ATTEMPTS => {}
                     Err(error) if identity_collision(&error) => {
                         return Ok(Err(ApplicationError::Unavailable(
                             "MCP credential issuance exhausted its bounded identity retries".into(),
-                        )))
+                        )));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }

@@ -1,3 +1,4 @@
+use crate::modules::edge::application::EdgeAccess;
 use crate::modules::edge::domain::{GatewayRolloutPolicy, GatewayScope};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
@@ -11,6 +12,7 @@ pub struct CreateGatewayScope {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: EdgeAccess,
     pub node_id: NodeId,
     pub member_node_ids: Vec<NodeId>,
     pub rollout_policy: GatewayRolloutPolicy,

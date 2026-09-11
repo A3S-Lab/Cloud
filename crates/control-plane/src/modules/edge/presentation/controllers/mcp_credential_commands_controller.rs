@@ -1,3 +1,4 @@
+use crate::access_projection::edge_access;
 use crate::modules::edge::application::{
     CreateMcpCredential, RevokeMcpCredential, RotateMcpCredential,
 };
@@ -6,13 +7,13 @@ use crate::modules::edge::presentation::dto::{
     RevokeMcpCredentialRequest, RotateMcpCredentialRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, McpCredentialId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -32,6 +33,9 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                     let body: CreateMcpCredentialRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     let requested_at = Utc::now();
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(CreateMcpCredential {
                             organization_id: OrganizationId::from_uuid(
@@ -43,6 +47,7 @@ pub fn mcp_credential_commands_controller(bus: Arc<CommandBus>) -> Result<Contro
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             expires_at: body.expires_at,
                             idempotency_key,
                             request_id,

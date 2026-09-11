@@ -1,4 +1,4 @@
-use crate::modules::edge::application::McpCredentialDeliveryResult;
+use crate::modules::edge::application::{EdgeAccess, McpCredentialDeliveryResult};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::Command;
@@ -10,6 +10,7 @@ pub struct CreateMcpCredential {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: EdgeAccess,
     pub expires_at: DateTime<Utc>,
     pub idempotency_key: String,
     pub request_id: Uuid,

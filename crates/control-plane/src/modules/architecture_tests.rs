@@ -4298,6 +4298,7 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
     for relative in [
         "edge/application/queries/get_domain_claim.rs",
         "edge/application/queries/list_domain_claims.rs",
+        "edge/application/commands/create_domain_claim/command.rs",
     ] {
         let query = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
@@ -4362,6 +4363,32 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
     assert!(
         production.contains("DeferredResourceScope::Project"),
         "GetDomainClaim must defer coarse admission while Edge owns claim-to-environment resolution"
+    );
+
+    let create_handler = std::fs::read_to_string(
+        root.join("edge/application/commands/create_domain_claim/handler.rs"),
+    )
+    .expect("read CreateDomainClaim handler");
+    let compact_create = production_source(&create_handler)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_create.contains("access.environment_is_visible("),
+        "CreateDomainClaim must authorize through EdgeAccess"
+    );
+    let create_controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/domain_claim_commands_controller.rs"),
+    )
+    .expect("read domain claim commands controller");
+    let production_create = production_source(&create_controller);
+    assert!(
+        production_create.contains("edge_access(&resource_access_evaluator("),
+        "CreateDomainClaim must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production_create.contains("resource_access: resource_access_evaluator")
+            && !production_create.contains("resource_access,"),
+        "CreateDomainClaim must not pass ResourceAccessEvaluator into Application"
     );
 }
 
@@ -4451,6 +4478,40 @@ fn edge_list_gateway_scopes_isolates_identity_behind_one_context_owned_access_pr
             && !production.contains("resource_access,"),
         "ListGatewayScopes must not pass ResourceAccessEvaluator into Application"
     );
+
+    let create_command = std::fs::read_to_string(
+        root.join("edge/application/commands/create_gateway_scope/command.rs"),
+    )
+    .expect("read CreateGatewayScope command");
+    assert!(
+        production_source(&create_command).contains("pub access: EdgeAccess"),
+        "CreateGatewayScope stopped carrying Edge-owned access"
+    );
+    let create_handler = std::fs::read_to_string(
+        root.join("edge/application/commands/create_gateway_scope/handler.rs"),
+    )
+    .expect("read CreateGatewayScope handler");
+    assert!(
+        production_source(&create_handler)
+            .split_whitespace()
+            .collect::<String>()
+            .contains("access.environment_is_visible("),
+        "CreateGatewayScope must authorize through EdgeAccess"
+    );
+    let create_controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/gateway_scope_commands_controller.rs"),
+    )
+    .expect("read gateway scope commands controller");
+    let production_create = production_source(&create_controller);
+    assert!(
+        production_create.contains("edge_access(&resource_access_evaluator("),
+        "CreateGatewayScope must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production_create.contains("resource_access: resource_access_evaluator")
+            && !production_create.contains("resource_access,"),
+        "CreateGatewayScope must not pass ResourceAccessEvaluator into Application"
+    );
 }
 
 #[test]
@@ -4477,6 +4538,7 @@ fn edge_mcp_credential_queries_isolate_identity_behind_one_context_owned_access_
     for relative in [
         "edge/application/queries/get_mcp_credential.rs",
         "edge/application/queries/list_mcp_credentials.rs",
+        "edge/application/commands/create_mcp_credential/command.rs",
     ] {
         let query = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
@@ -4541,6 +4603,32 @@ fn edge_mcp_credential_queries_isolate_identity_behind_one_context_owned_access_
     assert!(
         production.contains("DeferredResourceScope::Project"),
         "GetMcpCredential must defer coarse admission while Edge owns credential-to-environment resolution"
+    );
+
+    let create_handler = std::fs::read_to_string(
+        root.join("edge/application/commands/create_mcp_credential/handler.rs"),
+    )
+    .expect("read CreateMcpCredential handler");
+    assert!(
+        production_source(&create_handler)
+            .split_whitespace()
+            .collect::<String>()
+            .contains("access.environment_is_visible("),
+        "CreateMcpCredential must authorize through EdgeAccess"
+    );
+    let create_controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/mcp_credential_commands_controller.rs"),
+    )
+    .expect("read MCP credential commands controller");
+    let production_create = production_source(&create_controller);
+    assert!(
+        production_create.contains("edge_access(&resource_access_evaluator("),
+        "CreateMcpCredential must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production_create.contains("resource_access: resource_access_evaluator")
+            && !production_create.contains("resource_access,"),
+        "CreateMcpCredential must not pass ResourceAccessEvaluator into Application"
     );
 }
 

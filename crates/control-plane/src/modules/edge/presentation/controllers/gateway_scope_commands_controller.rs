@@ -1,15 +1,16 @@
+use crate::access_projection::edge_access;
 use crate::modules::edge::application::CreateGatewayScope;
 use crate::modules::edge::domain::GatewayRolloutPolicy;
 use crate::modules::edge::presentation::dto::{
     CreateGatewayScopeRequest, GatewayScopeMutationResponse,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -38,6 +39,9 @@ pub fn gateway_scope_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                     )
                     .map_err(BootError::BadRequest)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(CreateGatewayScope {
                             organization_id: OrganizationId::from_uuid(
@@ -49,6 +53,7 @@ pub fn gateway_scope_commands_controller(bus: Arc<CommandBus>) -> Result<Control
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             node_id: NodeId::from_uuid(primary_node_id),
                             member_node_ids,
                             rollout_policy,

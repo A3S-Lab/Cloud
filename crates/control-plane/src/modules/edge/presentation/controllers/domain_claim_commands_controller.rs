@@ -1,16 +1,17 @@
+use crate::access_projection::edge_access;
 use crate::modules::edge::application::{CreateDomainClaim, RevokeDomainClaim, VerifyDomainClaim};
 use crate::modules::edge::presentation::dto::{
     CreateDomainClaimRequest, DomainClaimMutationResponse, RevokeDomainClaimRequest,
     VerifyDomainClaimRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -29,6 +30,9 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                 async move {
                     let body: CreateDomainClaimRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(CreateDomainClaim {
                             organization_id: OrganizationId::from_uuid(
@@ -40,6 +44,7 @@ pub fn domain_claim_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             pattern: body.pattern,
                             idempotency_key,
                             request_id,

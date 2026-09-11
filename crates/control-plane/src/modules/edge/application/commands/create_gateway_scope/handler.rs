@@ -41,6 +41,14 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
         let nodes = Arc::clone(&self.nodes);
         let edge = Arc::clone(&self.edge);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "gateway scopes not found".into(),
+                )));
+            }
             let environment_scope = match EdgeEnvironmentScope::new(
                 command.organization_id,
                 command.project_id,
@@ -54,7 +62,7 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -111,7 +119,7 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
                 match nodes.node_exists(node_scope).await {
                     Ok(true) => {}
                     Ok(false) => {
-                        return Ok(Err(ApplicationError::NotFound("resource not found".into())))
+                        return Ok(Err(ApplicationError::NotFound("resource not found".into())));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }
@@ -140,6 +148,7 @@ impl CommandHandler<CreateGatewayScope> for CreateGatewayScopeHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::edge::application::{EdgeAccess, EdgeAccessScope};
     use crate::modules::edge::domain::GatewayRolloutPolicy;
     use crate::modules::edge::infrastructure::persistence::InMemoryEdgeRepository;
     use crate::modules::shared_kernel::domain::{
@@ -199,6 +208,7 @@ mod tests {
             organization_id,
             project_id,
             environment_id,
+            access: EdgeAccess::organization_wide(),
             node_id,
             member_node_ids: vec![node_id],
             rollout_policy: GatewayRolloutPolicy::single_replica(),
@@ -206,6 +216,57 @@ mod tests {
             request_id: Uuid::new_v4(),
             requested_at: Utc::now(),
         }
+    }
+
+    #[tokio::test]
+    async fn create_gateway_scope_fails_closed_before_environment_lookup_without_environment_visibility()
+     {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        struct TrackingEnvironmentAccess {
+            called: AtomicBool,
+        }
+
+        #[async_trait]
+        impl IEdgeEnvironmentAccess for TrackingEnvironmentAccess {
+            async fn environment_exists(
+                &self,
+                _scope: EdgeEnvironmentScope,
+            ) -> Result<bool, RepositoryError> {
+                self.called.store(true, Ordering::SeqCst);
+                Ok(true)
+            }
+        }
+
+        let environments = Arc::new(TrackingEnvironmentAccess {
+            called: AtomicBool::new(false),
+        });
+        let handler = CreateGatewayScopeHandler::new(
+            Arc::clone(&environments) as Arc<dyn IEdgeEnvironmentAccess>,
+            Arc::new(PresentNodeAccess),
+            Arc::new(InMemoryEdgeRepository::new()),
+        );
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let mut cmd = command(
+            OrganizationId::new(),
+            project_id,
+            environment_id,
+            NodeId::new(),
+        );
+        cmd.access = EdgeAccess::restricted([EdgeAccessScope::Environment {
+            project_id,
+            environment_id: EnvironmentId::new(),
+        }]);
+        let result = handler
+            .execute(cmd, CqrsContext::new(ModuleRef::new()))
+            .await
+            .expect("command bus");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message)) if message == "gateway scopes not found"
+        ));
+        assert!(!environments.called.load(Ordering::SeqCst));
     }
 
     #[tokio::test]
