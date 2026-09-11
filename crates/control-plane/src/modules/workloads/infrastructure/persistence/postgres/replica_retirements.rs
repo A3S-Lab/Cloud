@@ -1,7 +1,7 @@
 use super::schema::WorkloadReplicas;
 use super::{queries, replicas, writer_fences};
 use crate::infrastructure::{PostgresPersistenceError, store_outbox, transaction_error};
-use crate::modules::operations::infrastructure::persistence::{
+use crate::modules::operations::{
     find_operation_request_in_transaction, insert_operation_request_in_transaction,
 };
 use crate::modules::shared_kernel::domain::{

@@ -23,4 +23,5 @@ pub use infrastructure::{
     InMemorySecretRepository, PostgresSecretRepository, ProjectsSecretEnvironmentAccessAdapter,
     WorkloadsSecretMaterializationAuthorizerAdapter,
 };
+pub(crate) use infrastructure::lock_secret_version_for_rotation;
 pub use presentation::SecretsModule;

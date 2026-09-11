@@ -106,6 +106,9 @@ pub use infrastructure::{
     PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION,
 };
+pub(crate) use infrastructure::{
+    lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
+};
 pub use presentation::WorkloadsModule;
 pub use published::{
     AuthorizedWorkloadSecretMaterialization, AUTHORIZED_WORKLOAD_SECRET_MATERIALIZATION_SCHEMA,

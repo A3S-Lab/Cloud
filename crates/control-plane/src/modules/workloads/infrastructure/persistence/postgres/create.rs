@@ -5,7 +5,7 @@ use crate::infrastructure::{
     is_foreign_key_violation, is_unique_violation, require_one_row, store_idempotency,
     store_outbox, transaction_error,
 };
-use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
+use crate::modules::operations::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, PlacementTopology, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};

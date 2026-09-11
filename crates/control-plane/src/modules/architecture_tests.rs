@@ -51,7 +51,6 @@ workflow/presentation/controllers/ontology_queries_controller.rs -> identity/pre
 workflow/presentation/controllers/request.rs -> identity/presentation
 workflow/presentation/controllers/workflow_commands_controller.rs -> identity/presentation
 workflow/presentation/controllers/workflow_queries_controller.rs -> identity/presentation
-workloads/infrastructure/persistence/postgres/resource_claims.rs -> fleet/infrastructure
 "#,
     );
     let actual = foreign_outer_layer_sites();
@@ -12291,6 +12290,59 @@ fn edge_locks_workloads_through_workloads_transaction_participant() {
         assert!(
             production_participant.contains(required),
             "Workloads MCP authority lock participant lost surface {required}"
+        );
+    }
+}
+
+#[test]
+fn transaction_participants_are_imported_from_owner_module_roots() {
+    let forbidden = [
+        "crate::modules::fleet::infrastructure::lock_node_organization_for_update",
+        "crate::modules::fleet::infrastructure::{\n    node_pool_placement_is_eligible",
+        "crate::modules::fleet::infrastructure::{\n    lock_node_organization_for_update",
+        "crate::modules::secrets::infrastructure::lock_secret_version_for_rotation",
+        "crate::modules::workloads::infrastructure::{\n    lock_running_workload_authority_for_update",
+        "crate::modules::workloads::infrastructure::lock_running_workload_authority_for_update",
+        "crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction",
+        "crate::modules::operations::infrastructure::persistence::find_operation_request_in_transaction",
+        "crate::modules::operations::infrastructure::persistence::{\n    find_operation_request_in_transaction",
+        "crate::modules::operations::infrastructure::persistence::{\n    insert_operation_request_in_transaction",
+    ];
+    let mut violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        for pattern in forbidden {
+            if source.contains(pattern) {
+                violations.insert(format!("{path} still imports a txn participant via {pattern}"));
+            }
+        }
+    });
+    assert!(
+        violations.is_empty(),
+        "transaction participants must be imported from owner module roots:\n{}",
+        violations.into_iter().collect::<Vec<_>>().join("\n")
+    );
+}
+
+#[test]
+fn workloads_reserve_resource_claims_through_fleet_module_root_participants() {
+    let resource_claims = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/persistence/postgres/resource_claims.rs"),
+    )
+    .expect("read Workloads resource claims persistence");
+    let production = production_source(&resource_claims);
+    assert!(
+        !production.contains("crate::modules::fleet::infrastructure"),
+        "Workloads resource claims regained a Fleet infrastructure import"
+    );
+    for required in [
+        "crate::modules::fleet::{",
+        "node_pool_placement_is_eligible",
+        "require_current_inventory",
+    ] {
+        assert!(
+            production.contains(required),
+            "Workloads resource claims lost Fleet module-root participant surface {required}"
         );
     }
 }

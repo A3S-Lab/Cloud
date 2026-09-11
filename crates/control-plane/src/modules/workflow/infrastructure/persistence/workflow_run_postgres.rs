@@ -13,7 +13,7 @@ use crate::infrastructure::{
 };
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
-use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
+use crate::modules::operations::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError, WorkflowRunId,
 };

@@ -8,7 +8,7 @@ use crate::infrastructure::{
     transaction_error,
 };
 use crate::modules::secrets::domain::SecretChanged;
-use crate::modules::secrets::infrastructure::lock_secret_version_for_rotation;
+use crate::modules::secrets::lock_secret_version_for_rotation;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, IdempotencyRequest, OperationId, OrganizationId, RepositoryError, SecretId,
     WorkloadId, WorkloadRevisionId, canonical_timestamp,

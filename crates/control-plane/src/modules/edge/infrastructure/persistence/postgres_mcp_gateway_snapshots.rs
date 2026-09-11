@@ -32,7 +32,7 @@ use crate::modules::edge::infrastructure::{
     StageManagedGatewayRolloutRollback, StageManagedGatewayRouteCutover,
     StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
-use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
+use crate::modules::fleet::lock_node_organization_for_update;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId, OrganizationId,
     ProjectId, RepositoryError, canonical_timestamp,

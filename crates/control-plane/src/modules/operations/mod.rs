@@ -20,6 +20,9 @@ pub use domain::services::{IOperationEngine, OperationEngineError};
 pub use domain::value_objects::{OperationSubject, WorkflowIdentity};
 pub use infrastructure::persistence::{InMemoryOperationRepository, PostgresOperationRepository};
 pub use infrastructure::FlowOperationEngine;
+pub(crate) use infrastructure::{
+    find_operation_request_in_transaction, insert_operation_request_in_transaction,
+};
 pub use presentation::OperationsModule;
 
 #[cfg(test)]

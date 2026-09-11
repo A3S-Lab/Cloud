@@ -5,7 +5,7 @@ use super::{deployment_group_bindings, replicas};
 use crate::infrastructure::{
     fetch_all, fetch_optional, transaction_error, PostgresPersistenceError,
 };
-use crate::modules::fleet::infrastructure::{
+use crate::modules::fleet::{
     node_pool_placement_is_eligible, require_current_inventory,
 };
 use crate::modules::shared_kernel::domain::{

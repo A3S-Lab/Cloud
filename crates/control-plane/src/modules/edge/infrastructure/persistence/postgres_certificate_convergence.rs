@@ -23,7 +23,7 @@ use crate::modules::edge::domain::{
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedGatewayCertificateConvergence,
 };
-use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
+use crate::modules::fleet::lock_node_organization_for_update;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
     RouteId, canonical_timestamp,

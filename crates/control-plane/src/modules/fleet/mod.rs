@@ -27,5 +27,8 @@ pub use infrastructure::{
     NodeAvailabilityReconciler, PostgresNodeRepository, VaultCertificateAuthority,
     VaultKeyEncryptionService,
 };
+pub(crate) use infrastructure::{
+    lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,
+};
 pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};
 pub(crate) use presentation::NodeControlApi;

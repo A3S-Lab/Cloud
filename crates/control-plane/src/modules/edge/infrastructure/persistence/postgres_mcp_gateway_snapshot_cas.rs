@@ -15,7 +15,7 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
     WorkloadRevisionId,
 };
-use crate::modules::workloads::infrastructure::{
+use crate::modules::workloads::{
     lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
 };
 use a3s_orm::expression::{exists, not};

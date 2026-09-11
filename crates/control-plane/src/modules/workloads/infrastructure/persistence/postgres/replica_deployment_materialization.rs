@@ -4,7 +4,7 @@ use super::schema::{
 };
 use super::{create, deployment_group_bindings, placement_groups, queries, replicas};
 use crate::infrastructure::{PostgresPersistenceError, store_outbox, transaction_error};
-use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
+use crate::modules::operations::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
     WorkloadRevisionId,

@@ -43,7 +43,7 @@ use super::{
     postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes,
     postgres_rollout_routes, postgres_rollouts,
 };
-use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
+use crate::modules::fleet::lock_node_organization_for_update;
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {

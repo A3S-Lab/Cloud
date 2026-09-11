@@ -3,7 +3,7 @@ use crate::infrastructure::{
     PostgresPersistenceError, idempotency_replay, store_idempotency, store_outbox,
     transaction_error,
 };
-use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
+use crate::modules::operations::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, WorkloadId};
 use crate::modules::workloads::domain::entities::{Workload, WorkloadDesiredState};
 use crate::modules::workloads::domain::repositories::{
