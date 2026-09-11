@@ -1,12 +1,12 @@
-use crate::modules::assets::domain::McpServiceProfile;
+use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, OrganizationId, RepositoryError,
 };
 use async_trait::async_trait;
 
 /// Exact Assets-owned MCP Service profile identity required by Edge route-policy
-/// admission. Edge Domain still consumes the Assets published `McpServiceProfile`
-/// value; Application must not reach Assets through its profile repository trait.
+/// admission. Application reads only the Edge-owned admission fact through this
+/// port and must not reach Assets through its profile repository trait.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct EdgeMcpServiceProfileScope {
     organization_id: OrganizationId,
@@ -52,13 +52,13 @@ impl EdgeMcpServiceProfileScope {
     }
 }
 
-/// Edge-owned read port for the Assets MCP Service profile authority.
+/// Edge-owned read port for Assets MCP Service profile admission facts.
 #[async_trait]
 pub trait IEdgeMcpServiceProfileAccess: Send + Sync {
     async fn find_bound_profile(
         &self,
         scope: EdgeMcpServiceProfileScope,
-    ) -> Result<Option<McpServiceProfile>, RepositoryError>;
+    ) -> Result<Option<EdgeMcpServiceProfileAdmission>, RepositoryError>;
 }
 
 #[cfg(test)]

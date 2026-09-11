@@ -11,7 +11,9 @@ use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot,
     MutateMcpRoutePolicyWrite, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
+use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
 use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec};
+use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
     ProjectId, RepositoryError, RouteId,
@@ -238,7 +240,7 @@ async fn restore_snapshot(
 async fn load_document_profile(
     transaction: &PostgresTransaction,
     document: &McpRoutePolicyDocument,
-) -> Result<McpServiceProfile, PostgresPersistenceError> {
+) -> Result<EdgeMcpServiceProfileAdmission, PostgresPersistenceError> {
     let spec = document.spec();
     load_profile(
         transaction,
@@ -572,7 +574,10 @@ async fn restore_row(
         ))
         .await
         .map_err(storage)?
-        .map(|(digest, acl)| McpServiceProfile::restore(&acl, &digest))
+        .map(|(digest, acl)| {
+            McpServiceProfile::restore(&acl, &digest)
+                .and_then(|profile| admit_mcp_service_profile(&profile))
+        })
         .transpose()
         .map_err(stored)?
         .ok_or_else(|| {
@@ -587,13 +592,16 @@ async fn load_profile(
     asset_id: AssetId,
     asset_release_id: AssetReleaseId,
     profile_digest: &str,
-) -> Result<Option<McpServiceProfile>, PostgresPersistenceError> {
+) -> Result<Option<EdgeMcpServiceProfileAdmission>, PostgresPersistenceError> {
     fetch_optional::<(String, String), _>(
         transaction,
         profile_query(organization_id, asset_id, asset_release_id, profile_digest),
     )
     .await?
-    .map(|(digest, acl)| McpServiceProfile::restore(&acl, &digest))
+    .map(|(digest, acl)| {
+        McpServiceProfile::restore(&acl, &digest)
+            .and_then(|profile| admit_mcp_service_profile(&profile))
+    })
     .transpose()
     .map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
@@ -639,7 +647,7 @@ fn profile_join() -> Expression {
 
 fn validate_supplied(
     policy: &McpRoutePolicy,
-    profile: &McpServiceProfile,
+    profile: &EdgeMcpServiceProfileAdmission,
 ) -> Result<(), PostgresPersistenceError> {
     let restored = McpRoutePolicy::restore(
         policy.canonical_acl(),
@@ -788,13 +796,17 @@ impl FromRow for McpRoutePolicyWithProfileRow {
 impl McpRoutePolicyWithProfileRow {
     fn policy(self) -> Result<McpRoutePolicy, RepositoryError> {
         let profile = McpServiceProfile::restore(&self.profile_acl, &self.policy.profile_digest)
+            .and_then(|profile| admit_mcp_service_profile(&profile))
             .map_err(stored)?;
         self.policy.policy(&profile)
     }
 }
 
 impl McpRoutePolicyRow {
-    fn policy(self, profile: &McpServiceProfile) -> Result<McpRoutePolicy, RepositoryError> {
+    fn policy(
+        self,
+        profile: &EdgeMcpServiceProfileAdmission,
+    ) -> Result<McpRoutePolicy, RepositoryError> {
         let policy = McpRoutePolicy::restore(
             &self.acl,
             &self.policy_digest,

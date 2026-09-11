@@ -17,21 +17,21 @@ use a3s_cloud_control_plane::modules::edge::domain::repositories::{
 };
 use a3s_cloud_control_plane::modules::edge::{
     CompileMcpGatewaySnapshot, CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim,
-    DomainNamePattern, FleetGatewayCommandQueue, GatewayCertificateMaterial,
-    GatewayCertificateState, GatewayNodeDesiredStatePlanner, GatewayPublicationState,
-    GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
-    IEdgeRepository, IMcpCredentialLifecycleRepository, IMcpCredentialRepository,
-    IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository, IRouteTargetReader, McpCredential,
-    McpCredentialDeliveryReceipt, McpGatewayDesiredStateReconciler,
-    McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
-    McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicy,
-    McpRoutePolicySpec, McpRouteProjectionInputReader, McpRouteProjectionPlanner,
-    McpRouteTargetProjectionCompiler, MutateMcpRoutePolicyWrite, PlanManagedGatewayRouteRollout,
-    PlanMcpGatewayProjectionSet, PlannedMcpGatewayNodeProjection, PostgresEdgeRepository,
-    ResolvedRouteTarget, ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName,
-    RouteTarget, StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim,
-    UpstreamEndpoint,
+    DomainNamePattern, EdgeMcpServiceProfileAdmission, FleetGatewayCommandQueue,
+    GatewayCertificateMaterial, GatewayCertificateState, GatewayNodeDesiredStatePlanner,
+    GatewayPublicationState, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
+    GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig, GatewaySnapshotMetadata,
+    GatewaySnapshotRouteInput, IEdgeRepository, IMcpCredentialLifecycleRepository,
+    IMcpCredentialRepository, IMcpGatewaySnapshotRepository, IMcpRoutePolicyRepository,
+    IRouteTargetReader, McpCredential, McpCredentialDeliveryReceipt,
+    McpGatewayDesiredStateReconciler, McpGatewayNodeProjectionPlanner,
+    McpGatewayProjectionAssembler, McpGatewayProjectionPlanner, McpGatewayProjectionSetPlanner,
+    McpGatewaySnapshotReconciler, McpRoutePolicy, McpRoutePolicySpec,
+    McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
+    MutateMcpRoutePolicyWrite, PlanManagedGatewayRouteRollout, PlanMcpGatewayProjectionSet,
+    PlannedMcpGatewayNodeProjection, PostgresEdgeRepository, ResolvedRouteTarget,
+    ResolvedRouteTargetSet, RouteHostname, RoutePath, RoutePortName, RouteTarget,
+    StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim, UpstreamEndpoint,
 };
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
@@ -283,6 +283,13 @@ pub async fn exercise(
         max_response_bytes: 8_388_608,
         max_stream_seconds: 3_600,
     })?;
+    let admission = EdgeMcpServiceProfileAdmission::new(
+        profile.digest().clone(),
+        profile.spec().endpoint_path.clone(),
+        profile.spec().max_request_bytes,
+        profile.spec().max_response_bytes,
+        profile.spec().max_stream_seconds,
+    )?;
     let profile_binding = McpServiceProfileBinding {
         organization_id,
         asset_id: asset.id,
@@ -576,14 +583,14 @@ pub async fn exercise(
                 },
             }],
         },
-        &profile,
+        &admission,
         created_at,
     )?;
     let mut unowned_spec = policy.spec().clone();
     unowned_spec.route_id = RouteId::new();
     unowned_spec.domain_claim_id = DomainClaimId::new();
     unowned_spec.hostname = RouteHostname::parse("unowned-mcp.integration.example")?;
-    let unowned = McpRoutePolicy::create(unowned_spec, &profile, created_at)?;
+    let unowned = McpRoutePolicy::create(unowned_spec, &admission, created_at)?;
     assert!(matches!(
         edge.mutate_mcp_route_policy(policy_write(
             &unowned,
@@ -728,7 +735,7 @@ pub async fn exercise(
     let mut revised_spec = revised.spec().clone();
     revised_spec.max_request_bytes /= 2;
     revised_spec.expires_at += Duration::minutes(1);
-    revised.revise(revised_spec, &profile, created_at + Duration::minutes(1))?;
+    revised.revise(revised_spec, &admission, created_at + Duration::minutes(1))?;
     assert_eq!(
         edge.mutate_mcp_route_policy(policy_write(
             &revised,
@@ -768,7 +775,7 @@ pub async fn exercise(
     let mut stale_spec = stale.spec().clone();
     stale_spec.telemetry_events_per_minute /= 2;
     stale_spec.expires_at += Duration::minutes(2);
-    stale.revise(stale_spec, &profile, created_at + Duration::minutes(2))?;
+    stale.revise(stale_spec, &admission, created_at + Duration::minutes(2))?;
     assert!(matches!(
         edge.mutate_mcp_route_policy(policy_write(
             &stale,
@@ -1004,7 +1011,9 @@ pub async fn exercise(
         fixture_gateway_snapshot_compiler()?,
         Arc::new(EmptyInferenceCredentialAclProjectionPort),
         Arc::new(EmptyInferenceRouteAclProjectionPort),
-        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort,
+        ),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
@@ -1163,7 +1172,7 @@ pub async fn exercise(
         environment_id,
         scope: &scope,
         policy: &revised,
-        profile: &profile,
+        profile: &admission,
         asset: &asset,
         release: &published,
         profile_binding: &profile_binding,

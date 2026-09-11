@@ -1,5 +1,6 @@
 use crate::modules::assets::domain::{IMcpServiceProfileRepository, McpServiceProfile};
 use crate::modules::edge::application::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
+use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
 use crate::modules::shared_kernel::domain::RepositoryError;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -21,7 +22,7 @@ impl IEdgeMcpServiceProfileAccess for AssetsEdgeMcpServiceProfileAccessAdapter {
     async fn find_bound_profile(
         &self,
         scope: EdgeMcpServiceProfileScope,
-    ) -> Result<Option<McpServiceProfile>, RepositoryError> {
+    ) -> Result<Option<EdgeMcpServiceProfileAdmission>, RepositoryError> {
         Ok(self
             .profiles
             .find_mcp_service_profile(
@@ -30,8 +31,22 @@ impl IEdgeMcpServiceProfileAccess for AssetsEdgeMcpServiceProfileAccessAdapter {
                 scope.asset_release_id(),
             )
             .await?
-            .map(|binding| binding.profile))
+            .map(|binding| admit_mcp_service_profile(&binding.profile))
+            .transpose()
+            .map_err(RepositoryError::Conflict)?)
     }
+}
+
+pub(crate) fn admit_mcp_service_profile(
+    profile: &McpServiceProfile,
+) -> Result<EdgeMcpServiceProfileAdmission, String> {
+    EdgeMcpServiceProfileAdmission::new(
+        profile.digest().clone(),
+        profile.spec().endpoint_path.clone(),
+        profile.spec().max_request_bytes,
+        profile.spec().max_response_bytes,
+        profile.spec().max_stream_seconds,
+    )
 }
 
 #[cfg(test)]
@@ -75,7 +90,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn adapter_returns_only_the_bound_profile_value() {
+    async fn adapter_returns_only_the_bound_admission_fact() {
         use crate::modules::assets::domain::McpServiceProfileSpec;
         use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
         use chrono::Utc;
@@ -97,7 +112,6 @@ mod tests {
             max_stream_seconds: 3_600,
         })
         .expect("valid MCP Service profile");
-        // created_at must be canonical nanosecond truncation for binding.validate
         let created_at = crate::modules::shared_kernel::domain::canonical_timestamp(Utc::now());
         let adapter = AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::new(StubProfiles {
             binding: Mutex::new(Some(McpServiceProfileBinding {
@@ -115,11 +129,13 @@ mod tests {
                     .expect("scope"),
             )
             .await
-            .expect("find");
-        assert_eq!(
-            found.as_ref().map(|value| value.digest()),
-            Some(profile.digest())
-        );
+            .expect("find")
+            .expect("bound");
+        assert_eq!(found.digest(), profile.digest());
+        assert_eq!(found.endpoint_path(), "/mcp");
+        assert_eq!(found.max_request_bytes(), 1_048_576);
+        assert_eq!(found.max_response_bytes(), 8_388_608);
+        assert_eq!(found.max_stream_seconds(), 3_600);
         assert!(adapter
             .find_bound_profile(
                 EdgeMcpServiceProfileScope::new(organization_id, AssetId::new(), asset_release_id)

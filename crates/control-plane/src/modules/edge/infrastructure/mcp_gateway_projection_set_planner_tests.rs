@@ -8,6 +8,7 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayPublication, GatewayScopeState, McpCredential,
     McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
 };
+use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
 use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
     fixture, now, target,
 };
@@ -376,12 +377,10 @@ async fn revoked_credential_removes_only_its_route_from_the_complete_snapshot() 
     second_spec.hostname = RouteHostname::parse("second-mcp.example.com").expect("second hostname");
     let second_credential_id = McpCredentialId::new();
     second_spec.grants[0].credential_id = second_credential_id.as_uuid();
-    second_input.policy = McpRoutePolicy::create(
-        second_spec.clone(),
-        &second_input.profile_binding.profile,
-        now(),
-    )
-    .expect("second policy");
+    let second_admission = admit_mcp_service_profile(&second_input.profile_binding.profile)
+        .expect("second profile admission");
+    second_input.policy = McpRoutePolicy::create(second_spec.clone(), &second_admission, now())
+        .expect("second policy");
     let mut second_claim = DomainClaim::create(
         second_spec.domain_claim_id,
         second_spec.organization_id,
@@ -751,8 +750,10 @@ async fn rejects_duplicate_ingress_ownership_before_resolving_runtime() {
     let mut second = first.clone();
     let mut second_spec = second.policy.spec().clone();
     second_spec.route_id = RouteId::new();
-    second.policy = McpRoutePolicy::create(second_spec, &second.profile_binding.profile, now())
-        .expect("second policy");
+    let second_admission = admit_mcp_service_profile(&second.profile_binding.profile)
+        .expect("second profile admission");
+    second.policy =
+        McpRoutePolicy::create(second_spec, &second_admission, now()).expect("second policy");
     let result = planner(
         vec![first, second],
         targets.clone(),

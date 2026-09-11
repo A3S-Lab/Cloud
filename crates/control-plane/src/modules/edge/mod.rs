@@ -42,8 +42,8 @@ pub use domain::services::{
     ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
-    DomainClaim, DomainClaimState, DomainNamePattern, GatewayCertificate,
-    GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
+    DomainClaim, DomainClaimState, DomainNamePattern, EdgeMcpServiceProfileAdmission,
+    GatewayCertificate, GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
     GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
     GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery,
     GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,

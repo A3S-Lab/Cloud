@@ -1,4 +1,4 @@
-use crate::modules::assets::domain::McpServiceProfile;
+use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
 use crate::modules::edge::domain::RouteHostname;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId,
@@ -116,7 +116,7 @@ impl McpRoutePolicyDocument {
         &self,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileAdmission,
     ) -> Result<McpRoutePolicy, String> {
         let policy = McpRoutePolicy::build(
             self.spec.clone(),
@@ -179,7 +179,7 @@ impl McpRoutePolicy {
 
     pub fn create(
         spec: McpRoutePolicySpec,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileAdmission,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {
         let created_at = canonical_timestamp(created_at);
@@ -189,7 +189,7 @@ impl McpRoutePolicy {
     pub fn revise(
         &mut self,
         mut spec: McpRoutePolicySpec,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileAdmission,
         updated_at: DateTime<Utc>,
     ) -> Result<bool, String> {
         normalize_spec(&mut spec)?;
@@ -224,7 +224,7 @@ impl McpRoutePolicy {
         stored_digest: &str,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileAdmission,
     ) -> Result<Self, String> {
         if acl.is_empty() || acl.len() > MCP_ROUTE_POLICY_MAX_ACL_BYTES {
             return Err("stored MCP route policy ACL size is invalid".into());
@@ -250,7 +250,7 @@ impl McpRoutePolicy {
         policy_revision: u64,
         created_at: DateTime<Utc>,
         updated_at: DateTime<Utc>,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileAdmission,
     ) -> Result<Self, String> {
         normalize_spec(&mut spec)?;
         validate_spec(&spec, policy_revision, created_at, updated_at, profile)?;
@@ -352,7 +352,7 @@ fn validate_spec(
     policy_revision: u64,
     created_at: DateTime<Utc>,
     updated_at: DateTime<Utc>,
-    profile: &McpServiceProfile,
+    profile: &EdgeMcpServiceProfileAdmission,
 ) -> Result<(), String> {
     if spec.route_id.as_uuid().is_nil()
         || spec.organization_id.as_uuid().is_nil()
@@ -375,16 +375,16 @@ fn validate_spec(
         return Err("hosted MCP routes require TLS".into());
     }
     validate_literal_path(&spec.path)?;
-    if spec.path != profile.spec().endpoint_path {
+    if spec.path != profile.endpoint_path() {
         return Err("MCP public route path must match the immutable Service endpoint".into());
     }
     validate_mcp_allowed_origins(&spec.allowed_origins)?;
     if spec.max_header_bytes == 0
         || spec.max_header_bytes > MAX_HEADER_BYTES
         || spec.max_request_bytes == 0
-        || spec.max_request_bytes > profile.spec().max_request_bytes
+        || spec.max_request_bytes > profile.max_request_bytes()
         || spec.max_response_bytes == 0
-        || spec.max_response_bytes > profile.spec().max_response_bytes
+        || spec.max_response_bytes > profile.max_response_bytes()
     {
         return Err("MCP route byte bounds are invalid or exceed its Service profile".into());
     }
@@ -402,7 +402,7 @@ fn validate_spec(
         (
             "stream total timeout",
             spec.stream_total_timeout_seconds,
-            profile.spec().max_stream_seconds,
+            profile.max_stream_seconds(),
         ),
         ("drain timeout", spec.drain_timeout_seconds, 10 * 60),
     ] {
@@ -749,24 +749,16 @@ fn validate_literal_path(path: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::assets::domain::{McpServiceProfile, McpServiceProfileSpec};
-    use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
     use chrono::TimeZone;
 
-    fn profile() -> McpServiceProfile {
-        McpServiceProfile::from_spec(McpServiceProfileSpec {
-            protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
-            endpoint_path: "/mcp".into(),
-            runtime_port: "mcp".into(),
-            health_path: "/health".into(),
-            request_sse: true,
-            subscriptions: true,
-            server_discover: true,
-            expected_capabilities: vec!["subscriptions".into(), "tools".into()],
-            max_request_bytes: 1_048_576,
-            max_response_bytes: 8_388_608,
-            max_stream_seconds: 3_600,
-        })
+    fn profile() -> EdgeMcpServiceProfileAdmission {
+        EdgeMcpServiceProfileAdmission::new(
+            Sha256Digest::parse(format!("sha256:{}", "a".repeat(64))).expect("digest"),
+            "/mcp",
+            1_048_576,
+            8_388_608,
+            3_600,
+        )
         .expect("profile")
     }
 
@@ -776,7 +768,7 @@ mod tests {
             .expect("time")
     }
 
-    fn spec(profile: &McpServiceProfile) -> McpRoutePolicySpec {
+    fn spec(profile: &EdgeMcpServiceProfileAdmission) -> McpRoutePolicySpec {
         McpRoutePolicySpec {
             route_id: RouteId::from_uuid(
                 Uuid::parse_str("11111111-1111-4111-8111-111111111111").expect("UUID"),
@@ -917,7 +909,7 @@ mod tests {
         assert!(McpRoutePolicy::create(candidate, &profile, now()).is_err());
 
         let mut candidate = spec(&profile);
-        candidate.max_request_bytes = profile.spec().max_request_bytes + 1;
+        candidate.max_request_bytes = profile.max_request_bytes() + 1;
         assert!(McpRoutePolicy::create(candidate, &profile, now()).is_err());
 
         let mut candidate = spec(&profile);

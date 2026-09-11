@@ -23,7 +23,7 @@ pub(super) struct Fixture<'a> {
     pub environment_id: EnvironmentId,
     pub scope: &'a a3s_cloud_control_plane::modules::edge::GatewayScope,
     pub policy: &'a McpRoutePolicy,
-    pub profile: &'a McpServiceProfile,
+    pub profile: &'a EdgeMcpServiceProfileAdmission,
     pub asset: &'a Asset,
     pub release: &'a AssetRelease,
     pub profile_binding: &'a McpServiceProfileBinding,
@@ -190,9 +190,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         shared_edge,
         node_planner,
         fixture_gateway_snapshot_compiler()?,
-        Arc::new(a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(
+            a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort,
+        ),
         Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort),
-        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort,
+        ),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),
         Duration::hours(1),
@@ -308,9 +312,13 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
             Duration::hours(24),
         )?,
         desired_state,
-        Arc::new(a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort),
+        Arc::new(
+            a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort,
+        ),
         Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort),
-        Arc::new(a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort,
+        ),
     );
     let ordinary_at = node_wide_failed_at + Duration::milliseconds(1);
     let domain_claim = fixture

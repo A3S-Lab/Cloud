@@ -9285,9 +9285,8 @@ fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
         );
     }
 
-    let result =
-        std::fs::read_to_string(root.join("workloads/application/queries/result.rs"))
-            .expect("read Workloads query results");
+    let result = std::fs::read_to_string(root.join("workloads/application/queries/result.rs"))
+        .expect("read Workloads query results");
     for forbidden in [
         "crate::modules::fleet",
         "NodeLogRecord",
@@ -10644,19 +10643,28 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
     for required in [
         "pubstructEdgeMcpServiceProfileScope",
         "pubtraitIEdgeMcpServiceProfileAccess:Send+Sync",
-        "asyncfnfind_bound_profile(&self,scope:EdgeMcpServiceProfileScope,)->Result<Option<McpServiceProfile>,RepositoryError>;",
+        "asyncfnfind_bound_profile(&self,scope:EdgeMcpServiceProfileScope,)->Result<Option<EdgeMcpServiceProfileAdmission>,RepositoryError>;",
     ] {
         assert!(
             compact_port.contains(required),
             "Edge MCP profile port lost minimum interface {required}"
         );
     }
-    for forbidden in ["IMcpServiceProfileRepository", "Postgres", "InMemory"] {
+    for forbidden in [
+        "IMcpServiceProfileRepository",
+        "Postgres",
+        "InMemory",
+        "crate::modules::assets",
+    ] {
         assert!(
             !production_port.contains(forbidden),
-            "Edge MCP profile port leaked Assets repository or concrete authority {forbidden}"
+            "Edge MCP profile port leaked Assets authority {forbidden}"
         );
     }
+    assert!(
+        !production_port.contains("assets::domain::McpServiceProfile"),
+        "Edge MCP profile port leaked Assets McpServiceProfile"
+    );
 
     let service =
         std::fs::read_to_string(root.join("edge/application/mcp_route_policy_service.rs"))
@@ -10667,16 +10675,40 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         "profiles:Arc<dynIEdgeMcpServiceProfileAccess>",
         "EdgeMcpServiceProfileScope::new(",
         ".find_bound_profile(scope)",
+        "EdgeMcpServiceProfileAdmission",
     ] {
         assert!(
             compact_service.contains(required),
             "MCP route policy service lost Edge MCP profile boundary {required}"
         );
     }
-    for forbidden in ["IMcpServiceProfileRepository", "find_mcp_service_profile"] {
+    for forbidden in [
+        "IMcpServiceProfileRepository",
+        "find_mcp_service_profile",
+        "crate::modules::assets",
+        "assets::domain::McpServiceProfile",
+    ] {
         assert!(
             !production_service.contains(forbidden),
-            "MCP route policy service regained Assets repository authority {forbidden}"
+            "MCP route policy service regained Assets authority {forbidden}"
+        );
+    }
+
+    let domain_policy =
+        std::fs::read_to_string(root.join("edge/domain/entities/mcp_route_policy.rs"))
+            .expect("read MCP route policy Domain");
+    let production_domain = production_source(&domain_policy);
+    assert!(
+        production_domain.contains("EdgeMcpServiceProfileAdmission"),
+        "MCP route policy Domain lost owned profile admission"
+    );
+    for forbidden in [
+        "crate::modules::assets",
+        "assets::domain::McpServiceProfile",
+    ] {
+        assert!(
+            !production_domain.contains(forbidden),
+            "MCP route policy Domain leaked Assets profile type {forbidden}"
         );
     }
 
@@ -10690,6 +10722,8 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         "implIEdgeMcpServiceProfileAccessforAssetsEdgeMcpServiceProfileAccessAdapter",
         "profiles:Arc<dynIMcpServiceProfileRepository>",
         ".find_mcp_service_profile(",
+        "fnadmit_mcp_service_profile(",
+        "EdgeMcpServiceProfileAdmission",
     ] {
         assert!(
             compact_adapter.contains(required),
@@ -11030,10 +11064,9 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
             .join("\n")
     );
 
-    let repository = std::fs::read_to_string(
-        root.join("workloads/domain/repositories/workload_repository.rs"),
-    )
-    .expect("read Workloads repository types");
+    let repository =
+        std::fs::read_to_string(root.join("workloads/domain/repositories/workload_repository.rs"))
+            .expect("read Workloads repository types");
     let production_repository = production_source(&repository);
     assert!(
         production_repository.contains("pub operation: WorkloadDeploymentOperationIntent"),
@@ -11080,10 +11113,9 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
         "Durable Cells writer fence regained Operations construction OperationRequest::new"
     );
 
-    let workload_writer_fence = std::fs::read_to_string(
-        root.join("workloads/domain/services/workload_writer_fence.rs"),
-    )
-    .expect("read Workloads writer-fence domain port");
+    let workload_writer_fence =
+        std::fs::read_to_string(root.join("workloads/domain/services/workload_writer_fence.rs"))
+            .expect("read Workloads writer-fence domain port");
     let production_workload_writer_fence = production_source(&workload_writer_fence);
     assert!(
         production_workload_writer_fence.contains("WorkloadRuntimeRemoveEvidence"),

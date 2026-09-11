@@ -229,6 +229,7 @@ pub(super) mod tests {
     use crate::modules::edge::domain::{
         McpRoutePolicySpec, RouteHostname, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
+    use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId, NodeId,
         OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
@@ -333,6 +334,7 @@ pub(super) mod tests {
                 &profile,
             )
             .expect("restore binding");
+        let admission = admit_mcp_service_profile(&profile).expect("profile admission");
         let policy = McpRoutePolicy::create(
             McpRoutePolicySpec {
                 route_id: RouteId::from_uuid(uuid("66666666-6666-4666-8666-666666666666")),
@@ -382,7 +384,7 @@ pub(super) mod tests {
                     },
                 }],
             },
-            &profile,
+            &admission,
             now(),
         )
         .expect("policy");

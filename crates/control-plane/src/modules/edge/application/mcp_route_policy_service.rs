@@ -141,7 +141,7 @@ impl McpRoutePolicyApplicationService {
     async fn profile(
         &self,
         document: &McpRoutePolicyDocument,
-    ) -> ApplicationResult<crate::modules::assets::domain::McpServiceProfile> {
+    ) -> ApplicationResult<crate::modules::edge::domain::EdgeMcpServiceProfileAdmission> {
         let spec = document.spec();
         let scope = EdgeMcpServiceProfileScope::new(
             spec.organization_id,
@@ -204,7 +204,7 @@ fn idempotency(
 fn validate_revision(
     current: &McpRoutePolicy,
     document: &McpRoutePolicyDocument,
-    profile: &crate::modules::assets::domain::McpServiceProfile,
+    profile: &crate::modules::edge::domain::EdgeMcpServiceProfileAdmission,
     requested_at: DateTime<Utc>,
 ) -> ApplicationResult<()> {
     if current.spec() == document.spec()
