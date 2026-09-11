@@ -20,4 +20,5 @@ pub use workload_prestart_gate::{
 };
 pub use workload_writer_fence::{
     IWorkloadWriterFenceAdapter, UnrestrictedWorkloadWriterFenceAdapter,
+    WorkloadRuntimeRemoveEvidence,
 };

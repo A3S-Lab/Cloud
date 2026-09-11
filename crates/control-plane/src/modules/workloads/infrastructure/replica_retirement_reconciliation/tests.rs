@@ -21,7 +21,8 @@ use crate::modules::workloads::{
     CreateDeploymentBundle, DeploymentRequested, IWorkloadReplicaDeploymentRepository,
     IWorkloadReplicaEvacuationRepository, IWorkloadRepository, IWorkloadWriterFenceAdapter,
     IWorkloadWriterFenceRepository, ReconfigureReplicaSetWrite, ReplicaEvacuationCandidate,
-    ReplicaEvacuationRequest, WorkloadControlSpec, WorkloadWriterFenceCommit,
+    ReplicaEvacuationRequest, WorkloadControlSpec, WorkloadRuntimeRemoveEvidence,
+    WorkloadWriterFenceCommit,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandFailure, NodeResourceClaimPrepare, NodeResourceClaimReleased,
@@ -154,7 +155,7 @@ impl IWorkloadWriterFenceAdapter for ScriptedWriterFence {
     async fn prepare_replica_retirement(
         &self,
         target: &RetiringReplicaTarget,
-        command: &NodeCommand,
+        removal: &WorkloadRuntimeRemoveEvidence,
         acknowledgement: &NodeCommandAck,
     ) -> Result<Option<WorkloadWriterFenceCommit>, RepositoryError> {
         self.calls.fetch_add(1, Ordering::SeqCst);
@@ -184,13 +185,8 @@ impl IWorkloadWriterFenceAdapter for ScriptedWriterFence {
                 RepositoryError::Conflict("writer-fence test target omitted its node".into())
             })?,
             runtime_unit_id: binding.runtime_unit_id.clone(),
-            command_id: command.id,
-            command_payload_digest: Sha256Digest::parse(
-                command
-                    .payload_digest()
-                    .map_err(RepositoryError::Conflict)?,
-            )
-            .map_err(RepositoryError::Conflict)?,
+            command_id: removal.command_id,
+            command_payload_digest: removal.command_payload_digest.clone(),
             acknowledgement_digest: Sha256Digest::parse(format!("sha256:{}", "c".repeat(64)))
                 .map_err(RepositoryError::Conflict)?,
             continuation_operation_id: operation_id,

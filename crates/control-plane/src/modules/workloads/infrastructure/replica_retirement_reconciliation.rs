@@ -1,7 +1,7 @@
 use super::reconciliation::IWorkloadRuntimeControl;
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
-    NodeCommandId, RepositoryError, ResourceClaimId, WorkloadId,
+    NodeCommandId, RepositoryError, ResourceClaimId, Sha256Digest, WorkloadId,
 };
 use crate::modules::workloads::domain::entities::{
     ResourceClaim, ResourceClaimReleaseEvidence, ResourceClaimState, WorkloadReplicaLifecycle,
@@ -12,6 +12,7 @@ use crate::modules::workloads::domain::repositories::{
 };
 use crate::modules::workloads::domain::services::{
     IWorkloadWriterFenceAdapter, UnrestrictedWorkloadWriterFenceAdapter,
+    WorkloadRuntimeRemoveEvidence,
 };
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
@@ -199,8 +200,14 @@ impl ReplicaRetirementReconciler {
                 } => {
                     let fenced_at = acknowledgement.completed_at.max(target.replica.updated_at);
                     let writer_fence = if target.replica.evacuation_node_id.is_none() {
+                        let removal = runtime_remove_evidence(&command, acknowledgement.lease_id)
+                            .map_err(|error| {
+                                format!(
+                                    "project RuntimeRemove writer-fence evidence: {error}"
+                                )
+                            })?;
                         self.writer_fences
-                            .prepare_replica_retirement(&target, &command, &acknowledgement)
+                            .prepare_replica_retirement(&target, &removal, &acknowledgement)
                             .await
                             .map_err(repository_error(
                                 "prepare replica writer-fence continuation",
@@ -709,6 +716,17 @@ enum RemovalProgress {
         command: Box<NodeCommand>,
         acknowledgement: Box<NodeCommandAck>,
     },
+}
+
+fn runtime_remove_evidence(
+    command: &NodeCommand,
+    lease_id: Uuid,
+) -> Result<WorkloadRuntimeRemoveEvidence, String> {
+    Ok(WorkloadRuntimeRemoveEvidence {
+        command_id: command.id,
+        command_payload_digest: Sha256Digest::parse(command.payload_digest()?)?,
+        envelope: command.envelope(lease_id)?,
+    })
 }
 
 enum ClaimReleaseProgress {

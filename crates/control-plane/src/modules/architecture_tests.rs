@@ -11038,19 +11038,50 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
         production_writer_fence.contains("WorkloadWriterFenceContinuationIntent"),
         "Durable Cells writer fence stopped emitting WorkloadWriterFenceContinuationIntent"
     );
+    assert!(
+        production_writer_fence.contains("WorkloadRuntimeRemoveEvidence"),
+        "Durable Cells writer fence lost WorkloadRuntimeRemoveEvidence admission"
+    );
     for forbidden in [
         "crate::modules::operations",
+        "crate::modules::fleet",
         "OperationSubject",
         "WorkflowIdentity",
     ] {
         assert!(
             !production_writer_fence.contains(forbidden),
-            "Durable Cells writer fence regained Operations construction {forbidden}"
+            "Durable Cells writer fence regained foreign construction {forbidden}"
         );
     }
     assert!(
+        !production_writer_fence.contains("crate::modules::fleet"),
+        "Durable Cells writer fence regained Fleet authority"
+    );
+    assert!(
+        !production_writer_fence.contains("entities::NodeCommand"),
+        "Durable Cells writer fence regained Fleet NodeCommand entity"
+    );
+    assert!(
         !contains_bare_token(production_writer_fence.as_str(), "OperationRequest::new"),
         "Durable Cells writer fence regained Operations construction OperationRequest::new"
+    );
+
+    let workload_writer_fence = std::fs::read_to_string(
+        root.join("workloads/domain/services/workload_writer_fence.rs"),
+    )
+    .expect("read Workloads writer-fence domain port");
+    let production_workload_writer_fence = production_source(&workload_writer_fence);
+    assert!(
+        production_workload_writer_fence.contains("WorkloadRuntimeRemoveEvidence"),
+        "Workloads writer-fence port lost owned RuntimeRemove evidence"
+    );
+    assert!(
+        !production_workload_writer_fence.contains("crate::modules::fleet"),
+        "Workloads writer-fence Domain leaked Fleet authority"
+    );
+    assert!(
+        !production_workload_writer_fence.contains("entities::NodeCommand"),
+        "Workloads writer-fence Domain leaked Fleet NodeCommand entity"
     );
 
     let composer = std::fs::read_to_string(

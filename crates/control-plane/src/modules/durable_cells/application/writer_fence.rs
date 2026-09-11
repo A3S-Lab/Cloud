@@ -16,14 +16,13 @@ use crate::modules::durable_cells::domain::{
     DurableCellApplicationDesiredState, DurableCellDeployment, DurableCellPublisherProfile,
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
-use crate::modules::fleet::domain::entities::NodeCommand;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
 };
 use crate::modules::workloads::{
-    IWorkloadWriterFenceAdapter, RetiringReplicaTarget, WorkloadWriterFenceCommit,
-    WorkloadWriterFenceContinuationIntent, WorkloadWriterFenceReceipt,
+    IWorkloadWriterFenceAdapter, RetiringReplicaTarget, WorkloadRuntimeRemoveEvidence,
+    WorkloadWriterFenceCommit, WorkloadWriterFenceContinuationIntent, WorkloadWriterFenceReceipt,
     WorkloadWriterFenceReceiptSpec,
 };
 use a3s_cloud_contracts::NodeCommandAck;
@@ -171,7 +170,7 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
     async fn prepare_replica_retirement(
         &self,
         target: &RetiringReplicaTarget,
-        command: &NodeCommand,
+        removal: &WorkloadRuntimeRemoveEvidence,
         acknowledgement: &NodeCommandAck,
     ) -> Result<Option<WorkloadWriterFenceCommit>, RepositoryError> {
         let Some((correlation, workload)) = self.find_stopped_correlation(target).await? else {
@@ -255,15 +254,12 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
             replica_binding.runtime_unit_id.clone(),
             replica_binding.runtime_generation,
         );
-        let envelope = command
-            .envelope(acknowledgement.lease_id)
-            .map_err(|error| conflict("restore Fleet RuntimeRemove envelope", error))?;
         admit_durable_cell_replica_runtime_remove(
             &correlation.provider,
             &service_profile,
             &runtime_projection,
             &replica_runtime_binding,
-            &envelope,
+            &removal.envelope,
             acknowledgement,
         )
         .map_err(|error| conflict("admit Durable Cell RuntimeRemove receipt", error))?;
@@ -300,13 +296,8 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
                 )
             })?,
             runtime_unit_id: replica_binding.runtime_unit_id.clone(),
-            command_id: command.id,
-            command_payload_digest: Sha256Digest::parse(
-                command
-                    .payload_digest()
-                    .map_err(|error| conflict("digest Fleet RuntimeRemove command", error))?,
-            )
-            .map_err(|error| conflict("parse Fleet RuntimeRemove digest", error))?,
+            command_id: removal.command_id,
+            command_payload_digest: removal.command_payload_digest.clone(),
             acknowledgement_digest: Sha256Digest::from_bytes(&acknowledgement_bytes),
             continuation_operation_id: operation_id,
             fenced_at,

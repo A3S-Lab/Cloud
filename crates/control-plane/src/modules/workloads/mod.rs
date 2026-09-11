@@ -80,6 +80,7 @@ pub use domain::services::{
     OciRegistryCredentialReference, ReplicaSetReconfiguration, ReplicaSetReconfigurationError,
     UnrestrictedWorkloadPrestartGate, UnrestrictedWorkloadWriterFenceAdapter,
     UnroutedDeploymentRouteUpdater, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
+    WorkloadRuntimeRemoveEvidence,
 };
 pub use domain::{
     WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,

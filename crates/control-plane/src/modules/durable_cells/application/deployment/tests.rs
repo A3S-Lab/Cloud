@@ -50,6 +50,7 @@ use crate::modules::workloads::{
     SecretBindingTarget, ServicePort, ServiceResources, ServiceTemplate,
     WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentFailurePhase,
     WorkloadDeploymentHealthChanged, WorkloadDeploymentHealthStatus, WorkloadReplicaLifecycle,
+    WorkloadRuntimeRemoveEvidence,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use a3s_cloud_contracts::{
@@ -728,6 +729,18 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         })
         .await
         .expect("dispatch provider RuntimeRemove");
+    let removal = WorkloadRuntimeRemoveEvidence {
+        command_id: removal_command.id,
+        command_payload_digest: Sha256Digest::parse(
+            removal_command
+                .payload_digest()
+                .expect("RuntimeRemove digest"),
+        )
+        .expect("parse RuntimeRemove digest"),
+        envelope: removal_command
+            .envelope(removal_acknowledgement.lease_id)
+            .expect("RuntimeRemove envelope"),
+    };
     let writer_fence = DurableCellWriterFenceAdapter::new(
         applications.clone(),
         deployments.clone(),
@@ -737,7 +750,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         ))) as Arc<dyn IDurableCellOperationPort>,
         Arc::clone(&storage_port),
     )
-    .prepare_replica_retirement(&retirement, &removal_command, &removal_acknowledgement)
+    .prepare_replica_retirement(&retirement, &removal, &removal_acknowledgement)
     .await
     .expect("prepare Durable Cell writer fence")
     .expect("stopped Durable Cell continuation");
