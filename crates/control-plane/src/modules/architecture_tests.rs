@@ -3255,6 +3255,28 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
         !production_mcp.contains("resource_access,"),
         "Notifications MCP must not pass ResourceAccessEvaluator into Application"
     );
+
+    let projector = std::fs::read_to_string(
+        root.join("notifications/infrastructure/outbox_projector.rs"),
+    )
+    .expect("read Notifications outbox projector");
+    let production_projector = production_source(&projector);
+    assert!(
+        production_projector.contains("NotificationAccess::organization_wide()")
+            && production_projector.contains("NotificationAccess::restricted(")
+            && production_projector.contains("scope_is_visible("),
+        "Notifications outbox projector must authorize through owned NotificationAccess"
+    );
+    for forbidden in [
+        "ResourceAccessEvaluator",
+        "notification_access(",
+        "access_projection::notification_access",
+    ] {
+        assert!(
+            !production_projector.contains(forbidden),
+            "Notifications outbox projector regained Identity evaluator bridge {forbidden}"
+        );
+    }
 }
 
 #[test]

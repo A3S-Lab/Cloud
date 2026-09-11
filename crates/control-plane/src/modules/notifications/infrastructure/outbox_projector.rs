@@ -1,4 +1,3 @@
-use crate::access_projection::notification_access;
 use crate::modules::edge::domain::events::{
     DomainClaimChanged, GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
     GatewayCertificateRenewalStatus, renewal_subject_id,
@@ -8,14 +7,14 @@ use crate::modules::identity::domain::events::MembershipChanged;
 use crate::modules::identity::domain::repositories::{
     IMembershipRepository, IResourceGrantRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::MembershipRole;
+use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, INotificationRepository, Notification,
     NotificationAlertPolicy, NotificationAlertPolicyTarget, NotificationAlertSource,
     NotificationScope, NotificationSeverity,
 };
+use crate::modules::notifications::{NotificationAccess, NotificationAccessScope};
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PrincipalId, RepositoryError, ResourceName, canonical_timestamp,
 };
@@ -191,11 +190,11 @@ impl OutboxNotificationProjector {
             let grants = resource_grants
                 .list_active_resource_grants_for_membership(policy.organization_id, membership.id)
                 .await?;
-            let access = ResourceAccessEvaluator::for_membership(
+            let access = notification_access_for_membership(
                 membership.role,
                 grants.into_iter().map(|grant| grant.scope),
             );
-            if !notification_access(&access).scope_is_visible(scope) {
+            if !access.scope_is_visible(scope) {
                 continue;
             }
             authorized.push(policy);
@@ -683,6 +682,29 @@ fn decode_membership(message: &OutboxMessage) -> Result<MembershipChanged, Repos
         "membership",
     )?;
     Ok(payload)
+}
+
+fn notification_access_for_membership(
+    role: MembershipRole,
+    grants: impl IntoIterator<Item = ResourceGrantScope>,
+) -> NotificationAccess {
+    if role == MembershipRole::Restricted {
+        NotificationAccess::restricted(grants.into_iter().map(|scope| match scope {
+            ResourceGrantScope::Project { project_id } => {
+                NotificationAccessScope::Project { project_id }
+            }
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            } => NotificationAccessScope::Environment {
+                project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node { node_id } => NotificationAccessScope::Node { node_id },
+        }))
+    } else {
+        NotificationAccess::organization_wide()
+    }
 }
 
 fn validate_identity_payload(
