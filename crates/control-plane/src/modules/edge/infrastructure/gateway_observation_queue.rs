@@ -2,19 +2,20 @@ use crate::modules::edge::domain::services::{
     GatewayObservationCommand, GatewayObservationCommandOutcome, GatewayObservationDispatch,
     IGatewayObservationQueue,
 };
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
+use crate::modules::fleet::{
+    FleetGatewayObservationOutcome, FleetGatewaySnapshotObserveRequest,
+    IFleetGatewaySnapshotCommandPort,
+};
 use crate::modules::shared_kernel::domain::RepositoryError;
-use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
 use async_trait::async_trait;
 use std::sync::Arc;
 
 pub struct FleetGatewayObservationQueue {
-    commands: Arc<dyn INodeControlRepository>,
+    commands: Arc<dyn IFleetGatewaySnapshotCommandPort>,
 }
 
 impl FleetGatewayObservationQueue {
-    pub fn new(commands: Arc<dyn INodeControlRepository>) -> Self {
+    pub fn new(commands: Arc<dyn IFleetGatewaySnapshotCommandPort>) -> Self {
         Self { commands }
     }
 }
@@ -26,22 +27,12 @@ impl IGatewayObservationQueue for FleetGatewayObservationQueue {
         command: &GatewayObservationCommand,
     ) -> Result<GatewayObservationDispatch, RepositoryError> {
         command.validate().map_err(RepositoryError::Conflict)?;
-        let result = self
+        let dispatch = self
             .commands
-            .enqueue_command(NodeCommandDraft {
-                proposed_command_id: command.command_id,
-                node_id: command.node_id,
-                aggregate_id: command.rollout_id.as_uuid(),
-                payload: NodeCommandPayload::GatewaySnapshotObserve {
-                    request: command.request().map_err(RepositoryError::Conflict)?,
-                },
-                issued_at: command.issued_at,
-                not_after: command.not_after,
-                correlation_id: command.correlation_id,
-            })
+            .enqueue_observe(fleet_observe_request(command)?)
             .await?;
         Ok(GatewayObservationDispatch {
-            replayed: result.replayed,
+            replayed: dispatch.replayed,
         })
     }
 
@@ -50,65 +41,53 @@ impl IGatewayObservationQueue for FleetGatewayObservationQueue {
         command: &GatewayObservationCommand,
     ) -> Result<Option<GatewayObservationCommandOutcome>, RepositoryError> {
         command.validate().map_err(RepositoryError::Conflict)?;
-        let Some(acknowledgement) = self
+        let Some(outcome) = self
             .commands
-            .command_acknowledgement(command.node_id, command.command_id)
+            .observation_outcome(&fleet_observe_request(command)?)
             .await?
         else {
             return Ok(None);
         };
-        if acknowledgement.command_id != command.command_id.as_uuid()
-            || acknowledgement.node_id != command.node_id.as_uuid()
-        {
-            return Err(RepositoryError::Storage(
-                "Gateway observation acknowledgement identity is inconsistent".into(),
-            ));
-        }
-        match acknowledgement.outcome {
-            NodeCommandOutcome::Succeeded { result } => match *result {
-                NodeCommandResult::GatewaySnapshotObserved { observation } => {
-                    observation
-                        .validate_for(
-                            command.command_id.as_uuid(),
-                            command.node_id.as_uuid(),
-                            &command.request().map_err(RepositoryError::Conflict)?,
-                        )
-                        .map_err(RepositoryError::Storage)?;
-                    Ok(Some(GatewayObservationCommandOutcome::Observed {
-                        observation: Box::new(observation),
-                        completed_at: acknowledgement.completed_at,
-                    }))
-                }
-                _ => Err(RepositoryError::Storage(
-                    "Gateway observation command stored an incompatible successful result".into(),
-                )),
+        Ok(Some(match outcome {
+            FleetGatewayObservationOutcome::Observed {
+                observation,
+                completed_at,
+            } => GatewayObservationCommandOutcome::Observed {
+                observation,
+                completed_at,
             },
-            NodeCommandOutcome::Rejected { failure } => {
-                Ok(Some(GatewayObservationCommandOutcome::Failed {
-                    failure: bounded_failure("rejected", &failure.code),
-                    retryable: failure.retryable,
-                    completed_at: acknowledgement.completed_at,
-                }))
-            }
-            NodeCommandOutcome::Failed { failure } => {
-                Ok(Some(GatewayObservationCommandOutcome::Failed {
-                    failure: bounded_failure("failed", &failure.code),
-                    retryable: failure.retryable,
-                    completed_at: acknowledgement.completed_at,
-                }))
-            }
-        }
+            FleetGatewayObservationOutcome::Failed {
+                failure,
+                retryable,
+                completed_at,
+            } => GatewayObservationCommandOutcome::Failed {
+                failure,
+                retryable,
+                completed_at,
+            },
+        }))
     }
 }
 
-fn bounded_failure(outcome: &str, code: &str) -> String {
-    format!("Gateway observation command {outcome} with code {code}")
+fn fleet_observe_request(
+    command: &GatewayObservationCommand,
+) -> Result<FleetGatewaySnapshotObserveRequest, RepositoryError> {
+    Ok(FleetGatewaySnapshotObserveRequest {
+        node_id: command.node_id,
+        command_id: command.command_id,
+        correlation_id: command.correlation_id,
+        issued_at: command.issued_at,
+        not_after: command.not_after,
+        aggregate_id: command.rollout_id.as_uuid(),
+        request: command.request().map_err(RepositoryError::Conflict)?,
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::modules::edge::domain::services::IGatewayObservationQueue;
+    use crate::modules::fleet::FleetGatewaySnapshotCommandService;
     use crate::modules::fleet::domain::entities::EnrollmentToken;
     use crate::modules::fleet::domain::repositories::{
         INodeControlRepository, INodeRepository, NodeEnrollmentDraft,
@@ -123,7 +102,8 @@ mod tests {
     };
     use a3s_cloud_contracts::{
         DomainEventEnvelope, GatewayManagementProtocol, GatewaySnapshotObservationState,
-        NodeCommandAck, NodeCommandLeaseRequest, NodeGatewaySnapshotObservation,
+        NodeCommandAck, NodeCommandLeaseRequest, NodeCommandOutcome, NodeCommandPayload,
+        NodeCommandResult, NodeGatewaySnapshotObservation,
     };
     use chrono::{Duration, Utc};
     use uuid::Uuid;
@@ -198,7 +178,8 @@ mod tests {
             .expect("reserve enrolled node");
         let node_id = enrollment.node.id;
         let control: Arc<dyn INodeControlRepository> = repository.clone();
-        let queue = FleetGatewayObservationQueue::new(Arc::clone(&control));
+        let fleet = Arc::new(FleetGatewaySnapshotCommandService::new(Arc::clone(&control)));
+        let queue = FleetGatewayObservationQueue::new(fleet);
         let command = GatewayObservationCommand::new(
             GatewayRolloutId::new(),
             Uuid::now_v7(),

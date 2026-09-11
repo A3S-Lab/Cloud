@@ -366,8 +366,12 @@ async fn managed_route_cutover_stages_inference_credential_and_route_acl_without
             &control_port,
         )),
     );
+    let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
+        Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
+            Arc::clone(&control_port),
+        ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
-        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
+        Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let updater = EdgeDeploymentRouteUpdater::new_managed(
         route_port,
         managed_repo,

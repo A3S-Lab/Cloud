@@ -2123,8 +2123,12 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         )
         .map_err(BootError::Internal)?,
     );
+    let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
+        Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
+            Arc::clone(&node_control),
+        ));
     let route_commands: Arc<dyn IGatewayCommandQueue> =
-        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+        Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let source_webhooks = sources.clone();
     let source_subscriptions = sources.clone();
     let unavailable_assets =

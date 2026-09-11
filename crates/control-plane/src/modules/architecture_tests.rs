@@ -11446,6 +11446,99 @@ fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_po
 }
 
 #[test]
+fn edge_gateway_queues_consume_fleet_snapshot_command_owner_port() {
+    let root = module_root();
+
+    let owner_port = std::fs::read_to_string(
+        root.join("fleet/application/gateway_snapshot_commands.rs"),
+    )
+    .expect("read Fleet Gateway snapshot command port");
+    let compact_owner = production_source(&owner_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIFleetGatewaySnapshotCommandPort:Send+Sync",
+        "asyncfnenqueue_install(",
+        "asyncfnenqueue_observe(",
+        "asyncfnobservation_outcome(",
+        "pubstructFleetGatewaySnapshotCommandService",
+        "NodeCommandDraft",
+        "INodeControlRepository",
+    ] {
+        assert!(
+            compact_owner.contains(required),
+            "Fleet Gateway snapshot command port lost minimum surface {required}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/gateway_command_queue.rs",
+        "edge/infrastructure/gateway_observation_queue.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IFleetGatewaySnapshotCommandPort"),
+            "{relative} lost Fleet Gateway snapshot owner-port surface"
+        );
+        for forbidden in ["INodeControlRepository", "NodeCommandDraft", "NodeCommandPayload"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository draft authority {forbidden}"
+            );
+        }
+    }
+
+    let command_queue =
+        std::fs::read_to_string(root.join("edge/infrastructure/gateway_command_queue.rs"))
+            .expect("read Edge Gateway command queue ACA");
+    assert!(
+        production_source(&command_queue).contains("enqueue_install("),
+        "Gateway command queue ACA stopped calling Fleet enqueue_install"
+    );
+
+    let observation_queue =
+        std::fs::read_to_string(root.join("edge/infrastructure/gateway_observation_queue.rs"))
+            .expect("read Edge Gateway observation queue ACA");
+    let production_observation = production_source(&observation_queue);
+    assert!(
+        production_observation.contains("enqueue_observe(")
+            && production_observation.contains("observation_outcome("),
+        "Gateway observation queue ACA stopped calling Fleet observe/outcome ports"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert!(
+        production_app.contains("FleetGatewaySnapshotCommandService::new("),
+        "root composition must construct the Fleet Gateway snapshot command owner once"
+    );
+    assert_eq!(
+        production_app
+            .matches("FleetGatewaySnapshotCommandService::new(")
+            .count(),
+        1,
+        "Fleet Gateway snapshot command owner must have exactly one production composition site"
+    );
+    assert_eq!(
+        production_app
+            .matches("FleetGatewayCommandQueue::new(")
+            .count(),
+        1,
+        "Gateway command queue ACA must have exactly one production composition site"
+    );
+    assert_eq!(
+        production_app
+            .matches("FleetGatewayObservationQueue::new(")
+            .count(),
+        1,
+        "Gateway observation queue ACA must have exactly one production composition site"
+    );
+}
+
+#[test]
 fn edge_managed_inference_acl_isolates_identity_and_inference_behind_one_owner_port() {
     let root = module_root();
 

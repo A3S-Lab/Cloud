@@ -1,6 +1,7 @@
 mod certificate;
 pub mod commands;
 mod gateway_acknowledgement_projector;
+mod gateway_snapshot_commands;
 mod log_compaction;
 mod log_reader;
 mod log_retention;
@@ -22,6 +23,11 @@ pub use commands::{
     RotateNodeCertificateHandler, RotateNodeCertificateResult,
 };
 pub use gateway_acknowledgement_projector::IGatewayAcknowledgementProjector;
+pub use gateway_snapshot_commands::{
+    FleetGatewayCommandDispatch, FleetGatewayObservationOutcome,
+    FleetGatewaySnapshotCommandService, FleetGatewaySnapshotInstallRequest,
+    FleetGatewaySnapshotObserveRequest, IFleetGatewaySnapshotCommandPort,
+};
 pub use log_compaction::LogCompactionWorker;
 pub use log_reader::{
     NodeLogGapReason, NodeLogPage, NodeLogReadQuery, NodeLogReader, NodeLogRecord,

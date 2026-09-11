@@ -78,8 +78,12 @@ async fn route_cutover_rejects_an_observation_from_another_runtime_command(
             &control_port,
         )),
     );
+    let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
+        Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
+            Arc::clone(&control_port),
+        ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
-        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
+        Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let updater = EdgeDeploymentRouteUpdater::new(
         route_port,
         observations,
@@ -138,8 +142,12 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
             &control_port,
         )),
     );
+    let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
+        Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
+            Arc::clone(&control_port),
+        ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
-        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
+        Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let route_updates = Arc::new(EdgeDeploymentRouteUpdater::new(
         route_port,
         observations,

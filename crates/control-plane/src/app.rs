@@ -179,13 +179,14 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkStore};
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
-    EnrollNodeHandler, FleetModule, GetNodeHandler, GetNodePoolHandler,
-    IGatewayAcknowledgementProjector, IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler,
-    ListNodePoolsHandler, ListNodesHandler, LocalCertificateAuthority, LocalKeyEncryptionService,
-    LogChunkObjectStore, LogCompactionWorker, LogRetentionWorker, ManageNodePoolHandler,
-    NodeAvailabilityReconciler, NodeControlApi, NodeControlServer,
-    RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler, RecordNodeObservationsHandler,
-    RotateNodeCertificateHandler, VaultCertificateAuthority, VaultKeyEncryptionService,
+    EnrollNodeHandler, FleetGatewaySnapshotCommandService, FleetModule, GetNodeHandler,
+    GetNodePoolHandler, IFleetGatewaySnapshotCommandPort, IGatewayAcknowledgementProjector,
+    IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodePoolsHandler, ListNodesHandler,
+    LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore, LogCompactionWorker,
+    LogRetentionWorker, ManageNodePoolHandler, NodeAvailabilityReconciler, NodeControlApi,
+    NodeControlServer, RecordGatewayAcknowledgementHandler, RecordNodeLogChunksHandler,
+    RecordNodeObservationsHandler, RotateNodeCertificateHandler, VaultCertificateAuthority,
+    VaultKeyEncryptionService,
 };
 use crate::modules::forms::{
     CreateFormDraftHandler, FormsModule, GetFormDraftHandler, GetFormReleaseHandler,
@@ -993,8 +994,13 @@ async fn build_api_worker_application(
         )
         .map_err(ControlPlaneStartupError::NodeControl)?,
     );
-    let route_commands: Arc<dyn IGatewayCommandQueue> =
-        Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_control)));
+    let fleet_gateway_commands: Arc<dyn IFleetGatewaySnapshotCommandPort> =
+        Arc::new(FleetGatewaySnapshotCommandService::new(Arc::clone(
+            &node_control,
+        )));
+    let route_commands: Arc<dyn IGatewayCommandQueue> = Arc::new(FleetGatewayCommandQueue::new(
+        Arc::clone(&fleet_gateway_commands),
+    ));
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -1661,7 +1667,9 @@ async fn build_api_worker_application(
     };
     let worker_gateway = if run_operations {
         let gateway_observations: Arc<dyn IGatewayObservationQueue> =
-            Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
+            Arc::new(FleetGatewayObservationQueue::new(Arc::clone(
+                &fleet_gateway_commands,
+            )));
         Some(WorkerGatewayDependencies {
             gateway_certificate_reconciler: GatewayCertificateReconciler::new_managed(
                 Arc::clone(&routes),
