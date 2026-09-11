@@ -1090,8 +1090,12 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
     );
 
     let route_reader = WorkloadsFleetRouteTargetAccessAdapter::new(
-        workloads.clone(),
-        nodes.clone(),
+        Arc::new(crate::modules::workloads::WorkloadHealthyRouteTargetCandidateQueryService::new(
+            workloads.clone(),
+        )),
+        Arc::new(crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(
+            nodes.clone(),
+        )),
         Duration::seconds(30),
     )?;
     let port_name = RoutePortName::parse("http")?;

@@ -7,6 +7,7 @@
 mod active_mcp_revision_projection;
 mod authorized_secret_materialization;
 mod bound_runtime_claim;
+mod healthy_route_target_candidates;
 
 pub(in crate::modules::workloads) use active_mcp_revision_projection::ValidatedActiveMcpWorkloadRevisionProjection;
 pub use active_mcp_revision_projection::{
@@ -18,3 +19,10 @@ pub use authorized_secret_materialization::{
 };
 pub(in crate::modules::workloads) use bound_runtime_claim::ValidatedBoundRuntimeClaimProjection;
 pub use bound_runtime_claim::{BoundRuntimeClaim, BOUND_RUNTIME_CLAIM_SCHEMA};
+pub(in crate::modules::workloads) use healthy_route_target_candidates::{
+    ValidatedWorkloadHealthyRouteTargetCandidate, ValidatedWorkloadHealthyRouteTargetCandidateSet,
+};
+pub use healthy_route_target_candidates::{
+    WorkloadHealthyRouteTargetCandidate, WorkloadHealthyRouteTargetCandidateSet,
+    WORKLOAD_HEALTHY_ROUTE_TARGET_CANDIDATE_SET_SCHEMA,
+};

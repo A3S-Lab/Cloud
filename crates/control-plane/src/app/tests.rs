@@ -2104,10 +2104,21 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
     let gateway_projector: Arc<dyn IGatewayAcknowledgementProjector> = Arc::new(
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
+    let edge_runtime_observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> =
+        Arc::new(crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(
+            Arc::clone(&node_control),
+        ));
+    let route_target_candidates: Arc<
+        dyn crate::modules::workloads::IWorkloadHealthyRouteTargetCandidateQueryPort,
+    > = Arc::new(
+        crate::modules::workloads::WorkloadHealthyRouteTargetCandidateQueryService::new(
+            Arc::clone(&workload_port),
+        ),
+    );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
         WorkloadsFleetRouteTargetAccessAdapter::new(
-            Arc::clone(&workload_port),
-            Arc::clone(&node_control),
+            route_target_candidates,
+            edge_runtime_observations,
             chrono::Duration::seconds(5),
         )
         .map_err(BootError::Internal)?,

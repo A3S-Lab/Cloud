@@ -11286,16 +11286,57 @@ fn edge_mcp_gateway_projection_isolates_healthy_route_target_reading() {
     let production_adapter = production_source(&adapter);
     for required in [
         "pub struct WorkloadsFleetRouteTargetAccessAdapter",
-        "IWorkloadRepository",
-        "INodeControlRepository",
+        "IWorkloadHealthyRouteTargetCandidateQueryPort",
+        "IEdgeRuntimeObservationAccess",
         "impl IRouteTargetReader for WorkloadsFleetRouteTargetAccessAdapter",
-        "project_replica_runtime_spec",
+        "find_candidates(",
     ] {
         assert!(
             production_adapter.contains(required),
             "route target ACA lost quarantine surface {required}"
         );
     }
+    for forbidden in [
+        "IWorkloadRepository",
+        "INodeControlRepository",
+        "project_replica_runtime_spec",
+        "entities::Workload",
+        "entities::Deployment",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "route target ACA regained foreign repository authority {forbidden}"
+        );
+    }
+
+    let owner_port = std::fs::read_to_string(
+        root.join("workloads/application/healthy_route_target_candidates.rs"),
+    )
+    .expect("read Workloads healthy route-target candidate port");
+    let compact_owner = production_source(&owner_port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIWorkloadHealthyRouteTargetCandidateQueryPort:Send+Sync",
+        "asyncfnfind_candidates(",
+        "pubstructWorkloadHealthyRouteTargetCandidateQuery",
+        "pubstructWorkloadHealthyRouteTargetCandidateQueryService",
+        "project_replica_runtime_spec",
+    ] {
+        assert!(
+            compact_owner.contains(required),
+            "Workloads healthy route-target candidate port lost minimum surface {required}"
+        );
+    }
+
+    let published = std::fs::read_to_string(
+        root.join("workloads/published/healthy_route_target_candidates.rs"),
+    )
+    .expect("read Workloads published healthy route-target candidates");
+    assert!(
+        production_source(&published).contains("WorkloadHealthyRouteTargetCandidateSet"),
+        "Workloads published healthy route-target candidate set missing"
+    );
 
     let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
         .expect("read root composition");
@@ -11310,6 +11351,10 @@ fn edge_mcp_gateway_projection_isolates_healthy_route_target_reading() {
             .count(),
         1,
         "healthy route-target ACA must have exactly one production composition site"
+    );
+    assert!(
+        production_app.contains("WorkloadHealthyRouteTargetCandidateQueryService::new("),
+        "root composition must construct the Workloads route-target candidate owner query once"
     );
 }
 

@@ -3,6 +3,7 @@ mod bound_runtime_claim;
 pub mod commands;
 mod deployment_operation_access;
 mod environment_access;
+mod healthy_route_target_candidates;
 mod log_access;
 mod mcp_active_revision_projection;
 mod node_pool_access;
@@ -60,6 +61,10 @@ pub use deployment_operation_access::{
     IWorkloadDeploymentOperationAccess, WorkloadDeploymentOperationProjection,
 };
 pub use environment_access::{IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope};
+pub use healthy_route_target_candidates::{
+    IWorkloadHealthyRouteTargetCandidateQueryPort, WorkloadHealthyRouteTargetCandidateQuery,
+    WorkloadHealthyRouteTargetCandidateQueryService,
+};
 pub use log_access::{
     IWorkloadLogAccess, WorkloadLogChunkMetadata, WorkloadLogCompactionRange, WorkloadLogGapReason,
     WorkloadLogProviderGapMetadata, WorkloadLogReadQuery, WorkloadLogReadResult, WorkloadLogRecord,

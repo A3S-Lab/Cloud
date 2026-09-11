@@ -15,7 +15,8 @@ pub use application::{
     CreateWorkloadDeploymentHandler, CreateWorkloadDeploymentResult, DeploymentQueryResult,
     DeploymentRuntimeExecutionAdmissionRequest, GetDeployment, GetDeploymentHandler, GetWorkload,
     GetWorkloadHandler, GetWorkloadLogs, GetWorkloadLogsHandler, IBoundRuntimeClaimQueryPort,
-    IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess, IWorkloadLogAccess,
+    IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess,
+    IWorkloadHealthyRouteTargetCandidateQueryPort, IWorkloadLogAccess,
     IWorkloadMcpActiveRevisionProjectionQueryPort, IWorkloadRuntimeExecutionAdmissionPort,
     IWorkloadRuntimeObservationAccess, IWorkloadSecretMaterializationAuthorizationQueryPort,
     IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
@@ -26,9 +27,11 @@ pub use application::{
     StopWorkloadResult, UnbindSkillWorkloadDeployment, UnbindSkillWorkloadDeploymentHandler,
     UpdateAgentWorkloadDeployment, UpdateAgentWorkloadDeploymentHandler, UpdateWorkloadDeployment,
     UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult, WorkloadAccess,
-    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadMcpActiveRevisionProjectionQuery,
-    WorkloadMcpActiveRevisionProjectionQueryService, WorkloadQueryResult,
-    WorkloadReplicaQueryResult, WorkloadSecretMaterializationAuthorizationQuery,
+    WorkloadHealthyRouteTargetCandidateQuery, WorkloadHealthyRouteTargetCandidateQueryService,
+    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
+    WorkloadMcpActiveRevisionProjectionQuery, WorkloadMcpActiveRevisionProjectionQueryService,
+    WorkloadQueryResult, WorkloadReplicaQueryResult,
+    WorkloadSecretMaterializationAuthorizationQuery,
     WorkloadSecretMaterializationAuthorizationQueryService, WorkloadsEnvironmentScope,
     WorkloadsNodePoolScope, WorkloadsSecretBindingScope,
 };
@@ -113,6 +116,8 @@ pub(crate) use infrastructure::{
 pub use presentation::WorkloadsModule;
 pub use published::{
     ActiveMcpWorkloadRevisionProjection, AuthorizedWorkloadSecretMaterialization,
+    WorkloadHealthyRouteTargetCandidate, WorkloadHealthyRouteTargetCandidateSet,
     ACTIVE_MCP_WORKLOAD_REVISION_PROJECTION_SCHEMA,
     AUTHORIZED_WORKLOAD_SECRET_MATERIALIZATION_SCHEMA,
+    WORKLOAD_HEALTHY_ROUTE_TARGET_CANDIDATE_SET_SCHEMA,
 };

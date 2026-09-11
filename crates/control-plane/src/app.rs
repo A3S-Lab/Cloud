@@ -361,7 +361,8 @@ use crate::modules::workloads::{
     DeploymentFlowRuntime, FleetWorkloadLogAccessAdapter,
     FleetWorkloadRuntimeObservationAccessAdapter, FleetWorkloadsNodePoolAccessAdapter,
     GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess, IWorkloadLogAccess,
+    IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess,
+    IWorkloadHealthyRouteTargetCandidateQueryPort, IWorkloadLogAccess,
     IWorkloadMcpActiveRevisionProjectionQueryPort, IWorkloadRuntimeExecutionAdmissionPort,
     IWorkloadRuntimeObservationAccess, IWorkloadSecretMaterializationAuthorizationQueryPort,
     IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
@@ -373,9 +374,9 @@ use crate::modules::workloads::{
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
     SourcesArtifactsWorkloadSourceBuildAdmissionAdapter, StopWorkloadHandler,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeploymentHandler,
-    UpdateWorkloadDeploymentHandler, WorkloadMcpActiveRevisionProjectionQueryService,
-    WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
-    WorkloadsModule,
+    UpdateWorkloadDeploymentHandler, WorkloadHealthyRouteTargetCandidateQueryService,
+    WorkloadMcpActiveRevisionProjectionQueryService, WorkloadRuntimeReconciler,
+    WorkloadSecretMaterializationAuthorizationQueryService, WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -976,10 +977,17 @@ async fn build_api_worker_application(
     let github_installation_tokens: Arc<dyn IGithubInstallationTokenService> = Arc::new(
         RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
     );
+    let edge_runtime_observations: Arc<dyn IEdgeRuntimeObservationAccess> = Arc::new(
+        FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(&node_control)),
+    );
+    let route_target_candidates: Arc<dyn IWorkloadHealthyRouteTargetCandidateQueryPort> =
+        Arc::new(WorkloadHealthyRouteTargetCandidateQueryService::new(
+            Arc::clone(&workloads),
+        ));
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
         WorkloadsFleetRouteTargetAccessAdapter::new(
-            Arc::clone(&workloads),
-            Arc::clone(&node_control),
+            route_target_candidates,
+            Arc::clone(&edge_runtime_observations),
             chrono_duration(config.fleet.heartbeat_timeout_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -1031,9 +1039,6 @@ async fn build_api_worker_application(
     let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
         Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&mcp_node_projection_planner),
-    );
-    let edge_runtime_observations: Arc<dyn IEdgeRuntimeObservationAccess> = Arc::new(
-        FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(&node_control)),
     );
     let edge_managed_inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess> =
         Arc::new(IdentityInferenceEdgeManagedAclAccessAdapter::new(
