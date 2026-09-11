@@ -1,11 +1,10 @@
 use super::GetWorkloadLogs;
-use crate::modules::fleet::application::{NodeLogReadQuery, NodeLogReader, MAX_LOG_PAGE_SIZE};
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
-use crate::modules::fleet::domain::services::ILogChunkStore;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::WorkloadLogPage;
-use crate::modules::workloads::application::WorkloadResourceResolver;
+use crate::modules::workloads::application::{
+    IWorkloadLogAccess, WorkloadLogReadQuery, WorkloadResourceResolver, WORKLOAD_MAX_LOG_PAGE_SIZE,
+};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{BootError, CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -13,19 +12,15 @@ use std::sync::Arc;
 pub struct GetWorkloadLogsHandler {
     workloads: Arc<dyn IWorkloadRepository>,
     resources: WorkloadResourceResolver,
-    logs: NodeLogReader,
+    logs: Arc<dyn IWorkloadLogAccess>,
 }
 
 impl GetWorkloadLogsHandler {
-    pub fn new(
-        workloads: Arc<dyn IWorkloadRepository>,
-        metadata: Arc<dyn INodeControlRepository>,
-        objects: Arc<dyn ILogChunkStore>,
-    ) -> Self {
+    pub fn new(workloads: Arc<dyn IWorkloadRepository>, logs: Arc<dyn IWorkloadLogAccess>) -> Self {
         Self {
             workloads: Arc::clone(&workloads),
             resources: WorkloadResourceResolver::new(workloads),
-            logs: NodeLogReader::new(metadata, objects),
+            logs,
         }
     }
 }
@@ -38,11 +33,11 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<WorkloadLogPage>>> {
         let workloads = Arc::clone(&self.workloads);
         let resources = self.resources.clone();
-        let logs = self.logs.clone();
+        let logs = Arc::clone(&self.logs);
         Box::pin(async move {
-            if query.limit == 0 || query.limit > MAX_LOG_PAGE_SIZE {
+            if query.limit == 0 || query.limit > WORKLOAD_MAX_LOG_PAGE_SIZE {
                 return Ok(Err(ApplicationError::Invalid(format!(
-                    "workload log limit must be between 1 and {MAX_LOG_PAGE_SIZE}"
+                    "workload log limit must be between 1 and {WORKLOAD_MAX_LOG_PAGE_SIZE}"
                 ))));
             }
             let workload = match resources
@@ -106,7 +101,7 @@ impl QueryHandler<GetWorkloadLogs> for GetWorkloadLogsHandler {
             };
             let unit_id = binding.runtime_unit_id;
             let page = match logs
-                .read(NodeLogReadQuery {
+                .read(WorkloadLogReadQuery {
                     node_id,
                     unit_id,
                     generation: binding.runtime_generation,

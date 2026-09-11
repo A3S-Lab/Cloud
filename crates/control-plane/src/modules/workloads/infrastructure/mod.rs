@@ -1,5 +1,6 @@
 mod agent_release_admission;
 mod deployment_flow;
+mod fleet_log_access;
 mod fleet_node_pool_access;
 mod fleet_runtime_observation_access;
 mod identity_runtime_execution_admission;
@@ -27,6 +28,7 @@ pub use deployment_flow::{
     PREVIOUS_DEPLOYMENT_WORKFLOW_VERSION, PREVIOUS_PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
     RESOURCE_CLAIM_DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
+pub use fleet_log_access::FleetWorkloadLogAccessAdapter;
 pub use fleet_node_pool_access::FleetWorkloadsNodePoolAccessAdapter;
 pub use fleet_runtime_observation_access::FleetWorkloadRuntimeObservationAccessAdapter;
 pub use identity_runtime_execution_admission::IdentityWorkloadRuntimeExecutionAdmissionAdapter;

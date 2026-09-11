@@ -26,7 +26,9 @@ use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
 };
 use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
-use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+use crate::modules::workloads::infrastructure::{
+    FleetWorkloadLogAccessAdapter, InMemoryWorkloadRepository,
+};
 use a3s_boot::{CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
     NodeCommandAck, NodeCommandLeaseRequest, NodeCommandLeaseResponse, NodeGatewayAck,
@@ -297,7 +299,13 @@ async fn workload_logs_page_by_sequence_and_surface_missing_and_corrupt_objects(
         ])),
         calls: AtomicUsize::new(0),
     });
-    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata.clone(), objects);
+    let handler = GetWorkloadLogsHandler::new(
+        seeded.repository.clone(),
+        Arc::new(FleetWorkloadLogAccessAdapter::new(
+            metadata.clone(),
+            objects,
+        )),
+    );
 
     let first = handler
         .execute(query(&seeded, seeded.organization_id, None, 2), context())
@@ -365,7 +373,13 @@ async fn provider_gaps_merge_into_sequence_pagination_and_ignore_stream_filters(
         ])),
         calls: AtomicUsize::new(0),
     });
-    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+    let handler = GetWorkloadLogsHandler::new(
+        seeded.repository.clone(),
+        Arc::new(FleetWorkloadLogAccessAdapter::new(
+            metadata,
+            objects.clone(),
+        )),
+    );
 
     let first = handler
         .execute(query(&seeded, seeded.organization_id, None, 2), context())
@@ -427,7 +441,13 @@ async fn retained_sequence_zero_is_an_explicit_gap_without_an_object_read() {
         objects: RwLock::new(BTreeMap::new()),
         calls: AtomicUsize::new(0),
     });
-    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+    let handler = GetWorkloadLogsHandler::new(
+        seeded.repository.clone(),
+        Arc::new(FleetWorkloadLogAccessAdapter::new(
+            metadata,
+            objects.clone(),
+        )),
+    );
 
     let page = handler
         .execute(query(&seeded, seeded.organization_id, None, 10), context())
@@ -482,7 +502,13 @@ async fn compacted_ranges_are_explicit_and_page_to_their_terminal_sequence() {
         )])),
         calls: AtomicUsize::new(0),
     });
-    let handler = GetWorkloadLogsHandler::new(seeded.repository.clone(), metadata, objects.clone());
+    let handler = GetWorkloadLogsHandler::new(
+        seeded.repository.clone(),
+        Arc::new(FleetWorkloadLogAccessAdapter::new(
+            metadata,
+            objects.clone(),
+        )),
+    );
 
     let compacted = handler
         .execute(query(&seeded, seeded.organization_id, None, 1), context())
@@ -555,11 +581,13 @@ async fn workload_log_query_does_not_cross_the_organization_boundary() {
     });
     let handler = GetWorkloadLogsHandler::new(
         seeded.repository.clone(),
-        metadata.clone(),
-        Arc::new(QueryLogStore {
-            objects: RwLock::new(BTreeMap::new()),
-            calls: AtomicUsize::new(0),
-        }),
+        Arc::new(FleetWorkloadLogAccessAdapter::new(
+            metadata.clone(),
+            Arc::new(QueryLogStore {
+                objects: RwLock::new(BTreeMap::new()),
+                calls: AtomicUsize::new(0),
+            }),
+        )),
     );
     let result = handler
         .execute(query(&seeded, OrganizationId::new(), None, 10), context())

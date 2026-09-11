@@ -9222,6 +9222,88 @@ fn workloads_deployment_queries_isolate_fleet_observations_behind_one_owner_port
 }
 
 #[test]
+fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(root.join("workloads/application/log_access.rs"))
+        .expect("read Workloads log access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubconstWORKLOAD_MAX_LOG_PAGE_SIZE:u16=256",
+        "pubstructWorkloadLogReadQuery",
+        "pubstructWorkloadLogReadResult",
+        "pubtraitIWorkloadLogAccess:Send+Sync",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads lost its narrow Fleet log boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "ILogChunkStore",
+        "NodeLogReader",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Workloads log access port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        root.join("workloads/application/queries/get_workload_logs/handler.rs"),
+    )
+    .expect("read GetWorkloadLogs handler");
+    let production_handler = production_source(&handler);
+    assert!(
+        production_handler.contains("IWorkloadLogAccess"),
+        "GetWorkloadLogs handler lost IWorkloadLogAccess wiring"
+    );
+    assert!(
+        production_handler.contains("WORKLOAD_MAX_LOG_PAGE_SIZE"),
+        "GetWorkloadLogs handler lost WORKLOAD_MAX_LOG_PAGE_SIZE"
+    );
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "ILogChunkStore",
+        "NodeLogReader",
+        "NodeLogReadQuery",
+    ] {
+        assert!(
+            !production_handler.contains(forbidden),
+            "GetWorkloadLogs handler regained Fleet authority {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(root.join("workloads/infrastructure/fleet_log_access.rs"))
+            .expect("read Workloads Fleet log adapter");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "impl IWorkloadLogAccess",
+        "NodeLogReader",
+        "WorkloadLogReadResult",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Workloads Fleet log adapter lost {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read production composition");
+    assert_eq!(
+        app.matches("FleetWorkloadLogAccessAdapter::new(").count(),
+        1,
+        "root composition must construct the Workloads Fleet log adapter exactly once"
+    );
+}
+
+#[test]
 fn workloads_secret_bindings_isolate_secrets_behind_one_owner_port() {
     let root = module_root();
 
