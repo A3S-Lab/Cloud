@@ -1,5 +1,4 @@
-use crate::modules::edge::domain::McpCredential;
-use crate::modules::secrets::domain::EncryptedSecretValue;
+use crate::modules::edge::domain::{EdgeEncryptedCredentialValue, McpCredential};
 use crate::modules::shared_kernel::domain::{canonical_timestamp, McpCredentialId, OrganizationId};
 use chrono::{DateTime, Utc};
 
@@ -14,7 +13,7 @@ pub struct McpCredentialDeliveryReceipt {
     pub organization_id: OrganizationId,
     pub credential_id: McpCredentialId,
     pub generation: u64,
-    pub encrypted_value: EncryptedSecretValue,
+    pub encrypted_value: EdgeEncryptedCredentialValue,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -24,7 +23,7 @@ impl McpCredentialDeliveryReceipt {
         organization_id: OrganizationId,
         credential_id: McpCredentialId,
         generation: u64,
-        encrypted_value: EncryptedSecretValue,
+        encrypted_value: EdgeEncryptedCredentialValue,
         expires_at: DateTime<Utc>,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {

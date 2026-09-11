@@ -393,8 +393,9 @@ fn remember(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::edge::domain::McpCredentialDeliveryReceipt;
-    use crate::modules::secrets::domain::EncryptedSecretValue;
+    use crate::modules::edge::domain::{
+        EdgeEncryptedCredentialValue, McpCredentialDeliveryReceipt,
+    };
     use chrono::{Duration, TimeZone, Utc};
 
     const VERIFIER: &str = "$argon2id$v=19$m=19456,t=2,p=1$c29tZXNhbHQxMjM0NTY3OA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
@@ -604,7 +605,8 @@ mod tests {
                 organization_id,
                 credential_id,
                 1,
-                EncryptedSecretValue::new("test-key", "encrypted-value").expect("encrypted value"),
+                EdgeEncryptedCredentialValue::new("test-key", "encrypted-value")
+                    .expect("encrypted value"),
                 expires_at,
                 now() - Duration::minutes(20),
             )

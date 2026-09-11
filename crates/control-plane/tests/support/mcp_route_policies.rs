@@ -42,7 +42,7 @@ use a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectio
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
-use a3s_cloud_control_plane::modules::secrets::domain::EncryptedSecretValue;
+use a3s_cloud_control_plane::modules::edge::domain::EdgeEncryptedCredentialValue;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
     GatewayRolloutId, GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId,
@@ -124,7 +124,7 @@ pub async fn exercise(
         organization_id,
         credential.id,
         credential.generation(),
-        EncryptedSecretValue::new("test-key", "encrypted-test-credential")?,
+        EdgeEncryptedCredentialValue::new("test-key", "encrypted-test-credential")?,
         delivery_expires_at,
         now,
     )?;

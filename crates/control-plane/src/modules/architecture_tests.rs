@@ -11309,6 +11309,61 @@ fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
         1,
         "root composition must construct the Edge MCP credential encryption adapter exactly once"
     );
+
+    let owned = std::fs::read_to_string(
+        root.join("edge/domain/value_objects/edge_encrypted_credential_value.rs"),
+    )
+    .expect("read Edge encrypted credential value");
+    let production_owned = production_source(&owned);
+    let compact_owned = production_owned.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructEdgeEncryptedCredentialValue",
+        "pubfnkey_id(&self)->&str",
+        "pubfnciphertext(&self)->&str",
+        "pubfnvalidate(&self)->Result<(),String>",
+    ] {
+        assert!(
+            compact_owned.contains(required),
+            "Edge lost owned encrypted credential surface {required}"
+        );
+    }
+    for forbidden in ["crate::modules::secrets", "EncryptedSecretValue"] {
+        assert!(
+            !production_owned.contains(forbidden),
+            "owned Edge encrypted credential value leaked Secrets authority {forbidden}"
+        );
+    }
+
+    let receipt =
+        std::fs::read_to_string(root.join("edge/domain/entities/mcp_credential_delivery_receipt.rs"))
+            .expect("read MCP credential delivery receipt");
+    let production_receipt = production_source(&receipt);
+    assert!(
+        production_receipt.contains("EdgeEncryptedCredentialValue"),
+        "MCP credential delivery receipt lost Edge-owned encrypted value"
+    );
+    for forbidden in ["crate::modules::secrets", "EncryptedSecretValue"] {
+        assert!(
+            !production_receipt.contains(forbidden),
+            "MCP credential delivery receipt regained Secrets authority {forbidden}"
+        );
+    }
+
+    visit_production_sources(|relative, source| {
+        if !relative.starts_with("edge/domain/") {
+            return;
+        }
+        assert!(
+            !source.contains("crate::modules::secrets"),
+            "{} imported Secrets into Edge Domain",
+            display(relative)
+        );
+        assert!(
+            !source.contains("EncryptedSecretValue"),
+            "{} retained Secrets EncryptedSecretValue in Edge Domain",
+            display(relative)
+        );
+    });
 }
 
 #[test]

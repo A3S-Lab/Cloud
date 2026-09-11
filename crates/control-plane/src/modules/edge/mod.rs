@@ -43,17 +43,18 @@ pub use domain::services::{
     ResolvedRouteTarget, ResolvedRouteTargetSet,
 };
 pub use domain::{
-    DomainClaim, DomainClaimState, DomainNamePattern, EdgeMcpServiceProfileAdmission,
-    EdgeMcpServiceProfileProjectionBinding, EdgeMcpWorkloadRevisionProjectionBinding,
-    GatewayCertificate, GatewayCertificateConvergence, GatewayCertificateConvergenceReason,
-    GatewayCertificateConvergenceState, GatewayCertificateMaterial, GatewayCertificateState,
-    GatewayPublication, GatewayPublicationState, GatewayReplicaRecovery,
-    GatewayReplicaRecoveryState, GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout,
-    GatewayRolloutPolicy, GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState,
-    GatewayRouteCutover, GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope,
-    GatewayScopeState, McpCredential, McpCredentialDeliveryReceipt, McpRoutePolicy,
-    McpRoutePolicyDocument, McpRoutePolicySpec, Route, RouteHostname, RoutePath, RoutePortName,
-    RouteState, RouteTarget, UpstreamEndpoint, MCP_ROUTE_POLICY_MAX_ACL_BYTES,
+    DomainClaim, DomainClaimState, DomainNamePattern, EdgeEncryptedCredentialValue,
+    EdgeMcpServiceProfileAdmission, EdgeMcpServiceProfileProjectionBinding,
+    EdgeMcpWorkloadRevisionProjectionBinding, GatewayCertificate, GatewayCertificateConvergence,
+    GatewayCertificateConvergenceReason, GatewayCertificateConvergenceState,
+    GatewayCertificateMaterial, GatewayCertificateState, GatewayPublication,
+    GatewayPublicationState, GatewayReplicaRecovery, GatewayReplicaRecoveryState,
+    GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutPolicy,
+    GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
+    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpCredential,
+    McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec, Route,
+    RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
+    MCP_ROUTE_POLICY_MAX_ACL_BYTES,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{

@@ -4,10 +4,11 @@ use crate::modules::edge::application::{
 };
 use crate::modules::edge::domain::repositories::McpCredentialWrite;
 use crate::modules::edge::domain::{
-    mcp_credential_delivery_context, McpCredential, McpCredentialDeliveryReceipt,
+    mcp_credential_delivery_context, EdgeEncryptedCredentialValue, McpCredential,
+    McpCredentialDeliveryReceipt,
 };
 use crate::modules::secrets::application::encryption_error;
-use crate::modules::secrets::domain::ISecretEncryptionService;
+use crate::modules::secrets::domain::{EncryptedSecretValue, ISecretEncryptionService};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -46,6 +47,8 @@ impl IEdgeMcpCredentialEncryption for SecretsEdgeMcpCredentialEncryptionAdapter 
             .encrypt(bearer_credential.as_bytes(), &context)
             .await
             .map_err(encryption_error)?;
+        let owned = EdgeEncryptedCredentialValue::new(encrypted.key_id(), encrypted.ciphertext())
+            .map_err(ApplicationError::Internal)?;
         let delivery_expires_at = std::cmp::min(
             credential.expires_at(),
             credential.updated_at()
@@ -55,7 +58,7 @@ impl IEdgeMcpCredentialEncryption for SecretsEdgeMcpCredentialEncryptionAdapter 
             credential.organization_id,
             credential.id,
             credential.generation(),
-            encrypted,
+            owned,
             delivery_expires_at,
             credential.updated_at(),
         )
@@ -91,9 +94,14 @@ impl IEdgeMcpCredentialEncryption for SecretsEdgeMcpCredentialEncryptionAdapter 
             write.credential.generation(),
         )
         .map_err(ApplicationError::Internal)?;
+        let secrets_value = EncryptedSecretValue::new(
+            receipt.encrypted_value.key_id(),
+            receipt.encrypted_value.ciphertext(),
+        )
+        .map_err(ApplicationError::Internal)?;
         let plaintext = Zeroizing::new(
             self.encryption
-                .decrypt(&receipt.encrypted_value, &context)
+                .decrypt(&secrets_value, &context)
                 .await
                 .map_err(encryption_error)?,
         );

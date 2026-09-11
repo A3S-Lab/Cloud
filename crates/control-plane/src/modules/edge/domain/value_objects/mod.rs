@@ -1,4 +1,5 @@
 mod domain_name_pattern;
+mod edge_encrypted_credential_value;
 mod gateway_rollout_policy;
 mod gateway_snapshot_runtime_settings;
 mod mcp_service_profile_admission;
@@ -11,6 +12,7 @@ mod route_target;
 mod upstream_endpoint;
 
 pub use domain_name_pattern::DomainNamePattern;
+pub use edge_encrypted_credential_value::EdgeEncryptedCredentialValue;
 pub use gateway_rollout_policy::{GatewayRolloutPolicy, MAX_GATEWAY_SCOPE_MEMBERS};
 pub(crate) use gateway_snapshot_runtime_settings::GatewaySnapshotRuntimeSettings;
 pub use mcp_service_profile_admission::EdgeMcpServiceProfileAdmission;

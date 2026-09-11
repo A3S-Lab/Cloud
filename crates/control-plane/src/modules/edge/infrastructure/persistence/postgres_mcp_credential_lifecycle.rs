@@ -12,8 +12,9 @@ use crate::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, IMcpCredentialLifecycleRepository, McpCredentialWrite,
     McpCredentialWriteReference, RevokeMcpCredentialWrite, RotateMcpCredentialWrite,
 };
-use crate::modules::edge::domain::{McpCredential, McpCredentialDeliveryReceipt};
-use crate::modules::secrets::domain::EncryptedSecretValue;
+use crate::modules::edge::domain::{
+    EdgeEncryptedCredentialValue, McpCredential, McpCredentialDeliveryReceipt,
+};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotencyRequest, OrganizationId, RepositoryError,
 };
@@ -342,7 +343,7 @@ async fn fetch_receipt(
     )
     .await?;
     row.map(|(generation, key_id, ciphertext, expires_at, created_at)| {
-        let encrypted = EncryptedSecretValue::new(key_id, ciphertext)
+        let encrypted = EdgeEncryptedCredentialValue::new(key_id, ciphertext)
             .map_err(|error| stored_receipt(&error))?;
         let receipt = McpCredentialDeliveryReceipt::new(
             credential.organization_id,
