@@ -9943,7 +9943,17 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
     let create = production_source(&create);
     assert!(create.contains("Arc<dyn ISecretEnvironmentAccess>"));
     assert_eq!(create.matches(".environment_exists(").count(), 1);
+    assert!(create.contains("environment_is_visible(command.project_id, command.environment_id)"));
     assert!(!create.contains("IEnvironmentRepository"));
+
+    let create_command = std::fs::read_to_string(
+        root.join("secrets/application/commands/create_secret/command.rs"),
+    )
+    .expect("read CreateSecret command");
+    assert!(
+        production_source(&create_command).contains("pub access: SecretAccess"),
+        "CreateSecret must carry Secrets-owned access"
+    );
 
     let owner = std::fs::read_to_string(
         root.join("workloads/application/secret_materialization_authorization.rs"),
@@ -10097,7 +10107,7 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
         (
             "secrets/presentation/controllers/secrets_controller.rs",
             2,
-            2,
+            3,
             "organization_tenant_secret_write_controller(controller)",
         ),
         (

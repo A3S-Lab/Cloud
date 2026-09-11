@@ -674,6 +674,7 @@ async fn create_agent_secret(
             organization_id,
             project_id,
             environment_id,
+            access: crate::modules::secrets::application::SecretAccess::organization_wide(),
             name: name.into(),
             value: SecretPlaintext::new(material.to_vec())?,
             idempotency_key: format!("create-{}", name.to_ascii_lowercase().replace(' ', "-")),

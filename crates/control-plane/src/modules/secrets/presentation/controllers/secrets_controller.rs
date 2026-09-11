@@ -31,12 +31,16 @@ pub fn secrets_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> 
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = secret_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let value = SecretPlaintext::new(body.value).map_err(BootError::BadRequest)?;
                     match bus
                         .execute(CreateSecret {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             name: body.name,
                             value,
                             idempotency_key,

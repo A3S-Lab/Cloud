@@ -1,10 +1,10 @@
 use super::CreateSecret;
 use crate::modules::secrets::application::{
-    encryption_error, ISecretEnvironmentAccess, SecretEnvironmentScope, SecretMutationResult,
+    ISecretEnvironmentAccess, SecretEnvironmentScope, SecretMutationResult, encryption_error,
 };
 use crate::modules::secrets::domain::{
-    secret_encryption_context, CreateSecretWrite, ISecretEncryptionService, ISecretRepository,
-    Secret, SecretChanged,
+    CreateSecretWrite, ISecretEncryptionService, ISecretRepository, Secret, SecretChanged,
+    secret_encryption_context,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, ResourceName, SecretId};
@@ -44,6 +44,14 @@ impl CommandHandler<CreateSecret> for CreateSecretHandler {
         let secrets = Arc::clone(&self.secrets);
         let encryption = Arc::clone(&self.encryption);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found in organization and project".into(),
+                )));
+            }
             let environment_scope = match SecretEnvironmentScope::new(
                 command.organization_id,
                 command.project_id,
@@ -57,7 +65,7 @@ impl CommandHandler<CreateSecret> for CreateSecretHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -135,4 +143,92 @@ struct CanonicalCreateSecret<'a> {
     environment_id: crate::modules::shared_kernel::domain::EnvironmentId,
     name: &'a str,
     value_digest: &'a str,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::secrets::application::resource_access::{SecretAccess, SecretAccessScope};
+    use crate::modules::secrets::application::SecretPlaintext;
+    use crate::modules::secrets::domain::{EncryptedSecretValue, SecretEncryptionError};
+    use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+    use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+    use uuid::Uuid;
+
+    struct AlwaysPresentEnvironmentAccess;
+
+    #[async_trait]
+    impl ISecretEnvironmentAccess for AlwaysPresentEnvironmentAccess {
+        async fn environment_exists(
+            &self,
+            _scope: SecretEnvironmentScope,
+        ) -> Result<bool, crate::modules::shared_kernel::domain::RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    struct RejectEncryption;
+
+    #[async_trait]
+    impl ISecretEncryptionService for RejectEncryption {
+        async fn encrypt(
+            &self,
+            _plaintext: &[u8],
+            _context: &[u8],
+        ) -> Result<EncryptedSecretValue, SecretEncryptionError> {
+            Err(SecretEncryptionError::Unavailable(
+                "encryption must not run for denied creates".into(),
+            ))
+        }
+
+        async fn decrypt(
+            &self,
+            _ciphertext: &EncryptedSecretValue,
+            _context: &[u8],
+        ) -> Result<Vec<u8>, SecretEncryptionError> {
+            Err(SecretEncryptionError::Unavailable(
+                "decrypt must not run for denied creates".into(),
+            ))
+        }
+
+        async fn health(&self) -> Result<bool, SecretEncryptionError> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn create_secret_fails_closed_before_creating_in_an_ungranted_environment() {
+        let project_id = ProjectId::new();
+        let handler = CreateSecretHandler::new(
+            Arc::new(AlwaysPresentEnvironmentAccess),
+            Arc::new(InMemorySecretRepository::new()),
+            Arc::new(RejectEncryption),
+        );
+        let result = handler
+            .execute(
+                CreateSecret {
+                    organization_id: OrganizationId::new(),
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                    access: SecretAccess::restricted([SecretAccessScope::Environment {
+                        project_id: ProjectId::new(),
+                        environment_id: EnvironmentId::new(),
+                    }]),
+                    name: "denied-secret".into(),
+                    value: SecretPlaintext::new(b"secret".to_vec()).expect("plaintext"),
+                    idempotency_key: "deny-create".into(),
+                    request_id: Uuid::now_v7(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message))
+                if message == "environment not found in organization and project"
+        ));
+    }
 }

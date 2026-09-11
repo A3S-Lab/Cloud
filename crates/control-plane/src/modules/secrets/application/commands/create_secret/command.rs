@@ -1,4 +1,4 @@
-use crate::modules::secrets::application::{SecretMutationResult, SecretPlaintext};
+use crate::modules::secrets::application::{SecretAccess, SecretMutationResult, SecretPlaintext};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::Command;
@@ -9,6 +9,7 @@ pub struct CreateSecret {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: SecretAccess,
     pub name: String,
     pub value: SecretPlaintext,
     pub idempotency_key: String,
