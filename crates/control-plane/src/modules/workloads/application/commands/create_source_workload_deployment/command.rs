@@ -1,6 +1,7 @@
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, NodePoolId, OrganizationId, ProjectId, SourceRevisionId,
 };
+use crate::modules::workloads::application::WorkloadAccess;
 use crate::modules::workloads::domain::entities::{
     AgentReleaseAdmission, HttpHealthCheck, OciArtifact, SecretBinding, ServicePort,
     ServiceProcess, ServiceResources, ServiceTemplate,
@@ -55,6 +56,7 @@ pub struct CreateSourceWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: WorkloadAccess,
     pub source_revision_id: SourceRevisionId,
     pub name: String,
     pub node_pool_id: Option<NodePoolId>,

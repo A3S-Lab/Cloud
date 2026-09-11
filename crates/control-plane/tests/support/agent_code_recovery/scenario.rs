@@ -256,6 +256,7 @@ async fn prepare_started_provider_scenario_with_tools(
             organization_id,
             project_id,
             environment_id,
+            access: workload_organization_access_for_conformance(),
             asset_id: asset.id,
             asset_release_id: published.id,
             name: "postgres-recovery-agent-runtime".into(),

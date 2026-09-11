@@ -10,14 +10,14 @@ use crate::modules::workloads::application::{
     UpdateWorkloadDeployment,
 };
 use crate::modules::workloads::presentation::dto::{
-    parse_source_workload_manifest, parse_workload_manifest, CancelDeploymentResponse,
-    CreateSourceWorkloadRequest, CreateWorkloadRequest, RollbackWorkloadRequest,
-    UpdateAgentWorkloadRequest, UpdateWorkloadRequest, WorkloadDeploymentResponse,
-    WorkloadStopResponse,
+    CancelDeploymentResponse, CreateSourceWorkloadRequest, CreateWorkloadRequest,
+    RollbackWorkloadRequest, UpdateAgentWorkloadRequest, UpdateWorkloadRequest,
+    WorkloadDeploymentResponse, WorkloadStopResponse, parse_source_workload_manifest,
+    parse_workload_manifest,
 };
 use crate::presentation::{
-    application_error_response, organization_tenant_workload_write_controller, request_identity,
-    with_deferred_project_scope, A3S_ACL_MEDIA_TYPE,
+    A3S_ACL_MEDIA_TYPE, application_error_response, organization_tenant_workload_write_controller,
+    request_identity, with_deferred_project_scope,
 };
 use a3s_boot::{
     BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
@@ -48,12 +48,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = workload_access(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateWorkloadDeployment {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             name: body.name,
                             node_pool_id: body.node_pool_id.map(NodePoolId::from_uuid),
                             template: body.template.into(),
@@ -89,12 +91,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                     let source_revision_id = SourceRevisionId::from_uuid(
                         request.param_as::<Uuid>("source_revision_id")?,
                     );
+                    let access = workload_access(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateSourceWorkloadDeployment {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             source_revision_id,
                             name: body.name,
                             node_pool_id: body.node_pool_id.map(NodePoolId::from_uuid),
@@ -132,12 +136,14 @@ pub fn workloads_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition
                     let asset_release_id = AssetReleaseId::from_uuid(
                         request.param_as::<Uuid>("asset_release_id")?,
                     );
+                    let access = workload_access(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateAgentWorkloadDeployment {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             asset_id,
                             asset_release_id,
                             name: body.name,

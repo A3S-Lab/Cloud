@@ -13,6 +13,7 @@ use a3s_cloud_contracts::{
     RuntimeObservationReport, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
     REFERENCE_ECHO_AGENT_PROVIDER_KIND,
 };
+use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
     AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentAccess,

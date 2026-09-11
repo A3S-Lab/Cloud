@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodePoolId, OrganizationId, ProjectId};
+use crate::modules::workloads::application::WorkloadAccess;
 use crate::modules::workloads::domain::entities::RequestedServiceTemplate;
 use crate::modules::workloads::domain::repositories::DeploymentBundle;
 use a3s_boot::Command;
@@ -12,6 +13,7 @@ pub struct CreateWorkloadDeployment {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: WorkloadAccess,
     pub name: String,
     pub node_pool_id: Option<NodePoolId>,
     pub template: RequestedServiceTemplate,

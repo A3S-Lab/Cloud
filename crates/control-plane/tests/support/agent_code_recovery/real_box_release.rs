@@ -256,6 +256,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
             organization_id,
             project_id,
             environment_id,
+            access: workload_organization_access_for_conformance(),
             asset_id: asset.id,
             asset_release_id: published.id,
             name: "a0-4-real-box-agent".into(),

@@ -23,6 +23,7 @@ use a3s_cloud_control_plane::modules::sources::domain::{
 use a3s_cloud_control_plane::modules::sources::{
     ISourceBuildInputQueryPort, PostgresSourceRevisionRepository, SourceBuildInputQueryService,
 };
+use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
 use a3s_cloud_control_plane::modules::workloads::{
     CreateSourceWorkloadDeployment, CreateSourceWorkloadDeploymentHandler,
     FleetWorkloadsNodePoolAccessAdapter, HttpHealthCheck, IWorkloadRepository,
@@ -540,6 +541,7 @@ fn source_workload_command(
         organization_id: inputs.source.revision.organization_id,
         project_id: inputs.source.revision.project_id,
         environment_id: inputs.source.revision.environment_id,
+        access: workload_organization_access_for_conformance(),
         source_revision_id: inputs.source.revision.id,
         name: "G0 published workload".into(),
         node_pool_id: None,

@@ -5,11 +5,12 @@ use crate::modules::shared_kernel::domain::{
     WorkloadRevisionId,
 };
 use crate::modules::workloads::application::{
-    commands::{validate_node_pool_selection, validate_secret_bindings},
     CreateWorkloadDeploymentResult, IWorkloadAgentReleaseAdmissionPort,
     IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
     WorkloadAgentReleaseAdmissionRequest, WorkloadsEnvironmentScope,
+    commands::{validate_node_pool_selection, validate_secret_bindings},
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::domain::entities::{
     Deployment, Workload, WorkloadControlSpec, WorkloadRevision,
 };
@@ -17,7 +18,6 @@ use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, IWorkloadRepository,
 };
-use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -62,6 +62,14 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
         let secrets = Arc::clone(&self.secrets);
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found".into(),
+                )));
+            }
             let name = match ResourceName::parse(command.name) {
                 Ok(name) => name,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
@@ -111,7 +119,7 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 Ok(Some(_)) => {
                     return Err(BootError::Internal(
                         "Agent Workload deployment replay changed its identity".into(),
-                    ))
+                    ));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -129,7 +137,7 @@ impl CommandHandler<CreateAgentWorkloadDeployment> for CreateAgentWorkloadDeploy
                 Ok(false) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }

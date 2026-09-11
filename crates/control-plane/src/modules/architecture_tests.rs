@@ -8949,8 +8949,8 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
         "Workloads must isolate its one Identity integration behind the runtime-admission port"
     );
     assert_eq!(
-        access_fields, 11,
-        "all seven indirect-resource commands and four queries must carry Workloads-owned access"
+        access_fields, 14,
+        "all ten indirect-resource commands and four queries must carry Workloads-owned access"
     );
     assert_eq!(
         resolver_constructors, 10,
