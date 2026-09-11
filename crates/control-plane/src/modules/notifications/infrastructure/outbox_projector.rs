@@ -1,6 +1,7 @@
+use crate::access_projection::notification_access;
 use crate::modules::edge::domain::events::{
-    renewal_subject_id, DomainClaimChanged, GatewayCertificateRenewalChanged,
-    GatewayCertificateRenewalFailureKind, GatewayCertificateRenewalStatus,
+    DomainClaimChanged, GatewayCertificateRenewalChanged, GatewayCertificateRenewalFailureKind,
+    GatewayCertificateRenewalStatus, renewal_subject_id,
 };
 use crate::modules::edge::domain::{DomainClaimState, DomainNamePattern, RouteHostname, RoutePath};
 use crate::modules::identity::domain::events::MembershipChanged;
@@ -16,7 +17,7 @@ use crate::modules::notifications::domain::{
     NotificationScope, NotificationSeverity,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, OrganizationId, PrincipalId, RepositoryError, ResourceName,
+    OrganizationId, PrincipalId, RepositoryError, ResourceName, canonical_timestamp,
 };
 use crate::modules::workloads::domain::events::{
     WorkloadDeploymentAvailabilityImpact, WorkloadDeploymentHealthChanged,
@@ -194,7 +195,7 @@ impl OutboxNotificationProjector {
                 membership.role,
                 grants.into_iter().map(|grant| grant.scope),
             );
-            if !scope.is_visible_to(&access) {
+            if !notification_access(&access).scope_is_visible(scope) {
                 continue;
             }
             authorized.push(policy);
@@ -514,7 +515,7 @@ fn decode_domain_claim(message: &OutboxMessage) -> Result<DomainClaimChanged, Re
         _ => {
             return Err(RepositoryError::Storage(
                 "notification domain claim source key is unsupported".into(),
-            ))
+            ));
         }
     };
     let valid_failure = match expected_state {

@@ -1,7 +1,6 @@
-use super::outbound_subscription::outbound_subscription_not_found;
 use super::MAXIMUM_NOTIFICATION_LIMIT;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use super::outbound_subscription::outbound_subscription_not_found;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{
     IOutboundNotificationRepository, OutboundNotificationSubscription,
     OutboundNotificationSubscriptionCursor, OutboundNotificationSubscriptionPage,
@@ -20,7 +19,7 @@ pub struct GetOutboundNotificationSubscription {
     pub organization_id: OrganizationId,
     pub subscription_id: NotificationSubscriptionId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
 }
 
 impl Query for GetOutboundNotificationSubscription {
@@ -69,11 +68,11 @@ impl QueryHandler<GetOutboundNotificationSubscription>
                 Ok(Some(value)) => value,
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(outbound_subscription_not_found()))
+                    return Ok(Err(outbound_subscription_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            if !is_visible(&subscription, &query.resource_access) {
+            if !is_visible(&subscription, &query.access) {
                 return Ok(Err(outbound_subscription_not_found()));
             }
             Ok(Ok(subscription))
@@ -85,7 +84,7 @@ impl QueryHandler<GetOutboundNotificationSubscription>
 pub struct ListOutboundNotificationSubscriptions {
     pub organization_id: OrganizationId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub cursor: Option<String>,
     pub limit: usize,
 }
@@ -155,7 +154,7 @@ impl QueryHandler<ListOutboundNotificationSubscriptions>
                     .map(OutboundNotificationSubscriptionCursor::after);
                 visible.extend(
                     page.into_iter()
-                        .filter(|subscription| is_visible(subscription, &query.resource_access))
+                        .filter(|subscription| is_visible(subscription, &query.access))
                         .take(query.limit + 1 - visible.len()),
                 );
                 if visible.len() > query.limit || raw_len < STORAGE_PAGE_SIZE {
@@ -176,13 +175,10 @@ impl QueryHandler<ListOutboundNotificationSubscriptions>
 
 fn is_visible(
     subscription: &OutboundNotificationSubscription,
-    resource_access: &ResourceAccessEvaluator,
+    access: &NotificationAccess,
 ) -> bool {
     let target = subscription.definition.spec().target;
     target.connector().is_none_or(|target| {
-        resource_access.allows(ResourceGrantScope::Environment {
-            project_id: target.project_id,
-            environment_id: target.environment_id,
-        })
+        access.environment_is_visible(target.project_id, target.environment_id)
     })
 }

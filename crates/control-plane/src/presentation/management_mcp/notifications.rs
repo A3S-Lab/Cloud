@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::access_projection::notification_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::notifications::presentation::{
     NotificationAlertPolicyMutationResponse, NotificationAlertPolicyPageResponse,
@@ -136,7 +137,7 @@ pub async fn list(
         .execute(ListNotifications {
             organization_id,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             unread_only: arguments.unread_only,
             cursor: arguments.cursor,
             limit: arguments.limit,
@@ -161,7 +162,7 @@ pub async fn get(
             organization_id,
             notification_id: NotificationId::from_uuid(arguments.notification_id),
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
         })
         .await?
     {
@@ -186,7 +187,7 @@ pub async fn mark_read(
             notification_id: NotificationId::from_uuid(arguments.notification_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -211,7 +212,7 @@ pub async fn list_alert_policies(
         .execute(ListNotificationAlertPolicies {
             organization_id,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             cursor: arguments.cursor,
             limit: arguments.limit,
         })
@@ -239,7 +240,7 @@ pub async fn get_alert_policy(
             organization_id,
             policy_id: NotificationAlertPolicyId::from_uuid(arguments.policy_id),
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
         })
         .await?
     {
@@ -265,7 +266,7 @@ pub async fn create_alert_policy(
             organization_id,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -294,7 +295,7 @@ pub async fn revoke_alert_policy(
             policy_id: NotificationAlertPolicyId::from_uuid(arguments.policy_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -321,7 +322,7 @@ pub async fn list_outbound_subscriptions(
         .execute(ListOutboundNotificationSubscriptions {
             organization_id,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             cursor: arguments.cursor,
             limit: arguments.limit,
         })
@@ -349,7 +350,7 @@ pub async fn get_outbound_subscription(
             organization_id,
             subscription_id: NotificationSubscriptionId::from_uuid(arguments.subscription_id),
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
         })
         .await?
     {
@@ -375,7 +376,7 @@ pub async fn create_outbound_subscription(
             organization_id,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -404,7 +405,7 @@ pub async fn revoke_outbound_subscription(
             subscription_id: NotificationSubscriptionId::from_uuid(arguments.subscription_id),
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: notification_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })

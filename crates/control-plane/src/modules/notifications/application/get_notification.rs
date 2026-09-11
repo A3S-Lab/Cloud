@@ -1,4 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{INotificationRepository, Notification};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{NotificationId, OrganizationId, PrincipalId};
@@ -10,7 +10,7 @@ pub struct GetNotification {
     pub organization_id: OrganizationId,
     pub notification_id: NotificationId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
 }
 
 impl Query for GetNotification {
@@ -47,7 +47,7 @@ impl QueryHandler<GetNotification> for GetNotificationHandler {
                 Ok(None) => return Ok(Err(not_found())),
                 Err(error) => return Ok(Err(error.into())),
             };
-            if !notification.scope.is_visible_to(&query.resource_access) {
+            if !query.access.scope_is_visible(notification.scope) {
                 return Ok(Err(not_found()));
             }
             Ok(Ok(notification))

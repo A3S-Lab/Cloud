@@ -9,6 +9,7 @@ mod outbound_dispatch;
 mod outbound_smtp_dispatch;
 mod outbound_subscription;
 mod outbound_subscription_queries;
+mod resource_access;
 
 pub use alert_policy::{
     CreateNotificationAlertPolicy, CreateNotificationAlertPolicyHandler,
@@ -43,3 +44,4 @@ pub use outbound_subscription_queries::{
     GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
     ListOutboundNotificationSubscriptions, ListOutboundNotificationSubscriptionsHandler,
 };
+pub use resource_access::{NotificationAccess, NotificationAccessScope};

@@ -6,26 +6,27 @@ use super::dto::{
     OutboundNotificationSubscriptionResponse, RevokeNotificationAlertPolicyRequest,
     RevokeOutboundNotificationSubscriptionRequest,
 };
+use crate::access_projection::notification_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
-    authenticated_actor, resource_access_evaluator, with_deferred_resource_scope,
-    DeferredResourceScope, OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, authenticated_actor, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::notifications::{
-    CreateNotificationAlertPolicy, CreateOutboundNotificationSubscription, GetNotification,
-    GetNotificationAlertPolicy, GetOutboundNotificationSubscription, ListNotificationAlertPolicies,
-    ListNotifications, ListOutboundNotificationSubscriptions, MarkNotificationRead,
-    RevokeNotificationAlertPolicy, RevokeOutboundNotificationSubscription,
-    DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
+    CreateNotificationAlertPolicy, CreateOutboundNotificationSubscription,
+    DEFAULT_NOTIFICATION_LIMIT, GetNotification, GetNotificationAlertPolicy,
+    GetOutboundNotificationSubscription, ListNotificationAlertPolicies, ListNotifications,
+    ListOutboundNotificationSubscriptions, MAXIMUM_NOTIFICATION_LIMIT, MarkNotificationRead,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
+    RevokeNotificationAlertPolicy, RevokeOutboundNotificationSubscription,
 };
 use crate::modules::shared_kernel::domain::{
     NotificationAlertPolicyId, NotificationId, NotificationSubscriptionId, OrganizationId,
 };
 use crate::presentation::{application_error_response, bounded_acl_document};
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, HttpMethod, QueryBus,
-    Result, RouteDefinition, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    HttpMethod, QueryBus, Result, RouteDefinition,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -58,7 +59,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                     .execute(ListNotifications {
                         organization_id,
                         actor_principal_id: actor.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         unread_only: parameters.unread_only,
                         cursor: parameters.cursor,
                         limit: parameters.limit,
@@ -88,7 +89,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             request.param_as::<Uuid>("notification_id")?,
                         ),
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                     })
                     .await?
                 {
@@ -120,7 +121,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                     .execute(ListNotificationAlertPolicies {
                         organization_id,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         cursor: parameters.cursor,
                         limit: parameters.limit,
                     })
@@ -151,7 +152,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             request.param_as::<Uuid>("policy_id")?,
                         ),
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                     })
                     .await?
                 {
@@ -183,7 +184,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                     .execute(ListOutboundNotificationSubscriptions {
                         organization_id,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         cursor: parameters.cursor,
                         limit: parameters.limit,
                     })
@@ -214,7 +215,7 @@ pub fn notification_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             request.param_as::<Uuid>("subscription_id")?,
                         ),
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                     })
                     .await?
                 {
@@ -279,7 +280,7 @@ pub fn notification_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         notification_id,
                         expected_version: body.expected_version,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         idempotency_key: idempotency_key(&request)?,
                         request_id,
                     })
@@ -311,7 +312,7 @@ pub fn notification_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         organization_id,
                         definition_acl,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         idempotency_key: idempotency_key(&request)?,
                         request_id,
                     })
@@ -346,7 +347,7 @@ pub fn notification_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         ),
                         expected_version: body.expected_version,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         idempotency_key: idempotency_key(&request)?,
                         request_id,
                     })
@@ -380,7 +381,7 @@ pub fn notification_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         organization_id,
                         definition_acl,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         idempotency_key: idempotency_key(&request)?,
                         request_id,
                     })
@@ -415,7 +416,7 @@ pub fn notification_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                         ),
                         expected_version: body.expected_version,
                         actor_principal_id: authenticated_actor(&principal)?.principal_id,
-                        resource_access: resource_access_evaluator(&principal)?,
+                        access: notification_access(&resource_access_evaluator(&principal)?),
                         idempotency_key: idempotency_key(&request)?,
                         request_id,
                     })

@@ -1,4 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::application::{
     INotificationsEnvironmentAccess, INotificationsNodeAccess, NotificationsEnvironmentScope,
     NotificationsNodeScope,
@@ -23,7 +23,7 @@ pub struct CreateNotificationAlertPolicy {
     pub organization_id: OrganizationId,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -38,7 +38,7 @@ pub struct RevokeNotificationAlertPolicy {
     pub policy_id: NotificationAlertPolicyId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -100,7 +100,7 @@ impl CommandHandler<CreateNotificationAlertPolicy> for CreateNotificationAlertPo
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
             let spec = definition.spec();
-            if !spec.target.scope().is_visible_to(&command.resource_access) {
+            if !command.access.scope_is_visible(spec.target.scope()) {
                 return Ok(Err(alert_policy_not_found()));
             }
             match spec.target {
@@ -249,12 +249,12 @@ impl CommandHandler<RevokeNotificationAlertPolicy> for RevokeNotificationAlertPo
                 Ok(Some(value)) => value,
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(alert_policy_not_found()))
+                    return Ok(Err(alert_policy_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
             let spec = existing.definition.spec();
-            if !spec.target.scope().is_visible_to(&command.resource_access) {
+            if !command.access.scope_is_visible(spec.target.scope()) {
                 return Ok(Err(alert_policy_not_found()));
             }
             let canonical = serde_json::to_vec(&serde_json::json!({

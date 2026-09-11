@@ -1,7 +1,6 @@
 use crate::modules::connectors::IConnectorProfileRepository;
 use crate::modules::identity::domain::repositories::IRecipientContactRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{
     CreateOutboundNotificationSubscriptionWrite, IOutboundNotificationRepository,
     OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
@@ -22,7 +21,7 @@ pub struct CreateOutboundNotificationSubscription {
     pub organization_id: OrganizationId,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -37,7 +36,7 @@ pub struct RevokeOutboundNotificationSubscription {
     pub subscription_id: NotificationSubscriptionId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -104,11 +103,8 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
             let spec = definition.spec();
             if let Some(target) = spec.target.connector() {
                 if !command
-                    .resource_access
-                    .allows(ResourceGrantScope::Environment {
-                        project_id: target.project_id,
-                        environment_id: target.environment_id,
-                    })
+                    .access
+                    .environment_is_visible(target.project_id, target.environment_id)
                 {
                     return Ok(Err(outbound_subscription_not_found()));
                 }
@@ -127,11 +123,11 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                     Ok(Some(_)) => {
                         return Err(BootError::Internal(
                             "recipient contact lookup returned inconsistent identity".into(),
-                        ))
+                        ));
                     }
                     Ok(None)
                     | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                        return Ok(Err(outbound_subscription_not_found()))
+                        return Ok(Err(outbound_subscription_not_found()));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }
@@ -192,11 +188,11 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                     Ok(Some(_)) => {
                         return Err(BootError::Internal(
                             "Connector revision lookup returned inconsistent identity".into(),
-                        ))
+                        ));
                     }
                     Ok(None)
                     | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                        return Ok(Err(outbound_subscription_not_found()))
+                        return Ok(Err(outbound_subscription_not_found()));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }
@@ -283,18 +279,15 @@ impl CommandHandler<RevokeOutboundNotificationSubscription>
                 Ok(Some(value)) => value,
                 Ok(None)
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
-                    return Ok(Err(outbound_subscription_not_found()))
+                    return Ok(Err(outbound_subscription_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
             let target = existing.definition.spec().target;
             if let Some(target) = target.connector() {
                 if !command
-                    .resource_access
-                    .allows(ResourceGrantScope::Environment {
-                        project_id: target.project_id,
-                        environment_id: target.environment_id,
-                    })
+                    .access
+                    .environment_is_visible(target.project_id, target.environment_id)
                 {
                     return Ok(Err(outbound_subscription_not_found()));
                 }

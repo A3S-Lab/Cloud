@@ -3131,6 +3131,133 @@ fn applications_queries_commands_and_delivery_isolate_identity_behind_one_contex
 }
 
 #[test]
+fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access =
+        std::fs::read_to_string(root.join("notifications/application/resource_access.rs"))
+            .expect("read Notifications resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pubenumNotificationAccessScope",
+        "pubstructNotificationAccess",
+        "scope_is_visible",
+        "environment_is_visible",
+        "node_is_visible",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Notifications lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Notifications resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let domain = std::fs::read_to_string(root.join("notifications/domain/notification.rs"))
+        .expect("read Notifications domain notification");
+    let production_domain = production_source(&domain);
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "is_visible_to",
+    ] {
+        assert!(
+            !production_domain.contains(forbidden),
+            "Notifications domain regained Identity visibility vocabulary {forbidden}"
+        );
+    }
+
+    for relative in [
+        "notifications/application/get_notification.rs",
+        "notifications/application/list_notifications.rs",
+        "notifications/application/mark_notification_read.rs",
+        "notifications/application/alert_policy.rs",
+        "notifications/application/alert_policy_queries.rs",
+        "notifications/application/outbound_subscription.rs",
+        "notifications/application/outbound_subscription_queries.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: NotificationAccess"),
+            "{relative} stopped carrying Notifications-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "ResourceGrantScope"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnnotification_access(",
+        "NotificationAccess::organization_wide()",
+        "NotificationAccess::restricted(",
+        "NotificationAccessScope::Node{node_id}",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Notifications access mapping {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("notifications/presentation/controller.rs"),
+    )
+    .expect("read Notifications controller");
+    let production_controller = production_source(&controller);
+    assert!(
+        production_controller.contains("notification_access(&resource_access_evaluator("),
+        "Notifications REST must project Identity into NotificationAccess"
+    );
+    assert!(
+        !production_controller.contains("resource_access: resource_access_evaluator")
+            && !production_controller.contains("resource_access,"),
+        "Notifications REST must not pass ResourceAccessEvaluator into Application"
+    );
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/notifications.rs"),
+    )
+    .expect("read Notifications Management MCP adapter");
+    let production_mcp = production_source(&mcp);
+    assert!(
+        production_mcp
+            .matches("access: notification_access(&resource_access)")
+            .count()
+            >= 11,
+        "Notifications MCP must project every resource-authorized tool into NotificationAccess"
+    );
+    assert!(
+        !production_mcp.contains("resource_access,"),
+        "Notifications MCP must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

@@ -1,8 +1,6 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, NodeId, NotificationId, OrganizationId, PrincipalId,
-    ProjectId,
+    EnvironmentId, NodeId, NotificationId, OrganizationId, PrincipalId, ProjectId,
+    canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -83,23 +81,6 @@ impl NotificationScope {
         match self {
             Self::Node { node_id } => Some(node_id),
             Self::Organization | Self::Project { .. } | Self::Environment { .. } => None,
-        }
-    }
-
-    pub fn is_visible_to(self, evaluator: &ResourceAccessEvaluator) -> bool {
-        match self {
-            Self::Organization => true,
-            Self::Project { project_id } => {
-                evaluator.allows(ResourceGrantScope::Project { project_id })
-            }
-            Self::Environment {
-                project_id,
-                environment_id,
-            } => evaluator.allows(ResourceGrantScope::Environment {
-                project_id,
-                environment_id,
-            }),
-            Self::Node { node_id } => evaluator.allows(ResourceGrantScope::Node { node_id }),
         }
     }
 
@@ -386,27 +367,6 @@ mod tests {
         assert_eq!(read.aggregate_version, 2);
         assert!(read.read_at.is_some());
         assert!(read.mark_read(2, Utc::now()).is_err());
-    }
-
-    #[test]
-    fn scopes_reuse_the_shared_grant_evaluator() {
-        let project_id = ProjectId::new();
-        let environment_id = EnvironmentId::new();
-        let evaluator = ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
-            project_id,
-            environment_id,
-        }]);
-        assert!(NotificationScope::Organization.is_visible_to(&evaluator));
-        assert!(NotificationScope::Environment {
-            project_id,
-            environment_id
-        }
-        .is_visible_to(&evaluator));
-        assert!(!NotificationScope::Project { project_id }.is_visible_to(&evaluator));
-        assert!(!NotificationScope::Node {
-            node_id: NodeId::new()
-        }
-        .is_visible_to(&evaluator));
     }
 
     #[test]

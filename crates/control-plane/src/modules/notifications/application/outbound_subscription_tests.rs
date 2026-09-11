@@ -6,18 +6,18 @@ use crate::modules::connectors::{
     ConnectorRevisionPublished, CreateConnectorProfileWrite, IConnectorProfileRepository,
     InMemoryConnectorProfileRepository,
 };
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::notifications::{
     GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
     INotificationRepository, InMemoryNotificationRepository, ListOutboundNotificationSubscriptions,
-    ListOutboundNotificationSubscriptionsHandler, Notification, NotificationScope,
-    NotificationSeverity, OutboundNotificationChannel, OutboundNotificationConnectorTarget,
-    OutboundNotificationSubscriptionDefinition, OutboundNotificationSubscriptionSpec,
+    ListOutboundNotificationSubscriptionsHandler, Notification, NotificationAccess,
+    NotificationAccessScope, NotificationScope, NotificationSeverity, OutboundNotificationChannel,
+    OutboundNotificationConnectorTarget, OutboundNotificationSubscriptionDefinition,
+    OutboundNotificationSubscriptionSpec,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId, EnvironmentId,
-    IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName,
+    ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
+    PrincipalId, ProjectId, ResourceName, canonical_timestamp,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 
@@ -133,7 +133,7 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         organization_id: fixture.organization_id,
         definition_acl: fixture.definition_acl.clone(),
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+        access: NotificationAccess::restricted([NotificationAccessScope::Environment {
             project_id: fixture.project_id,
             environment_id: fixture.environment_id,
         }]),
@@ -178,12 +178,10 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         .create
         .execute(
             CreateOutboundNotificationSubscription {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id: fixture.project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: NotificationAccess::restricted([NotificationAccessScope::Environment {
+                    project_id: fixture.project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..create
             },
             context(),
@@ -193,11 +191,13 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
     assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
 
     let first = notification(&fixture, Uuid::now_v7());
-    assert!(fixture
-        .notifications
-        .project(first)
-        .await
-        .expect("project notification"));
+    assert!(
+        fixture
+            .notifications
+            .project(first)
+            .await
+            .expect("project notification")
+    );
     assert_eq!(fixture.notifications.outbound_deliveries().await.len(), 1);
     assert_eq!(
         fixture
@@ -215,7 +215,7 @@ async fn create_replay_projection_and_revoke_share_one_authority() {
         subscription_id: created.subscription.id,
         expected_version: 1,
         actor_principal_id: fixture.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: NotificationAccess::organization_wide(),
         idempotency_key: "revoke-delivery".into(),
         request_id: Uuid::now_v7(),
     };
@@ -263,12 +263,10 @@ async fn version_three_suppression_keeps_inbox_and_admits_only_the_exact_boundar
                 organization_id: fixture.organization_id,
                 definition_acl: definition.canonical_acl().into(),
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id: fixture.project_id,
-                        environment_id: fixture.environment_id,
-                    },
-                ]),
+                access: NotificationAccess::restricted([NotificationAccessScope::Environment {
+                    project_id: fixture.project_id,
+                    environment_id: fixture.environment_id,
+                }]),
                 idempotency_key: "create-suppressed-delivery".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -303,11 +301,13 @@ async fn version_three_suppression_keeps_inbox_and_admits_only_the_exact_boundar
         Uuid::now_v7(),
         suppress_before - chrono::Duration::microseconds(1),
     );
-    assert!(fixture
-        .notifications
-        .project(suppressed)
-        .await
-        .expect("project suppressed notification"));
+    assert!(
+        fixture
+            .notifications
+            .project(suppressed)
+            .await
+            .expect("project suppressed notification")
+    );
     assert_eq!(
         fixture
             .notifications
@@ -320,11 +320,13 @@ async fn version_three_suppression_keeps_inbox_and_admits_only_the_exact_boundar
     assert!(fixture.notifications.outbound_deliveries().await.is_empty());
 
     let boundary = notification_at(&fixture, Uuid::now_v7(), suppress_before);
-    assert!(fixture
-        .notifications
-        .project(boundary)
-        .await
-        .expect("project boundary notification"));
+    assert!(
+        fixture
+            .notifications
+            .project(boundary)
+            .await
+            .expect("project boundary notification")
+    );
     let deliveries = fixture.notifications.outbound_deliveries().await;
     assert_eq!(deliveries.len(), 1);
     assert_eq!(deliveries[0].schema_version(), 2);
@@ -351,7 +353,7 @@ async fn version_three_suppression_keeps_inbox_and_admits_only_the_exact_boundar
 #[tokio::test]
 async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visible_records() {
     let fixture = fixture().await;
-    let access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+    let access = NotificationAccess::restricted([NotificationAccessScope::Environment {
         project_id: fixture.project_id,
         environment_id: fixture.environment_id,
     }]);
@@ -362,7 +364,7 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
                 organization_id: fixture.organization_id,
                 definition_acl: fixture.definition_acl.clone(),
                 actor_principal_id: fixture.actor,
-                resource_access: access.clone(),
+                access: access.clone(),
                 idempotency_key: "query-first".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -390,7 +392,7 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
                 organization_id: fixture.organization_id,
                 definition_acl: second_acl,
                 actor_principal_id: fixture.actor,
-                resource_access: access.clone(),
+                access: access.clone(),
                 idempotency_key: "query-second".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -409,7 +411,7 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
             ListOutboundNotificationSubscriptions {
                 organization_id: fixture.organization_id,
                 actor_principal_id: fixture.actor,
-                resource_access: access.clone(),
+                access: access.clone(),
                 cursor: None,
                 limit: 1,
             },
@@ -425,7 +427,7 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
             ListOutboundNotificationSubscriptions {
                 organization_id: fixture.organization_id,
                 actor_principal_id: fixture.actor,
-                resource_access: access.clone(),
+                access: access.clone(),
                 cursor: first_page.next_cursor,
                 limit: 1,
             },
@@ -447,7 +449,7 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
                 organization_id: fixture.organization_id,
                 subscription_id: first.id,
                 actor_principal_id: PrincipalId::new(),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: NotificationAccess::organization_wide(),
             },
             context(),
         )
@@ -460,12 +462,10 @@ async fn personal_queries_hide_foreign_or_ungranted_subscriptions_and_page_visib
                 organization_id: fixture.organization_id,
                 subscription_id: second.id,
                 actor_principal_id: fixture.actor,
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id: fixture.project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: NotificationAccess::restricted([NotificationAccessScope::Environment {
+                    project_id: fixture.project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
             },
             context(),
         )

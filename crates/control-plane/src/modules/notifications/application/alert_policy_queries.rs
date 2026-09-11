@@ -1,6 +1,6 @@
 use super::alert_policy::alert_policy_not_found;
 use super::MAXIMUM_NOTIFICATION_LIMIT;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, NotificationAlertPolicy, NotificationAlertPolicyCursor,
     NotificationAlertPolicyPage,
@@ -19,7 +19,7 @@ pub struct GetNotificationAlertPolicy {
     pub organization_id: OrganizationId,
     pub policy_id: NotificationAlertPolicyId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
 }
 
 impl Query for GetNotificationAlertPolicy {
@@ -68,7 +68,7 @@ impl QueryHandler<GetNotificationAlertPolicy> for GetNotificationAlertPolicyHand
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
-            if !is_visible(&policy, &query.resource_access) {
+            if !is_visible(&policy, &query.access) {
                 return Ok(Err(alert_policy_not_found()));
             }
             Ok(Ok(policy))
@@ -80,7 +80,7 @@ impl QueryHandler<GetNotificationAlertPolicy> for GetNotificationAlertPolicyHand
 pub struct ListNotificationAlertPolicies {
     pub organization_id: OrganizationId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub cursor: Option<String>,
     pub limit: usize,
 }
@@ -146,7 +146,7 @@ impl QueryHandler<ListNotificationAlertPolicies> for ListNotificationAlertPolici
                 after = page.last().map(NotificationAlertPolicyCursor::after);
                 visible.extend(
                     page.into_iter()
-                        .filter(|policy| is_visible(policy, &query.resource_access))
+                        .filter(|policy| is_visible(policy, &query.access))
                         .take(query.limit + 1 - visible.len()),
                 );
                 if visible.len() > query.limit || raw_len < STORAGE_PAGE_SIZE {
@@ -164,11 +164,6 @@ impl QueryHandler<ListNotificationAlertPolicies> for ListNotificationAlertPolici
     }
 }
 
-fn is_visible(policy: &NotificationAlertPolicy, resource_access: &ResourceAccessEvaluator) -> bool {
-    policy
-        .definition
-        .spec()
-        .target
-        .scope()
-        .is_visible_to(resource_access)
+fn is_visible(policy: &NotificationAlertPolicy, access: &NotificationAccess) -> bool {
+    access.scope_is_visible(policy.definition.spec().target.scope())
 }

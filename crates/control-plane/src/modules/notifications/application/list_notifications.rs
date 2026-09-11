@@ -1,4 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{
     INotificationRepository, NotificationCursor, NotificationPage,
 };
@@ -15,7 +15,7 @@ const STORAGE_PAGE_SIZE: usize = 200;
 pub struct ListNotifications {
     pub organization_id: OrganizationId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub unread_only: bool,
     pub cursor: Option<String>,
     pub limit: usize,
@@ -75,9 +75,7 @@ impl QueryHandler<ListNotifications> for ListNotificationsHandler {
                 after = page.last().map(NotificationCursor::after);
                 visible.extend(
                     page.into_iter()
-                        .filter(|notification| {
-                            notification.scope.is_visible_to(&query.resource_access)
-                        })
+                        .filter(|notification| query.access.scope_is_visible(notification.scope))
                         .take(query.limit + 1 - visible.len()),
                 );
                 if visible.len() > query.limit || raw_len < STORAGE_PAGE_SIZE {

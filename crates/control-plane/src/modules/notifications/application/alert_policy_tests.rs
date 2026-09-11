@@ -5,14 +5,13 @@ use crate::modules::fleet::{
     domain::entities::EnrollmentToken,
     domain::value_objects::{EnrollmentTokenCredential, NodeCapabilities, NodeName},
 };
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::notifications::domain::{
     CreateNotificationAlertPolicyWrite, INotificationAlertPolicyRepository,
     NotificationAlertPolicySpec, NotificationAlertPolicyTarget, NotificationAlertSource,
 };
 use crate::modules::notifications::{
-    FleetNotificationsNodeAccessAdapter, InMemoryNotificationRepository,
-    ProjectsNotificationsEnvironmentAccessAdapter,
+    FleetNotificationsNodeAccessAdapter, InMemoryNotificationRepository, NotificationAccess,
+    NotificationAccessScope, ProjectsNotificationsEnvironmentAccessAdapter,
 };
 use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::domain::{EnrollmentTokenId, EnvironmentId, NodeId, ProjectId};
@@ -87,12 +86,10 @@ async fn create_replay_requires_the_environment_to_still_exist() {
             organization_id,
             definition_acl: definition.canonical_acl().into(),
             actor_principal_id: actor,
-            resource_access: ResourceAccessEvaluator::restricted([
-                ResourceGrantScope::Environment {
-                    project_id,
-                    environment_id,
-                },
-            ]),
+            access: NotificationAccess::restricted([NotificationAccessScope::Environment {
+                project_id,
+                environment_id,
+            }]),
             idempotency_key: "missing-environment-replay".into(),
             request_id: Uuid::now_v7(),
         },
@@ -125,11 +122,11 @@ async fn create_node_policy_requires_the_exact_existing_node_and_node_grant() {
         )),
         Arc::new(FleetNotificationsNodeAccessAdapter::new(nodes)),
     );
-    let command = |resource_access, idempotency_key: &str| CreateNotificationAlertPolicy {
+    let command = |access, idempotency_key: &str| CreateNotificationAlertPolicy {
         organization_id,
         definition_acl: definition.canonical_acl().into(),
         actor_principal_id: actor,
-        resource_access,
+        access,
         idempotency_key: idempotency_key.into(),
         request_id: Uuid::now_v7(),
     };
@@ -137,7 +134,7 @@ async fn create_node_policy_requires_the_exact_existing_node_and_node_grant() {
     let environment_only = handler
         .execute(
             command(
-                ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+                NotificationAccess::restricted([NotificationAccessScope::Environment {
                     project_id: ProjectId::new(),
                     environment_id: EnvironmentId::new(),
                 }]),
@@ -155,7 +152,7 @@ async fn create_node_policy_requires_the_exact_existing_node_and_node_grant() {
     let other_node_only = handler
         .execute(
             command(
-                ResourceAccessEvaluator::restricted([ResourceGrantScope::Node {
+                NotificationAccess::restricted([NotificationAccessScope::Node {
                     node_id: NodeId::new(),
                 }]),
                 "node-policy-other-node-denied",
@@ -172,7 +169,7 @@ async fn create_node_policy_requires_the_exact_existing_node_and_node_grant() {
     let created = handler
         .execute(
             command(
-                ResourceAccessEvaluator::restricted([ResourceGrantScope::Node { node_id }]),
+                NotificationAccess::restricted([NotificationAccessScope::Node { node_id }]),
                 "node-policy-create",
             ),
             CqrsContext::new(ModuleRef::new()),

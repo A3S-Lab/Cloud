@@ -1,5 +1,5 @@
 use super::get_notification::not_found;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::notifications::NotificationAccess;
 use crate::modules::notifications::domain::{
     INotificationRepository, MarkNotificationReadWrite, Notification,
 };
@@ -20,7 +20,7 @@ pub struct MarkNotificationRead {
     pub notification_id: NotificationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: NotificationAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -77,9 +77,7 @@ impl CommandHandler<MarkNotificationRead> for MarkNotificationReadHandler {
                 )
                 .await
             {
-                Ok(Some(notification))
-                    if notification.scope.is_visible_to(&command.resource_access) =>
-                {
+                Ok(Some(notification)) if command.access.scope_is_visible(notification.scope) => {
                     notification
                 }
                 Ok(Some(_)) | Ok(None) => return Ok(Err(not_found())),
