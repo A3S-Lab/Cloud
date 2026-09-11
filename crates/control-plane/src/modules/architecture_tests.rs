@@ -10750,6 +10750,26 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         1,
         "root composition must construct the Edge MCP profile adapter exactly once"
     );
+
+    let postgres = std::fs::read_to_string(
+        root.join("edge/infrastructure/persistence/postgres_mcp_route_policies.rs"),
+    )
+    .expect("read Edge MCP route-policy postgres persistence");
+    let production_postgres = production_source(&postgres);
+    for forbidden in [
+        "crate::modules::assets",
+        "McpServiceProfile::restore",
+        "admit_mcp_service_profile",
+    ] {
+        assert!(
+            !production_postgres.contains(forbidden),
+            "Edge MCP route-policy persistence regained Assets aggregate authority {forbidden}"
+        );
+    }
+    assert!(
+        production_postgres.contains("EdgeMcpServiceProfileAdmission::restore_from_stored_acl("),
+        "Edge MCP route-policy persistence stopped restoring Edge-owned profile admissions"
+    );
 }
 
 #[test]

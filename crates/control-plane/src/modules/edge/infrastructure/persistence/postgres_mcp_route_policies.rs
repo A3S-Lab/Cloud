@@ -5,7 +5,6 @@ use crate::infrastructure::{
     require_one_row, store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
     PostgresPersistenceError,
 };
-use crate::modules::assets::domain::McpServiceProfile;
 use crate::modules::edge::domain::events::{McpRoutePolicyChanged, McpRoutePolicyMutationKind};
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot,
@@ -13,7 +12,6 @@ use crate::modules::edge::domain::repositories::{
 };
 use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
 use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec};
-use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
     ProjectId, RepositoryError, RouteId,
@@ -575,8 +573,7 @@ async fn restore_row(
         .await
         .map_err(storage)?
         .map(|(digest, acl)| {
-            McpServiceProfile::restore(&acl, &digest)
-                .and_then(|profile| admit_mcp_service_profile(&profile))
+            EdgeMcpServiceProfileAdmission::restore_from_stored_acl(&acl, &digest)
         })
         .transpose()
         .map_err(stored)?
@@ -599,8 +596,7 @@ async fn load_profile(
     )
     .await?
     .map(|(digest, acl)| {
-        McpServiceProfile::restore(&acl, &digest)
-            .and_then(|profile| admit_mcp_service_profile(&profile))
+        EdgeMcpServiceProfileAdmission::restore_from_stored_acl(&acl, &digest)
     })
     .transpose()
     .map_err(|error| {
@@ -795,9 +791,11 @@ impl FromRow for McpRoutePolicyWithProfileRow {
 
 impl McpRoutePolicyWithProfileRow {
     fn policy(self) -> Result<McpRoutePolicy, RepositoryError> {
-        let profile = McpServiceProfile::restore(&self.profile_acl, &self.policy.profile_digest)
-            .and_then(|profile| admit_mcp_service_profile(&profile))
-            .map_err(stored)?;
+        let profile = EdgeMcpServiceProfileAdmission::restore_from_stored_acl(
+            &self.profile_acl,
+            &self.policy.profile_digest,
+        )
+        .map_err(stored)?;
         self.policy.policy(&profile)
     }
 }

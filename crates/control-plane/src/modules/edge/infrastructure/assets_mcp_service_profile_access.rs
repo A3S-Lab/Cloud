@@ -192,4 +192,44 @@ mod tests {
             .expect("missing")
             .is_none());
     }
+
+    #[test]
+    fn stored_assets_profile_acl_restores_edge_admission_without_assets_aggregate() {
+        use crate::modules::assets::domain::McpServiceProfileSpec;
+        use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
+
+        let profile = McpServiceProfile::from_spec(McpServiceProfileSpec {
+            protocol_versions: vec![MCP_PROTOCOL_VERSION.into()],
+            endpoint_path: "/mcp".into(),
+            runtime_port: "mcp".into(),
+            health_path: "/health".into(),
+            request_sse: true,
+            subscriptions: true,
+            server_discover: true,
+            expected_capabilities: vec!["tools".into(), "subscriptions".into()],
+            max_request_bytes: 1_048_576,
+            max_response_bytes: 8_388_608,
+            max_stream_seconds: 3_600,
+        })
+        .expect("Assets profile");
+        let admission = EdgeMcpServiceProfileAdmission::restore_from_stored_acl(
+            profile.canonical_acl(),
+            profile.digest().as_str(),
+        )
+        .expect("Edge admission from stored Assets ACL");
+        assert_eq!(admission.digest(), profile.digest());
+        assert_eq!(admission.endpoint_path(), profile.spec().endpoint_path);
+        assert_eq!(
+            admission.max_request_bytes(),
+            profile.spec().max_request_bytes
+        );
+        assert_eq!(
+            admission.max_response_bytes(),
+            profile.spec().max_response_bytes
+        );
+        assert_eq!(
+            admission.max_stream_seconds(),
+            profile.spec().max_stream_seconds
+        );
+    }
 }
