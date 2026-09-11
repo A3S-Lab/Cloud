@@ -2137,6 +2137,8 @@ fn sources_list_queries_isolate_identity_behind_one_context_owned_access_project
     for relative in [
         "sources/application/queries/list_source_revisions/query.rs",
         "sources/application/queries/list_github_repository_subscriptions/query.rs",
+        "sources/application/commands/create_github_repository_subscription/command.rs",
+        "sources/application/commands/deactivate_github_repository_subscription/command.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
@@ -2151,6 +2153,19 @@ fn sources_list_queries_isolate_identity_behind_one_context_owned_access_project
                 "{relative} regained Identity authority {forbidden}"
             );
         }
+    }
+
+    for relative in [
+        "sources/application/commands/create_github_repository_subscription/handler.rs",
+        "sources/application/commands/deactivate_github_repository_subscription/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        assert!(
+            production_source(&source)
+                .contains("environment_is_visible(command.project_id, command.environment_id)"),
+            "{relative} must fail closed on environment visibility"
+        );
     }
 
     let access_projection = std::fs::read_to_string(
@@ -2175,6 +2190,7 @@ fn sources_list_queries_isolate_identity_behind_one_context_owned_access_project
     for relative in [
         "sources/presentation/controllers/source_revision_queries_controller.rs",
         "sources/presentation/controllers/github_repository_subscription_queries_controller.rs",
+        "sources/presentation/controllers/github_repository_subscriptions_controller.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));

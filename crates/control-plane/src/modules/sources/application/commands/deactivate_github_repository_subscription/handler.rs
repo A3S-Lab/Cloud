@@ -40,6 +40,14 @@ impl CommandHandler<DeactivateGithubRepositorySubscription>
         let environment_access = Arc::clone(&self.environment_access);
         let subscriptions = Arc::clone(&self.subscriptions);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "source subscriptions not found".into(),
+                )));
+            }
             if let Err(error) = environment_access
                 .require_environment(
                     command.organization_id,
@@ -63,7 +71,7 @@ impl CommandHandler<DeactivateGithubRepositorySubscription>
                 Ok(_) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "GitHub repository subscription not found in environment".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -115,5 +123,66 @@ impl CommandHandler<DeactivateGithubRepositorySubscription>
                 replayed: result.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, OrganizationId, ProjectId, SourceSubscriptionId,
+    };
+    use crate::modules::sources::InMemorySourceRevisionRepository;
+    use crate::modules::sources::application::resource_access::{SourceAccess, SourceAccessScope};
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    struct AllowEnvironment;
+
+    #[async_trait]
+    impl ISourceEnvironmentAccess for AllowEnvironment {
+        async fn require_environment(
+            &self,
+            _organization_id: OrganizationId,
+            _project_id: ProjectId,
+            _environment_id: EnvironmentId,
+        ) -> ApplicationResult<()> {
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn deactivate_github_repository_subscription_fails_closed_before_mutating_an_ungranted_environment()
+     {
+        let handler = DeactivateGithubRepositorySubscriptionHandler::from_environment_access(
+            Arc::new(AllowEnvironment),
+            Arc::new(InMemorySourceRevisionRepository::new()),
+        );
+        let result = handler
+            .execute(
+                DeactivateGithubRepositorySubscription {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    environment_id: EnvironmentId::new(),
+                    access: SourceAccess::restricted([SourceAccessScope::Environment {
+                        project_id: ProjectId::new(),
+                        environment_id: EnvironmentId::new(),
+                    }]),
+                    subscription_id: SourceSubscriptionId::new(),
+                    idempotency_key: "deny-deactivate".into(),
+                    request_id: Uuid::now_v7(),
+                    deactivated_at: Utc::now(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message))
+                if message == "source subscriptions not found"
+        ));
     }
 }

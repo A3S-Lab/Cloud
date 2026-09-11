@@ -1,5 +1,5 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, SourceSubscriptionId,
 };
@@ -10,10 +10,10 @@ use crate::modules::sources::presentation::dto::{
 use crate::modules::sources::{
     CreateGithubRepositorySubscription, DeactivateGithubRepositorySubscription,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, source_access};
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -39,12 +39,16 @@ pub fn github_repository_subscriptions_controller(
                         ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = source_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateGithubRepositorySubscription {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             repository_provider: body.repository.provider,
                             repository_url: body.repository.url,
                             branch: body.branch,
@@ -88,12 +92,16 @@ pub fn github_repository_subscriptions_controller(
                     let subscription_id = SourceSubscriptionId::from_uuid(
                         request.param_as::<Uuid>("subscription_id")?,
                     );
+                    let access = source_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(DeactivateGithubRepositorySubscription {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                             subscription_id,
                             idempotency_key,
                             request_id,

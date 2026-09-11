@@ -2,6 +2,7 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, ProjectId, SourceSubscriptionId,
 };
+use crate::modules::sources::application::SourceAccess;
 use crate::modules::sources::domain::GithubRepositorySubscription;
 use a3s_boot::Command;
 use chrono::{DateTime, Utc};
@@ -13,6 +14,7 @@ pub struct DeactivateGithubRepositorySubscription {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: SourceAccess,
     pub subscription_id: SourceSubscriptionId,
     pub idempotency_key: String,
     pub request_id: Uuid,

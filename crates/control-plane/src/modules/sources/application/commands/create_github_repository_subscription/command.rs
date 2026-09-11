@@ -1,5 +1,6 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
+use crate::modules::sources::application::SourceAccess;
 use crate::modules::sources::application::commands::resolve_external_source_revision::DockerfileBuildRecipeInput;
 use crate::modules::sources::domain::GithubRepositorySubscription;
 use a3s_boot::Command;
@@ -12,6 +13,7 @@ pub struct CreateGithubRepositorySubscription {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: SourceAccess,
     pub repository_provider: String,
     pub repository_url: String,
     pub branch: String,
