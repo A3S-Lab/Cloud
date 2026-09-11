@@ -1,6 +1,6 @@
 use a3s_cloud_contracts::{
-    GatewayAckState, GatewayManagementProtocol, McpGrantProjection, McpLimitsProjection,
-    NodeCommandPayload, NodeGatewayAck, MCP_PROTOCOL_VERSION,
+    GatewayAckState, GatewayManagementProtocol, MCP_PROTOCOL_VERSION, McpGrantProjection,
+    McpLimitsProjection, NodeCommandPayload, NodeGatewayAck,
 };
 use a3s_cloud_control_plane::modules::assets::{
     Asset, AssetCreated, AssetKind, AssetRelease, AssetReleaseDrafted, AssetReleaseVersion,
@@ -9,13 +9,13 @@ use a3s_cloud_control_plane::modules::assets::{
     McpServiceProfileBinding, McpServiceProfileBound, McpServiceProfileSpec,
     PostgresAssetRepository,
 };
+use a3s_cloud_control_plane::modules::edge::domain::EdgeEncryptedCredentialValue;
 use a3s_cloud_control_plane::modules::edge::domain::events::{
     DomainClaimChanged, McpCredentialChanged, McpRoutePolicyMutationKind, RoutePublicationStaged,
 };
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, StageRoutePublication,
 };
-use a3s_cloud_control_plane::modules::edge::domain::EdgeEncryptedCredentialValue;
 use a3s_cloud_control_plane::modules::edge::{
     AssetsEdgeMcpServiceProfileAccessAdapter, CompileMcpGatewaySnapshot,
     CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
@@ -35,9 +35,9 @@ use a3s_cloud_control_plane::modules::edge::{
     RouteTarget, StageManagedRoutePublication, StageMcpGatewaySnapshot, TransitionDomainClaim,
     UpstreamEndpoint, WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter,
 };
+use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
-use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
 use a3s_cloud_control_plane::modules::identity::EmptyInferenceCredentialAclProjectionPort;
 use a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use a3s_cloud_control_plane::modules::operations::{
@@ -58,7 +58,7 @@ use a3s_cloud_control_plane::modules::workloads::{
     OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
     ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
 };
-use a3s_orm::{select_from, sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_orm::{Database, PostgresDialect, PostgresExecutor, select_from, sql_query};
 use a3s_runtime::contract::RuntimeApplyRequest;
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, Utc};
@@ -188,15 +188,16 @@ pub async fn exercise(
         .await?,
         vec![credential.clone()]
     );
-    assert!(edge
-        .resolve_mcp_credentials(
+    assert!(
+        edge.resolve_mcp_credentials(
             other_organization_id,
             project_id,
             environment_id,
             &[credential.id],
         )
         .await?
-        .is_empty());
+        .is_empty()
+    );
     assert!(matches!(
         edge.resolve_mcp_credentials(
             organization_id,
@@ -595,6 +596,7 @@ pub async fn exercise(
     assert!(matches!(
         edge.mutate_mcp_route_policy(policy_write(
             &unowned,
+            &admission,
             McpRoutePolicyMutationKind::Create,
             "postgres-mcp-route-policy-unowned",
         )?)
@@ -612,6 +614,7 @@ pub async fn exercise(
     let failed_create = edge
         .mutate_mcp_route_policy(policy_write(
             &policy,
+            &admission,
             McpRoutePolicyMutationKind::Create,
             "postgres-mcp-route-policy-rollback-probe",
         )?)
@@ -633,6 +636,7 @@ pub async fn exercise(
 
     let create_write = policy_write(
         &policy,
+        &admission,
         McpRoutePolicyMutationKind::Create,
         "postgres-mcp-route-policy-create",
     )?;
@@ -668,8 +672,8 @@ pub async fn exercise(
         .await?,
         vec![policy.clone()]
     );
-    assert!(edge
-        .list_active_mcp_route_policies_for_gateway(
+    assert!(
+        edge.list_active_mcp_route_policies_for_gateway(
             organization_id,
             project_id,
             environment_id,
@@ -677,7 +681,8 @@ pub async fn exercise(
             policy.spec().expires_at,
         )
         .await?
-        .is_empty());
+        .is_empty()
+    );
 
     assert_eq!(
         policy_mutation_artifact_counts(executor, policy.spec().route_id).await?,
@@ -686,6 +691,7 @@ pub async fn exercise(
     let no_op_create = edge
         .mutate_mcp_route_policy(policy_write(
             &policy,
+            &admission,
             McpRoutePolicyMutationKind::Create,
             "postgres-mcp-route-policy-equivalent",
         )?)
@@ -696,8 +702,8 @@ pub async fn exercise(
         policy_mutation_artifact_counts(executor, policy.spec().route_id).await?,
         (1, 2, 0)
     );
-    assert!(edge
-        .list_active_mcp_route_policies_for_gateway(
+    assert!(
+        edge.list_active_mcp_route_policies_for_gateway(
             organization_id,
             project_id,
             environment_id,
@@ -705,9 +711,10 @@ pub async fn exercise(
             policy.updated_at(),
         )
         .await?
-        .is_empty());
-    assert!(edge
-        .list_active_mcp_route_policies_for_gateway(
+        .is_empty()
+    );
+    assert!(
+        edge.list_active_mcp_route_policies_for_gateway(
             other_organization_id,
             project_id,
             environment_id,
@@ -715,7 +722,8 @@ pub async fn exercise(
             policy.updated_at(),
         )
         .await?
-        .is_empty());
+        .is_empty()
+    );
 
     let stale_stage = plan_gateway_snapshot(
         &edge,
@@ -740,6 +748,7 @@ pub async fn exercise(
     assert_eq!(
         edge.mutate_mcp_route_policy(policy_write(
             &revised,
+            &admission,
             McpRoutePolicyMutationKind::Revise,
             "postgres-mcp-route-policy-revise",
         )?)
@@ -754,6 +763,7 @@ pub async fn exercise(
     let historical_create = edge
         .mutate_mcp_route_policy(policy_write(
             &policy,
+            &admission,
             McpRoutePolicyMutationKind::Create,
             "postgres-mcp-route-policy-create",
         )?)
@@ -780,6 +790,7 @@ pub async fn exercise(
     assert!(matches!(
         edge.mutate_mcp_route_policy(policy_write(
             &stale,
+            &admission,
             McpRoutePolicyMutationKind::Revise,
             "postgres-mcp-route-policy-stale-revision",
         )?)
@@ -1573,11 +1584,13 @@ fn digest(character: char) -> Result<Sha256Digest, String> {
 
 fn policy_write(
     policy: &McpRoutePolicy,
+    profile: &EdgeMcpServiceProfileAdmission,
     kind: McpRoutePolicyMutationKind,
     key: &str,
 ) -> Result<MutateMcpRoutePolicyWrite, String> {
     Ok(MutateMcpRoutePolicyWrite {
         document: McpRoutePolicy::parse_acl(policy.canonical_acl())?,
+        profile: profile.clone(),
         kind,
         idempotency: idempotency(
             policy.spec().organization_id,

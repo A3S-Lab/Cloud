@@ -1,25 +1,25 @@
 use super::postgres::PostgresEdgeRepository;
-use super::postgres_schema::{GatewayRouteScopes, McpRoutePolicies, McpServiceProfiles};
+use super::postgres_schema::{GatewayRouteScopes, McpRoutePolicies};
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
-    require_one_row, store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
-    PostgresPersistenceError,
-};
-use crate::modules::edge::domain::events::{McpRoutePolicyChanged, McpRoutePolicyMutationKind};
-use crate::modules::edge::domain::repositories::{
-    IMcpRoutePolicyRepository, McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot,
-    MutateMcpRoutePolicyWrite, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    AuditWrite, PostgresPersistenceError, execute, fetch_optional, idempotency_replay,
+    is_foreign_key_violation, is_unique_violation, require_one_row, store_audit, store_idempotency,
+    store_outbox, transaction_error,
 };
 use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
+use crate::modules::edge::domain::events::{McpRoutePolicyChanged, McpRoutePolicyMutationKind};
+use crate::modules::edge::domain::repositories::{
+    IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY, McpRoutePolicyWrite,
+    McpRoutePolicyWriteSnapshot, MutateMcpRoutePolicyWrite,
+};
 use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, EnvironmentId, GatewayScopeId, OrganizationId,
-    ProjectId, RepositoryError, RouteId,
+    EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    Sha256Digest, canonical_timestamp,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
+    Database, DecodeError, Expression, FromRow, FromValue, OrderDirection, PostgresDialect,
+    PostgresExecutor, PostgresTransaction, Row, insert_into, select_from, update_table,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -142,14 +142,14 @@ async fn create_in_transaction(
         )
         .into());
     }
-    let profile = load_document_profile(transaction, document).await?;
+    let profile = &write.profile;
     let policy = document
-        .materialize(write.requested_at, write.requested_at, &profile)
+        .materialize(write.requested_at, write.requested_at, profile)
         .map_err(|error| {
             RepositoryError::Conflict(format!("invalid MCP route policy write: {error}"))
         })?;
-    validate_supplied(&policy, &profile)?;
-    insert_policy(transaction, &policy).await?;
+    validate_supplied(&policy, profile)?;
+    insert_policy(transaction, &policy, profile).await?;
     Ok((policy, true))
 }
 
@@ -173,15 +173,15 @@ async fn revise_in_transaction(
         .policy_revision()
         .checked_sub(1)
         .ok_or_else(|| RepositoryError::Conflict("MCP route policy revision is invalid".into()))?;
-    let profile = load_document_profile(transaction, document).await?;
+    let profile = &write.profile;
     let policy = document
-        .materialize(existing.created_at(), write.requested_at, &profile)
+        .materialize(existing.created_at(), write.requested_at, profile)
         .map_err(|error| {
             RepositoryError::Conflict(format!("invalid MCP route policy write: {error}"))
         })?;
     validate_transition(&existing, &policy, expected_policy_revision)?;
-    validate_supplied(&policy, &profile)?;
-    update_policy(transaction, &policy, expected_policy_revision).await?;
+    validate_supplied(&policy, profile)?;
+    update_policy(transaction, &policy, expected_policy_revision, profile).await?;
     Ok((policy, true))
 }
 
@@ -194,7 +194,7 @@ async fn replay(
     else {
         return Ok(None);
     };
-    let policy = restore_snapshot(transaction, replay.value).await?;
+    let policy = restore_snapshot(replay.value, &write.profile).await?;
     if !matches_document(&policy, &write.document) {
         return Err(PostgresPersistenceError::Invariant(
             "stored MCP route policy idempotency response does not match the request".into(),
@@ -207,8 +207,8 @@ async fn replay(
 }
 
 async fn restore_snapshot(
-    transaction: &PostgresTransaction,
     snapshot: McpRoutePolicyWriteSnapshot,
+    profile: &EdgeMcpServiceProfileAdmission,
 ) -> Result<McpRoutePolicy, PostgresPersistenceError> {
     let document = McpRoutePolicy::parse_acl(&snapshot.canonical_acl).map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
@@ -220,35 +220,18 @@ async fn restore_snapshot(
             "stored MCP route policy idempotency digest is invalid".into(),
         ));
     }
-    let profile = load_document_profile(transaction, &document).await?;
     McpRoutePolicy::restore(
         &snapshot.canonical_acl,
         &snapshot.policy_digest,
         snapshot.created_at,
         snapshot.updated_at,
-        &profile,
+        profile,
     )
     .map_err(|error| {
         PostgresPersistenceError::Invariant(format!(
             "stored MCP route policy idempotency response is invalid: {error}"
         ))
     })
-}
-
-async fn load_document_profile(
-    transaction: &PostgresTransaction,
-    document: &McpRoutePolicyDocument,
-) -> Result<EdgeMcpServiceProfileAdmission, PostgresPersistenceError> {
-    let spec = document.spec();
-    load_profile(
-        transaction,
-        spec.organization_id,
-        spec.asset_id,
-        spec.asset_release_id,
-        spec.profile_digest.as_str(),
-    )
-    .await?
-    .ok_or_else(|| RepositoryError::NotFound.into())
 }
 
 fn matches_document(policy: &McpRoutePolicy, document: &McpRoutePolicyDocument) -> bool {
@@ -293,6 +276,7 @@ async fn store_policy_audit(
 async fn insert_policy(
     transaction: &PostgresTransaction,
     policy: &McpRoutePolicy,
+    profile: &EdgeMcpServiceProfileAdmission,
 ) -> Result<(), PostgresPersistenceError> {
     let result = execute(
         transaction,
@@ -335,6 +319,22 @@ async fn insert_policy(
                 policy.spec().profile_digest.as_str(),
             )
             .value(
+                McpRoutePolicies::profile_endpoint_path(),
+                profile.endpoint_path(),
+            )
+            .value(
+                McpRoutePolicies::profile_max_request_bytes(),
+                profile.max_request_bytes(),
+            )
+            .value(
+                McpRoutePolicies::profile_max_response_bytes(),
+                profile.max_response_bytes(),
+            )
+            .value(
+                McpRoutePolicies::profile_max_stream_seconds(),
+                profile.max_stream_seconds(),
+            )
+            .value(
                 McpRoutePolicies::hostname(),
                 policy.spec().hostname.as_str(),
             )
@@ -368,6 +368,7 @@ async fn update_policy(
     transaction: &PostgresTransaction,
     policy: &McpRoutePolicy,
     expected_policy_revision: u64,
+    profile: &EdgeMcpServiceProfileAdmission,
 ) -> Result<(), PostgresPersistenceError> {
     let result = execute(
         transaction,
@@ -379,6 +380,22 @@ async fn update_policy(
             .set(
                 McpRoutePolicies::profile_digest(),
                 policy.spec().profile_digest.as_str(),
+            )
+            .set(
+                McpRoutePolicies::profile_endpoint_path(),
+                profile.endpoint_path(),
+            )
+            .set(
+                McpRoutePolicies::profile_max_request_bytes(),
+                profile.max_request_bytes(),
+            )
+            .set(
+                McpRoutePolicies::profile_max_response_bytes(),
+                profile.max_response_bytes(),
+            )
+            .set(
+                McpRoutePolicies::profile_max_stream_seconds(),
+                profile.max_stream_seconds(),
             )
             .set(
                 McpRoutePolicies::domain_claim_id(),
@@ -458,20 +475,7 @@ async fn find_in_transaction(
     else {
         return Ok(None);
     };
-    let profile = load_profile(
-        transaction,
-        OrganizationId::from_uuid(row.organization_id),
-        AssetId::from_uuid(row.asset_id),
-        AssetReleaseId::from_uuid(row.asset_release_id),
-        &row.profile_digest,
-    )
-    .await?
-    .ok_or_else(|| {
-        PostgresPersistenceError::Invariant(
-            "stored MCP route policy lost its Service profile".into(),
-        )
-    })?;
-    row.policy(&profile).map(Some).map_err(Into::into)
+    row.policy().map(Some).map_err(Into::into)
 }
 
 async fn find(
@@ -486,7 +490,7 @@ async fn find(
     else {
         return Ok(None);
     };
-    restore_row(executor, row).await.map(Some)
+    row.policy().map(Some)
 }
 
 async fn list(
@@ -510,7 +514,7 @@ async fn list(
         .rows;
     let mut policies = Vec::with_capacity(rows.len());
     for row in rows {
-        policies.push(restore_row(executor, row).await?);
+        policies.push(row.policy()?);
     }
     Ok(policies)
 }
@@ -536,8 +540,7 @@ async fn list_active_for_gateway(
     let rows = Database::new(PostgresDialect, executor.clone())
         .fetch_all_as(
             select_from::<McpRoutePolicies>()
-                .select(McpRoutePolicyWithProfileSelection)
-                .inner_join::<McpServiceProfiles>(profile_join())
+                .select(McpRoutePolicySelection)
                 .filter(McpRoutePolicies::organization_id().eq(organization_id.as_uuid()))
                 .filter(McpRoutePolicies::project_id().eq(project_id.as_uuid()))
                 .filter(McpRoutePolicies::environment_id().eq(environment_id.as_uuid()))
@@ -554,56 +557,7 @@ async fn list_active_for_gateway(
             "active MCP Gateway route set exceeds {MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY} routes"
         )));
     }
-    rows.into_iter()
-        .map(McpRoutePolicyWithProfileRow::policy)
-        .collect()
-}
-
-async fn restore_row(
-    executor: &PostgresExecutor,
-    row: McpRoutePolicyRow,
-) -> Result<McpRoutePolicy, RepositoryError> {
-    let profile = Database::new(PostgresDialect, executor.clone())
-        .fetch_optional_as(profile_query(
-            OrganizationId::from_uuid(row.organization_id),
-            AssetId::from_uuid(row.asset_id),
-            AssetReleaseId::from_uuid(row.asset_release_id),
-            &row.profile_digest,
-        ))
-        .await
-        .map_err(storage)?
-        .map(|(digest, acl)| {
-            EdgeMcpServiceProfileAdmission::restore_from_stored_acl(&acl, &digest)
-        })
-        .transpose()
-        .map_err(stored)?
-        .ok_or_else(|| {
-            RepositoryError::Storage("stored MCP route policy lost its Service profile".into())
-        })?;
-    row.policy(&profile)
-}
-
-async fn load_profile(
-    transaction: &PostgresTransaction,
-    organization_id: OrganizationId,
-    asset_id: AssetId,
-    asset_release_id: AssetReleaseId,
-    profile_digest: &str,
-) -> Result<Option<EdgeMcpServiceProfileAdmission>, PostgresPersistenceError> {
-    fetch_optional::<(String, String), _>(
-        transaction,
-        profile_query(organization_id, asset_id, asset_release_id, profile_digest),
-    )
-    .await?
-    .map(|(digest, acl)| {
-        EdgeMcpServiceProfileAdmission::restore_from_stored_acl(&acl, &digest)
-    })
-    .transpose()
-    .map_err(|error| {
-        PostgresPersistenceError::Invariant(format!(
-            "stored MCP Service profile is invalid: {error}"
-        ))
-    })
+    rows.into_iter().map(McpRoutePolicyRow::policy).collect()
 }
 
 fn policy_query(
@@ -614,31 +568,6 @@ fn policy_query(
         .select(McpRoutePolicySelection)
         .filter(McpRoutePolicies::organization_id().eq(organization_id.as_uuid()))
         .filter(McpRoutePolicies::id().eq(route_id.as_uuid()))
-}
-
-fn profile_query(
-    organization_id: OrganizationId,
-    asset_id: AssetId,
-    asset_release_id: AssetReleaseId,
-    profile_digest: &str,
-) -> a3s_orm::query::SelectQuery<McpServiceProfiles, (String, String)> {
-    select_from::<McpServiceProfiles>()
-        .select((
-            McpServiceProfiles::profile_digest(),
-            McpServiceProfiles::acl(),
-        ))
-        .filter(McpServiceProfiles::organization_id().eq(organization_id.as_uuid()))
-        .filter(McpServiceProfiles::asset_id().eq(asset_id.as_uuid()))
-        .filter(McpServiceProfiles::asset_release_id().eq(asset_release_id.as_uuid()))
-        .filter(McpServiceProfiles::profile_digest().eq(profile_digest))
-}
-
-fn profile_join() -> Expression {
-    McpRoutePolicies::organization_id()
-        .eq_column(McpServiceProfiles::organization_id())
-        .and(McpRoutePolicies::asset_id().eq_column(McpServiceProfiles::asset_id()))
-        .and(McpRoutePolicies::asset_release_id().eq_column(McpServiceProfiles::asset_release_id()))
-        .and(McpRoutePolicies::profile_digest().eq_column(McpServiceProfiles::profile_digest()))
 }
 
 fn validate_supplied(
@@ -700,6 +629,10 @@ struct McpRoutePolicyRow {
     asset_id: Uuid,
     asset_release_id: Uuid,
     profile_digest: String,
+    profile_endpoint_path: String,
+    profile_max_request_bytes: u64,
+    profile_max_response_bytes: u64,
+    profile_max_stream_seconds: u64,
     hostname: String,
     path: String,
     policy_revision: u64,
@@ -711,12 +644,6 @@ struct McpRoutePolicyRow {
 }
 
 struct McpRoutePolicySelection;
-struct McpRoutePolicyWithProfileSelection;
-
-struct McpRoutePolicyWithProfileRow {
-    policy: McpRoutePolicyRow,
-    profile_acl: String,
-}
 
 impl Selection for McpRoutePolicySelection {
     type Output = McpRoutePolicyRow;
@@ -733,6 +660,10 @@ impl Selection for McpRoutePolicySelection {
             McpRoutePolicies::asset_id().expression(),
             McpRoutePolicies::asset_release_id().expression(),
             McpRoutePolicies::profile_digest().expression(),
+            McpRoutePolicies::profile_endpoint_path().expression(),
+            McpRoutePolicies::profile_max_request_bytes().expression(),
+            McpRoutePolicies::profile_max_response_bytes().expression(),
+            McpRoutePolicies::profile_max_stream_seconds().expression(),
             McpRoutePolicies::hostname().expression(),
             McpRoutePolicies::path().expression(),
             McpRoutePolicies::policy_revision().expression(),
@@ -742,16 +673,6 @@ impl Selection for McpRoutePolicySelection {
             McpRoutePolicies::created_at().expression(),
             McpRoutePolicies::updated_at().expression(),
         ]
-    }
-}
-
-impl Selection for McpRoutePolicyWithProfileSelection {
-    type Output = McpRoutePolicyWithProfileRow;
-
-    fn expressions(self) -> Vec<Expression> {
-        let mut expressions = McpRoutePolicySelection.expressions();
-        expressions.push(McpServiceProfiles::acl().expression());
-        expressions
     }
 }
 
@@ -768,49 +689,38 @@ impl FromRow for McpRoutePolicyRow {
             asset_id: decode(row, 7)?,
             asset_release_id: decode(row, 8)?,
             profile_digest: decode(row, 9)?,
-            hostname: decode(row, 10)?,
-            path: decode(row, 11)?,
-            policy_revision: decode(row, 12)?,
-            policy_digest: decode(row, 13)?,
-            acl: decode(row, 14)?,
-            expires_at: decode(row, 15)?,
-            created_at: decode(row, 16)?,
-            updated_at: decode(row, 17)?,
+            profile_endpoint_path: decode(row, 10)?,
+            profile_max_request_bytes: decode(row, 11)?,
+            profile_max_response_bytes: decode(row, 12)?,
+            profile_max_stream_seconds: decode(row, 13)?,
+            hostname: decode(row, 14)?,
+            path: decode(row, 15)?,
+            policy_revision: decode(row, 16)?,
+            policy_digest: decode(row, 17)?,
+            acl: decode(row, 18)?,
+            expires_at: decode(row, 19)?,
+            created_at: decode(row, 20)?,
+            updated_at: decode(row, 21)?,
         })
-    }
-}
-
-impl FromRow for McpRoutePolicyWithProfileRow {
-    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
-        Ok(Self {
-            policy: McpRoutePolicyRow::from_row(row)?,
-            profile_acl: decode(row, 18)?,
-        })
-    }
-}
-
-impl McpRoutePolicyWithProfileRow {
-    fn policy(self) -> Result<McpRoutePolicy, RepositoryError> {
-        let profile = EdgeMcpServiceProfileAdmission::restore_from_stored_acl(
-            &self.profile_acl,
-            &self.policy.profile_digest,
-        )
-        .map_err(stored)?;
-        self.policy.policy(&profile)
     }
 }
 
 impl McpRoutePolicyRow {
-    fn policy(
-        self,
-        profile: &EdgeMcpServiceProfileAdmission,
-    ) -> Result<McpRoutePolicy, RepositoryError> {
+    fn policy(self) -> Result<McpRoutePolicy, RepositoryError> {
+        let profile = EdgeMcpServiceProfileAdmission::new(
+            Sha256Digest::parse(&self.profile_digest).map_err(stored)?,
+            &self.profile_endpoint_path,
+            self.profile_max_request_bytes,
+            self.profile_max_response_bytes,
+            self.profile_max_stream_seconds,
+        )
+        .map_err(stored)?;
         let policy = McpRoutePolicy::restore(
             &self.acl,
             &self.policy_digest,
             self.created_at,
             self.updated_at,
-            profile,
+            &profile,
         )
         .map_err(stored)?;
         let spec = policy.spec();

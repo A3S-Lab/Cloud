@@ -1,8 +1,10 @@
 use crate::modules::edge::domain::events::McpRoutePolicyMutationKind;
-use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument};
+use crate::modules::edge::domain::{
+    EdgeMcpServiceProfileAdmission, McpRoutePolicy, McpRoutePolicyDocument,
+};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, GatewayScopeId, IdempotencyRequest, OrganizationId,
-    ProjectId, RepositoryError, RouteId,
+    EnvironmentId, GatewayScopeId, IdempotencyRequest, OrganizationId, ProjectId, RepositoryError,
+    RouteId, canonical_timestamp,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -14,6 +16,7 @@ pub const MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY: usize = 1_000;
 #[derive(Debug, Clone)]
 pub struct MutateMcpRoutePolicyWrite {
     pub document: McpRoutePolicyDocument,
+    pub profile: EdgeMcpServiceProfileAdmission,
     pub kind: McpRoutePolicyMutationKind,
     pub idempotency: IdempotencyRequest,
     pub request_id: Uuid,
@@ -28,6 +31,12 @@ impl MutateMcpRoutePolicyWrite {
                 && self.document.policy_revision() != 1)
         {
             return Err("MCP route policy mutation request is invalid".into());
+        }
+        self.profile.validate()?;
+        if self.document.spec().profile_digest != *self.profile.digest() {
+            return Err(
+                "MCP route policy mutation profile admission does not match its document".into(),
+            );
         }
         Ok(())
     }

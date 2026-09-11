@@ -10861,17 +10861,41 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
     let production_postgres = production_source(&postgres);
     for forbidden in [
         "crate::modules::assets",
+        "McpServiceProfiles",
         "McpServiceProfile::restore",
         "admit_mcp_service_profile",
+        "restore_from_stored_acl",
+        "mcp_service_profiles",
+        "profile_join",
+        "profile_query",
     ] {
         assert!(
             !production_postgres.contains(forbidden),
-            "Edge MCP route-policy persistence regained Assets aggregate authority {forbidden}"
+            "Edge MCP route-policy persistence regained Assets profile authority {forbidden}"
         );
     }
+    for required in [
+        "profile_endpoint_path",
+        "profile_max_request_bytes",
+        "profile_max_response_bytes",
+        "profile_max_stream_seconds",
+        "EdgeMcpServiceProfileAdmission::new(",
+        "write.profile",
+    ] {
+        assert!(
+            production_postgres.contains(required),
+            "Edge MCP route-policy persistence lost owned profile admission surface {required}"
+        );
+    }
+
+    let schema =
+        std::fs::read_to_string(root.join("edge/infrastructure/persistence/postgres_schema.rs"))
+            .expect("read Edge postgres schema");
+    let production_schema = production_source(&schema);
     assert!(
-        production_postgres.contains("EdgeMcpServiceProfileAdmission::restore_from_stored_acl("),
-        "Edge MCP route-policy persistence stopped restoring Edge-owned profile admissions"
+        !production_schema.contains("McpServiceProfiles")
+            && !production_schema.contains("mcp_service_profiles"),
+        "Edge postgres schema regained a foreign mcp_service_profiles mapping"
     );
 }
 

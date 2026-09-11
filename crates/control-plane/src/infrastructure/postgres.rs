@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 199;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "199";
+pub const CLOUD_MIGRATION_COUNT: i64 = 200;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "200";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1799,6 +1799,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/199_workload_revision_mcp_profile_admission.sql"
+            )),
+        ),
+        Migration::new(
+            "200",
+            "MCP route policy profile admission facts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/200_mcp_route_policy_profile_admission.sql"
             )),
         ),
     ]

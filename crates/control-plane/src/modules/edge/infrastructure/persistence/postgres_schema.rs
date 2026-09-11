@@ -307,17 +307,6 @@ orm_table! {
 }
 
 orm_table! {
-    pub(super) struct McpServiceProfiles => "mcp_service_profiles" {
-        organization_id: Uuid => "organization_id",
-        asset_id: Uuid => "asset_id",
-        asset_release_id: Uuid => "asset_release_id",
-        profile_digest: String => "profile_digest",
-        acl: String => "acl",
-        created_at: DateTime<Utc> => "created_at",
-    }
-}
-
-orm_table! {
     pub(super) struct McpRoutePolicies => "mcp_route_policies" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",
@@ -329,6 +318,10 @@ orm_table! {
         asset_id: Uuid => "asset_id",
         asset_release_id: Uuid => "asset_release_id",
         profile_digest: String => "profile_digest",
+        profile_endpoint_path: String => "profile_endpoint_path",
+        profile_max_request_bytes: u64 => "profile_max_request_bytes",
+        profile_max_response_bytes: u64 => "profile_max_response_bytes",
+        profile_max_stream_seconds: u64 => "profile_max_stream_seconds",
         hostname: String => "hostname",
         path: String => "path",
         policy_revision: u64 => "policy_revision",

@@ -6,8 +6,8 @@ use crate::modules::edge::domain::repositories::{
 use crate::modules::edge::domain::{McpRoutePolicy, McpRoutePolicyDocument};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId,
-    RepositoryError, RouteId,
+    EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, RepositoryError, RouteId,
+    canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
@@ -64,6 +64,7 @@ impl McpRoutePolicyApplicationService {
         self.mutate(
             MutateMcpRoutePolicyWrite {
                 document,
+                profile,
                 kind: McpRoutePolicyMutationKind::Create,
                 idempotency,
                 request_id,
@@ -104,6 +105,7 @@ impl McpRoutePolicyApplicationService {
         self.mutate(
             MutateMcpRoutePolicyWrite {
                 document,
+                profile,
                 kind: McpRoutePolicyMutationKind::Revise,
                 idempotency,
                 request_id,
