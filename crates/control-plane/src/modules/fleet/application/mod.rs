@@ -7,6 +7,7 @@ mod log_reader;
 mod log_retention;
 mod node_artifact_authorizer;
 pub mod queries;
+pub(crate) mod resource_access;
 mod runtime_node_evidence;
 
 pub use commands::{
@@ -30,8 +31,8 @@ pub use gateway_snapshot_commands::{
 };
 pub use log_compaction::LogCompactionWorker;
 pub use log_reader::{
-    NodeLogGapReason, NodeLogPage, NodeLogReadQuery, NodeLogReader, NodeLogRecord,
-    MAX_LOG_PAGE_SIZE,
+    MAX_LOG_PAGE_SIZE, NodeLogGapReason, NodeLogPage, NodeLogReadQuery, NodeLogReader,
+    NodeLogRecord,
 };
 pub use log_retention::LogRetentionWorker;
 pub use node_artifact_authorizer::NodeArtifactAuthorizer;
@@ -39,6 +40,8 @@ pub use queries::{
     GetNode, GetNodeHandler, GetNodePool, GetNodePoolHandler, ListNodePools, ListNodePoolsHandler,
     ListNodes, ListNodesHandler, NodeQueryResult,
 };
+pub use resource_access::FleetAccess;
+pub(crate) use resource_access::FleetAccessScope;
 pub use runtime_node_evidence::{
     IRuntimeNodeEvidenceQueryPort, RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
 };

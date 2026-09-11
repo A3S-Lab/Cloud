@@ -2909,6 +2909,113 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
 }
 
 #[test]
+fn fleet_list_and_pool_paths_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("fleet/application/resource_access.rs"))
+        .expect("read Fleet resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumFleetAccessScope",
+        "pubstructFleetAccess",
+        "node_is_visible",
+        "is_organization_wide",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Fleet lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Fleet resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "fleet/application/queries/list_nodes.rs",
+        "fleet/application/queries/node_pools.rs",
+        "fleet/application/commands/manage_node_pool/command.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: FleetAccess"),
+            "{relative} stopped carrying Fleet-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnfleet_access(",
+        "FleetAccess::organization_wide()",
+        "FleetAccess::restricted(",
+        "ResourceGrantScope::Project{..}|ResourceGrantScope::Environment{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Fleet access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "fleet/presentation/controllers/node_queries_controller.rs",
+        "fleet/presentation/controllers/node_pool_queries_controller.rs",
+        "fleet/presentation/controllers/node_pool_management_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("fleet_access(&resource_access_evaluator("),
+            "{relative} must project Identity into FleetAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator")
+                && !production.contains("resource_access,"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/nodes.rs"),
+    )
+    .expect("read Fleet Management MCP adapter");
+    let production_mcp = production_source(&mcp);
+    assert!(
+        production_mcp.contains("access: fleet_access(&resource_access)"),
+        "Fleet MCP must project ListNodes into FleetAccess"
+    );
+    assert!(
+        !production_mcp.contains("resource_access,"),
+        "Fleet MCP must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

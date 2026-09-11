@@ -7,6 +7,7 @@ use super::{
     ManageNodePool, ManageNodePoolHandler, NodePoolMutation, RecordNodeLogChunks,
     RecordNodeLogChunksHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
 };
+use crate::modules::fleet::FleetAccess;
 use crate::modules::fleet::domain::entities::NodeCommandDraft;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, INodeSchedulingRepository, NodeHeartbeatUpdate,
@@ -17,7 +18,6 @@ use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
 use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
 use crate::modules::identity::domain::entities::Organization;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::infrastructure::persistence::InMemoryIdentityRepository;
 use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
 use crate::modules::shared_kernel::domain::{NodeCertificateId, NodeCommandId, NodeId, NodePoolId};
@@ -212,7 +212,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             name: "Primary Workers".into(),
             member_node_ids: vec![node_id],
         },
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: FleetAccess::organization_wide(),
         idempotency_key: "create-primary-pool".into(),
         request_id: Uuid::now_v7(),
         requested_at: now + Duration::seconds(3),
@@ -244,7 +244,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             ends_at: now + Duration::minutes(30),
             reason: "kernel upgrade".into(),
         },
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: FleetAccess::organization_wide(),
         idempotency_key: "schedule-primary-pool".into(),
         request_id: Uuid::now_v7(),
         requested_at: now + Duration::seconds(3),
@@ -265,18 +265,20 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             .expect("delayed maintenance replay")
             .replayed
     );
-    assert!(nodes
-        .list_scheduling_candidates(organization.id, None, now + Duration::seconds(5))
-        .await
-        .expect("scheduling projection")
-        .is_empty());
+    assert!(
+        nodes
+            .list_scheduling_candidates(organization.id, None, now + Duration::seconds(5))
+            .await
+            .expect("scheduling projection")
+            .is_empty()
+    );
 
     let get_pool = GetNodePoolHandler::new(nodes.clone())
         .execute(
             GetNodePool {
                 organization_id: organization.id,
                 node_pool_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FleetAccess::organization_wide(),
             },
             context(),
         )
@@ -288,7 +290,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         .execute(
             ListNodePools {
                 organization_id: organization.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FleetAccess::organization_wide(),
             },
             context(),
         )
@@ -296,17 +298,19 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         .expect("framework result")
         .expect("list node pools");
     assert_eq!(listed_pools.len(), 1);
-    assert!(ListNodePoolsHandler::new(nodes.clone())
-        .execute(
-            ListNodePools {
-                organization_id: organization.id,
-                resource_access: ResourceAccessEvaluator::restricted([]),
-            },
-            context(),
-        )
-        .await
-        .expect("framework result")
-        .is_err());
+    assert!(
+        ListNodePoolsHandler::new(nodes.clone())
+            .execute(
+                ListNodePools {
+                    organization_id: organization.id,
+                    access: FleetAccess::restricted([]),
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .is_err()
+    );
 
     let enqueue_handler = EnqueueNodeCommandHandler::new(nodes.clone());
     let issued_at = now + Duration::seconds(4);
@@ -348,18 +352,20 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         max_commands: 1,
         wait_ms: 0,
     };
-    assert!(lease_handler
-        .execute(
-            LeaseNodeCommands {
-                authenticated_node_id: NodeId::new(),
-                request: lease_request.clone(),
-                received_at: issued_at,
-            },
-            context(),
-        )
-        .await
-        .expect("framework result")
-        .is_err());
+    assert!(
+        lease_handler
+            .execute(
+                LeaseNodeCommands {
+                    authenticated_node_id: NodeId::new(),
+                    request: lease_request.clone(),
+                    received_at: issued_at,
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .is_err()
+    );
     let lease = lease_handler
         .execute(
             LeaseNodeCommands {
@@ -540,18 +546,20 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         .expect("compact retained logs");
     assert_eq!(compacted.compacted_tombstones, 1);
     assert_eq!(compacted.created_ranges, 1);
-    assert!(nodes
-        .list_log_chunks(NodeLogChunkQuery {
-            node_id,
-            unit_id: "worker-service".into(),
-            generation: 1,
-            after_sequence: None,
-            limit: 2,
-            stream: None,
-        })
-        .await
-        .expect("compacted log metadata")
-        .is_empty());
+    assert!(
+        nodes
+            .list_log_chunks(NodeLogChunkQuery {
+                node_id,
+                unit_id: "worker-service".into(),
+                generation: 1,
+                after_sequence: None,
+                limit: 2,
+                stream: None,
+            })
+            .await
+            .expect("compacted log metadata")
+            .is_empty()
+    );
     let ranges = nodes
         .list_log_compaction_ranges(NodeLogChunkQuery {
             node_id,
@@ -644,18 +652,20 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
     reused_sequence.batch_id = Uuid::now_v7();
     reused_sequence.chunks[0].chunk.sequence = 2;
     reused_sequence.chunks[0].chunk.cursor = "cursor:2".into();
-    assert!(log_handler
-        .execute(
-            RecordNodeLogChunks {
-                authenticated_node_id: node_id,
-                batch: reused_sequence,
-                received_at: issued_at + Duration::seconds(11),
-            },
-            context(),
-        )
-        .await
-        .expect("framework result")
-        .is_err());
+    assert!(
+        log_handler
+            .execute(
+                RecordNodeLogChunks {
+                    authenticated_node_id: node_id,
+                    batch: reused_sequence,
+                    received_at: issued_at + Duration::seconds(11),
+                },
+                context(),
+            )
+            .await
+            .expect("framework result")
+            .is_err()
+    );
     assert_eq!(
         log_store
             .get(&metadata[0].object_key, &metadata[0].checksum)
@@ -774,7 +784,7 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
             ListNodes {
                 organization_id: organization.id,
                 queried_at: now + Duration::seconds(30),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: FleetAccess::organization_wide(),
             },
             context(),
         )

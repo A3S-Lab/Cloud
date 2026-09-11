@@ -1,12 +1,13 @@
+use crate::access_projection::fleet_access;
 use crate::modules::fleet::application::{GetNodePool, ListNodePools};
 use crate::modules::fleet::presentation::dto::NodePoolResponse;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{NodePoolId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus,
+    Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -25,12 +26,13 @@ pub fn node_pool_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let request_id = request_id(&request)?;
+                    let access = fleet_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListNodePools {
                             organization_id,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access,
                         })
                         .await?
                     {
@@ -58,13 +60,14 @@ pub fn node_pool_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     let node_pool_id =
                         NodePoolId::from_uuid(request.param_as::<Uuid>("node_pool_id")?);
                     let request_id = request_id(&request)?;
+                    let access = fleet_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(GetNodePool {
                             organization_id,
                             node_pool_id,
-                            resource_access: resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?,
+                            access,
                         })
                         .await?
                     {

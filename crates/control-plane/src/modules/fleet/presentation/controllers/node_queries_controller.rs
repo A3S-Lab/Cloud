@@ -1,6 +1,7 @@
+use crate::access_projection::fleet_access;
 use crate::modules::fleet::application::{GetNode, ListNodes};
 use crate::modules::fleet::presentation::dto::NodeResponse;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
@@ -18,13 +19,14 @@ pub fn node_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinitio
                 let organization_id =
                     OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                 let request_id = request_id(&request)?;
-                let resource_access =
-                    resource_access_evaluator(&request.require_auth_principal()?)?;
+                let access = fleet_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?);
                 match bus
                     .execute(ListNodes {
                         organization_id,
                         queried_at: Utc::now(),
-                        resource_access,
+                        access,
                     })
                     .await?
                 {

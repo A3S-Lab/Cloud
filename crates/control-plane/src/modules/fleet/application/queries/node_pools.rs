@@ -1,6 +1,6 @@
+use crate::modules::fleet::application::FleetAccess;
 use crate::modules::fleet::domain::entities::NodePool;
 use crate::modules::fleet::domain::repositories::INodePoolRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{NodePoolId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,7 +10,7 @@ use std::sync::Arc;
 pub struct GetNodePool {
     pub organization_id: OrganizationId,
     pub node_pool_id: NodePoolId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: FleetAccess,
 }
 
 impl Query for GetNodePool {
@@ -35,7 +35,7 @@ impl QueryHandler<GetNodePool> for GetNodePoolHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<NodePool>>> {
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
-            if !query.resource_access.is_organization_wide() {
+            if !query.access.is_organization_wide() {
                 return Ok(Err(ApplicationError::Forbidden(
                     "node pool policy requires organization-wide access".into(),
                 )));
@@ -54,7 +54,7 @@ impl QueryHandler<GetNodePool> for GetNodePoolHandler {
 #[derive(Debug, Clone)]
 pub struct ListNodePools {
     pub organization_id: OrganizationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: FleetAccess,
 }
 
 impl Query for ListNodePools {
@@ -79,7 +79,7 @@ impl QueryHandler<ListNodePools> for ListNodePoolsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<NodePool>>>> {
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
-            if !query.resource_access.is_organization_wide() {
+            if !query.access.is_organization_wide() {
                 return Ok(Err(ApplicationError::Forbidden(
                     "node pool policy requires organization-wide access".into(),
                 )));

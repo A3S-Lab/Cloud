@@ -4,6 +4,8 @@ pub mod infrastructure;
 pub mod presentation;
 pub mod published;
 
+pub use application::FleetAccess;
+pub(crate) use application::FleetAccessScope;
 pub use application::{
     AcknowledgeNodeCommand, AcknowledgeNodeCommandHandler, AcknowledgeNodeCommandResult,
     ChangeNodeState, ChangeNodeStateHandler, ChangeNodeStateResult, EnqueueNodeCommand,
@@ -20,9 +22,9 @@ pub use application::{
     NodeLogReadQuery, NodeLogReader, NodeLogRecord, NodePoolMutation, NodePoolMutationResult,
     NodeQueryResult, RecordGatewayAcknowledgement, RecordGatewayAcknowledgementHandler,
     RecordNodeLogChunks, RecordNodeLogChunksHandler, RecordNodeObservations,
-    RecordNodeObservationsHandler, RecordNodeResourceInventory,
-    RecordNodeResourceInventoryHandler, RotateNodeCertificate, RotateNodeCertificateHandler,
-    RotateNodeCertificateResult, RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
+    RecordNodeObservationsHandler, RecordNodeResourceInventory, RecordNodeResourceInventoryHandler,
+    RotateNodeCertificate, RotateNodeCertificateHandler, RotateNodeCertificateResult,
+    RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
 };
 pub use infrastructure::{
     LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore,
@@ -32,5 +34,5 @@ pub use infrastructure::{
 pub(crate) use infrastructure::{
     lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,
 };
-pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};
 pub(crate) use presentation::NodeControlApi;
+pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};

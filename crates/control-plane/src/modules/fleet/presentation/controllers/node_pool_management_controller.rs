@@ -1,15 +1,16 @@
+use crate::access_projection::fleet_access;
 use crate::modules::fleet::application::{ManageNodePool, NodePoolMutation};
 use crate::modules::fleet::presentation::dto::{
     AddNodePoolMembersRequest, CancelNodePoolMaintenanceRequest, CreateNodePoolRequest,
     NodePoolResponse, RequestNodePoolMemberRemovalRequest, ScheduleNodePoolMaintenanceRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{NodeId, NodePoolId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -164,13 +165,15 @@ async fn execute(
 ) -> Result<BootResponse> {
     let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
     let (idempotency_key, request_id) = request_identity(request)?;
-    let resource_access = resource_access_evaluator(&request.require_auth_principal()?)?;
+    let access = fleet_access(&resource_access_evaluator(
+        &request.require_auth_principal()?,
+    )?);
     match bus
         .execute(ManageNodePool {
             organization_id,
             node_pool_id,
             mutation,
-            resource_access,
+            access,
             idempotency_key,
             request_id,
             requested_at: Utc::now(),

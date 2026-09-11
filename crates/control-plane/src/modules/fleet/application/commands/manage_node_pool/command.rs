@@ -1,5 +1,5 @@
+use crate::modules::fleet::application::FleetAccess;
 use crate::modules::fleet::domain::entities::NodePool;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{NodeId, NodePoolId, OrganizationId};
 use a3s_boot::Command;
@@ -38,7 +38,7 @@ pub struct ManageNodePool {
     pub organization_id: OrganizationId,
     pub node_pool_id: NodePoolId,
     pub mutation: NodePoolMutation,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: FleetAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

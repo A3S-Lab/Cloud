@@ -4,11 +4,11 @@ use crate::modules::fleet::domain::events::{NodePoolChangeKind, NodePoolChanged}
 use crate::modules::fleet::domain::repositories::{INodePoolRepository, NodePoolWrite};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, IdempotencyRequest, NodeId, ResourceName,
+    IdempotencyRequest, NodeId, ResourceName, canonical_timestamp,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use chrono::{DateTime, Utc};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::sync::Arc;
 
 pub struct ManageNodePoolHandler {
@@ -30,7 +30,7 @@ impl CommandHandler<ManageNodePool> for ManageNodePoolHandler {
     {
         let node_pools = Arc::clone(&self.node_pools);
         Box::pin(async move {
-            if !command.resource_access.is_organization_wide() {
+            if !command.access.is_organization_wide() {
                 return Ok(Err(ApplicationError::Forbidden(
                     "node pool policy requires organization-wide access".into(),
                 )));
@@ -56,7 +56,7 @@ impl CommandHandler<ManageNodePool> for ManageNodePoolHandler {
                     return Ok(Ok(NodePoolMutationResult {
                         node_pool,
                         replayed: true,
-                    }))
+                    }));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),

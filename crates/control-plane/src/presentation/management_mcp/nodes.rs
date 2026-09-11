@@ -1,5 +1,6 @@
 use super::arguments::{EmptyArguments, NodeArguments};
 use super::tool_result;
+use crate::access_projection::fleet_access;
 use crate::modules::fleet::presentation::NodeResponse;
 use crate::modules::fleet::{GetNode, ListNodes};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -21,7 +22,7 @@ pub async fn list_nodes(
         .execute(ListNodes {
             organization_id,
             queried_at: Utc::now(),
-            resource_access,
+            access: fleet_access(&resource_access),
         })
         .await?
     {
