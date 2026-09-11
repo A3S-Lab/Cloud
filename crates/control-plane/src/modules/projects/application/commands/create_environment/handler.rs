@@ -36,6 +36,11 @@ impl CommandHandler<CreateEnvironment> for CreateEnvironmentHandler {
         let projects = Arc::clone(&self.projects);
         let environments = Arc::clone(&self.environments);
         Box::pin(async move {
+            if !command.access.project_is_authorized(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound(
+                    "project not found in organization".into(),
+                )));
+            }
             match projects
                 .find(command.organization_id, command.project_id)
                 .await
@@ -44,7 +49,7 @@ impl CommandHandler<CreateEnvironment> for CreateEnvironmentHandler {
                 Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "project not found in organization".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -87,5 +92,47 @@ impl CommandHandler<CreateEnvironment> for CreateEnvironmentHandler {
                 replayed: result.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::projects::application::{ProjectAccess, ProjectAccessScope};
+    use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepository;
+    use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
+    use a3s_boot::ModuleRef;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn create_environment_fails_closed_before_project_lookup_without_project_authority() {
+        let repository = Arc::new(InMemoryProjectsRepository::new());
+        let handler = CreateEnvironmentHandler::new(
+            Arc::clone(&repository) as Arc<dyn IProjectRepository>,
+            Arc::clone(&repository) as Arc<dyn IEnvironmentRepository>,
+        );
+        let project_id = ProjectId::new();
+        let result = handler
+            .execute(
+                CreateEnvironment {
+                    organization_id: OrganizationId::new(),
+                    project_id,
+                    access: ProjectAccess::restricted([ProjectAccessScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    }]),
+                    name: "denied-env".into(),
+                    idempotency_key: "deny-create".into(),
+                    request_id: Uuid::now_v7(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message))
+                if message == "project not found in organization"
+        ));
     }
 }

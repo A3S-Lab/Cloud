@@ -3124,6 +3124,7 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
         "projects/application/queries/list_projects/query.rs",
         "projects/application/queries/list_environments/query.rs",
         "projects/application/queries/get_project_attribution/query.rs",
+        "projects/application/commands/create_environment/command.rs",
         "projects/application/commands/update_project_attribution/command.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))

@@ -1,6 +1,6 @@
-use crate::access_projection::project_access;
 use super::arguments::EmptyArguments;
 use super::tool_result;
+use crate::access_projection::project_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::presentation::{
     EnvironmentListItemResponse, EnvironmentResponse, ProjectAttributionMutationResponse,
@@ -89,12 +89,14 @@ pub async fn create_environment(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: CreateEnvironmentArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateEnvironment {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: project_access(&resource_access),
             name: arguments.name,
             idempotency_key: arguments.idempotency_key,
             request_id,

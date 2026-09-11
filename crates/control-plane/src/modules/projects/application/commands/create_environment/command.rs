@@ -1,3 +1,4 @@
+use crate::modules::projects::application::ProjectAccess;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
@@ -9,6 +10,7 @@ use uuid::Uuid;
 pub struct CreateEnvironment {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: ProjectAccess,
     pub name: String,
     pub idempotency_key: String,
     pub request_id: Uuid,

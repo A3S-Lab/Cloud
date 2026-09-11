@@ -1,7 +1,7 @@
 use crate::access_projection::project_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
-    authenticated_actor, resource_access_evaluator, OrganizationTenantGuard,
+    OrganizationTenantGuard, authenticated_actor, resource_access_evaluator,
 };
 use crate::modules::projects::application::commands::create_environment::CreateEnvironment;
 use crate::modules::projects::application::commands::create_project::CreateProject;
@@ -13,8 +13,8 @@ use crate::modules::projects::presentation::dto::{
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    Result,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -107,11 +107,15 @@ pub fn environments_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinit
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let access = project_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateEnvironment {
                             organization_id,
                             project_id,
+                            access,
                             name: body.name,
                             idempotency_key,
                             request_id,

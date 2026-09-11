@@ -163,7 +163,14 @@ pub async fn execute(
     let result = match tool {
         ManagementTool::EnvironmentsCreate => {
             let arguments = arguments::parse::<CreateEnvironmentArguments>(arguments).ok()?;
-            projects::create_environment(command_bus, organization_id, arguments, request_id).await
+            projects::create_environment(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::EnvironmentsList => {
             let arguments = arguments::parse::<ProjectArguments>(arguments).ok()?;
