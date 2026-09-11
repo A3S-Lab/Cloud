@@ -1,3 +1,4 @@
+use crate::modules::executions::application::ExecutionAccess;
 use crate::modules::executions::domain::{Execution, ExecutionTemplate};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
@@ -11,6 +12,7 @@ pub struct CreateExecutionCommand {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: ExecutionAccess,
     pub template: ExecutionTemplate,
     pub idempotency_key: String,
     pub request_id: Uuid,

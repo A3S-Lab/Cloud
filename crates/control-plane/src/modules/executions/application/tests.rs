@@ -1,38 +1,38 @@
 use super::{
     CancelExecution, CancelExecutionHandler, CreateExecutionCommand, CreateExecutionHandler,
-    ExecutionAccess, ExecutionReconciler, GetExecution, GetExecutionHandler,
-    IExecutionsEnvironmentAccess, IWorkflowExecutionPort, WorkflowExecutionApplicationService,
-    WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
+    EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION, ExecutionAccess, ExecutionReconciler,
+    GetExecution, GetExecutionHandler, IExecutionsEnvironmentAccess, IWorkflowExecutionPort,
+    WorkflowExecutionApplicationService, WorkflowExecutionRequest,
 };
 use crate::modules::executions::application::ExecutionAccessScope;
 use crate::modules::executions::domain::events::{ExecutionRequested, ExecutionTemplatePublished};
 use crate::modules::executions::domain::{
-    CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
-    ExecutionProcess, ExecutionResources, ExecutionStatus, ExecutionTaskArtifactMount,
-    ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret, ExecutionTaskSecretTarget,
-    ExecutionTemplate, ExecutionTemplateDefinition, ExecutionTemplateDefinitionSpec,
-    ExecutionTemplateRevision, IExecutionRepository, IExecutionTemplateRepository,
-    EXECUTION_TEMPLATE_CAPABILITY,
+    CreateExecution, CreateExecutionTemplateRevision, EXECUTION_TEMPLATE_CAPABILITY, Execution,
+    ExecutionArtifact, ExecutionProcess, ExecutionResources, ExecutionStatus,
+    ExecutionTaskArtifactMount, ExecutionTaskAuthority, ExecutionTaskPolicy, ExecutionTaskSecret,
+    ExecutionTaskSecretTarget, ExecutionTemplate, ExecutionTemplateDefinition,
+    ExecutionTemplateDefinitionSpec, ExecutionTemplateRevision, IExecutionRepository,
+    IExecutionTemplateRepository,
 };
 use crate::modules::executions::infrastructure::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
     ProjectsExecutionsEnvironmentAccessAdapter,
 };
-use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::operations::InMemoryOperationRepository;
+use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, ExecutionId, ExecutionTemplateId,
-    ExecutionTemplateRevisionId, IdempotencyRequest, NodeId, OrganizationId, PlanRevisionId,
-    PrincipalId, ProjectId, Sha256Digest, WorkflowRunId,
+    EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId,
+    IdempotencyRequest, NodeId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
+    Sha256Digest, WorkflowRunId, canonical_timestamp,
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_cloud_contracts::{
-    artifact_uri, CloudSecretReference, DomainEventEnvelope, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    CloudSecretReference, DURABLE_CELL_BUNDLE_MEDIA_TYPE, DomainEventEnvelope, artifact_uri,
 };
 use chrono::{Duration, Utc};
 use std::collections::BTreeMap;
@@ -91,22 +91,27 @@ fn bound_task(
                     .expect("authority digest"),
             )
             .expect("authority"),
-            vec![ExecutionTaskArtifactMount::new(
-                "application-bundle",
-                artifact_uri(&bundle_digest).expect("artifact URI"),
-                Sha256Digest::parse(bundle_digest).expect("bundle digest"),
-                DURABLE_CELL_BUNDLE_MEDIA_TYPE,
-                "/workspace/bundle",
-            )
-            .expect("artifact mount")],
-            vec![ExecutionTaskSecret::new(
-                "s0-access-key-id",
-                CloudSecretReference::new(subject_id, Uuid::now_v7(), 1).expect("Secret reference"),
-                ExecutionTaskSecretTarget::Environment {
-                    variable: "AWS_ACCESS_KEY_ID".into(),
-                },
-            )
-            .expect("Secret")],
+            vec![
+                ExecutionTaskArtifactMount::new(
+                    "application-bundle",
+                    artifact_uri(&bundle_digest).expect("artifact URI"),
+                    Sha256Digest::parse(bundle_digest).expect("bundle digest"),
+                    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+                    "/workspace/bundle",
+                )
+                .expect("artifact mount"),
+            ],
+            vec![
+                ExecutionTaskSecret::new(
+                    "s0-access-key-id",
+                    CloudSecretReference::new(subject_id, Uuid::now_v7(), 1)
+                        .expect("Secret reference"),
+                    ExecutionTaskSecretTarget::Environment {
+                        variable: "AWS_ACCESS_KEY_ID".into(),
+                    },
+                )
+                .expect("Secret"),
+            ],
             Sha256Digest::parse(format!("sha256:{}", "d".repeat(64))).expect("semantics digest"),
         )
         .expect("Task policy"),
@@ -217,6 +222,7 @@ async fn create_and_cancel_are_idempotent_and_emit_cloud_events() {
         organization_id,
         project_id,
         environment_id,
+        access: ExecutionAccess::organization_wide(),
         template: template(1),
         idempotency_key: "invoke-1".into(),
         request_id: Uuid::now_v7(),
@@ -242,6 +248,7 @@ async fn create_and_cancel_are_idempotent_and_emit_cloud_events() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: ExecutionAccess::organization_wide(),
                 template: template(2),
                 idempotency_key: "invoke-1".into(),
                 request_id: Uuid::now_v7(),
@@ -293,6 +300,7 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
                 organization_id,
                 project_id,
                 environment_id,
+                access: ExecutionAccess::organization_wide(),
                 template: template(1),
                 idempotency_key: "restricted-invoke".into(),
                 request_id: Uuid::now_v7(),
@@ -439,11 +447,13 @@ async fn public_execution_queries_and_cancellation_hide_internal_bound_tasks() {
         .expect("framework")
         .expect_err("bound Task cancellation must be hidden");
     assert_eq!(cancellation, hidden);
-    assert!(executions
-        .list(organization_id, project_id, environment_id, 100)
-        .await
-        .expect("public list")
-        .is_empty());
+    assert!(
+        executions
+            .list(organization_id, project_id, environment_id, 100)
+            .await
+            .expect("public list")
+            .is_empty()
+    );
     assert_eq!(
         executions
             .find(organization_id, execution.id)
@@ -466,6 +476,7 @@ async fn reconciler_enqueues_the_versioned_execution_workflow_once() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: ExecutionAccess::organization_wide(),
                 template: template(1),
                 idempotency_key: "invoke-1".into(),
                 request_id: Uuid::now_v7(),
@@ -516,6 +527,7 @@ async fn create_requires_an_existing_environment() {
                 organization_id: OrganizationId::new(),
                 project_id: ProjectId::new(),
                 environment_id: EnvironmentId::new(),
+                access: ExecutionAccess::organization_wide(),
                 template: template(1),
                 idempotency_key: "invoke-1".into(),
                 request_id: Uuid::now_v7(),
@@ -616,4 +628,34 @@ async fn workflow_execution_start_adopts_exact_child_and_cancels_idempotently() 
     assert_eq!(events.len(), 2);
     assert_eq!(events[0].event_key, "execution.run.requested");
     assert_eq!(events[1].event_key, "execution.run.cancellation-requested");
+}
+
+#[tokio::test]
+async fn create_execution_fails_closed_before_creating_in_an_ungranted_environment() {
+    let (organization_id, project_id, environment_id, environments) = environment().await;
+    let create =
+        CreateExecutionHandler::new(environments, Arc::new(InMemoryExecutionRepository::new()));
+    let result = create
+        .execute(
+            CreateExecutionCommand {
+                organization_id,
+                project_id,
+                environment_id,
+                access: ExecutionAccess::restricted([ExecutionAccessScope::Environment {
+                    project_id: ProjectId::new(),
+                    environment_id: EnvironmentId::new(),
+                }]),
+                template: template(1),
+                idempotency_key: "deny-1".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .expect("framework");
+    assert!(matches!(
+        result,
+        Err(ApplicationError::NotFound(message)) if message == "environment not found"
+    ));
 }

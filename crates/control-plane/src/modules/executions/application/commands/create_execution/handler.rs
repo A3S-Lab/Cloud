@@ -1,10 +1,10 @@
 use super::{CreateExecutionCommand, CreateExecutionResult};
+use crate::modules::executions::application::IExecutionsEnvironmentAccess;
 use crate::modules::executions::application::execution_creator::{
     ExecutionCreation, ExecutionCreator,
 };
-use crate::modules::executions::application::IExecutionsEnvironmentAccess;
 use crate::modules::executions::domain::IExecutionRepository;
-use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use a3s_boot::{CommandHandler, CqrsContext};
 use std::sync::Arc;
 
@@ -35,6 +35,14 @@ impl CommandHandler<CreateExecutionCommand> for CreateExecutionHandler {
         let creator =
             ExecutionCreator::new(Arc::clone(&self.environments), Arc::clone(&self.executions));
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found".into(),
+                )));
+            }
             Ok(creator
                 .create(ExecutionCreation {
                     organization_id: command.organization_id,

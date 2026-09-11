@@ -86,6 +86,9 @@ pub fn execution_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access: execution_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             template: body.into(),
                             idempotency_key,
                             request_id,
