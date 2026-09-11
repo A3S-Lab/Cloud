@@ -4214,6 +4214,82 @@ fn edge_mcp_credential_queries_isolate_identity_behind_one_context_owned_access_
 }
 
 #[test]
+fn edge_mcp_route_policy_queries_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    for relative in [
+        "edge/application/queries/get_mcp_route_policy.rs",
+        "edge/application/queries/list_mcp_route_policies.rs",
+    ] {
+        let query = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production_query = production_source(&query);
+        assert!(
+            production_query.contains("pub access: EdgeAccess"),
+            "{relative} stopped carrying Edge-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production_query.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let list_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/list_mcp_route_policies.rs"))
+            .expect("read ListMcpRoutePolicies query");
+    let compact_list = production_source(&list_handler)
+        .split_whitespace()
+        .collect::<String>();
+    let access_check = compact_list
+        .find(".access.environment_is_visible(")
+        .expect("ListMcpRoutePolicies checks Edge visibility");
+    let service_read = compact_list
+        .find(".list(")
+        .expect("ListMcpRoutePolicies still lists through the Edge application service");
+    assert!(
+        access_check < service_read,
+        "ListMcpRoutePolicies must fail closed on visibility before listing policies"
+    );
+
+    let get_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/get_mcp_route_policy.rs"))
+            .expect("read GetMcpRoutePolicy query");
+    let compact_get = production_source(&get_handler)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_get.contains("policy.spec().project_id")
+            && compact_get.contains("policy.spec().environment_id")
+            && compact_get.contains("environment_is_visible("),
+        "GetMcpRoutePolicy must authorize from the policy's owned environment facts"
+    );
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/mcp_route_policy_queries_controller.rs"),
+    )
+    .expect("read MCP route-policy queries controller");
+    let production = production_source(&controller);
+    assert_eq!(
+        production
+            .matches("edge_access(&resource_access_evaluator(")
+            .count(),
+        2,
+        "ListMcpRoutePolicies and GetMcpRoutePolicy must each project Identity into EdgeAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "Edge MCP route-policy queries must not pass ResourceAccessEvaluator into Application"
+    );
+    assert!(
+        production.contains("DeferredResourceScope::Project"),
+        "GetMcpRoutePolicy must defer coarse admission while Edge owns policy-to-environment resolution"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

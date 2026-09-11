@@ -1,12 +1,17 @@
 use super::request::request_id;
+use crate::access_projection::edge_access;
 use crate::modules::edge::application::{GetMcpRoutePolicy, ListMcpRoutePolicies};
 use crate::modules::edge::presentation::dto::McpRoutePolicyResponse;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
+};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, RouteId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
+    RouteDefinition,
 };
 use std::sync::Arc;
 use uuid::Uuid;
@@ -22,17 +27,20 @@ pub fn mcp_route_policy_queries_controller(bus: Arc<QueryBus>) -> Result<Control
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let environment_id =
+                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListMcpRoutePolicies {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
+                            project_id,
+                            environment_id,
+                            access,
                         })
                         .await?
                     {
@@ -47,27 +55,34 @@ pub fn mcp_route_policy_queries_controller(bus: Arc<QueryBus>) -> Result<Control
                 }
             },
         )?
-        .get(
-            "/{organization_id}/mcp-route-policies/{route_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetMcpRoutePolicy {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            route_id: RouteId::from_uuid(
-                                request.param_as::<Uuid>("route_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(policy) => BootResponse::json(&McpRoutePolicyResponse::from(policy)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/mcp-route-policies/{route_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let access = edge_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
+                        match bus
+                            .execute(GetMcpRoutePolicy {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                route_id: RouteId::from_uuid(
+                                    request.param_as::<Uuid>("route_id")?,
+                                ),
+                                access,
+                            })
+                            .await?
+                        {
+                            Ok(policy) => BootResponse::json(&McpRoutePolicyResponse::from(policy)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)
 }
