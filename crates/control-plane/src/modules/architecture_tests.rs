@@ -9232,6 +9232,8 @@ fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
         .collect::<String>();
     for required in [
         "pubconstWORKLOAD_MAX_LOG_PAGE_SIZE:u16=256",
+        "pubenumWorkloadLogGapReason",
+        "pubenumWorkloadLogRecord",
         "pubstructWorkloadLogReadQuery",
         "pubstructWorkloadLogReadResult",
         "pubtraitIWorkloadLogAccess:Send+Sync",
@@ -9246,6 +9248,8 @@ fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
         "INodeControlRepository",
         "ILogChunkStore",
         "NodeLogReader",
+        "NodeLogRecord",
+        "NodeLogGapReason",
     ] {
         assert!(
             !production_source(&port).contains(forbidden),
@@ -9272,10 +9276,53 @@ fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
         "ILogChunkStore",
         "NodeLogReader",
         "NodeLogReadQuery",
+        "NodeLogRecord",
+        "NodeLogGapReason",
     ] {
         assert!(
             !production_handler.contains(forbidden),
             "GetWorkloadLogs handler regained Fleet authority {forbidden}"
+        );
+    }
+
+    let result =
+        std::fs::read_to_string(root.join("workloads/application/queries/result.rs"))
+            .expect("read Workloads query results");
+    for forbidden in [
+        "crate::modules::fleet",
+        "NodeLogRecord",
+        "NodeLogGapReason",
+        "pub use crate::modules::fleet",
+    ] {
+        assert!(
+            !production_source(&result).contains(forbidden),
+            "Workloads query results leaked Fleet log types {forbidden}"
+        );
+    }
+
+    let presentation = std::fs::read_to_string(
+        root.join("workloads/presentation/dto/response/workload_logs_response.rs"),
+    )
+    .expect("read Workloads logs response");
+    for forbidden in ["crate::modules::fleet", "NodeLogRecordResponse"] {
+        assert!(
+            !production_source(&presentation).contains(forbidden),
+            "Workloads logs response leaked Fleet presentation types {forbidden}"
+        );
+    }
+    assert!(
+        production_source(&presentation).contains("WorkloadLogRecordResponse"),
+        "Workloads logs response lost owned WorkloadLogRecordResponse"
+    );
+
+    let record_response = std::fs::read_to_string(
+        root.join("workloads/presentation/dto/response/workload_log_record_response.rs"),
+    )
+    .expect("read Workloads log record response");
+    for forbidden in ["crate::modules::fleet", "NodeLogRecord"] {
+        assert!(
+            !production_source(&record_response).contains(forbidden),
+            "Workloads log record response leaked Fleet types {forbidden}"
         );
     }
 
@@ -9287,6 +9334,8 @@ fn workloads_log_queries_isolate_fleet_behind_one_owner_port() {
         "impl IWorkloadLogAccess",
         "NodeLogReader",
         "WorkloadLogReadResult",
+        "fn project_log_record",
+        "WorkloadLogRecord",
     ] {
         assert!(
             production_adapter.contains(required),

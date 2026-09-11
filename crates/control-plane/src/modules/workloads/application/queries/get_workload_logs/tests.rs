@@ -393,7 +393,7 @@ async fn provider_gaps_merge_into_sequence_pagination_and_ignore_stream_filters(
             WorkloadLogRecord::ProviderGap { metadata },
         ] if chunk.sequence == 1
             && metadata.sequence == 2
-            && metadata.reason == RuntimeLogDiscontinuityReason::CursorLost
+            && metadata.reason == WorkloadLogGapReason::ProviderCursorLost
     ));
     assert_eq!(first.next_after_sequence, Some(2));
 

@@ -10,6 +10,5 @@ pub use get_workload::{GetWorkload, GetWorkloadHandler};
 pub use get_workload_logs::{GetWorkloadLogs, GetWorkloadLogsHandler};
 pub use list_workloads::{ListWorkloads, ListWorkloadsHandler};
 pub use result::{
-    DeploymentQueryResult, WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord,
-    WorkloadQueryResult, WorkloadReplicaQueryResult,
+    DeploymentQueryResult, WorkloadLogPage, WorkloadQueryResult, WorkloadReplicaQueryResult,
 };

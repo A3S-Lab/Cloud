@@ -1,9 +1,6 @@
-pub use crate::modules::fleet::application::{
-    NodeLogGapReason as WorkloadLogGapReason, NodeLogRecord as WorkloadLogRecord,
-};
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
 use crate::modules::workloads::application::{
-    WorkloadDeploymentOperationProjection, WorkloadRuntimeObservationProjection,
+    WorkloadDeploymentOperationProjection, WorkloadLogRecord, WorkloadRuntimeObservationProjection,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, Workload, WorkloadControl, WorkloadReplica,

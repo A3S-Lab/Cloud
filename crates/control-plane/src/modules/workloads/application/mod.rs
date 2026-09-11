@@ -60,14 +60,15 @@ pub use deployment_operation_access::{
 };
 pub use environment_access::{IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope};
 pub use log_access::{
-    IWorkloadLogAccess, WorkloadLogReadQuery, WorkloadLogReadResult, WORKLOAD_MAX_LOG_PAGE_SIZE,
+    IWorkloadLogAccess, WorkloadLogChunkMetadata, WorkloadLogCompactionRange, WorkloadLogGapReason,
+    WorkloadLogProviderGapMetadata, WorkloadLogReadQuery, WorkloadLogReadResult, WorkloadLogRecord,
+    WORKLOAD_MAX_LOG_PAGE_SIZE,
 };
 pub use node_pool_access::{IWorkloadsNodePoolAccess, WorkloadsNodePoolScope};
 pub use queries::{
     DeploymentQueryResult, GetDeployment, GetDeploymentHandler, GetWorkload, GetWorkloadHandler,
-    GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler,
-    WorkloadLogGapReason, WorkloadLogPage, WorkloadLogRecord, WorkloadQueryResult,
-    WorkloadReplicaQueryResult,
+    GetWorkloadLogs, GetWorkloadLogsHandler, ListWorkloads, ListWorkloadsHandler, WorkloadLogPage,
+    WorkloadQueryResult, WorkloadReplicaQueryResult,
 };
 pub use resource_access::WorkloadAccess;
 pub(crate) use resource_access::{WorkloadAccessScope, WorkloadResourceResolver};

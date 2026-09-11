@@ -28,4 +28,4 @@ pub use infrastructure::{
     VaultKeyEncryptionService,
 };
 pub use presentation::{FleetModule, NodeControlServer, NodeControlServerError};
-pub(crate) use presentation::{NodeControlApi, NodeLogRecordResponse};
+pub(crate) use presentation::NodeControlApi;

@@ -1,5 +1,5 @@
-use crate::modules::fleet::NodeLogRecordResponse;
 use crate::modules::workloads::application::WorkloadLogPage;
+use super::WorkloadLogRecordResponse;
 use crate::presentation::{format_sequence_cursor, SequencePage};
 use serde::Serialize;
 use uuid::Uuid;
@@ -12,7 +12,7 @@ pub struct WorkloadLogsResponse {
     pub node_id: Option<Uuid>,
     pub unit_id: String,
     pub generation: u64,
-    pub records: Vec<NodeLogRecordResponse>,
+    pub records: Vec<WorkloadLogRecordResponse>,
     pub next_cursor: Option<String>,
 }
 
@@ -31,7 +31,7 @@ impl From<WorkloadLogPage> for WorkloadLogsResponse {
 }
 
 impl SequencePage for WorkloadLogsResponse {
-    type Record = NodeLogRecordResponse;
+    type Record = WorkloadLogRecordResponse;
 
     fn records(&self) -> &[Self::Record] {
         &self.records
