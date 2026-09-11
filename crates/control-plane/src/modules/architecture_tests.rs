@@ -12107,6 +12107,68 @@ fn workflow_creates_operation_requests_through_operations_transaction_participan
 }
 
 #[test]
+fn workloads_lock_secret_rotations_through_secrets_transaction_participant() {
+    let root = module_root();
+
+    let mut persistence_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("workloads/infrastructure/persistence/postgres/") {
+            return;
+        }
+        for forbidden in [
+            "=> \"secrets\"",
+            "=> \"secret_versions\"",
+            "struct Secrets",
+            "struct SecretVersions",
+            "Secrets::",
+            "SecretVersions::",
+        ] {
+            if source.contains(forbidden) {
+                persistence_violations.insert(format!(
+                    "{path} regained Secrets table authority {forbidden}"
+                ));
+            }
+        }
+    });
+    assert!(
+        persistence_violations.is_empty(),
+        "Workloads postgres regained a local secrets mapping:\n{}",
+        persistence_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let rotation = std::fs::read_to_string(
+        root.join("workloads/infrastructure/persistence/postgres/secret_rotation_restarts.rs"),
+    )
+    .expect("read Workloads secret rotation persistence");
+    let production_rotation = production_source(&rotation);
+    assert!(
+        production_rotation.contains("lock_secret_version_for_rotation"),
+        "Workloads secret rotation stopped using the Secrets transaction participant"
+    );
+
+    let participant = std::fs::read_to_string(
+        root.join("secrets/infrastructure/persistence/postgres/rotation_lock_participant.rs"),
+    )
+    .expect("read Secrets rotation lock participant");
+    let production_participant = production_source(&participant);
+    for required in [
+        "pub(crate) async fn lock_secret_version_for_rotation(",
+        "for update of secrets, secret_versions",
+        "from secrets",
+        "secret_versions",
+    ] {
+        assert!(
+            production_participant.contains(required),
+            "Secrets rotation lock participant lost surface {required}"
+        );
+    }
+}
+
+#[test]
 fn agents_release_admission_has_one_owner_port_and_one_cross_context_adapter() {
     let port = std::fs::read_to_string(
         module_root().join("agents/application/agent_release_admission.rs"),

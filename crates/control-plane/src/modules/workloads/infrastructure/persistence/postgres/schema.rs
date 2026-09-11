@@ -102,25 +102,6 @@ orm_table! {
 }
 
 orm_table! {
-    pub(super) struct Secrets => "secrets" {
-        id: Uuid => "id",
-        organization_id: Uuid => "organization_id",
-        project_id: Uuid => "project_id",
-        environment_id: Uuid => "environment_id",
-        state: String => "state",
-        current_version: u64 => "current_version",
-    }
-}
-
-orm_table! {
-    pub(super) struct SecretVersions => "secret_versions" {
-        secret_id: Uuid => "secret_id",
-        version: u64 => "version",
-        state: String => "state",
-    }
-}
-
-orm_table! {
     pub(super) struct SecretRotationRestarts => "secret_rotation_restarts" {
         secret_event_id: Uuid => "secret_event_id",
         organization_id: Uuid => "organization_id",

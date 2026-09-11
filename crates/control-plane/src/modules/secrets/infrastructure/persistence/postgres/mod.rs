@@ -1,6 +1,11 @@
 mod queries;
+mod rotation_lock_participant;
 mod rows;
 mod writes;
+
+pub(crate) use rotation_lock_participant::{
+    SecretVersionRotationLock, lock_secret_version_for_rotation,
+};
 
 use crate::modules::secrets::domain::{
     CreateSecretWrite, ISecretRepository, RotateSecretWrite, Secret, SecretVersion, SecretWrite,

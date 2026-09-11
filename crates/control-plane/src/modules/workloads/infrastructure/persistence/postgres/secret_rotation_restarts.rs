@@ -1,27 +1,28 @@
 use super::schema::{
     ActiveWorkloads, Deployments, SecretRotationReconciliations, SecretRotationRestarts,
-    SecretVersions, Secrets, WorkloadRevisions, Workloads,
+    WorkloadRevisions, Workloads,
 };
 use super::{create, queries, replicas};
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, require_one_row, transaction_error, OutboxEvents,
-    PostgresPersistenceError,
+    OutboxEvents, PostgresPersistenceError, execute, fetch_all, fetch_optional, require_one_row,
+    transaction_error,
 };
 use crate::modules::secrets::domain::SecretChanged;
+use crate::modules::secrets::infrastructure::lock_secret_version_for_rotation;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DeploymentId, IdempotencyRequest, OperationId, OrganizationId,
-    RepositoryError, SecretId, WorkloadId, WorkloadRevisionId,
+    DeploymentId, IdempotencyRequest, OperationId, OrganizationId, RepositoryError, SecretId,
+    WorkloadId, WorkloadRevisionId, canonical_timestamp,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use crate::modules::workloads::domain::entities::{Deployment, WorkloadDesiredState};
 use crate::modules::workloads::domain::events::DeploymentRequested;
 use crate::modules::workloads::domain::repositories::{
     CreateDeploymentBundle, DeploymentBundle, SecretRotation, SecretRotationCompletion,
     SecretRotationReconciliation,
 };
-use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use a3s_orm::{
-    bound, cast, count_all, exists, insert_into, not, select_from, select_from_as, sql_function,
     Database, Expression, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
+    bound, cast, count_all, exists, insert_into, not, select_from, select_from_as, sql_function,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -131,13 +132,19 @@ async fn reconcile_in_transaction(
         ));
     }
 
-    let secret = fetch_optional::<(u64, String, String, Uuid, Uuid), _>(
+    let secret = lock_secret_version_for_rotation(
         transaction,
-        secret_version_for_update(&rotation),
+        rotation.organization_id,
+        rotation.secret_id,
+        rotation.version,
     )
     .await?
     .ok_or(RepositoryError::NotFound)?;
-    let (current_version, secret_state, version_state, project_id, environment_id) = secret;
+    let current_version = secret.current_version;
+    let secret_state = secret.secret_state.as_str();
+    let version_state = secret.version_state.as_str();
+    let project_id = secret.project_id.as_uuid();
+    let environment_id = secret.environment_id.as_uuid();
     if project_id != rotation.project_id.as_uuid()
         || environment_id != rotation.environment_id.as_uuid()
     {
@@ -484,25 +491,6 @@ async fn lock_rotation(
     Ok(())
 }
 
-fn secret_version_for_update(
-    rotation: &SecretRotation,
-) -> a3s_orm::query::SelectQuery<Secrets, (u64, String, String, Uuid, Uuid)> {
-    select_from::<Secrets>()
-        .select((
-            Secrets::current_version(),
-            Secrets::state(),
-            SecretVersions::state(),
-            Secrets::project_id(),
-            Secrets::environment_id(),
-        ))
-        .inner_join::<SecretVersions>(Secrets::id().eq_column(SecretVersions::secret_id()))
-        .filter(SecretVersions::version().eq(rotation.version))
-        .filter(Secrets::organization_id().eq(rotation.organization_id.as_uuid()))
-        .filter(Secrets::id().eq(rotation.secret_id.as_uuid()))
-        .for_update_of::<Secrets>()
-        .for_update_of::<SecretVersions>()
-}
-
 fn affected_workloads(
     rotation: &SecretRotation,
 ) -> a3s_orm::query::SelectQuery<ActiveWorkloads, (Uuid, Uuid)> {
@@ -650,27 +638,24 @@ mod tests {
     #[test]
     fn typed_rotation_queries_preserve_locks_and_bound_jsonpath_values() {
         let rotation = rotation();
-        let secret = secret_version_for_update(&rotation)
-            .compile(&PostgresDialect)
-            .expect("Secret version lock query");
-        assert!(secret
-            .sql
-            .ends_with("for update of \"secrets\", \"secret_versions\""));
-        assert_eq!(secret.parameters.len(), 3);
 
         let candidates = candidate_workloads_query(&rotation, 25)
             .compile(&PostgresDialect)
             .expect("Secret rotation candidate query");
         assert!(candidates.sql.contains("\"jsonb_path_exists\""));
-        assert!(candidates
-            .sql
-            .ends_with("for update of \"active_workloads\" skip locked"));
+        assert!(
+            candidates
+                .sql
+                .ends_with("for update of \"active_workloads\" skip locked")
+        );
         assert!(!candidates.sql.contains(&rotation.secret_id.to_string()));
         assert_eq!(candidates.parameters.len(), 14);
-        assert!(candidates
-            .parameters
-            .iter()
-            .any(|parameter| matches!(parameter, Value::Json(_))));
+        assert!(
+            candidates
+                .parameters
+                .iter()
+                .any(|parameter| matches!(parameter, Value::Json(_)))
+        );
 
         let affected = affected_workloads(&rotation)
             .select(count_all())
