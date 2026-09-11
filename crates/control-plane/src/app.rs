@@ -257,15 +257,15 @@ use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
     CreateOutboundNotificationSubscriptionHandler, FleetNotificationsNodeAccessAdapter,
     GetNotificationAlertPolicyHandler, GetNotificationHandler,
-    GetOutboundNotificationSubscriptionHandler, INotificationAlertPolicyRepository,
-    INotificationRepository, INotificationsEnvironmentAccess, INotificationsNodeAccess,
-    IOutboundNotificationDispatcher, IOutboundNotificationRepository,
-    ListNotificationAlertPoliciesHandler, ListNotificationsHandler,
-    ListOutboundNotificationSubscriptionsHandler, MarkNotificationReadHandler, NotificationsModule,
-    OutboundNotificationDispatcher, OutboundNotificationSmtpDispatcher,
-    OutboxNotificationProjector, ProjectsNotificationsEnvironmentAccessAdapter,
-    RevokeNotificationAlertPolicyHandler, RevokeOutboundNotificationSubscriptionHandler,
-    OUTBOUND_NOTIFICATION_EVENT_KEY,
+    GetOutboundNotificationSubscriptionHandler, IdentityOutboundRecipientContactAccessAdapter,
+    INotificationAlertPolicyRepository, INotificationRepository, INotificationsEnvironmentAccess,
+    INotificationsNodeAccess, IOutboundNotificationDispatcher, IOutboundNotificationRepository,
+    IOutboundRecipientContactAccess, ListNotificationAlertPoliciesHandler,
+    ListNotificationsHandler, ListOutboundNotificationSubscriptionsHandler,
+    MarkNotificationReadHandler, NotificationsModule, OutboundNotificationDispatcher,
+    OutboundNotificationSmtpDispatcher, OutboxNotificationProjector,
+    ProjectsNotificationsEnvironmentAccessAdapter, RevokeNotificationAlertPolicyHandler,
+    RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -886,7 +886,9 @@ async fn build_api_worker_application(
             ));
             let smtp_dispatcher = OutboundNotificationSmtpDispatcher::new(
                 Arc::clone(&outbound_notification_smtp_attempts),
-                Arc::clone(&recipient_contacts),
+                Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(Arc::clone(
+                    &recipient_contacts,
+                ))) as Arc<dyn IOutboundRecipientContactAccess>,
                 smtp_delivery_service,
                 chrono_duration(config.smtp.reservation_lease_ms)?,
                 chrono_duration(config.smtp.command_timeout_ms)?,
@@ -2628,7 +2630,10 @@ fn build_management_application_with_health(
         ProjectsConnectorsEnvironmentAccessAdapter::new(Arc::clone(&environments)),
     );
     let outbound_notification_connector_profiles = Arc::clone(&connector_profiles);
-    let outbound_notification_recipient_contacts = Arc::clone(&recipient_contacts);
+    let outbound_notification_recipient_contacts: Arc<dyn IOutboundRecipientContactAccess> =
+        Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(Arc::clone(
+            &recipient_contacts,
+        )));
     let create_connector_profiles = Arc::clone(&connector_profiles);
     let revise_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_profiles = Arc::clone(&connector_profiles);

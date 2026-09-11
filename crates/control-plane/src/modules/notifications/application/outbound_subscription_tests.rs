@@ -9,7 +9,8 @@ use crate::modules::connectors::{
 use crate::modules::identity::InMemoryIdentityRepository;
 use crate::modules::notifications::{
     GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
-    INotificationRepository, InMemoryNotificationRepository, ListOutboundNotificationSubscriptions,
+    INotificationRepository, IdentityOutboundRecipientContactAccessAdapter,
+    InMemoryNotificationRepository, ListOutboundNotificationSubscriptions,
     ListOutboundNotificationSubscriptionsHandler, Notification, NotificationAccess,
     NotificationAccessScope, NotificationScope, NotificationSeverity, OutboundNotificationChannel,
     OutboundNotificationConnectorTarget, OutboundNotificationSubscriptionDefinition,
@@ -120,7 +121,9 @@ async fn fixture() -> Fixture {
         create: CreateOutboundNotificationSubscriptionHandler::new(
             outbound,
             connector_repository,
-            Arc::new(InMemoryIdentityRepository::new()),
+            Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(Arc::new(
+                InMemoryIdentityRepository::new(),
+            ))),
         ),
         notifications,
     }

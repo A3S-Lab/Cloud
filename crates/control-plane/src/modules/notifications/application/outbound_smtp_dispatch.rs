@@ -1,26 +1,26 @@
 use super::OutboundNotificationDispatchResult;
-use crate::modules::identity::domain::repositories::{
-    IRecipientContactRepository, ResolvedRecipientContact,
+use crate::modules::notifications::application::{
+    IOutboundRecipientContactAccess, OutboundVerifiedRecipientContact,
 };
 use crate::modules::notifications::domain::{
     IOutboundNotificationSmtpAttemptRepository, IOutboundNotificationSmtpDeliveryService,
-    OutboundNotificationChannel, OutboundNotificationDelivery,
-    OutboundNotificationSmtpAttemptAdmission, OutboundNotificationSmtpAttemptOutcome,
-    OutboundNotificationSmtpAttemptSettlement, OutboundNotificationSmtpDispatchStart,
-    OutboundNotificationSmtpPreparationError, OutboundNotificationSmtpProviderOutcome,
     MAXIMUM_OUTBOUND_NOTIFICATION_DELIVERY_GENERATION,
     MAXIMUM_OUTBOUND_NOTIFICATION_SMTP_LEASE_SECONDS,
-    MAXIMUM_OUTBOUND_NOTIFICATION_SMTP_OUTCOME_SECONDS,
+    MAXIMUM_OUTBOUND_NOTIFICATION_SMTP_OUTCOME_SECONDS, OutboundNotificationChannel,
+    OutboundNotificationDelivery, OutboundNotificationSmtpAttemptAdmission,
+    OutboundNotificationSmtpAttemptOutcome, OutboundNotificationSmtpAttemptSettlement,
+    OutboundNotificationSmtpDispatchStart, OutboundNotificationSmtpPreparationError,
+    OutboundNotificationSmtpProviderOutcome,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError};
+use crate::modules::shared_kernel::domain::canonical_timestamp;
 use chrono::{Duration, Utc};
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub struct OutboundNotificationSmtpDispatcher {
     attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>,
-    recipient_contacts: Arc<dyn IRecipientContactRepository>,
+    recipient_contacts: Arc<dyn IOutboundRecipientContactAccess>,
     delivery_service: Arc<dyn IOutboundNotificationSmtpDeliveryService>,
     reservation_lease: Duration,
     outcome_timeout: Duration,
@@ -29,7 +29,7 @@ pub struct OutboundNotificationSmtpDispatcher {
 impl OutboundNotificationSmtpDispatcher {
     pub fn new(
         attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>,
-        recipient_contacts: Arc<dyn IRecipientContactRepository>,
+        recipient_contacts: Arc<dyn IOutboundRecipientContactAccess>,
         delivery_service: Arc<dyn IOutboundNotificationSmtpDeliveryService>,
         reservation_lease: Duration,
         outcome_timeout: Duration,
@@ -138,7 +138,7 @@ impl OutboundNotificationSmtpDispatcher {
                             reservation.fence_token,
                             OutboundNotificationSmtpAttemptOutcome::Obsolete,
                         )
-                        .await
+                        .await;
                 }
             };
             let prepared = match self
@@ -152,12 +152,12 @@ impl OutboundNotificationSmtpDispatcher {
                         generation,
                         attempt_id: reservation.attempt_id,
                         retry_not_before: reservation.lease_expires_at,
-                    })
+                    });
                 }
                 Err(OutboundNotificationSmtpPreparationError::Invalid) => {
                     return Err(ApplicationError::Internal(
                         "outbound SMTP notification message preparation is invalid".into(),
-                    ))
+                    ));
                 }
             };
 
@@ -171,7 +171,7 @@ impl OutboundNotificationSmtpDispatcher {
                             reservation.fence_token,
                             OutboundNotificationSmtpAttemptOutcome::Obsolete,
                         )
-                        .await
+                        .await;
                 }
             };
             if second_resolution != first_resolution {
@@ -199,10 +199,10 @@ impl OutboundNotificationSmtpDispatcher {
                         generation,
                         attempt_id: reservation.attempt_id,
                         retry_not_before,
-                    })
+                    });
                 }
                 OutboundNotificationSmtpDispatchStart::Terminal(receipt) => {
-                    return self.terminal_result(delivery, receipt)
+                    return self.terminal_result(delivery, receipt);
                 }
             }
 
@@ -239,7 +239,7 @@ impl OutboundNotificationSmtpDispatcher {
         })?;
         match self
             .recipient_contacts
-            .resolve_verified_recipient_contact(
+            .resolve_verified(
                 delivery.organization_id(),
                 delivery.recipient_principal_id(),
                 contact_id,
@@ -255,8 +255,8 @@ impl OutboundNotificationSmtpDispatcher {
             Ok(Some(_)) => Err(ApplicationError::Internal(
                 "recipient contact resolver returned inconsistent authority".into(),
             )),
-            Ok(None) | Err(RepositoryError::NotFound) => Ok(ContactResolution::Obsolete),
-            Err(error) => Err(error.into()),
+            Ok(None) => Ok(ContactResolution::Obsolete),
+            Err(error) => Err(error),
         }
     }
 
@@ -315,7 +315,7 @@ impl OutboundNotificationSmtpDispatcher {
 }
 
 enum ContactResolution {
-    Current(ResolvedRecipientContact),
+    Current(OutboundVerifiedRecipientContact),
     Obsolete,
 }
 

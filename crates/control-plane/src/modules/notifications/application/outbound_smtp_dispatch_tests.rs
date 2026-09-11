@@ -1,12 +1,7 @@
 use super::*;
-use crate::modules::identity::domain::entities::{
-    RecipientContactRecord, RecipientContactVerification,
+use crate::modules::notifications::application::{
+    IOutboundRecipientContactAccess, OutboundVerifiedRecipientContact,
 };
-use crate::modules::identity::domain::repositories::{
-    BeginRecipientContactVerificationResult, BeginRecipientContactVerificationWrite,
-    CompleteRecipientContactVerificationWrite, RevokeRecipientContactWrite,
-};
-use crate::modules::identity::domain::value_objects::RecipientEmailAddress;
 use crate::modules::notifications::domain::{
     CreateOutboundNotificationSubscriptionWrite, INotificationRepository,
     IOutboundNotificationRepository, IPreparedOutboundNotificationSmtpDelivery, Notification,
@@ -15,15 +10,16 @@ use crate::modules::notifications::domain::{
     OutboundNotificationSubscriptionEvent, OutboundNotificationTerminalOutcome,
 };
 use crate::modules::notifications::InMemoryNotificationRepository;
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, NotificationSubscriptionId, OrganizationId, PrincipalId,
-    RecipientContactId, RecipientContactVerificationId,
+    IdempotencyRequest, NotificationSubscriptionId, OrganizationId, PrincipalId, RecipientContactId,
+    RepositoryError,
 };
 use async_trait::async_trait;
 use std::collections::VecDeque;
 use tokio::sync::Mutex;
 
-type Resolution = Result<Option<ResolvedRecipientContact>, RepositoryError>;
+type Resolution = ApplicationResult<Option<OutboundVerifiedRecipientContact>>;
 
 struct ScriptedRecipientContacts {
     resolutions: Mutex<VecDeque<Resolution>>,
@@ -40,78 +36,20 @@ impl ScriptedRecipientContacts {
 }
 
 #[async_trait]
-impl IRecipientContactRepository for ScriptedRecipientContacts {
-    async fn begin_recipient_contact_verification(
-        &self,
-        _write: BeginRecipientContactVerificationWrite,
-    ) -> Result<IdempotentWrite<BeginRecipientContactVerificationResult>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn find_recipient_contact(
+impl IOutboundRecipientContactAccess for ScriptedRecipientContacts {
+    async fn resolve_verified(
         &self,
         _organization_id: OrganizationId,
         _principal_id: PrincipalId,
         _contact_id: RecipientContactId,
-    ) -> Result<Option<RecipientContactRecord>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn list_recipient_contacts(
-        &self,
-        _organization_id: OrganizationId,
-        _principal_id: PrincipalId,
-    ) -> Result<Vec<RecipientContactRecord>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn find_recipient_contact_verification(
-        &self,
-        _organization_id: OrganizationId,
-        _principal_id: PrincipalId,
-        _contact_id: RecipientContactId,
-        _verification_id: RecipientContactVerificationId,
-    ) -> Result<Option<RecipientContactVerification>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn complete_recipient_contact_verification(
-        &self,
-        _write: CompleteRecipientContactVerificationWrite,
-    ) -> Result<IdempotentWrite<RecipientContactRecord>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn revoke_recipient_contact(
-        &self,
-        _write: RevokeRecipientContactWrite,
-    ) -> Result<IdempotentWrite<RecipientContactRecord>, RepositoryError> {
-        unexpected_contact_operation()
-    }
-
-    async fn resolve_verified_recipient_contact(
-        &self,
-        _organization_id: OrganizationId,
-        _principal_id: PrincipalId,
-        _contact_id: RecipientContactId,
-    ) -> Result<Option<ResolvedRecipientContact>, RepositoryError> {
+    ) -> ApplicationResult<Option<OutboundVerifiedRecipientContact>> {
         self.phases.lock().await.push("resolve");
-        self.resolutions
-            .lock()
-            .await
-            .pop_front()
-            .unwrap_or_else(|| {
-                Err(RepositoryError::Storage(
-                    "recipient contact resolution script was exhausted".into(),
-                ))
-            })
+        self.resolutions.lock().await.pop_front().unwrap_or_else(|| {
+            Err(ApplicationError::Internal(
+                "recipient contact resolution script was exhausted".into(),
+            ))
+        })
     }
-}
-
-fn unexpected_contact_operation<T>() -> Result<T, RepositoryError> {
-    Err(RepositoryError::Storage(
-        "unexpected recipient contact repository operation".into(),
-    ))
 }
 
 struct RecordingAttempts {
@@ -209,7 +147,7 @@ impl IOutboundNotificationSmtpDeliveryService for ScriptedDeliveryService {
     async fn prepare(
         &self,
         _delivery: &OutboundNotificationDelivery,
-        _address: RecipientEmailAddress,
+        _address: String,
     ) -> Result<
         Box<dyn IPreparedOutboundNotificationSmtpDelivery>,
         OutboundNotificationSmtpPreparationError,
@@ -314,11 +252,11 @@ async fn seeded_delivery(
     (repository, delivery)
 }
 
-fn resolved_contact(delivery: &OutboundNotificationDelivery) -> ResolvedRecipientContact {
-    ResolvedRecipientContact {
+fn resolved_contact(delivery: &OutboundNotificationDelivery) -> OutboundVerifiedRecipientContact {
+    OutboundVerifiedRecipientContact {
         id: delivery.recipient_contact_id().expect("contact target"),
         principal_id: delivery.recipient_principal_id(),
-        address: RecipientEmailAddress::parse("recipient@example.test").expect("address"),
+        address: "recipient@example.test".into(),
         aggregate_version: 1,
         verified_at: delivery.occurred_at(),
     }
@@ -438,7 +376,7 @@ async fn resolver_and_preparation_outages_remain_unacknowledged_before_fencing()
     let phases = Arc::new(Mutex::new(Vec::new()));
     let resolver_outage = dispatcher(
         Arc::clone(&repository),
-        vec![Err(RepositoryError::Storage("identity unavailable".into()))],
+        vec![Err(ApplicationError::Internal("identity unavailable".into()))],
         Vec::new(),
         Arc::clone(&phases),
     );

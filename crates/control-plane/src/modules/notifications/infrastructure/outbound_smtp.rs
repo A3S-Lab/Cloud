@@ -111,7 +111,7 @@ impl IOutboundNotificationSmtpDeliveryService for SmtpOutboundNotificationDelive
     async fn prepare(
         &self,
         delivery: &OutboundNotificationDelivery,
-        address: RecipientEmailAddress,
+        address: String,
     ) -> Result<
         Box<dyn IPreparedOutboundNotificationSmtpDelivery>,
         OutboundNotificationSmtpPreparationError,
@@ -124,6 +124,8 @@ impl IOutboundNotificationSmtpDeliveryService for SmtpOutboundNotificationDelive
         {
             return Err(OutboundNotificationSmtpPreparationError::Invalid);
         }
+        let address = RecipientEmailAddress::parse(address)
+            .map_err(|_| OutboundNotificationSmtpPreparationError::Invalid)?;
         let message = build_message(&self.sender, &address, delivery)
             .map_err(|_| OutboundNotificationSmtpPreparationError::Invalid)?;
         let session = self
@@ -298,7 +300,7 @@ mod tests {
         let delivery = smtp_delivery();
 
         let outcome = service
-            .prepare(&delivery, recipient)
+            .prepare(&delivery, recipient.as_str().to_owned())
             .await
             .expect("authenticated required-STARTTLS session")
             .deliver()

@@ -1,5 +1,4 @@
 use super::OutboundNotificationDelivery;
-use crate::modules::identity::domain::value_objects::RecipientEmailAddress;
 use async_trait::async_trait;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,7 +25,7 @@ pub trait IOutboundNotificationSmtpDeliveryService: Send + Sync {
     async fn prepare(
         &self,
         delivery: &OutboundNotificationDelivery,
-        address: RecipientEmailAddress,
+        address: String,
     ) -> Result<
         Box<dyn IPreparedOutboundNotificationSmtpDelivery>,
         OutboundNotificationSmtpPreparationError,

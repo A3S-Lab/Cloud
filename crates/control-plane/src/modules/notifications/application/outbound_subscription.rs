@@ -1,6 +1,6 @@
 use crate::modules::connectors::IConnectorProfileRepository;
-use crate::modules::identity::domain::repositories::IRecipientContactRepository;
 use crate::modules::notifications::NotificationAccess;
+use crate::modules::notifications::application::IOutboundRecipientContactAccess;
 use crate::modules::notifications::domain::{
     CreateOutboundNotificationSubscriptionWrite, IOutboundNotificationRepository,
     OutboundNotificationSubscription, OutboundNotificationSubscriptionDefinition,
@@ -54,14 +54,14 @@ pub struct OutboundNotificationSubscriptionMutationResult {
 pub struct CreateOutboundNotificationSubscriptionHandler {
     notifications: Arc<dyn IOutboundNotificationRepository>,
     connectors: Arc<dyn IConnectorProfileRepository>,
-    recipient_contacts: Arc<dyn IRecipientContactRepository>,
+    recipient_contacts: Arc<dyn IOutboundRecipientContactAccess>,
 }
 
 impl CreateOutboundNotificationSubscriptionHandler {
     pub fn new(
         notifications: Arc<dyn IOutboundNotificationRepository>,
         connectors: Arc<dyn IConnectorProfileRepository>,
-        recipient_contacts: Arc<dyn IRecipientContactRepository>,
+        recipient_contacts: Arc<dyn IOutboundRecipientContactAccess>,
     ) -> Self {
         Self {
             notifications,
@@ -110,7 +110,7 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                 }
             } else if let Some(contact_id) = spec.target.recipient_contact_id() {
                 match recipient_contacts
-                    .resolve_verified_recipient_contact(
+                    .resolve_verified(
                         command.organization_id,
                         command.actor_principal_id,
                         contact_id,
@@ -125,11 +125,10 @@ impl CommandHandler<CreateOutboundNotificationSubscription>
                             "recipient contact lookup returned inconsistent identity".into(),
                         ));
                     }
-                    Ok(None)
-                    | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
+                    Ok(None) => {
                         return Ok(Err(outbound_subscription_not_found()));
                     }
-                    Err(error) => return Ok(Err(error.into())),
+                    Err(error) => return Ok(Err(error)),
                 }
             }
             let canonical = serde_json::to_vec(&serde_json::json!({

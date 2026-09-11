@@ -3280,6 +3280,76 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
 }
 
 #[test]
+fn notifications_owns_outbound_recipient_contact_access_through_one_identity_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("notifications/application/outbound_recipient_contact_access.rs"),
+    )
+    .expect("read Notifications outbound recipient-contact port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_port.contains("traitIOutboundRecipientContactAccess:Send+Sync"),
+        "Notifications lost its consumer-owned outbound recipient-contact boundary"
+    );
+    assert!(
+        !production_source(&port).contains("crate::modules::identity"),
+        "the consumer-owned Notifications recipient-contact port imported Identity internals"
+    );
+
+    for relative in [
+        "notifications/application/outbound_subscription.rs",
+        "notifications/application/outbound_smtp_dispatch.rs",
+        "notifications/domain/outbound_smtp_service.rs",
+    ] {
+        let source = std::fs::read_to_string(module_root().join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            !production.contains("crate::modules::identity"),
+            "{relative} still imports Identity"
+        );
+        assert!(
+            !production.contains("IRecipientContactRepository"),
+            "{relative} still depends on Identity recipient-contact repository"
+        );
+        assert!(
+            !production.contains("RecipientEmailAddress"),
+            "{relative} still depends on Identity email value object"
+        );
+    }
+
+    let mut identity_import_sites = BTreeSet::new();
+    let mut port_implementations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let source = production_source(source);
+        if context(relative) == Some("notifications")
+            && source.contains("crate::modules::identity")
+            && source.contains("IRecipientContactRepository")
+        {
+            identity_import_sites.insert(display(relative));
+        }
+        if source.contains("impl IOutboundRecipientContactAccess for") {
+            port_implementations.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        identity_import_sites,
+        BTreeSet::from([
+            "notifications/infrastructure/outbound_recipient_contact_access.rs".to_owned()
+        ]),
+        "all Notifications-to-Identity recipient-contact access must be confined to the sole consumer-side adapter"
+    );
+    assert_eq!(
+        port_implementations,
+        BTreeSet::from([
+            "notifications/infrastructure/outbound_recipient_contact_access.rs".to_owned()
+        ]),
+        "outbound recipient-contact access must have one consumer-side adapter"
+    );
+}
+
+#[test]
 fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_context_owned_access_projection()
 {
     let root = module_root();
