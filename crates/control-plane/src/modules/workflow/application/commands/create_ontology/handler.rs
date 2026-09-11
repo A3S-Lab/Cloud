@@ -41,6 +41,9 @@ impl CommandHandler<CreateOntology> for CreateOntologyHandler {
         let projects = Arc::clone(&self.projects);
         let ontologies = Arc::clone(&self.ontologies);
         Box::pin(async move {
+            if !command.access.project_is_visible(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let scope = match WorkflowProjectScope::new(command.organization_id, command.project_id)
             {
                 Ok(scope) => scope,
@@ -49,7 +52,7 @@ impl CommandHandler<CreateOntology> for CreateOntologyHandler {
             match projects.project_exists(scope).await {
                 Ok(true) => {}
                 Ok(false) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -126,5 +129,57 @@ impl CommandHandler<CreateOntology> for CreateOntologyHandler {
                 replayed: result.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
+    use crate::modules::workflow::InMemoryOntologyRepository;
+    use crate::modules::workflow::application::{WorkflowAccess, WorkflowAccessScope};
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+    use uuid::Uuid;
+
+    struct AllowProject;
+
+    #[async_trait]
+    impl IWorkflowProjectAccess for AllowProject {
+        async fn project_exists(
+            &self,
+            _scope: WorkflowProjectScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn create_ontology_fails_closed_before_creating_in_an_ungranted_project() {
+        let handler = CreateOntologyHandler::new(
+            Arc::new(AllowProject),
+            Arc::new(InMemoryOntologyRepository::new()),
+        );
+        let result = handler
+            .execute(
+                CreateOntology {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    access: WorkflowAccess::restricted([WorkflowAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    acl: "ontology {}".into(),
+                    actor_principal_id: crate::modules::shared_kernel::domain::PrincipalId::new(),
+                    idempotency_key: "deny-create".into(),
+                    request_id: Uuid::now_v7(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert_eq!(
+            result,
+            Err(ApplicationError::NotFound("project not found".into()))
+        );
     }
 }

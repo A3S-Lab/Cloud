@@ -69,12 +69,14 @@ pub async fn create_ontology(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CreateOntologyArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateOntology {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
             acl: arguments.acl,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,

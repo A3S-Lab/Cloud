@@ -9486,6 +9486,7 @@ fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_acces
         "workflow/application/queries/list_workflow_goals/query.rs",
         "workflow/application/queries/list_workflow_runs/query.rs",
         "workflow/application/commands/cancel_workflow_run/command.rs",
+        "workflow/application/commands/create_ontology/command.rs",
         "workflow/application/workflow_authoring.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
