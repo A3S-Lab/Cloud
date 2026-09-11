@@ -2191,6 +2191,93 @@ fn sources_list_queries_isolate_identity_behind_one_context_owned_access_project
 }
 
 #[test]
+fn plugins_list_queries_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("plugins/application/resource_access.rs"))
+        .expect("read Plugins resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumPluginAccessScope",
+        "pubstructPluginAccess",
+        "fnenvironment_is_visible(&self,project_id:ProjectId,environment_id:EnvironmentId,)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Plugins lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Plugins resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let query = std::fs::read_to_string(
+        root.join("plugins/application/queries/list_plugin_assignments.rs"),
+    )
+    .expect("read ListPluginAssignments");
+    let production = production_source(&query);
+    assert!(
+        production.contains("pub access: PluginAccess"),
+        "ListPluginAssignments stopped carrying Plugins-owned access"
+    );
+    assert!(
+        production.contains("pub project_id: ProjectId"),
+        "ListPluginAssignments must authorize the project path identity"
+    );
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnplugin_access(",
+        "PluginAccess::organization_wide()",
+        "PluginAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Plugins access mapping {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("plugins/presentation/controllers/plugin_assignment_controller.rs"),
+    )
+    .expect("read plugin assignment controller");
+    let production = production_source(&controller);
+    assert!(
+        production.contains("plugin_access(&resource_access_evaluator("),
+        "plugin assignment controller must project Identity into PluginAccess"
+    );
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/plugins.rs"),
+    )
+    .expect("read Plugins MCP");
+    let production = production_source(&mcp);
+    assert!(
+        production.contains("access: plugin_access(&resource_access)"),
+        "Plugins MCP list must project Identity into PluginAccess"
+    );
+}
+
+#[test]
 fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
     let root = module_root();
     let access_path = "artifacts/application/resource_access.rs";

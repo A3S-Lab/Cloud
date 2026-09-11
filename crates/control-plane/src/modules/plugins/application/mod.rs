@@ -3,6 +3,7 @@ pub mod queries;
 
 mod plugin_assignment_operation_scheduler;
 mod plugin_assignment_reconciler;
+mod resource_access;
 
 pub use commands::{
     ConfirmPluginPlanProjection, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistry,
@@ -15,8 +16,8 @@ pub use plugin_assignment_operation_scheduler::{
     PluginAssignmentOperationScheduleOutcome,
 };
 pub use plugin_assignment_reconciler::{
-    PluginAssignmentReconcileReport, PluginAssignmentReconciler, PLUGIN_ASSIGNMENT_WORKFLOW_NAME,
-    PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
+    PLUGIN_ASSIGNMENT_WORKFLOW_NAME, PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
+    PluginAssignmentReconcileReport, PluginAssignmentReconciler,
 };
 pub use queries::{
     GetPluginAssignment, GetPluginAssignmentHandler, GetPluginPlanProjection,
@@ -29,3 +30,6 @@ pub use queries::{
 
 #[cfg(test)]
 mod tests;
+
+pub use resource_access::PluginAccess;
+pub(crate) use resource_access::PluginAccessScope;

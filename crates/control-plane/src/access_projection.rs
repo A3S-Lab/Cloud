@@ -22,6 +22,7 @@ use crate::modules::identity::{IdentityAccess, IdentityAccessScope};
 use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
 use crate::modules::notifications::{NotificationAccess, NotificationAccessScope};
 use crate::modules::operations::{OperationAccess, OperationAccessScope};
+use crate::modules::plugins::{PluginAccess, PluginAccessScope};
 use crate::modules::projects::{ProjectAccess, ProjectAccessScope};
 use crate::modules::search::{SearchVisibility, SearchVisibilityScope};
 use crate::modules::secrets::{SecretAccess, SecretAccessScope};
@@ -138,6 +139,29 @@ pub(crate) fn source_access(resource_access: &ResourceAccessEvaluator) -> Source
                     project_id,
                     environment_id,
                 } => Some(SourceAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
+pub(crate) fn plugin_access(resource_access: &ResourceAccessEvaluator) -> PluginAccess {
+    if resource_access.is_organization_wide() {
+        return PluginAccess::organization_wide();
+    }
+    PluginAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(PluginAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(PluginAccessScope::Environment {
                     project_id,
                     environment_id,
                 }),

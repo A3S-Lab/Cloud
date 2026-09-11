@@ -4,13 +4,13 @@ use crate::modules::plugins::application::{
 use crate::modules::plugins::presentation::dto::{
     PluginAssignmentMutationResponse, PluginAssignmentResponse, SetPluginAssignmentRequest,
 };
+use crate::modules::shared_kernel::domain::NodeId;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PluginAssignmentId, PluginRegistryId, ProjectId, Sha256Digest,
 };
-use crate::modules::shared_kernel::domain::NodeId;
 use crate::presentation::{
     actor_principal_id, application_error_response, organization_tenant_plugin_write_controller,
-    request_identity, request_id,
+    plugin_access, request_id, request_identity, resource_access_evaluator,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
@@ -33,8 +33,8 @@ pub fn plugin_assignment_commands_controller(bus: Arc<CommandBus>) -> Result<Con
                     EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                 let actor_id = actor_principal_id(&request)?;
                 let (idempotency_key, request_id) = request_identity(&request)?;
-                let policy_digest = Sha256Digest::parse(body.policy_digest)
-                    .map_err(BootError::BadRequest)?;
+                let policy_digest =
+                    Sha256Digest::parse(body.policy_digest).map_err(BootError::BadRequest)?;
                 match bus
                     .execute(SetPluginAssignment {
                         organization_id,
@@ -81,14 +81,21 @@ pub fn plugin_assignment_queries_controller(bus: Arc<QueryBus>) -> Result<Contro
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let access = plugin_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListPluginAssignments {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                         })
                         .await?
                     {

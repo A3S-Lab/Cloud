@@ -1548,7 +1548,14 @@ pub async fn execute(
         }
         ManagementTool::PluginAssignmentsList => {
             let arguments = arguments::parse::<ListPluginAssignmentsArguments>(arguments).ok()?;
-            plugins::list_assignments(query_bus, organization_id, arguments, request_id).await
+            plugins::list_assignments(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::PluginAssignmentsGet => {
             let arguments = arguments::parse::<PluginAssignmentArguments>(arguments).ok()?;

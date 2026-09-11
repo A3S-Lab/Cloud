@@ -1,5 +1,7 @@
 use super::arguments::EmptyArguments;
 use super::tool_result;
+use crate::access_projection::plugin_access;
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::plugins::domain::value_objects::PluginCatalogSelection;
 use crate::modules::plugins::{
     ConfirmPluginPlanProjection, GetPluginAssignment, GetPluginPlanProjection, GetPluginRegistry,
@@ -134,12 +136,15 @@ pub async fn list_assignments(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListPluginAssignmentsArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListPluginAssignments {
             organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            access: plugin_access(&resource_access),
         })
         .await?
     {
@@ -147,7 +152,6 @@ pub async fn list_assignments(
             200,
             assignments
                 .into_iter()
-                .filter(|assignment| assignment.project_id.as_uuid() == arguments.project_id)
                 .map(PluginAssignmentResponse::from)
                 .collect::<Vec<_>>(),
             request_id,

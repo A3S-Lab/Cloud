@@ -5,21 +5,21 @@ use super::{
     GetPluginRegistryHandler, InspectCachedPluginCatalog, InspectCachedPluginCatalogHandler,
     InspectPluginCatalog, InspectPluginCatalogHandler, ListPluginAssignments,
     ListPluginAssignmentsHandler, ListPluginRegistries, ListPluginRegistriesHandler,
+    PLUGIN_ASSIGNMENT_WORKFLOW_NAME, PLUGIN_ASSIGNMENT_WORKFLOW_VERSION, PluginAccess,
     PluginAssignmentReconciler, RecordPluginPlanProjection, RecordPluginPlanProjectionHandler,
     SearchCachedPluginCatalog, SearchCachedPluginCatalogHandler, SearchPluginCatalog,
     SearchPluginCatalogHandler, SetPluginAssignment, SetPluginAssignmentHandler,
-    PLUGIN_ASSIGNMENT_WORKFLOW_NAME, PLUGIN_ASSIGNMENT_WORKFLOW_VERSION,
 };
 use crate::modules::plugins::domain::entities::PluginRegistry;
-use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::domain::repositories::IPluginAssignmentRepository;
+use crate::modules::plugins::domain::repositories::IPluginRegistryRepository;
 use crate::modules::plugins::domain::services::{
     IPluginRegistryCatalog, IPluginRegistryEnrollmentAuthorizer, IPluginTrustRootStore,
     PluginRegistryCatalogError, PluginRegistryEnrollmentAuthorization,
     PluginRegistryEnrollmentAuthorizationError, PluginTrustRootStoreError, PluginTrustRootWrite,
 };
-use crate::modules::plugins::domain::value_objects::PluginTrustRoot;
 use crate::modules::plugins::domain::value_objects::PluginCatalogSelection;
+use crate::modules::plugins::domain::value_objects::PluginTrustRoot;
 use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
 use crate::modules::plugins::{
     InMemoryPluginAssignmentRepository, InMemoryPluginPlanProjectionRepository,
@@ -32,18 +32,18 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use a3s_use_core::{
-    PlanScopeKind, PluginDesiredState, PluginManagedScope, PluginPackageId, PluginReleaseChannel,
-    PluginSurfaceKind, PluginSurfaceRef, PLUGIN_MANAGED_SCOPE_SCHEMA_V2,
+    PLUGIN_MANAGED_SCOPE_SCHEMA_V2, PlanScopeKind, PluginDesiredState, PluginManagedScope,
+    PluginPackageId, PluginReleaseChannel, PluginSurfaceKind, PluginSurfaceRef,
 };
 use a3s_use_extension::{
-    inspect_bootstrap_root, PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage,
+    MAX_BOOTSTRAP_ROOT_BYTES, PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage,
     PluginCatalogSearch, PluginCatalogSnapshot, PluginCatalogSnapshotSource,
-    VerifiedRegistryMetadata, MAX_BOOTSTRAP_ROOT_BYTES,
+    VerifiedRegistryMetadata, inspect_bootstrap_root,
 };
 use async_trait::async_trait;
 use chrono::Utc;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use uuid::Uuid;
 
 #[derive(Clone, Copy)]
@@ -382,11 +382,13 @@ async fn authorization_fails_before_root_storage_and_registry_persistence() {
         roots.get(&trust_root(VALID_BOOTSTRAP_ROOT)).await,
         Err(PluginTrustRootStoreError::NotFound)
     ));
-    assert!(registries
-        .list(organization_id)
-        .await
-        .expect("registry list")
-        .is_empty());
+    assert!(
+        registries
+            .list(organization_id)
+            .await
+            .expect("registry list")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -410,11 +412,13 @@ async fn malformed_root_and_authorization_outage_fail_without_durable_intent() {
         .expect_err("malformed enrollment");
     assert!(matches!(invalid, ApplicationError::Invalid(_)));
     assert_eq!(allowed.calls(), 1);
-    assert!(registries
-        .list(organization_id)
-        .await
-        .expect("registry list")
-        .is_empty());
+    assert!(
+        registries
+            .list(organization_id)
+            .await
+            .expect("registry list")
+            .is_empty()
+    );
 
     let unavailable = Arc::new(FixedEnrollmentAuthorizer::new(
         AuthorizationOutcome::Unavailable,
@@ -435,11 +439,13 @@ async fn malformed_root_and_authorization_outage_fail_without_durable_intent() {
         .expect_err("authorization outage");
     assert!(matches!(error, ApplicationError::Unavailable(_)));
     assert_eq!(unavailable.calls(), 1);
-    assert!(registries
-        .list(organization_id)
-        .await
-        .expect("registry list")
-        .is_empty());
+    assert!(
+        registries
+            .list(organization_id)
+            .await
+            .expect("registry list")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -469,11 +475,13 @@ async fn trust_root_integrity_failure_is_unavailable_and_never_commits_registry_
         .expect_err("trust-root integrity failure");
 
     assert!(matches!(error, ApplicationError::Unavailable(_)));
-    assert!(registries
-        .list(organization_id)
-        .await
-        .expect("registry list")
-        .is_empty());
+    assert!(
+        registries
+            .list(organization_id)
+            .await
+            .expect("registry list")
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -721,7 +729,10 @@ async fn set_plugin_assignment_creates_replays_and_revises_desired_state() {
         .expect("create");
     assert!(!created.replayed);
     assert_eq!(created.assignment.assignment_generation, 1);
-    assert_eq!(created.assignment.desired_state, PluginDesiredState::Enabled);
+    assert_eq!(
+        created.assignment.desired_state,
+        PluginDesiredState::Enabled
+    );
 
     let replayed = handler
         .execute(
@@ -837,7 +848,9 @@ async fn list_and_get_plugin_assignment_queries_return_environment_scoped_rows()
         .execute(
             ListPluginAssignments {
                 organization_id,
+                project_id,
                 environment_id,
+                access: PluginAccess::organization_wide(),
             },
             context(),
         )
@@ -878,7 +891,9 @@ async fn list_and_get_plugin_assignment_queries_return_environment_scoped_rows()
 
 #[tokio::test]
 async fn record_get_and_confirm_plugin_plan_projection() {
-    use a3s_use_core::{PluginOperationConfirmation, PluginOperationPlan, PluginOperationPlanEnvelope};
+    use a3s_use_core::{
+        PluginOperationConfirmation, PluginOperationPlan, PluginOperationPlanEnvelope,
+    };
     use chrono::TimeZone;
 
     const INSTALL_PLAN: &[u8] = include_bytes!(concat!(
@@ -960,8 +975,7 @@ async fn record_get_and_confirm_plugin_plan_projection() {
         .expect("get");
     assert_eq!(fetched.id, recorded.id);
 
-    let confirmation =
-        PluginOperationConfirmation::from_json(CONFIRMATION).expect("confirmation");
+    let confirmation = PluginOperationConfirmation::from_json(CONFIRMATION).expect("confirmation");
     let confirmed_at = Utc.timestamp_millis_opt(1_785_360_200_000).unwrap();
     let confirmed = confirm_handler
         .execute(
@@ -982,8 +996,8 @@ async fn record_get_and_confirm_plugin_plan_projection() {
 
 #[tokio::test]
 async fn reconciler_enqueues_the_versioned_plugin_assignment_workflow_once() {
-    use crate::modules::operations::domain::repositories::IOperationRepository;
     use crate::modules::operations::InMemoryOperationRepository;
+    use crate::modules::operations::domain::repositories::IOperationRepository;
 
     let assignments = Arc::new(InMemoryPluginAssignmentRepository::new());
     let operations = Arc::new(InMemoryOperationRepository::new());
@@ -1049,8 +1063,8 @@ async fn reconciler_enqueues_the_versioned_plugin_assignment_workflow_once() {
 
 #[tokio::test]
 async fn crash_point_1_assignment_survives_before_flow_operation_enqueue() {
-    use crate::modules::operations::domain::repositories::IOperationRepository;
     use crate::modules::operations::InMemoryOperationRepository;
+    use crate::modules::operations::domain::repositories::IOperationRepository;
 
     // Crash point 1: assignment/Operation commit before Flow creation.
     // Prove the assignment is durable with a reserved operation id while the
@@ -1105,7 +1119,10 @@ async fn crash_point_1_assignment_survives_before_flow_operation_enqueue() {
     );
 
     let reconciler = PluginAssignmentReconciler::new(assignments.clone(), operations.clone());
-    let first = reconciler.run_once(100).await.expect("reconcile after crash gap");
+    let first = reconciler
+        .run_once(100)
+        .await
+        .expect("reconcile after crash gap");
     assert_eq!(first.started, 1);
     assert_eq!(first.replayed, 0);
     assert!(first.failures.is_empty());
@@ -1120,9 +1137,11 @@ async fn crash_point_1_assignment_survives_before_flow_operation_enqueue() {
 
     // Simulated control-plane restart: same durable assignment, enqueue again.
     let restarted = PluginAssignmentReconciler::new(assignments.clone(), operations.clone());
-    let second = restarted.run_once(100).await.expect("reconcile after restart");
+    let second = restarted
+        .run_once(100)
+        .await
+        .expect("reconcile after restart");
     assert_eq!(second.started, 0);
     assert_eq!(second.replayed, 1);
     assert!(second.failures.is_empty());
 }
-
