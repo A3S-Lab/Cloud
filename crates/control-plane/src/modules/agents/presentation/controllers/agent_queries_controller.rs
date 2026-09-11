@@ -1,4 +1,5 @@
 use super::request::request_id;
+use crate::access_projection::agent_access;
 use crate::modules::agents::application::{
     GetAgentApprovalCheckpoint, GetAgentConversation, GetAgentExecution,
     GetAgentExecutionChangeSet, GetAgentExecutionCheckpoint, GetAgentExecutionCheckpointSnapshot,
@@ -97,9 +98,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -131,9 +132,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             limit,
                         })
                         .await?
@@ -166,9 +167,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             execution_id: AgentExecutionId::from_uuid(
                                 request.param_as::<Uuid>("execution_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -198,9 +199,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 execution_id: AgentExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                                 limit: parameters.limit,
                             })
                             .await?
@@ -236,9 +237,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 checkpoint_id: AgentExecutionCheckpointId::from_uuid(
                                     request.param_as::<Uuid>("checkpoint_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             })
                             .await?
                         {
@@ -270,9 +271,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 checkpoint_id: AgentExecutionCheckpointId::from_uuid(
                                     request.param_as::<Uuid>("checkpoint_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             })
                             .await?
                         {
@@ -302,9 +303,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 execution_id: AgentExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                                 after_sequence: decode_sequence_cursor(
                                     parameters.cursor.as_deref(),
                                     "Agent trajectory",
@@ -339,9 +340,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             execution_id: AgentExecutionId::from_uuid(
                                 request.param_as::<Uuid>("execution_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -377,9 +378,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 execution_id: AgentExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                                 status,
                                 limit: parameters.limit,
                             })
@@ -416,9 +417,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 checkpoint_id: AgentApprovalCheckpointId::from_uuid(
                                     request.param_as::<Uuid>("checkpoint_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
-                                    &request.require_auth_principal()?,
-                                )?,
+                                access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             })
                             .await?
                         {
@@ -448,9 +449,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             after_sequence: decode_sequence_cursor(
                                 parameters.cursor.as_deref(),
                                 "Agent event",
@@ -495,9 +496,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             conversation_id: AgentConversationId::from_uuid(
                                 request.param_as::<Uuid>("conversation_id")?,
                             ),
-                            resource_access: resource_access_evaluator(
+                            access: agent_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             after_sequence,
                             limit: usize::from(parameters.limit),
                         },

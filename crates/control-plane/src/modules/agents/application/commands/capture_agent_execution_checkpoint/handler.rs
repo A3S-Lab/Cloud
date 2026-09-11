@@ -78,7 +78,7 @@ impl CommandHandler<CaptureAgentExecutionCheckpoint> for CaptureAgentExecutionCh
                 .execution(
                     command.organization_id,
                     command.execution_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

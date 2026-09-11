@@ -1,9 +1,8 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::application::support::load_checkpoint_snapshot;
 use crate::modules::agents::domain::{
     AgentExecutionCheckpointSnapshot, IAgentExecutionCheckpointObjectStore, IAgentRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AgentExecutionCheckpointId, AgentExecutionId, OrganizationId, RepositoryError,
@@ -16,7 +15,7 @@ pub struct GetAgentExecutionCheckpointSnapshot {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
     pub checkpoint_id: AgentExecutionCheckpointId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
 }
 
 impl Query for GetAgentExecutionCheckpointSnapshot {
@@ -52,11 +51,7 @@ impl QueryHandler<GetAgentExecutionCheckpointSnapshot>
         let objects = Arc::clone(&self.objects);
         Box::pin(async move {
             let access = match AgentResourceAccess::new(Arc::clone(&agents))
-                .execution(
-                    query.organization_id,
-                    query.execution_id,
-                    &query.resource_access,
-                )
+                .execution(query.organization_id, query.execution_id, &query.access)
                 .await
             {
                 Ok(access) => access,

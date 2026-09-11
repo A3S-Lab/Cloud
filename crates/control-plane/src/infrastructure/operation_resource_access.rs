@@ -1,5 +1,6 @@
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::IAgentRepository;
+use crate::modules::agents::{AgentAccess, AgentAccessScope};
 use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
 use crate::modules::artifacts::domain::IBuildRunRepository;
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
@@ -109,13 +110,13 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                 )
             }
             Some(OperationSubjectKind::AgentExecution) => {
-                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                let agents_access = agent_access_from_operation(access);
                 visible(
                     self.agents
                         .execution(
                             organization_id,
                             AgentExecutionId::from_uuid(subject.id()),
-                            &evaluator,
+                            &agents_access,
                         )
                         .await,
                 )
@@ -174,9 +175,7 @@ fn workload_access_from_operation(access: &OperationAccess) -> WorkloadAccess {
         return WorkloadAccess::organization_wide();
     }
     WorkloadAccess::restricted(access.granted_scopes().map(|scope| match scope {
-        OperationAccessScope::Project { project_id } => {
-            WorkloadAccessScope::Project { project_id }
-        }
+        OperationAccessScope::Project { project_id } => WorkloadAccessScope::Project { project_id },
         OperationAccessScope::Environment {
             project_id,
             environment_id,
@@ -192,9 +191,7 @@ fn artifact_access_from_operation(access: &OperationAccess) -> ArtifactAccess {
         return ArtifactAccess::organization_wide();
     }
     ArtifactAccess::restricted(access.granted_scopes().map(|scope| match scope {
-        OperationAccessScope::Project { project_id } => {
-            ArtifactAccessScope::Project { project_id }
-        }
+        OperationAccessScope::Project { project_id } => ArtifactAccessScope::Project { project_id },
         OperationAccessScope::Environment {
             project_id,
             environment_id,
@@ -223,8 +220,24 @@ fn execution_access_from_operation(access: &OperationAccess) -> ExecutionAccess 
     }))
 }
 
+fn agent_access_from_operation(access: &OperationAccess) -> AgentAccess {
+    if access.is_organization_wide() {
+        return AgentAccess::organization_wide();
+    }
+    AgentAccess::restricted(access.granted_scopes().map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => AgentAccessScope::Project { project_id },
+        OperationAccessScope::Environment {
+            project_id,
+            environment_id,
+        } => AgentAccessScope::Environment {
+            project_id,
+            environment_id,
+        },
+    }))
+}
+
 /// Temporary bridge for subject owners that still evaluate Identity grant types.
-/// Lives only in this root composition adapter until Agents/Workflow own projections.
+/// Lives only in this root composition adapter until Workflow owns a projection.
 fn identity_evaluator_for_legacy_subjects(access: &OperationAccess) -> ResourceAccessEvaluator {
     if access.is_organization_wide() {
         return ResourceAccessEvaluator::organization_wide();

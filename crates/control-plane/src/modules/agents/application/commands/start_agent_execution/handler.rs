@@ -52,7 +52,7 @@ impl CommandHandler<StartAgentExecution> for StartAgentExecutionHandler {
                 .conversation(
                     command.organization_id,
                     command.conversation_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

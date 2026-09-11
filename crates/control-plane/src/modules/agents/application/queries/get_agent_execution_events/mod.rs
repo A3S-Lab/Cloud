@@ -1,6 +1,5 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{AgentExecutionEvent, IAgentRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentConversationId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -11,7 +10,7 @@ use std::sync::Arc;
 pub struct GetAgentExecutionEvents {
     pub organization_id: OrganizationId,
     pub conversation_id: AgentConversationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub after_sequence: Option<u64>,
     pub limit: usize,
 }
@@ -58,11 +57,7 @@ impl QueryHandler<GetAgentExecutionEvents> for GetAgentExecutionEventsHandler {
                 )));
             }
             let conversation = match resource_access
-                .conversation(
-                    query.organization_id,
-                    query.conversation_id,
-                    &query.resource_access,
-                )
+                .conversation(query.organization_id, query.conversation_id, &query.access)
                 .await
             {
                 Ok(conversation) => conversation,

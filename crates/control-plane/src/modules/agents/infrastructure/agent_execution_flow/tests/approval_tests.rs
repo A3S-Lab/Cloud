@@ -1,12 +1,10 @@
 use super::*;
 use crate::modules::agents::application::{
-    DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
+    AgentAccess, DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
 };
 use crate::modules::agents::domain::IAgentApprovalCheckpointRepository;
 use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisionRepository;
-use crate::modules::identity::domain::services::{
-    ResourceAccessEvaluator, ResourceAuthorizationDecisionRequest,
-};
+use crate::modules::identity::domain::services::ResourceAuthorizationDecisionRequest;
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, AuthorizationDecisionRef, RepositoryError,
 };
@@ -286,7 +284,7 @@ async fn approval_checkpoint_resumes_only_after_one_exact_durable_decision() {
         expected_version: checkpoint.aggregate_version,
         outcome: a3s_cloud_contracts::AgentProviderApprovalOutcomeV1::Approved,
         reason: Some("release approved".into()),
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: AgentAccess::organization_wide(),
         actor_principal_id: PrincipalId::new(),
         credential_id: ApiTokenId::new(),
         idempotency_key: "approve-publish-1".into(),

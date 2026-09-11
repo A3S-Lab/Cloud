@@ -1,8 +1,7 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{
     AgentApprovalCheckpoint, AgentApprovalCheckpointStatus, IAgentRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -12,7 +11,7 @@ use std::sync::Arc;
 pub struct ListAgentApprovalCheckpoints {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub status: Option<AgentApprovalCheckpointStatus>,
     pub limit: usize,
 }
@@ -48,11 +47,7 @@ impl QueryHandler<ListAgentApprovalCheckpoints> for ListAgentApprovalCheckpoints
                 )));
             }
             if let Err(error) = AgentResourceAccess::new(Arc::clone(&agents))
-                .execution(
-                    query.organization_id,
-                    query.execution_id,
-                    &query.resource_access,
-                )
+                .execution(query.organization_id, query.execution_id, &query.access)
                 .await
             {
                 return Ok(Err(error));

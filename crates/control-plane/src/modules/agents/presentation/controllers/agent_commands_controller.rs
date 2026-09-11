@@ -1,4 +1,5 @@
 use super::request::{credential_actor, expected_version, request_identity};
+use crate::access_projection::agent_access;
 use crate::modules::agents::application::{
     CancelAgentExecution, CaptureAgentExecutionCheckpoint, CreateAgentConversation,
     DecideAgentApprovalCheckpoint, ForkAgentExecution, StartAgentExecution,
@@ -79,8 +80,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                     async move {
                         let body: StartAgentExecutionRequest = request.json_with_content_type()?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                         match bus
                             .execute(StartAgentExecution {
                                 organization_id: OrganizationId::from_uuid(
@@ -89,7 +89,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 conversation_id: AgentConversationId::from_uuid(
                                     request.param_as::<Uuid>("conversation_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 agent_asset_id: AssetId::from_uuid(body.agent_asset_id),
                                 agent_asset_release_id: AssetReleaseId::from_uuid(
                                     body.agent_asset_release_id,
@@ -123,8 +123,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                     let bus = Arc::clone(&cancel_bus);
                     async move {
                         let (idempotency_key, request_id) = request_identity(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                         match bus
                             .execute(CancelAgentExecution {
                                 organization_id: OrganizationId::from_uuid(
@@ -133,7 +132,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 execution_id: AgentExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 idempotency_key,
                                 request_id,
                                 requested_at: Utc::now(),
@@ -163,8 +162,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                         let body: CaptureAgentExecutionCheckpointRequest =
                             request.json_with_content_type()?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                         match bus
                             .execute(CaptureAgentExecutionCheckpoint {
                                 organization_id: OrganizationId::from_uuid(
@@ -173,7 +171,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 execution_id: AgentExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 through_event_sequence: body.through_event_sequence,
                                 idempotency_key,
                                 request_id,
@@ -202,8 +200,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                     async move {
                         let body: ForkAgentExecutionRequest = request.json_with_content_type()?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                         match bus
                             .execute(ForkAgentExecution {
                                 organization_id: OrganizationId::from_uuid(
@@ -215,7 +212,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 checkpoint_id: AgentExecutionCheckpointId::from_uuid(
                                     request.param_as::<Uuid>("checkpoint_id")?,
                                 ),
-                                resource_access,
+                                access,
                                 input: body.input,
                                 idempotency_key,
                                 request_id,
@@ -246,8 +243,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                         let body: AgentApprovalDecisionRequest =
                             request.json_with_content_type()?;
                         let (idempotency_key, request_id) = request_identity(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                         let actor = credential_actor(&request)?;
                         match bus
                             .execute(DecideAgentApprovalCheckpoint {
@@ -263,7 +259,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                                 expected_version: expected_version(&request)?,
                                 outcome: body.outcome.into(),
                                 reason: body.reason,
-                                resource_access,
+                                access,
                                 actor_principal_id: actor.principal_id,
                                 credential_id: actor.credential_id,
                                 idempotency_key,

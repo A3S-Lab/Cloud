@@ -56,7 +56,7 @@ impl CommandHandler<ForkAgentExecution> for ForkAgentExecutionHandler {
                 .execution(
                     command.organization_id,
                     command.parent_execution_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

@@ -3,6 +3,7 @@ pub mod domain;
 pub mod infrastructure;
 pub mod presentation;
 
+pub(crate) use application::AgentAccessScope;
 pub use application::*;
 pub use domain::*;
 pub use infrastructure::*;

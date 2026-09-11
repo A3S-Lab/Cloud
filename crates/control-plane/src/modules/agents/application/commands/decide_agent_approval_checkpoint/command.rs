@@ -1,5 +1,5 @@
+use crate::modules::agents::application::AgentAccess;
 use crate::modules::agents::domain::AgentApprovalCheckpoint;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentExecutionId, ApiTokenId, OrganizationId, PrincipalId,
@@ -17,7 +17,7 @@ pub struct DecideAgentApprovalCheckpoint {
     pub expected_version: u64,
     pub outcome: AgentProviderApprovalOutcomeV1,
     pub reason: Option<String>,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub actor_principal_id: PrincipalId,
     pub credential_id: ApiTokenId,
     pub idempotency_key: String,

@@ -17,6 +17,8 @@ pub use agent_release_admission::*;
 pub use commands::*;
 pub use environment_access::{AgentsEnvironmentScope, IAgentsEnvironmentAccess};
 pub use queries::*;
+pub use resource_access::AgentAccess;
+pub(crate) use resource_access::AgentAccessScope;
 pub use workflow_agent_port::*;
 
 #[cfg(test)]

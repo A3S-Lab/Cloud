@@ -1,5 +1,5 @@
+use crate::modules::agents::application::AgentAccess;
 use crate::modules::agents::domain::{AgentConversation, AgentExecution};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OrganizationId};
 use a3s_boot::Command;
@@ -11,7 +11,7 @@ use uuid::Uuid;
 pub struct CancelAgentExecution {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,

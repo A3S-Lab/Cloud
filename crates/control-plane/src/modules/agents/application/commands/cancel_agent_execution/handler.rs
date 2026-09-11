@@ -34,7 +34,7 @@ impl CommandHandler<CancelAgentExecution> for CancelAgentExecutionHandler {
                 .execution(
                     command.organization_id,
                     command.execution_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

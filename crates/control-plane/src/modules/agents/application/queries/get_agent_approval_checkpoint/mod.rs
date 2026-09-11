@@ -1,6 +1,5 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{AgentApprovalCheckpoint, IAgentRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentExecutionId, OrganizationId, RepositoryError,
@@ -13,7 +12,7 @@ pub struct GetAgentApprovalCheckpoint {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
     pub checkpoint_id: AgentApprovalCheckpointId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
 }
 
 impl Query for GetAgentApprovalCheckpoint {
@@ -40,11 +39,7 @@ impl QueryHandler<GetAgentApprovalCheckpoint> for GetAgentApprovalCheckpointHand
         let agents = Arc::clone(&self.agents);
         Box::pin(async move {
             let access = match AgentResourceAccess::new(Arc::clone(&agents))
-                .execution(
-                    query.organization_id,
-                    query.execution_id,
-                    &query.resource_access,
-                )
+                .execution(query.organization_id, query.execution_id, &query.access)
                 .await
             {
                 Ok(access) => access,

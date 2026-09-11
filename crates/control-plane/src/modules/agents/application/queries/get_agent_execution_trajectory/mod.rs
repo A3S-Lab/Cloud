@@ -1,6 +1,5 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{AgentExecutionEvent, IAgentRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -13,7 +12,7 @@ pub const MAX_AGENT_EXECUTION_TRAJECTORY_PAGE_LIMIT: usize = 200;
 pub struct GetAgentExecutionTrajectory {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub after_sequence: Option<u64>,
     pub through_sequence: Option<u64>,
     pub limit: usize,
@@ -68,11 +67,7 @@ impl QueryHandler<GetAgentExecutionTrajectory> for GetAgentExecutionTrajectoryHa
                 )));
             }
             if let Err(error) = AgentResourceAccess::new(Arc::clone(&agents))
-                .execution(
-                    query.organization_id,
-                    query.execution_id,
-                    &query.resource_access,
-                )
+                .execution(query.organization_id, query.execution_id, &query.access)
                 .await
             {
                 return Ok(Err(error));

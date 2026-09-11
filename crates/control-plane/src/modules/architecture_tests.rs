@@ -7513,6 +7513,122 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
 }
 
 #[test]
+fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("agents/application/resource_access.rs"))
+        .expect("read Agents resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumAgentAccessScope",
+        "pubstructAgentAccess",
+        "pub(crate)structAgentResourceAccess",
+        "access.environment_is_visible(conversation.project_id,conversation.environment_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Agents lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Agents resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "agents/application/queries/get_agent_execution/mod.rs",
+        "agents/application/queries/get_agent_conversation/mod.rs",
+        "agents/application/commands/start_agent_execution/command.rs",
+        "agents/application/commands/cancel_agent_execution/command.rs",
+        "agents/application/commands/decide_agent_approval_checkpoint/command.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: AgentAccess"),
+            "{relative} stopped carrying Agents-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnagent_access(",
+        "AgentAccess::organization_wide()",
+        "AgentAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Agents access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "agents/presentation/controllers/agent_queries_controller.rs",
+        "agents/presentation/controllers/agent_commands_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("access: agent_access(&resource_access_evaluator(")
+                || production.contains("let access = agent_access(&resource_access_evaluator("),
+            "{relative} must project Identity into AgentAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    let operation_access = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("infrastructure/operation_resource_access.rs"),
+    )
+    .expect("read root Operation resource access adapter");
+    assert!(
+        production_source(&operation_access).contains("agent_access_from_operation(access)"),
+        "Operation subject resolver lost AgentAccess mapping"
+    );
+    assert!(
+        !production_source(&operation_access)
+            .contains("OperationSubjectKind::AgentExecution")
+            || !production_source(&operation_access)
+                .split("OperationSubjectKind::AgentExecution")
+                .nth(1)
+                .unwrap_or_default()
+                .split("OperationSubjectKind::")
+                .next()
+                .unwrap_or_default()
+                .contains("identity_evaluator_for_legacy_subjects"),
+        "AgentExecution subjects must not use the legacy Identity bridge"
+    );
+}
+
+#[test]
 fn forms_access_and_project_ownership_have_one_bounded_authority() {
     let root = module_root();
     let access_path = "forms/application/resource_access.rs";

@@ -1,6 +1,5 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{AgentExecutionChangeSet, IAgentRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,7 +9,7 @@ use std::sync::Arc;
 pub struct GetAgentExecutionChangeSet {
     pub organization_id: OrganizationId,
     pub execution_id: AgentExecutionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
 }
 
 impl Query for GetAgentExecutionChangeSet {
@@ -42,11 +41,7 @@ impl QueryHandler<GetAgentExecutionChangeSet> for GetAgentExecutionChangeSetHand
         let resource_access = self.resource_access.clone();
         Box::pin(async move {
             if let Err(error) = resource_access
-                .execution(
-                    query.organization_id,
-                    query.execution_id,
-                    &query.resource_access,
-                )
+                .execution(query.organization_id, query.execution_id, &query.access)
                 .await
             {
                 return Ok(Err(error));

@@ -1,6 +1,5 @@
-use crate::modules::agents::application::resource_access::AgentResourceAccess;
+use crate::modules::agents::application::resource_access::{AgentAccess, AgentResourceAccess};
 use crate::modules::agents::domain::{AgentExecution, IAgentRepository};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{AgentConversationId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,7 +9,7 @@ use std::sync::Arc;
 pub struct ListAgentExecutions {
     pub organization_id: OrganizationId,
     pub conversation_id: AgentConversationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub limit: usize,
 }
 
@@ -48,11 +47,7 @@ impl QueryHandler<ListAgentExecutions> for ListAgentExecutionsHandler {
                 )));
             }
             if let Err(error) = resource_access
-                .conversation(
-                    query.organization_id,
-                    query.conversation_id,
-                    &query.resource_access,
-                )
+                .conversation(query.organization_id, query.conversation_id, &query.access)
                 .await
             {
                 return Ok(Err(error));

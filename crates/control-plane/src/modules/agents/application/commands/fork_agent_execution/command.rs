@@ -1,5 +1,5 @@
+use crate::modules::agents::application::AgentAccess;
 use crate::modules::agents::domain::{AgentConversation, AgentExecution};
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     AgentExecutionCheckpointId, AgentExecutionId, OrganizationId,
@@ -14,7 +14,7 @@ pub struct ForkAgentExecution {
     pub organization_id: OrganizationId,
     pub parent_execution_id: AgentExecutionId,
     pub checkpoint_id: AgentExecutionCheckpointId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: AgentAccess,
     pub input: serde_json::Value,
     pub idempotency_key: String,
     pub request_id: Uuid,
