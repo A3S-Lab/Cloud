@@ -419,7 +419,7 @@ mappings, domain technical-dependency debt, named Runtime/Flow published
 contract entry points, Shared Kernel direction, and public Infrastructure /
 Presentation facades. Public facade detection now treats a public module,
 re-export, or alias of a private outer layer as the same exposure. The current
-allowlists contain 54 cross-context outer-layer import sites, 2 duplicate
+allowlists contain 42 cross-context outer-layer import sites, 2 duplicate
 mapping sites across one table (`workflow_runs`), and 40 public outer-layer context/layer
 surfaces; Domain technical dependency and Shared Kernel back-edge allowlists
 remain empty. Files Presentation and every Files adapter, the Data recovery
