@@ -17,14 +17,14 @@ use crate::modules::durable_cells::domain::{
     DurableCellServiceProfile, IDurableCellApplicationRepository, IDurableCellDeploymentRepository,
 };
 use crate::modules::fleet::domain::entities::NodeCommand;
-use crate::modules::operations::{OperationRequest, OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     canonical_json_bounded, canonical_timestamp, OperationId, RepositoryError, Sha256Digest,
 };
 use crate::modules::workloads::{
     IWorkloadWriterFenceAdapter, RetiringReplicaTarget, WorkloadWriterFenceCommit,
-    WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
+    WorkloadWriterFenceContinuationIntent, WorkloadWriterFenceReceipt,
+    WorkloadWriterFenceReceiptSpec,
 };
 use a3s_cloud_contracts::NodeCommandAck;
 use async_trait::async_trait;
@@ -356,19 +356,13 @@ impl IWorkloadWriterFenceAdapter for DurableCellWriterFenceAdapter {
                 "Durable Cell seal Operation projection changed its namespace".into(),
             ));
         }
-        let operation = OperationRequest::new(
+        let operation = WorkloadWriterFenceContinuationIntent::new(
             operation_projection.operation_id,
             operation_projection.organization_id,
-            OperationSubject::new(
-                "storage_namespace",
-                operation_projection.namespace_id.as_uuid(),
-            )
-            .map_err(|error| conflict("restore Durable Cell seal Operation subject", error))?,
-            WorkflowIdentity::new(
-                operation_projection.workflow_name,
-                operation_projection.workflow_version,
-            )
-            .map_err(|error| conflict("restore Durable Cell seal Operation workflow", error))?,
+            "storage_namespace",
+            operation_projection.namespace_id.as_uuid(),
+            operation_projection.workflow_name,
+            operation_projection.workflow_version,
             operation_projection.input,
             operation_projection.requested_at,
         );

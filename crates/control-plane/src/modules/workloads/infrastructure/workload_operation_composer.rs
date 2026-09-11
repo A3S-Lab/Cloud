@@ -6,11 +6,12 @@ use crate::modules::workloads::application::{
 };
 use crate::modules::workloads::domain::{
     WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
+    WorkloadWriterFenceContinuationIntent,
 };
 
 /// Sole anti-corruption composition from Workloads operation intents to
 /// Operations aggregates. Persistence and Flow adapters call these helpers;
-/// Application command handlers never construct `OperationRequest`.
+/// Application command handlers never construct OperationRequest.
 pub fn compose_deployment_operation(
     intent: &WorkloadDeploymentOperationIntent,
 ) -> Result<OperationRequest, String> {
@@ -43,6 +44,22 @@ pub fn compose_stop_operation(
             "requestedAt": intent.requested_at,
             "workloadId": intent.workload_id,
         }),
+        intent.requested_at,
+    ))
+}
+
+pub fn compose_writer_fence_operation(
+    intent: &WorkloadWriterFenceContinuationIntent,
+) -> Result<OperationRequest, String> {
+    Ok(OperationRequest::new(
+        intent.operation_id,
+        intent.organization_id,
+        OperationSubject::new(intent.subject_kind.clone(), intent.subject_id)?,
+        WorkflowIdentity::new(
+            intent.workflow_name.clone(),
+            intent.workflow_version.clone(),
+        )?,
+        intent.input.clone(),
         intent.requested_at,
     ))
 }

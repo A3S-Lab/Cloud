@@ -54,5 +54,5 @@ pub use secrets_binding_access::SecretsWorkloadsSecretBindingAccessAdapter;
 pub use skill_release_admission::AssetsWorkloadSkillReleaseAdmissionAdapter;
 pub use source_build_admission::SourcesArtifactsWorkloadSourceBuildAdmissionAdapter;
 pub(crate) use workload_operation_composer::{
-    compose_deployment_operation, compose_stop_operation,
+    compose_deployment_operation, compose_stop_operation, compose_writer_fence_operation,
 };

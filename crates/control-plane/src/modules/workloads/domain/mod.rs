@@ -7,6 +7,7 @@ mod workload_operation_intent;
 
 pub use workload_operation_intent::{
     WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
+    WorkloadWriterFenceContinuationIntent,
 };
 
 #[cfg(test)]

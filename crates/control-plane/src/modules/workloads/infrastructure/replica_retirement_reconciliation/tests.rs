@@ -1,7 +1,5 @@
 use super::*;
 use crate::modules::fleet::domain::repositories::RuntimeObservationRecord;
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite, NodeId,
     OperationId, OrganizationId, ProjectId, ResourceName, Sha256Digest, WorkloadId,
@@ -13,7 +11,9 @@ use crate::modules::workloads::domain::entities::{
     ServiceResources, ServiceTemplate, Workload, WorkloadReplicaMember, WorkloadRevision,
     WorkloadWriterFenceReceipt, WorkloadWriterFenceReceiptSpec,
 };
-use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
+use crate::modules::workloads::domain::{
+    WorkloadDeploymentOperationIntent, WorkloadWriterFenceContinuationIntent,
+};
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository,
 };
@@ -198,13 +198,13 @@ impl IWorkloadWriterFenceAdapter for ScriptedWriterFence {
         })
         .map_err(RepositoryError::Conflict)?;
         Ok(Some(WorkloadWriterFenceCommit {
-            operation: OperationRequest::new(
+            operation: WorkloadWriterFenceContinuationIntent::new(
                 operation_id,
                 target.replica.organization_id,
-                OperationSubject::new("workload", target.replica.workload_id.as_uuid())
-                    .map_err(RepositoryError::Conflict)?,
-                WorkflowIdentity::new("cloud.test.writer-fence", "1")
-                    .map_err(RepositoryError::Conflict)?,
+                "workload",
+                target.replica.workload_id.as_uuid(),
+                "cloud.test.writer-fence",
+                "1",
                 serde_json::json!({ "receiptDigest": receipt.digest() }),
                 fenced_at,
             ),

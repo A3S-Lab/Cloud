@@ -31,7 +31,7 @@ use crate::modules::workloads::domain::services::{
     plan_replica_set_reconfiguration, ReplicaSetReconfigurationError,
 };
 use crate::modules::workloads::infrastructure::{
-    compose_deployment_operation, compose_stop_operation,
+    compose_deployment_operation, compose_stop_operation, compose_writer_fence_operation,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -2459,9 +2459,14 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
                     "Workload writer-fence receipt exists before its Runtime fence".into(),
                 ));
             }
-            if let Some(existing) = state.writer_fence_operations.get(&commit.operation.id) {
-                if !existing.has_same_definition(&commit.operation)
-                    || existing.requested_at != commit.operation.requested_at
+            if let Some(existing) = state
+                .writer_fence_operations
+                .get(&commit.operation.operation_id)
+            {
+                let composed = compose_writer_fence_operation(&commit.operation)
+                    .map_err(RepositoryError::Conflict)?;
+                if !existing.has_same_definition(&composed)
+                    || existing.requested_at != composed.requested_at
                 {
                     return Err(RepositoryError::Conflict(
                         "Workload writer-fence Operation replay changed its definition".into(),
@@ -2478,9 +2483,9 @@ impl IWorkloadReplicaRetirementRepository for InMemoryWorkloadRepository {
         }
         if existing_writer_fence.is_none() {
             if let Some(commit) = writer_fence {
-                state
-                    .writer_fence_operations
-                    .insert(commit.operation.id, commit.operation);
+                let composed = compose_writer_fence_operation(&commit.operation)
+                    .map_err(RepositoryError::Conflict)?;
+                state.writer_fence_operations.insert(composed.id, composed);
                 state.writer_fences.insert(
                     (fence.workload_id, fence.replica_generation),
                     commit.receipt,

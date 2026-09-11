@@ -37,10 +37,7 @@ use crate::modules::durable_cells::{
 use crate::modules::executions::domain::{ExecutionOutcome, ExecutionStatus, IExecutionRepository};
 use crate::modules::executions::InMemoryExecutionRepository;
 use crate::modules::executions::ProjectsExecutionsEnvironmentAccessAdapter;
-use crate::modules::operations::domain::entities::{
-    OperationProjection, OperationRequest, OperationStatus,
-};
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
+use crate::modules::operations::domain::entities::{OperationProjection, OperationStatus};
 use crate::modules::operations::{IOperationRepository, InMemoryOperationRepository};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::events::EnvironmentCreated;

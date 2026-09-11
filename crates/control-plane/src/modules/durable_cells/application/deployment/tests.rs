@@ -40,7 +40,9 @@ use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId,
     ResourceName, SecretId, SecretVersionReference, Sha256Digest,
 };
-use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+use crate::modules::workloads::infrastructure::{
+    compose_writer_fence_operation, InMemoryWorkloadRepository,
+};
 use crate::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository,
     IWorkloadWriterFenceAdapter, IWorkloadWriterFenceRepository, OciArtifact,
@@ -772,7 +774,10 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         workloads
             .writer_fence_operation(stored_receipt.spec().continuation_operation_id)
             .await,
-        Some(writer_fence.operation)
+        Some(
+            compose_writer_fence_operation(&writer_fence.operation)
+                .expect("compose Durable Cell writer-fence Operation"),
+        )
     );
 
     // Once the exact cleanup is terminal, start reactivates the same

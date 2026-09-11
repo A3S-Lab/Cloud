@@ -12,6 +12,7 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::{
     WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
+    WorkloadWriterFenceContinuationIntent,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -168,14 +169,14 @@ pub struct ReplicaRuntimeFence {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkloadWriterFenceCommit {
     pub receipt: WorkloadWriterFenceReceipt,
-    pub operation: OperationRequest,
+    pub operation: WorkloadWriterFenceContinuationIntent,
 }
 
 impl WorkloadWriterFenceCommit {
     pub fn validate(&self) -> Result<(), String> {
         self.receipt.validate()?;
         let receipt = self.receipt.spec();
-        if self.operation.id != receipt.continuation_operation_id
+        if self.operation.operation_id != receipt.continuation_operation_id
             || self.operation.organization_id != receipt.organization_id
             || self.operation.requested_at != receipt.fenced_at
         {

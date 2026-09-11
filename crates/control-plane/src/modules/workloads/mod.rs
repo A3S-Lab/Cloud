@@ -80,7 +80,10 @@ pub use domain::services::{
     UnrestrictedWorkloadPrestartGate, UnrestrictedWorkloadWriterFenceAdapter,
     UnroutedDeploymentRouteUpdater, WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
-pub use domain::{WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent};
+pub use domain::{
+    WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
+    WorkloadWriterFenceContinuationIntent,
+};
 pub use infrastructure::{
     AssetsWorkloadAgentReleaseAdmissionAdapter, AssetsWorkloadSkillReleaseAdmissionAdapter,
     DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime,

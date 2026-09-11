@@ -3,6 +3,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 /// Workloads-owned deployment operation intent.
 ///
@@ -59,6 +60,47 @@ impl WorkloadStopOperationIntent {
             operation_id,
             organization_id,
             workload_id,
+            requested_at,
+        }
+    }
+}
+
+/// Workloads-owned writer-fence continuation intent.
+///
+/// Owner adapters emit this handoff with the exact subject, workflow, and
+/// opaque input required for the continuation. Infrastructure composes the
+/// foreign Operations aggregate when persisting the Runtime fence.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WorkloadWriterFenceContinuationIntent {
+    pub operation_id: OperationId,
+    pub organization_id: OrganizationId,
+    pub subject_kind: String,
+    pub subject_id: Uuid,
+    pub workflow_name: String,
+    pub workflow_version: String,
+    pub input: serde_json::Value,
+    pub requested_at: DateTime<Utc>,
+}
+
+impl WorkloadWriterFenceContinuationIntent {
+    pub fn new(
+        operation_id: OperationId,
+        organization_id: OrganizationId,
+        subject_kind: impl Into<String>,
+        subject_id: Uuid,
+        workflow_name: impl Into<String>,
+        workflow_version: impl Into<String>,
+        input: serde_json::Value,
+        requested_at: DateTime<Utc>,
+    ) -> Self {
+        Self {
+            operation_id,
+            organization_id,
+            subject_kind: subject_kind.into(),
+            subject_id,
+            workflow_name: workflow_name.into(),
+            workflow_version: workflow_version.into(),
+            input,
             requested_at,
         }
     }

@@ -10600,6 +10600,7 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
     for required in [
         "pubstructWorkloadDeploymentOperationIntent",
         "pubstructWorkloadStopOperationIntent",
+        "pubstructWorkloadWriterFenceContinuationIntent",
     ] {
         assert!(
             compact_intents.contains(required),
@@ -10662,6 +10663,29 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
             .join("\n")
     );
 
+    let writer_fence =
+        std::fs::read_to_string(root.join("durable_cells/application/writer_fence.rs"))
+            .expect("read Durable Cells writer-fence application");
+    let production_writer_fence = production_source(&writer_fence);
+    assert!(
+        production_writer_fence.contains("WorkloadWriterFenceContinuationIntent"),
+        "Durable Cells writer fence stopped emitting WorkloadWriterFenceContinuationIntent"
+    );
+    for forbidden in [
+        "crate::modules::operations",
+        "OperationSubject",
+        "WorkflowIdentity",
+    ] {
+        assert!(
+            !production_writer_fence.contains(forbidden),
+            "Durable Cells writer fence regained Operations construction {forbidden}"
+        );
+    }
+    assert!(
+        !contains_bare_token(production_writer_fence.as_str(), "OperationRequest::new"),
+        "Durable Cells writer fence regained Operations construction OperationRequest::new"
+    );
+
     let composer = std::fs::read_to_string(
         root.join("workloads/infrastructure/workload_operation_composer.rs"),
     )
@@ -10672,6 +10696,7 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
     for required in [
         "fncompose_deployment_operation(",
         "fncompose_stop_operation(",
+        "fncompose_writer_fence_operation(",
         "OperationRequest::new(",
     ] {
         assert!(
@@ -11552,6 +11577,13 @@ fn production_source(source: &str) -> String {
     }
 
     production
+}
+
+fn contains_bare_token(source: &str, token: &str) -> bool {
+    source.match_indices(token).any(|(index, _)| {
+        let before = source[..index].chars().next_back();
+        !before.is_some_and(|character| character.is_ascii_alphanumeric() || character == '_')
+    })
 }
 
 fn is_test_only_cfg_attribute(line: &str) -> bool {

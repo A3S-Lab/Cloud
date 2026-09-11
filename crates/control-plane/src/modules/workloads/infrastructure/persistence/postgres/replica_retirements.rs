@@ -11,6 +11,7 @@ use crate::modules::workloads::domain::repositories::{
     ReplicaRetirementCompletion, ReplicaRetirementDispatch, ReplicaRuntimeFence,
     RetiringReplicaTarget, WorkloadWriterFenceCommit,
 };
+use crate::modules::workloads::infrastructure::compose_writer_fence_operation;
 use a3s_orm::{
     select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
 };
@@ -189,14 +190,16 @@ async fn record_fence_in_transaction(
             ));
         }
         if existing_writer_fence.is_some() {
+            let composed = compose_writer_fence_operation(&commit.operation)
+                .map_err(RepositoryError::Conflict)?;
             let existing_operation = operation_requests::find(
                 transaction,
                 commit.receipt.spec().continuation_operation_id,
             )
             .await?
             .ok_or_else(|| invariant("Workload writer-fence Operation is missing"))?;
-            if !existing_operation.has_same_definition(&commit.operation)
-                || existing_operation.requested_at != commit.operation.requested_at
+            if !existing_operation.has_same_definition(&composed)
+                || existing_operation.requested_at != composed.requested_at
             {
                 return Err(RepositoryError::Conflict(
                     "Workload writer-fence Operation replay changed its definition".into(),
@@ -215,7 +218,9 @@ async fn record_fence_in_transaction(
     }
     if existing_writer_fence.is_none() {
         if let Some(commit) = &writer_fence {
-            operation_requests::insert(transaction, &commit.operation).await?;
+            let composed = compose_writer_fence_operation(&commit.operation)
+                .map_err(RepositoryError::Conflict)?;
+            operation_requests::insert(transaction, &composed).await?;
             writer_fences::insert(transaction, &commit.receipt).await?;
         }
     }
