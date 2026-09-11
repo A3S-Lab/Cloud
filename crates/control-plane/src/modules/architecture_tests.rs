@@ -4077,6 +4077,52 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
 }
 
 #[test]
+fn edge_list_gateway_scopes_isolates_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let query =
+        std::fs::read_to_string(root.join("edge/application/queries/list_gateway_scopes.rs"))
+            .expect("read ListGatewayScopes query");
+    let production_query = production_source(&query);
+    assert!(
+        production_query.contains("pub access: EdgeAccess"),
+        "ListGatewayScopes stopped carrying Edge-owned access"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+        assert!(
+            !production_query.contains(forbidden),
+            "ListGatewayScopes regained Identity authority {forbidden}"
+        );
+    }
+    let compact = production_query.split_whitespace().collect::<String>();
+    let access_check = compact
+        .find(".access.environment_is_visible(")
+        .expect("ListGatewayScopes checks Edge visibility");
+    let repository_read = compact
+        .find(".list_gateway_scopes(")
+        .expect("ListGatewayScopes still lists through the Edge repository");
+    assert!(
+        access_check < repository_read,
+        "ListGatewayScopes must fail closed on visibility before listing scopes"
+    );
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/gateway_scope_queries_controller.rs"),
+    )
+    .expect("read gateway scope queries controller");
+    let production = production_source(&controller);
+    assert!(
+        production.contains("edge_access(&resource_access_evaluator("),
+        "ListGatewayScopes must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "ListGatewayScopes must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))
