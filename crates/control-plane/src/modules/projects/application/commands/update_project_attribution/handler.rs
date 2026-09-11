@@ -39,7 +39,7 @@ impl CommandHandler<UpdateProjectAttribution> for UpdateProjectAttributionHandle
                 .project(
                     command.organization_id,
                     command.project_id,
-                    &command.resource_access,
+                    &command.access,
                 )
                 .await
             {

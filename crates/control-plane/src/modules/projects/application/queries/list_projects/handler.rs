@@ -31,7 +31,7 @@ impl QueryHandler<ListProjects> for ListProjectsHandler {
                 .into_iter()
                 .filter(|project| {
                     query
-                        .resource_access
+                        .access
                         .project_is_visible_in_collection(project.id)
                 })
                 .collect()))

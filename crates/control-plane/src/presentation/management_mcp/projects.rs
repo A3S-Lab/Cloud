@@ -1,3 +1,4 @@
+use crate::access_projection::project_access;
 use super::arguments::EmptyArguments;
 use super::tool_result;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -118,7 +119,7 @@ pub async fn list_projects(
     match bus
         .execute(ListProjects {
             organization_id,
-            resource_access,
+            access: project_access(&resource_access),
         })
         .await?
     {
@@ -145,7 +146,7 @@ pub async fn list_environments(
         .execute(ListEnvironments {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
-            resource_access,
+            access: project_access(&resource_access),
         })
         .await?
     {
@@ -175,7 +176,7 @@ pub async fn get_project_attribution(
             attribution_profile_id: arguments
                 .attribution_profile_id
                 .map(ProjectAttributionProfileId::from_uuid),
-            resource_access,
+            access: project_access(&resource_access),
         })
         .await?
     {
@@ -201,7 +202,7 @@ pub async fn update_project_attribution(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             actor_principal_id,
-            resource_access,
+            access: project_access(&resource_access),
             expected_project_version: arguments.expected_version,
             business_owner_reference: arguments.business_owner_reference,
             cost_attribution_code: arguments.cost_attribution_code,

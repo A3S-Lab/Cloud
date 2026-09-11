@@ -1,4 +1,3 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::projects::domain::entities::{Project, ProjectAttributionProfile};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
@@ -6,13 +5,14 @@ use a3s_boot::Command;
 use serde::Serialize;
 use std::collections::BTreeMap;
 use uuid::Uuid;
+use crate::modules::projects::application::ProjectAccess;
 
 #[derive(Debug, Clone)]
 pub struct UpdateProjectAttribution {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ProjectAccess,
     pub expected_project_version: u64,
     pub business_owner_reference: String,
     pub cost_attribution_code: Option<String>,

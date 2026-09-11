@@ -29,7 +29,7 @@ impl QueryHandler<GetProjectAttribution> for GetProjectAttributionHandler {
                 .project(
                     query.organization_id,
                     query.project_id,
-                    &query.resource_access,
+                    &query.access,
                 )
                 .await
             {

@@ -32,7 +32,7 @@ impl QueryHandler<ListEnvironments> for ListEnvironmentsHandler {
         let environments = Arc::clone(&self.environments);
         Box::pin(async move {
             if !query
-                .resource_access
+                .access
                 .project_is_visible_in_collection(query.project_id)
             {
                 return Ok(Err(ApplicationError::NotFound(
@@ -59,7 +59,7 @@ impl QueryHandler<ListEnvironments> for ListEnvironmentsHandler {
                 .into_iter()
                 .filter(|environment| {
                     query
-                        .resource_access
+                        .access
                         .environment_is_visible(environment.project_id, environment.id)
                 })
                 .collect()))

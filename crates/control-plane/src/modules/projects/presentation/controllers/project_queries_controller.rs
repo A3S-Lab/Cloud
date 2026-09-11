@@ -1,3 +1,4 @@
+use crate::access_projection::project_access;
 use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::projects::application::queries::get_project_attribution::GetProjectAttribution;
 use crate::modules::projects::application::queries::list_environments::ListEnvironments;
@@ -26,12 +27,11 @@ pub fn project_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefini
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = project_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     match bus
                         .execute(ListProjects {
                             organization_id,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -75,13 +75,13 @@ async fn get_attribution_profile(
     let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
     let request_id = request_id(&request)?;
-    let resource_access = resource_access_evaluator(&request.require_auth_principal()?)?;
+    let access = project_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
     match bus
         .execute(GetProjectAttribution {
             organization_id,
             project_id,
             attribution_profile_id,
-            resource_access,
+            access,
         })
         .await?
     {
@@ -102,13 +102,12 @@ pub fn environment_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDe
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = project_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     match bus
                         .execute(ListEnvironments {
                             organization_id,
                             project_id,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {

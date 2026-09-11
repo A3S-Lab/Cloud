@@ -1,3 +1,4 @@
+use crate::access_projection::project_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
     authenticated_actor, resource_access_evaluator, OrganizationTenantGuard,
@@ -61,7 +62,7 @@ pub fn projects_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition>
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let principal = request.require_auth_principal()?;
                     let actor_principal_id = authenticated_actor(&principal)?.principal_id;
-                    let resource_access = resource_access_evaluator(&principal)?;
+                    let access = project_access(&resource_access_evaluator(&principal)?);
                     let expected_project_version = expected_version(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
@@ -69,7 +70,7 @@ pub fn projects_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition>
                             organization_id,
                             project_id,
                             actor_principal_id,
-                            resource_access,
+                            access,
                             expected_project_version,
                             business_owner_reference: body.business_owner_reference,
                             cost_attribution_code: body.cost_attribution_code,

@@ -2797,6 +2797,118 @@ fn projects_create_project_isolates_identity_behind_one_organization_port() {
 }
 
 #[test]
+fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("projects/application/resource_access.rs"))
+        .expect("read Projects resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumProjectAccessScope",
+        "pubstructProjectAccess",
+        "pub(crate)structProjectResourceAccess",
+        "access.project_is_authorized(project_id)",
+        "project_is_visible_in_collection",
+        "environment_is_visible",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Projects lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Projects resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "projects/application/queries/list_projects/query.rs",
+        "projects/application/queries/list_environments/query.rs",
+        "projects/application/queries/get_project_attribution/query.rs",
+        "projects/application/commands/update_project_attribution/command.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: ProjectAccess"),
+            "{relative} stopped carrying Projects-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnproject_access(",
+        "ProjectAccess::organization_wide()",
+        "ProjectAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Projects access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "projects/presentation/controllers/project_queries_controller.rs",
+        "projects/presentation/controllers/projects_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("project_access(&resource_access_evaluator("),
+            "{relative} must project Identity into ProjectAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator")
+                && !production.contains("resource_access,"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/projects.rs"),
+    )
+    .expect("read Projects Management MCP adapter");
+    let production_mcp = production_source(&mcp);
+    assert!(
+        production_mcp
+            .matches("access: project_access(&resource_access)")
+            .count()
+            >= 4,
+        "Projects MCP must project every resource-authorized tool into ProjectAccess"
+    );
+    assert!(
+        !production_mcp.contains("resource_access,"),
+        "Projects MCP must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))
