@@ -3341,22 +3341,102 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
     )
     .expect("read Notifications outbox projector");
     let production_projector = production_source(&projector);
+    let compact_projector = production_projector.split_whitespace().collect::<String>();
     assert!(
-        production_projector.contains("NotificationAccess::organization_wide()")
-            && production_projector.contains("NotificationAccess::restricted(")
+        compact_projector.contains("identity:Arc<dynINotificationOutboxIdentityAccess>")
+            && production_projector.contains("membership_inbox_is_projectable(")
+            && production_projector.contains("alert_access_for_principal(")
             && production_projector.contains("scope_is_visible("),
-        "Notifications outbox projector must authorize through owned NotificationAccess"
+        "Notifications outbox projector must authorize alerts through owned NotificationAccess via INotificationOutboxIdentityAccess"
     );
     for forbidden in [
         "ResourceAccessEvaluator",
+        "IMembershipRepository",
+        "IResourceGrantRepository",
         "notification_access(",
         "access_projection::notification_access",
+        "NotificationAccess::organization_wide()",
+        "NotificationAccess::restricted(",
     ] {
         assert!(
             !production_projector.contains(forbidden),
-            "Notifications outbox projector regained Identity evaluator bridge {forbidden}"
+            "Notifications outbox projector regained Identity repository authority or synthesizer {forbidden}"
         );
     }
+}
+
+#[test]
+fn notifications_outbox_projector_isolates_identity_behind_one_access_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("notifications/application/outbox_identity_access.rs"),
+    )
+    .expect("read Notifications outbox Identity access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "traitINotificationOutboxIdentityAccess:Send+Sync",
+        "membership_inbox_is_projectable(",
+        "alert_access_for_principal(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Notifications lost its outbox Identity access boundary {required}"
+        );
+    }
+    assert!(
+        !production_source(&port).contains("crate::modules::identity"),
+        "the consumer-owned Notifications outbox Identity port imported Identity internals"
+    );
+
+    let adapter = std::fs::read_to_string(
+        root.join("notifications/infrastructure/outbox_identity_access.rs"),
+    )
+    .expect("read Notifications outbox Identity access adapter");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructIdentityNotificationOutboxIdentityAccessAdapter",
+        "implINotificationOutboxIdentityAccessforIdentityNotificationOutboxIdentityAccessAdapter",
+        "NotificationAccess::organization_wide()",
+        "NotificationAccess::restricted(",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Notifications lost its sole outbox Identity adapter synthesizer {required}"
+        );
+    }
+
+    let mut membership_grant_sites = BTreeSet::new();
+    let mut port_implementations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let source = production_source(source);
+        if context(relative) == Some("notifications")
+            && (source.contains("IMembershipRepository")
+                || source.contains("IResourceGrantRepository"))
+        {
+            membership_grant_sites.insert(display(relative));
+        }
+        if source.contains("impl INotificationOutboxIdentityAccess for") {
+            port_implementations.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        membership_grant_sites,
+        BTreeSet::from([
+            "notifications/infrastructure/outbox_identity_access.rs".to_owned()
+        ]),
+        "all Notifications membership/grant repository access must be confined to the sole outbox Identity adapter"
+    );
+    assert_eq!(
+        port_implementations,
+        BTreeSet::from([
+            "notifications/infrastructure/outbox_identity_access.rs".to_owned()
+        ]),
+        "outbox Identity access must have one consumer-side adapter"
+    );
 }
 
 #[test]

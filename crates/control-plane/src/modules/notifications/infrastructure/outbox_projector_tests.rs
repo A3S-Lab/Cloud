@@ -4,9 +4,10 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     ChangeMembershipRoleWrite, CreateMembershipWrite, CreateResourceGrantWrite,
-    IResourceGrantRepository, MembershipRecord, RevokeMembershipWrite, RevokeResourceGrantWrite,
+    IMembershipRepository, IResourceGrantRepository, MembershipRecord, RevokeMembershipWrite,
+    RevokeResourceGrantWrite,
 };
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::integration_events::{
     EventPublishError, IEventPublisher, IOutboxRepository, OutboxRelay, OutboxRelayConfig,
 };
@@ -190,6 +191,18 @@ impl IResourceGrantRepository for ResourceGrantLookup {
 
 fn resource_grants(grants: Vec<ResourceGrant>) -> Arc<dyn IResourceGrantRepository> {
     Arc::new(ResourceGrantLookup { grants })
+}
+
+fn outbox_identity(
+    memberships: Arc<dyn IMembershipRepository>,
+    grants: Arc<dyn IResourceGrantRepository>,
+) -> Arc<dyn crate::modules::notifications::INotificationOutboxIdentityAccess> {
+    Arc::new(
+        crate::modules::notifications::IdentityNotificationOutboxIdentityAccessAdapter::new(
+            memberships,
+            grants,
+        ),
+    )
 }
 
 async fn create_alert_policy(
@@ -423,7 +436,10 @@ async fn provider_retry_replays_one_logical_notification() {
     let notifications = Arc::new(InMemoryNotificationRepository::new());
     let projector = Arc::new(OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, occurred_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, occurred_at),
+            resource_grants(Vec::new()),
+        ),
     ));
     let relay = OutboxRelay::new(
         outbox.clone(),
@@ -513,7 +529,10 @@ async fn inaccessible_identity_lifecycle_facts_are_not_projected() {
     let notifications = Arc::new(InMemoryNotificationRepository::new());
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, occurred_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, occurred_at),
+            resource_grants(Vec::new()),
+        ),
     );
 
     for event_key in [
@@ -545,11 +564,13 @@ async fn inaccessible_identity_lifecycle_facts_are_not_projected() {
             .expect("unsupported lifecycle fact is a successful no-op");
     }
 
-    assert!(notifications
-        .list_page(organization_id, recipient, false, None, 50)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 }
 
 #[path = "outbox_projector_domain_claim_tests.rs"]

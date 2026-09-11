@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::edge::domain::events::{
-    certificate_expiry_aggregate_version, renewal_subject_id, GatewayCertificateExpiryChanged,
-    GatewayCertificateExpiryStatus,
+    GatewayCertificateExpiryChanged, GatewayCertificateExpiryStatus,
+    certificate_expiry_aggregate_version, renewal_subject_id,
 };
 
 #[derive(Clone)]
@@ -126,9 +126,12 @@ async fn gateway_certificate_expiry_firing_and_recovery_are_node_local_projectio
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let initial_lifecycle = GatewayCertificateExpiryFixture::new(
         organization_id,
         project_id,
@@ -277,9 +280,12 @@ async fn gateway_certificate_expiry_recovery_requires_opt_in_and_active_policy()
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let lifecycle = GatewayCertificateExpiryFixture::new(
         organization_id,
         project_id,
@@ -377,8 +383,11 @@ async fn gateway_certificate_expiry_alerts_recheck_grants_and_ignore_schema_drif
         )
     };
 
-    let unauthorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    let unauthorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(Vec::new())),
+    )
+    .with_alert_policies(notifications.clone());
     unauthorized
         .project(&firing)
         .await
@@ -394,8 +403,11 @@ async fn gateway_certificate_expiry_alerts_recheck_grants_and_ignore_schema_drif
         },
         created_at,
     );
-    let authorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(vec![grant]));
+    let authorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(vec![grant])),
+    )
+    .with_alert_policies(notifications.clone());
     let mut schema_drift = firing.clone();
     schema_drift.schema_version = 2;
     authorized

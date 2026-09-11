@@ -124,9 +124,12 @@ async fn node_revocation_resolves_without_claiming_the_node_recovered() {
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let last_observed_at = created_at + chrono::Duration::seconds(1);
     let source = firing(organization_id, node_id, 2, last_observed_at);
     projector
@@ -230,9 +233,12 @@ async fn node_unavailable_and_resolution_are_exact_ordered_replay_safe_projectio
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
 
     let stale_firing = firing(
         organization_id,
@@ -317,9 +323,11 @@ async fn node_unavailable_and_resolution_are_exact_ordered_replay_safe_projectio
     assert_eq!(projected[0].severity, NotificationSeverity::Information);
     assert_eq!(projected[1].source_event_key, "fleet.node.unavailable");
     assert_eq!(projected[1].severity, NotificationSeverity::Critical);
-    assert!(projected
-        .iter()
-        .all(|notification| notification.scope == NotificationScope::Node { node_id }));
+    assert!(
+        projected
+            .iter()
+            .all(|notification| notification.scope == NotificationScope::Node { node_id })
+    );
     assert!(projected.iter().all(|notification| {
         notification.body.contains(&node_id.to_string())
             && !notification
@@ -376,11 +384,11 @@ async fn node_alerts_require_the_current_exact_node_grant() {
         },
         created_at,
     );
-    let unauthorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(
-            notifications.clone(),
-            resource_grants(vec![environment_grant]),
-        );
+    let unauthorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(vec![environment_grant])),
+    )
+    .with_alert_policies(notifications.clone());
     unauthorized
         .project(&source)
         .await
@@ -393,8 +401,11 @@ async fn node_alerts_require_the_current_exact_node_grant() {
         ResourceGrantScope::Node { node_id },
         created_at,
     );
-    let authorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(vec![node_grant]));
+    let authorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(vec![node_grant])),
+    )
+    .with_alert_policies(notifications.clone());
     let mut schema_drift = source.clone();
     schema_drift.schema_version = 2;
     authorized
@@ -406,8 +417,11 @@ async fn node_alerts_require_the_current_exact_node_grant() {
         .await
         .expect("the exact Node grant projects the alert");
 
-    let authority_lost = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    let authority_lost = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(Vec::new())),
+    )
+    .with_alert_policies(notifications.clone());
     let recovered = resolution(
         &source,
         3,

@@ -258,7 +258,8 @@ use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
     CreateOutboundNotificationSubscriptionHandler, FleetNotificationsNodeAccessAdapter,
     GetNotificationAlertPolicyHandler, GetNotificationHandler,
-    GetOutboundNotificationSubscriptionHandler, IdentityOutboundRecipientContactAccessAdapter,
+    GetOutboundNotificationSubscriptionHandler, IdentityNotificationOutboxIdentityAccessAdapter,
+    IdentityOutboundRecipientContactAccessAdapter,
     INotificationAlertPolicyRepository, INotificationRepository, INotificationsEnvironmentAccess,
     INotificationsNodeAccess, IOutboundNotificationDispatcher, IOutboundNotificationRepository,
     IOutboundRecipientContactAccess, ListNotificationAlertPoliciesHandler,
@@ -2244,8 +2245,14 @@ fn build_outbox_projectors(
         Arc::new(ProjectsPreviewEnvironmentAdapter::new(preview.environments));
     vec![
         Arc::new(
-            OutboxNotificationProjector::new(notifications, memberships)
-                .with_alert_policies(alert_policies, resource_grants),
+            OutboxNotificationProjector::new(
+                notifications,
+                Arc::new(IdentityNotificationOutboxIdentityAccessAdapter::new(
+                    memberships,
+                    resource_grants,
+                )),
+            )
+            .with_alert_policies(alert_policies),
         ),
         Arc::new(HostedBuildOutcomeProjector::new(assets)),
         Arc::new(BuildCandidateProjector::new(build_projections)),

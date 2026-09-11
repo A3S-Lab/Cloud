@@ -10,6 +10,7 @@ mod outbound_recipient_contact_access;
 mod outbound_smtp_dispatch;
 mod outbound_subscription;
 mod outbound_subscription_queries;
+mod outbox_identity_access;
 mod resource_access;
 
 pub use alert_policy::{
@@ -48,4 +49,5 @@ pub use outbound_subscription_queries::{
     GetOutboundNotificationSubscription, GetOutboundNotificationSubscriptionHandler,
     ListOutboundNotificationSubscriptions, ListOutboundNotificationSubscriptionsHandler,
 };
+pub use outbox_identity_access::INotificationOutboxIdentityAccess;
 pub use resource_access::{NotificationAccess, NotificationAccessScope};

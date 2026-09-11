@@ -64,9 +64,12 @@ async fn domain_claim_rejection_and_recovery_are_personal_deterministic_projecti
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let rejected = domain_claim_message(
         organization_id,
         project_id,
@@ -154,9 +157,12 @@ async fn domain_claim_recovery_requires_a_post_policy_rejection_and_opt_in() {
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
 
     let historical_claim = DomainClaimId::new();
     projector
@@ -201,11 +207,13 @@ async fn domain_claim_recovery_requires_a_post_policy_rejection_and_opt_in() {
         ))
         .await
         .expect("initial verification is ignored");
-    assert!(notifications
-        .list_page(organization_id, recipient, false, None, 50)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 
     let no_recovery_recipient = PrincipalId::new();
     let no_recovery_membership_id = MembershipId::new();
@@ -222,14 +230,17 @@ async fn domain_claim_recovery_requires_a_post_policy_rejection_and_opt_in() {
     .await;
     let no_recovery_projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(
-            organization_id,
-            no_recovery_membership_id,
-            no_recovery_recipient,
-            created_at,
+        outbox_identity(
+            membership_lookup(
+                organization_id,
+                no_recovery_membership_id,
+                no_recovery_recipient,
+                created_at,
+            ),
+            resource_grants(Vec::new()),
         ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let claim_id = DomainClaimId::new();
     no_recovery_projector
         .project(&domain_claim_message(
@@ -289,16 +300,19 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
     .await;
     let restricted_projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup_with_role(
-            organization_id,
-            restricted_membership_id,
-            restricted_recipient,
-            MembershipRole::Restricted,
-            true,
-            created_at,
+        outbox_identity(
+            membership_lookup_with_role(
+                organization_id,
+                restricted_membership_id,
+                restricted_recipient,
+                MembershipRole::Restricted,
+                true,
+                created_at,
+            ),
+            resource_grants(Vec::new()),
         ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     restricted_projector
         .project(&domain_claim_message(
             organization_id,
@@ -313,11 +327,13 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
         ))
         .await
         .expect("missing grant is ignored");
-    assert!(notifications
-        .list_page(organization_id, restricted_recipient, false, None, 50,)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, restricted_recipient, false, None, 50,)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 
     let granted_recipient = PrincipalId::new();
     let granted_membership_id = MembershipId::new();
@@ -343,16 +359,19 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
     );
     let granted_projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup_with_role(
-            organization_id,
-            granted_membership_id,
-            granted_recipient,
-            MembershipRole::Restricted,
-            true,
-            created_at,
+        outbox_identity(
+            membership_lookup_with_role(
+                organization_id,
+                granted_membership_id,
+                granted_recipient,
+                MembershipRole::Restricted,
+                true,
+                created_at,
+            ),
+            resource_grants(vec![grant]),
         ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(vec![grant]));
+    .with_alert_policies(notifications.clone());
     granted_projector
         .project(&domain_claim_message(
             organization_id,
@@ -390,16 +409,19 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
     .await;
     let revoked_member_projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup_with_role(
-            organization_id,
-            revoked_membership_id,
-            revoked_recipient,
-            MembershipRole::Member,
-            false,
-            created_at,
+        outbox_identity(
+            membership_lookup_with_role(
+                organization_id,
+                revoked_membership_id,
+                revoked_recipient,
+                MembershipRole::Member,
+                false,
+                created_at,
+            ),
+            resource_grants(Vec::new()),
         ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     revoked_member_projector
         .project(&domain_claim_message(
             organization_id,
@@ -414,11 +436,13 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
         ))
         .await
         .expect("revoked membership is ignored");
-    assert!(notifications
-        .list_page(organization_id, revoked_recipient, false, None, 50)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, revoked_recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 
     let revoked_policy_recipient = PrincipalId::new();
     let policy = create_alert_policy(
@@ -439,14 +463,17 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
     .await;
     let revoked_policy_projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(
-            organization_id,
-            MembershipId::new(),
-            revoked_policy_recipient,
-            created_at,
+        outbox_identity(
+            membership_lookup(
+                organization_id,
+                MembershipId::new(),
+                revoked_policy_recipient,
+                created_at,
+            ),
+            resource_grants(Vec::new()),
         ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     revoked_policy_projector
         .project(&domain_claim_message(
             organization_id,
@@ -461,11 +488,13 @@ async fn domain_claim_alerts_recheck_policy_membership_and_resource_grants() {
         ))
         .await
         .expect("revoked policy is ignored");
-    assert!(notifications
-        .list_page(organization_id, revoked_policy_recipient, false, None, 50,)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, revoked_policy_recipient, false, None, 50,)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 }
 
 #[test]

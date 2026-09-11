@@ -78,9 +78,12 @@ async fn workload_failures_and_recovery_are_logical_workload_projections() {
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
 
     projector
         .project(&workload_deployment_health_message(
@@ -209,9 +212,11 @@ async fn workload_failures_and_recovery_are_logical_workload_projections() {
     assert_eq!(projected[2].severity, NotificationSeverity::Warning);
     assert_eq!(projected[2].title, "Workload deployment failed");
     assert_eq!(projected[2].source_aggregate_version, 3);
-    assert!(projected
-        .iter()
-        .all(|notification| !notification.body.contains("provider-private")));
+    assert!(
+        projected
+            .iter()
+            .all(|notification| !notification.body.contains("provider-private"))
+    );
 }
 
 #[tokio::test]
@@ -237,9 +242,12 @@ async fn workload_recovery_requires_opt_in_and_active_policy() {
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
 
     projector
         .project(&workload_deployment_health_message(
@@ -345,17 +353,22 @@ async fn workload_alerts_recheck_resource_grants() {
         )
     };
 
-    let unauthorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    let unauthorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(Vec::new())),
+    )
+    .with_alert_policies(notifications.clone());
     unauthorized
         .project(&failure)
         .await
         .expect("missing grant is ignored");
-    assert!(notifications
-        .list_page(organization_id, recipient, false, None, 50)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 
     let grant = ResourceGrant::create(
         ResourceGrantId::new(),
@@ -367,8 +380,11 @@ async fn workload_alerts_recheck_resource_grants() {
         },
         created_at,
     );
-    let authorized = OutboxNotificationProjector::new(notifications.clone(), membership())
-        .with_alert_policies(notifications.clone(), resource_grants(vec![grant]));
+    let authorized = OutboxNotificationProjector::new(
+        notifications.clone(),
+        outbox_identity(membership(), resource_grants(vec![grant])),
+    )
+    .with_alert_policies(notifications.clone());
     authorized
         .project(&failure)
         .await
@@ -404,9 +420,12 @@ async fn workload_alerts_ignore_unregistered_schema_versions() {
     .await;
     let projector = OutboxNotificationProjector::new(
         notifications.clone(),
-        membership_lookup(organization_id, membership_id, recipient, created_at),
+        outbox_identity(
+            membership_lookup(organization_id, membership_id, recipient, created_at),
+            resource_grants(Vec::new()),
+        ),
     )
-    .with_alert_policies(notifications.clone(), resource_grants(Vec::new()));
+    .with_alert_policies(notifications.clone());
     let mut message = workload_deployment_health_message(
         organization_id,
         project_id,
@@ -425,11 +444,13 @@ async fn workload_alerts_ignore_unregistered_schema_versions() {
         .project(&message)
         .await
         .expect("unregistered schema version is ignored");
-    assert!(notifications
-        .list_page(organization_id, recipient, false, None, 50)
-        .await
-        .expect("notifications")
-        .is_empty());
+    assert!(
+        notifications
+            .list_page(organization_id, recipient, false, None, 50)
+            .await
+            .expect("notifications")
+            .is_empty()
+    );
 }
 
 #[test]

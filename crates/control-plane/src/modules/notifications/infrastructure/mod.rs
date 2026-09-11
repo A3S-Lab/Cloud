@@ -8,6 +8,7 @@ mod outbound_smtp;
 mod outbound_smtp_in_memory;
 mod outbound_smtp_postgres;
 mod outbound_recipient_contact_access;
+mod outbox_identity_access;
 mod outbox_projector;
 mod postgres;
 mod project_environment_access;
@@ -26,6 +27,7 @@ pub use outbound_smtp::{
     SmtpOutboundNotificationCredentials, SmtpOutboundNotificationDeliveryOptions,
     SmtpOutboundNotificationDeliveryService, SmtpOutboundNotificationTlsPolicy,
 };
+pub use outbox_identity_access::IdentityNotificationOutboxIdentityAccessAdapter;
 pub use outbox_projector::OutboxNotificationProjector;
 pub use postgres::PostgresNotificationRepository;
 pub use project_environment_access::ProjectsNotificationsEnvironmentAccessAdapter;

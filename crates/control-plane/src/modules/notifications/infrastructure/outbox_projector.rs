@@ -4,17 +4,13 @@ use crate::modules::edge::domain::events::{
 };
 use crate::modules::edge::domain::{DomainClaimState, DomainNamePattern, RouteHostname, RoutePath};
 use crate::modules::identity::domain::events::MembershipChanged;
-use crate::modules::identity::domain::repositories::{
-    IMembershipRepository, IResourceGrantRepository,
-};
-use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::integration_events::{IIntegrationEventProjector, OutboxMessage};
+use crate::modules::notifications::application::INotificationOutboxIdentityAccess;
 use crate::modules::notifications::domain::{
     INotificationAlertPolicyRepository, INotificationRepository, Notification,
     NotificationAlertPolicy, NotificationAlertPolicyTarget, NotificationAlertSource,
     NotificationScope, NotificationSeverity,
 };
-use crate::modules::notifications::{NotificationAccess, NotificationAccessScope};
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PrincipalId, RepositoryError, ResourceName, canonical_timestamp,
 };
@@ -27,31 +23,27 @@ use std::sync::Arc;
 
 pub struct OutboxNotificationProjector {
     notifications: Arc<dyn INotificationRepository>,
-    memberships: Arc<dyn IMembershipRepository>,
+    identity: Arc<dyn INotificationOutboxIdentityAccess>,
     alert_policies: Option<Arc<dyn INotificationAlertPolicyRepository>>,
-    resource_grants: Option<Arc<dyn IResourceGrantRepository>>,
 }
 
 impl OutboxNotificationProjector {
     pub fn new(
         notifications: Arc<dyn INotificationRepository>,
-        memberships: Arc<dyn IMembershipRepository>,
+        identity: Arc<dyn INotificationOutboxIdentityAccess>,
     ) -> Self {
         Self {
             notifications,
-            memberships,
+            identity,
             alert_policies: None,
-            resource_grants: None,
         }
     }
 
     pub fn with_alert_policies(
         mut self,
         alert_policies: Arc<dyn INotificationAlertPolicyRepository>,
-        resource_grants: Arc<dyn IResourceGrantRepository>,
     ) -> Self {
         self.alert_policies = Some(alert_policies);
-        self.resource_grants = Some(resource_grants);
         self
     }
 
@@ -109,24 +101,17 @@ impl OutboxNotificationProjector {
         // The organization-scoped inbox is reachable only by active members. Invitation and
         // revocation facts therefore remain in their existing lifecycle surfaces instead of
         // creating dead inbox records. A delayed fact is also skipped if access has since ended.
-        let membership = self
-            .memberships
-            .find_membership(
+        if !self
+            .identity
+            .membership_inbox_is_projectable(
                 OrganizationId::from_uuid(organization_id),
                 crate::modules::shared_kernel::domain::MembershipId::from_uuid(
                     message.aggregate_id,
                 ),
+                recipient,
             )
             .await?
-            .ok_or_else(|| {
-                RepositoryError::Storage("notification source membership no longer exists".into())
-            })?;
-        if membership.membership.principal_id != recipient {
-            return Err(RepositoryError::Storage(
-                "notification source membership principal is inconsistent".into(),
-            ));
-        }
-        if !membership.membership.is_active() {
+        {
             return Ok(Vec::new());
         }
 
@@ -158,9 +143,7 @@ impl OutboxNotificationProjector {
         source: NotificationAlertSource,
         target: NotificationAlertPolicyTarget,
     ) -> Result<Vec<NotificationAlertPolicy>, RepositoryError> {
-        let (Some(alert_policies), Some(resource_grants)) =
-            (&self.alert_policies, &self.resource_grants)
-        else {
+        let Some(alert_policies) = &self.alert_policies else {
             return Ok(Vec::new());
         };
         let organization_id = message.organization_id().ok_or_else(|| {
@@ -177,23 +160,13 @@ impl OutboxNotificationProjector {
         let scope = target.scope();
         let mut authorized = Vec::with_capacity(policies.len());
         for policy in policies {
-            let Some(membership) = self
-                .memberships
-                .find_active_membership_by_principal(
-                    policy.organization_id,
-                    policy.recipient_principal_id,
-                )
+            let Some(access) = self
+                .identity
+                .alert_access_for_principal(policy.organization_id, policy.recipient_principal_id)
                 .await?
             else {
                 continue;
             };
-            let grants = resource_grants
-                .list_active_resource_grants_for_membership(policy.organization_id, membership.id)
-                .await?;
-            let access = notification_access_for_membership(
-                membership.role,
-                grants.into_iter().map(|grant| grant.scope),
-            );
             if !access.scope_is_visible(scope) {
                 continue;
             }
@@ -684,29 +657,6 @@ fn decode_membership(message: &OutboxMessage) -> Result<MembershipChanged, Repos
     Ok(payload)
 }
 
-fn notification_access_for_membership(
-    role: MembershipRole,
-    grants: impl IntoIterator<Item = ResourceGrantScope>,
-) -> NotificationAccess {
-    if role == MembershipRole::Restricted {
-        NotificationAccess::restricted(grants.into_iter().map(|scope| match scope {
-            ResourceGrantScope::Project { project_id } => {
-                NotificationAccessScope::Project { project_id }
-            }
-            ResourceGrantScope::Environment {
-                project_id,
-                environment_id,
-            } => NotificationAccessScope::Environment {
-                project_id,
-                environment_id,
-            },
-            ResourceGrantScope::Node { node_id } => NotificationAccessScope::Node { node_id },
-        }))
-    } else {
-        NotificationAccess::organization_wide()
-    }
-}
-
 fn validate_identity_payload(
     message: &OutboxMessage,
     aggregate_id: uuid::Uuid,
@@ -717,7 +667,7 @@ fn validate_identity_payload(
     if aggregate_id.is_nil()
         || aggregate_id != message.aggregate_id
         || principal_id.is_nil()
-        || MembershipRole::parse(role).is_err()
+        || crate::modules::identity::domain::value_objects::MembershipRole::parse(role).is_err()
     {
         return Err(RepositoryError::Storage(format!(
             "notification source {label} payload identity is inconsistent"
