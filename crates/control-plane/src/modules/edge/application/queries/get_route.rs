@@ -1,7 +1,6 @@
-use crate::modules::edge::application::resource_access::EdgeResourceAccess;
-use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::application::resource_access::{EdgeAccess, EdgeResourceAccess};
 use crate::modules::edge::domain::Route;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, RouteId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -11,7 +10,7 @@ use std::sync::Arc;
 pub struct GetRoute {
     pub organization_id: OrganizationId,
     pub route_id: RouteId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: EdgeAccess,
 }
 
 impl Query for GetRoute {
@@ -37,11 +36,7 @@ impl QueryHandler<GetRoute> for GetRouteHandler {
         let routes = Arc::clone(&self.routes);
         Box::pin(async move {
             Ok(EdgeResourceAccess::new(routes)
-                .route(
-                    query.organization_id,
-                    query.route_id,
-                    &query.resource_access,
-                )
+                .route(query.organization_id, query.route_id, &query.access)
                 .await)
         })
     }

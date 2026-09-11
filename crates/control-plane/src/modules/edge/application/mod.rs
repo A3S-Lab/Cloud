@@ -18,8 +18,8 @@ pub use managed_inference_acl_access::{
     IEdgeManagedInferenceAclAccess,
 };
 pub use mcp_credential_delivery::{
-    McpCredentialDeliveryResult, McpCredentialMutationResult,
-    MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
+    MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS, McpCredentialDeliveryResult,
+    McpCredentialMutationResult,
 };
 pub use mcp_credential_delivery_receipt_sweeper::McpCredentialDeliveryReceiptSweeper;
 pub use mcp_credential_encryption::IEdgeMcpCredentialEncryption;
@@ -29,6 +29,7 @@ pub use mcp_workload_revision_projection_access::{
     EdgeMcpWorkloadRevisionProjectionScope, IEdgeMcpWorkloadRevisionProjectionAccess,
 };
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};
+pub use resource_access::{EdgeAccess, EdgeAccessScope};
 pub use runtime_observation_access::{
     EdgeRuntimeObservationProjection, IEdgeRuntimeObservationAccess,
 };

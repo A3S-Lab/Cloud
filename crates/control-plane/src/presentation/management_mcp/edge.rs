@@ -1,5 +1,6 @@
 use super::arguments::{EnvironmentScopeArguments, RouteArguments};
 use super::tool_result;
+use crate::access_projection::edge_access;
 use crate::modules::edge::presentation::RouteResponse;
 use crate::modules::edge::{GetRoute, ListRoutes};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
@@ -46,7 +47,7 @@ pub async fn get_route(
         .execute(GetRoute {
             organization_id,
             route_id: RouteId::from_uuid(arguments.route_id),
-            resource_access,
+            access: edge_access(&resource_access),
         })
         .await?
     {

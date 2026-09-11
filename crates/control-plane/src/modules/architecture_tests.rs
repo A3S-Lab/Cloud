@@ -3694,6 +3694,102 @@ fn identity_inference_key_queries_isolate_evaluator_behind_one_context_owned_acc
 }
 
 #[test]
+fn edge_get_route_isolates_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("edge/application/resource_access.rs"))
+        .expect("read Edge resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pubenumEdgeAccessScope",
+        "pubstructEdgeAccess",
+        "environment_is_visible",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Edge lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Edge resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let query = std::fs::read_to_string(root.join("edge/application/queries/get_route.rs"))
+        .expect("read GetRoute query");
+    let production_query = production_source(&query);
+    assert!(
+        production_query.contains("pub access: EdgeAccess"),
+        "GetRoute stopped carrying Edge-owned access"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+        assert!(
+            !production_query.contains(forbidden),
+            "GetRoute regained Identity authority {forbidden}"
+        );
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnedge_access(",
+        "EdgeAccess::organization_wide()",
+        "EdgeAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Edge access mapping {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/route_queries_controller.rs"),
+    )
+    .expect("read route queries controller");
+    let production = production_source(&controller);
+    assert!(
+        production.contains("edge_access(&resource_access_evaluator("),
+        "GetRoute must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "GetRoute must not pass ResourceAccessEvaluator into Application"
+    );
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/edge.rs"),
+    )
+    .expect("read Edge management MCP");
+    let production_mcp = production_source(&mcp);
+    assert!(
+        production_mcp.contains("access: edge_access(&resource_access)"),
+        "Edge MCP GetRoute must project Identity into EdgeAccess"
+    );
+    assert!(
+        !production_mcp.contains("resource_access,"),
+        "Edge MCP GetRoute must not pass ResourceAccessEvaluator into Application CQRS fields"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

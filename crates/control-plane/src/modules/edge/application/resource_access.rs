@@ -1,16 +1,91 @@
-use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::Route;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, RouteId};
+use crate::modules::shared_kernel::domain::{
+    EnvironmentId, OrganizationId, ProjectId, RepositoryError, RouteId,
+};
+use std::collections::BTreeSet;
 use std::sync::Arc;
+
+/// One Edge visibility selector projected from an Identity decision.
+///
+/// Project grants cover every environment under that project. Environment grants
+/// are exact. Node grants have no ownership meaning for route visibility and are
+/// discarded by the root anti-corruption layer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EdgeAccessScope {
+    Project {
+        project_id: ProjectId,
+    },
+    Environment {
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    },
+}
+
+impl EdgeAccessScope {
+    fn allows_environment(self, project_id: ProjectId, environment_id: EnvironmentId) -> bool {
+        match self {
+            Self::Project {
+                project_id: granted,
+            } => granted == project_id,
+            Self::Environment {
+                project_id: granted_project,
+                environment_id: granted_environment,
+            } => granted_project == project_id && granted_environment == environment_id,
+        }
+    }
+}
+
+/// Edge-owned projection of an already-authorized request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EdgeAccess {
+    organization_wide: bool,
+    granted_scopes: BTreeSet<EdgeAccessScope>,
+}
+
+impl EdgeAccess {
+    pub fn organization_wide() -> Self {
+        Self {
+            organization_wide: true,
+            granted_scopes: BTreeSet::new(),
+        }
+    }
+
+    pub fn restricted(granted_scopes: impl IntoIterator<Item = EdgeAccessScope>) -> Self {
+        Self {
+            organization_wide: false,
+            granted_scopes: granted_scopes.into_iter().collect(),
+        }
+    }
+
+    pub const fn is_organization_wide(&self) -> bool {
+        self.organization_wide
+    }
+
+    pub fn granted_scopes(&self) -> impl Iterator<Item = EdgeAccessScope> + '_ {
+        self.granted_scopes.iter().copied()
+    }
+
+    /// Project grants cover all descendant environments; environment grants are exact.
+    pub fn environment_is_visible(
+        &self,
+        project_id: ProjectId,
+        environment_id: EnvironmentId,
+    ) -> bool {
+        self.organization_wide
+            || self
+                .granted_scopes
+                .iter()
+                .any(|scope| scope.allows_environment(project_id, environment_id))
+    }
+}
 
 /// Resolves indirect Edge identifiers through the owning repository before authorization.
 ///
-/// Identity owns grant semantics; Edge owns the canonical Route-to-environment relationship.
-/// Missing and denied identifiers therefore share one application-layer not-found contract
-/// without an Identity-owned route index or a presentation-only authorization decision.
+/// Identity owns grant semantics at the edge; Edge owns the canonical Route-to-environment
+/// relationship. Missing and denied identifiers therefore share one application-layer
+/// not-found contract without an Identity-owned route index.
 #[derive(Clone)]
 pub(crate) struct EdgeResourceAccess {
     edge: Arc<dyn IEdgeRepository>,
@@ -25,17 +100,14 @@ impl EdgeResourceAccess {
         &self,
         organization_id: OrganizationId,
         route_id: RouteId,
-        evaluator: &ResourceAccessEvaluator,
+        access: &EdgeAccess,
     ) -> ApplicationResult<Route> {
         let route = self
             .edge
             .find_route(organization_id, route_id)
             .await
             .map_err(map_route_repository_error)?;
-        if !evaluator.allows(ResourceGrantScope::Environment {
-            project_id: route.project_id,
-            environment_id: route.environment_id,
-        }) {
+        if !access.environment_is_visible(route.project_id, route.environment_id) {
             return Err(route_not_found());
         }
         Ok(route)
@@ -51,4 +123,32 @@ fn map_route_repository_error(error: RepositoryError) -> ApplicationError {
 
 fn route_not_found() -> ApplicationError {
     ApplicationError::NotFound("route not found".into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn organization_wide_sees_every_environment() {
+        let access = EdgeAccess::organization_wide();
+        assert!(access.is_organization_wide());
+        assert!(access.environment_is_visible(ProjectId::new(), EnvironmentId::new()));
+    }
+
+    #[test]
+    fn project_grant_covers_environments_while_environment_grant_is_exact() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let project_access = EdgeAccess::restricted([EdgeAccessScope::Project { project_id }]);
+        assert!(project_access.environment_is_visible(project_id, environment_id));
+        assert!(!project_access.environment_is_visible(ProjectId::new(), environment_id));
+
+        let environment_access = EdgeAccess::restricted([EdgeAccessScope::Environment {
+            project_id,
+            environment_id,
+        }]);
+        assert!(environment_access.environment_is_visible(project_id, environment_id));
+        assert!(!environment_access.environment_is_visible(project_id, EnvironmentId::new()));
+    }
 }

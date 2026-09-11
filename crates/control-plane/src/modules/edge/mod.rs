@@ -6,10 +6,10 @@ pub mod presentation;
 pub use application::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
     CreateGatewayScopeHandler, CreateGatewayScopeResult, CreateMcpCredential,
-    CreateMcpCredentialHandler, CreateMcpRoutePolicy, CreateMcpRoutePolicyHandler,
-    EdgeEnvironmentScope, EdgeManagedInferenceAclEnvironment, EdgeNodeScope, GetDomainClaim,
-    GetDomainClaimHandler, GetMcpCredential, GetMcpCredentialHandler, GetMcpRoutePolicy,
-    GetMcpRoutePolicyHandler, GetRoute, GetRouteHandler, IEdgeEnvironmentAccess,
+    CreateMcpCredentialHandler, CreateMcpRoutePolicy, CreateMcpRoutePolicyHandler, EdgeAccess,
+    EdgeAccessScope, EdgeEnvironmentScope, EdgeManagedInferenceAclEnvironment, EdgeNodeScope,
+    GetDomainClaim, GetDomainClaimHandler, GetMcpCredential, GetMcpCredentialHandler,
+    GetMcpRoutePolicy, GetMcpRoutePolicyHandler, GetRoute, GetRouteHandler, IEdgeEnvironmentAccess,
     IEdgeManagedInferenceAclAccess, IEdgeMcpCredentialEncryption, IEdgeMcpServiceProfileAccess,
     IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess, IEdgeRuntimeObservationAccess,
     ListDomainClaims, ListDomainClaimsHandler, ListGatewayCertificates,
@@ -29,10 +29,10 @@ pub use domain::repositories::{
     GatewayCertificateRouteStatus, GatewayReplicaRecoveryTarget, GatewayRolloutDispatchTarget,
     GatewayRolloutResult, GatewayRolloutRollbackResult, GatewayRolloutRollbackTarget,
     GatewayRouteCutoverResult, IEdgeRepository, IMcpCredentialLifecycleRepository,
-    IMcpCredentialRepository, IMcpRoutePolicyRepository, McpRoutePolicyWrite,
-    McpRoutePolicyWriteSnapshot, MutateMcpRoutePolicyWrite, StageGatewayCertificateConvergence,
-    StageGatewayRollout, StageGatewayRolloutRollback, StageGatewayRouteCutover,
-    TransitionDomainClaim, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    IMcpCredentialRepository, IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
+    McpRoutePolicyWrite, McpRoutePolicyWriteSnapshot, MutateMcpRoutePolicyWrite,
+    StageGatewayCertificateConvergence, StageGatewayRollout, StageGatewayRolloutRollback,
+    StageGatewayRouteCutover, TransitionDomainClaim,
 };
 pub use domain::services::{
     DomainOwnershipVerificationError, DomainOwnershipVerificationRequest,
@@ -52,10 +52,10 @@ pub use domain::{
     GatewayPublicationState, GatewayReplicaRecovery, GatewayReplicaRecoveryState,
     GatewayReplicaRollout, GatewayReplicaRolloutState, GatewayRollout, GatewayRolloutPolicy,
     GatewayRolloutRollback, GatewayRolloutRollbackState, GatewayRolloutState, GatewayRouteCutover,
-    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState, McpCredential,
-    McpCredentialDeliveryReceipt, McpRoutePolicy, McpRoutePolicyDocument, McpRoutePolicySpec,
-    Route, RouteHostname, RoutePath, RoutePortName, RouteState, RouteTarget, UpstreamEndpoint,
-    MCP_ROUTE_POLICY_MAX_ACL_BYTES,
+    GatewayRouteCutoverState, GatewayRouteVersion, GatewayScope, GatewayScopeState,
+    MCP_ROUTE_POLICY_MAX_ACL_BYTES, McpCredential, McpCredentialDeliveryReceipt, McpRoutePolicy,
+    McpRoutePolicyDocument, McpRoutePolicySpec, Route, RouteHostname, RoutePath, RoutePortName,
+    RouteState, RouteTarget, UpstreamEndpoint,
 };
 pub use infrastructure::persistence::{InMemoryEdgeRepository, PostgresEdgeRepository};
 pub use infrastructure::{
