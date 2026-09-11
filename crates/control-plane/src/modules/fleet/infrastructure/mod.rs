@@ -16,6 +16,8 @@ pub use local_key_encryption::LocalKeyEncryptionService;
 pub use log_chunk_object_store::LogChunkObjectStore;
 pub use node_availability_reconciler::NodeAvailabilityReconciler;
 pub use persistence::PostgresNodeRepository;
-pub(crate) use persistence::{node_pool_placement_is_eligible, require_current_inventory};
+pub(crate) use persistence::{
+    lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,
+};
 pub use vault_certificate_authority::VaultCertificateAuthority;
 pub use vault_key_encryption::VaultKeyEncryptionService;

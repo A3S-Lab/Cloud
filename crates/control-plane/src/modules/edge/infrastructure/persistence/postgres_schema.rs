@@ -3,13 +3,6 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 orm_table! {
-    pub(super) struct Nodes => "nodes" {
-        id: Uuid => "id",
-        organization_id: Uuid => "organization_id",
-    }
-}
-
-orm_table! {
     pub(super) struct Routes => "routes" {
         id: Uuid => "id",
         organization_id: Uuid => "organization_id",

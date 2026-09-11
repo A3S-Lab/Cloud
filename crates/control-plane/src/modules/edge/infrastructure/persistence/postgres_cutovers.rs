@@ -1,10 +1,10 @@
-use super::postgres::{insert_publication, RouteRow, RouteSelection};
+use super::postgres::{RouteRow, RouteSelection, insert_publication};
 use super::postgres_gateway_scopes;
 use super::postgres_tls::insert_certificate;
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, require_one_row, store_idempotency, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_all, fetch_optional, idempotency_replay,
+    is_foreign_key_violation, is_unique_violation, require_one_row, store_idempotency,
+    store_outbox, transaction_error,
 };
 use crate::modules::edge::domain::repositories::{
     GatewayRouteCutoverResult, StageGatewayRouteCutover,
@@ -15,22 +15,21 @@ use crate::modules::edge::domain::{
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedGatewayRouteCutover,
 };
+use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
     WorkloadId, WorkloadRevisionId,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
+    Database, DecodeError, Expression, FromRow, FromValue, OrderDirection, PostgresDialect,
+    PostgresExecutor, PostgresTransaction, Row, insert_into, select_from, update_table,
 };
 use chrono::{DateTime, Utc};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use super::postgres_schema::{
-    GatewayPublications, GatewayRouteCutovers, GatewayScopes, Nodes, Routes,
-};
+use super::postgres_schema::{GatewayPublications, GatewayRouteCutovers, GatewayScopes, Routes};
 
 struct CutoverRow {
     deployment_id: Uuid,
@@ -216,18 +215,12 @@ async fn stage_impl(
                 let current = match managed_scope {
                     Some(current) => current,
                     None => {
-                        let organization_id = fetch_optional::<Uuid, _>(
+                        lock_node_organization_for_update(
                             transaction,
-                            select_from::<Nodes>()
-                                .select(Nodes::organization_id())
-                                .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
-                                .for_update(),
+                            bundle.cutover.organization_id,
+                            bundle.publication.node_id,
                         )
-                        .await?
-                        .ok_or(RepositoryError::NotFound)?;
-                        if organization_id != bundle.cutover.organization_id.as_uuid() {
-                            return Err(RepositoryError::NotFound.into());
-                        }
+                        .await?;
                         let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
                             transaction,
                             select_from::<GatewayScopes>()

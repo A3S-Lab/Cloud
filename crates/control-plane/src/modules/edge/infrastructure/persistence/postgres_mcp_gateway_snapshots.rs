@@ -1,5 +1,5 @@
 use super::postgres::{
-    insert_publication, PostgresEdgeRepository, PublicationRow, PublicationSelection,
+    PostgresEdgeRepository, PublicationRow, PublicationSelection, insert_publication,
 };
 use super::postgres_mcp_gateway_scope_evidence::{
     insert_scope_evidence, load_scope_statuses, lock_scope_statuses, reconciliation_scope_set,
@@ -12,17 +12,17 @@ use super::postgres_mcp_gateway_snapshot_cas::{
 };
 use super::postgres_schema::{
     GatewayCertificates, GatewayPublications, GatewayScopeMembers, McpGatewaySnapshotPublications,
-    McpRoutePolicies, Nodes,
+    McpRoutePolicies,
 };
 use super::postgres_tls::{
-    insert_certificate, update_certificate, CertificateRow, CertificateSelection,
+    CertificateRow, CertificateSelection, insert_certificate, update_certificate,
 };
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_all, fetch_optional, require_one_row, store_outbox,
+    transaction_error,
 };
-use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::GatewayScopeState;
+use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, GatewaySnapshotPublicationOwner,
     IMcpGatewaySnapshotRepository, McpGatewayReconciliationScope, McpGatewaySnapshotDispatchTarget,
@@ -32,15 +32,16 @@ use crate::modules::edge::infrastructure::{
     StageManagedGatewayRolloutRollback, StageManagedGatewayRouteCutover,
     StageManagedRoutePublication, StageMcpGatewaySnapshot,
 };
+use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId,
-    NodeId, OrganizationId, ProjectId, RepositoryError,
+    EnvironmentId, GatewayCertificateId, GatewayScopeId, NodeCommandId, NodeId, OrganizationId,
+    ProjectId, RepositoryError, canonical_timestamp,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
-    insert_into, lock_table, select_from, update_table, Database, DecodeError, Expression, FromRow,
-    FromValue, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTableLockMode,
-    PostgresTransaction, Row,
+    Database, DecodeError, Expression, FromRow, FromValue, OrderDirection, PostgresDialect,
+    PostgresExecutor, PostgresTableLockMode, PostgresTransaction, Row, insert_into, lock_table,
+    select_from, update_table,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -579,19 +580,12 @@ pub(super) async fn lock_managed_composition_node(
     composition: &GatewayManagedSnapshotComposition,
 ) -> Result<(), PostgresPersistenceError> {
     let candidate = composition.candidate();
-    let organization_id = fetch_optional::<Uuid, _>(
+    lock_node_organization_for_update(
         transaction,
-        select_from::<Nodes>()
-            .select(Nodes::organization_id())
-            .filter(Nodes::id().eq(candidate.physical_scope().node_id.as_uuid()))
-            .for_update(),
+        candidate.mcp().primary_scope().organization_id,
+        candidate.physical_scope().node_id,
     )
-    .await?
-    .ok_or(RepositoryError::NotFound)?;
-    if organization_id != candidate.mcp().primary_scope().organization_id.as_uuid() {
-        return Err(RepositoryError::NotFound.into());
-    }
-    Ok(())
+    .await
 }
 
 pub(super) async fn persist_managed_composition(

@@ -2,6 +2,7 @@ mod availability;
 mod certificates;
 mod control;
 mod enrollment;
+mod node_org_lock_participant;
 mod node_pools;
 mod nodes;
 mod queries;
@@ -10,6 +11,7 @@ mod schema;
 mod sessions;
 
 pub(crate) use control::require_current_inventory;
+pub(crate) use node_org_lock_participant::lock_node_organization_for_update;
 pub(crate) use node_pools::node_pool_placement_is_eligible;
 
 use crate::modules::fleet::domain::entities::{EnrollmentToken, Node, NodeCertificate};

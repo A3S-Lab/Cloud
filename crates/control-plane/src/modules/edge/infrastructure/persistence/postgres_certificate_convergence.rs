@@ -1,13 +1,13 @@
 use super::postgres::{
-    insert_publication, query_routes, PublicationRow, PublicationSelection, RouteRow,
-    RouteSelection,
+    PublicationRow, PublicationSelection, RouteRow, RouteSelection, insert_publication,
+    query_routes,
 };
 use super::postgres_tls::{
-    insert_certificate, update_certificate, CertificateRow, CertificateSelection,
+    CertificateRow, CertificateSelection, insert_certificate, update_certificate,
 };
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, require_one_row, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_all, fetch_optional, require_one_row, store_outbox,
+    transaction_error,
 };
 use crate::modules::edge::domain::events::GatewayCertificateExpiryChanged;
 use crate::modules::edge::domain::repositories::{
@@ -23,15 +23,16 @@ use crate::modules::edge::domain::{
 use crate::modules::edge::infrastructure::{
     GatewayManagedSnapshotComposition, StageManagedGatewayCertificateConvergence,
 };
+use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId,
-    OrganizationId, RepositoryError, RouteId,
+    DomainClaimId, GatewayCertificateId, NodeCommandId, NodeId, OrganizationId, RepositoryError,
+    RouteId, canonical_timestamp,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{
-    coalesce, exists, insert_into, least, min, not, orm_table, scalar_subquery, select_from,
-    select_from_as, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, Row,
+    Database, DecodeError, Expression, FromRow, FromValue, OrderDirection, PostgresDialect,
+    PostgresExecutor, PostgresTransaction, Row, coalesce, exists, insert_into, least, min, not,
+    orm_table, scalar_subquery, select_from, select_from_as, update_table,
 };
 use chrono::{DateTime, Utc};
 use std::collections::{BTreeMap, BTreeSet};
@@ -39,7 +40,7 @@ use uuid::Uuid;
 
 use super::postgres_schema::{
     DomainClaims, GatewayCertificateConvergences, GatewayCertificates, GatewayPublications,
-    GatewayRouteProjections, GatewayScopes, Nodes, Routes,
+    GatewayRouteProjections, GatewayScopes, Routes,
 };
 
 orm_table! {
@@ -465,18 +466,12 @@ async fn stage_inner(
                     None => None,
                 };
                 let convergence = &bundle.convergence;
-                let organization_id = fetch_optional::<Uuid, _>(
+                lock_node_organization_for_update(
                     transaction,
-                    select_from::<Nodes>()
-                        .select(Nodes::organization_id())
-                        .filter(Nodes::id().eq(convergence.node_id.as_uuid()))
-                        .for_update(),
+                    convergence.organization_id,
+                    convergence.node_id,
                 )
-                .await?
-                .ok_or(RepositoryError::NotFound)?;
-                if organization_id != convergence.organization_id.as_uuid() {
-                    return Err(RepositoryError::NotFound.into());
-                }
+                .await?;
                 let (last_issued_revision, installed_revision, aggregate_version) =
                     fetch_optional::<(u64, Option<u64>, u64), _>(
                         transaction,

@@ -1,6 +1,7 @@
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
-    require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_optional, idempotency_replay,
+    is_foreign_key_violation, is_unique_violation, require_one_row, store_idempotency,
+    store_outbox, transaction_error,
 };
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, EdgeRoutePublicationResult,
@@ -27,23 +28,22 @@ use crate::modules::shared_kernel::domain::{
 use a3s_cloud_contracts::{
     GatewayCertificateRequest, NodeGatewayAck, NodeGatewaySnapshotObservation,
 };
-use a3s_orm::expression::{exists, not, Selection};
+use a3s_orm::expression::{Selection, exists, not};
 use a3s_orm::{
-    insert_into, select_from, update_table, Database, DecodeError, Expression, FromRow, FromValue,
-    OrderDirection, PostgresDialect, PostgresExecutor, Query, Row,
+    Database, DecodeError, Expression, FromRow, FromValue, OrderDirection, PostgresDialect,
+    PostgresExecutor, Query, Row, insert_into, select_from, update_table,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use super::postgres_schema::{
-    GatewayPublications, GatewayRouteProjections, GatewayScopes, Nodes, Routes,
-};
+use super::postgres_schema::{GatewayPublications, GatewayRouteProjections, GatewayScopes, Routes};
 use super::postgres_tls::{self as tls, insert_certificate};
 use super::{
     postgres_certificate_convergence, postgres_cutovers, postgres_gateway_scopes,
     postgres_rollout_routes, postgres_rollouts,
 };
+use crate::modules::fleet::infrastructure::lock_node_organization_for_update;
 
 #[derive(Clone)]
 pub struct PostgresEdgeRepository {
@@ -574,18 +574,12 @@ async fn stage_route_publication_impl(
                 let current = match managed_scope {
                     Some(current) => current,
                     None => {
-                        let organization_id = fetch_optional::<Uuid, _>(
+                        lock_node_organization_for_update(
                             transaction,
-                            select_from::<Nodes>()
-                                .select(Nodes::organization_id())
-                                .filter(Nodes::id().eq(bundle.publication.node_id.as_uuid()))
-                                .for_update(),
+                            bundle.route.organization_id,
+                            bundle.publication.node_id,
                         )
-                        .await?
-                        .ok_or(RepositoryError::NotFound)?;
-                        if organization_id != bundle.route.organization_id.as_uuid() {
-                            return Err(RepositoryError::NotFound.into());
-                        }
+                        .await?;
                         let scope = fetch_optional::<(u64, Option<u64>, u64), _>(
                             transaction,
                             select_from::<GatewayScopes>()

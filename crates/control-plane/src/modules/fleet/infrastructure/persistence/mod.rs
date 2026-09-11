@@ -9,4 +9,6 @@ mod tests;
 
 pub use in_memory::InMemoryNodeRepository;
 pub use postgres::PostgresNodeRepository;
-pub(crate) use postgres::{node_pool_placement_is_eligible, require_current_inventory};
+pub(crate) use postgres::{
+    lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,
+};

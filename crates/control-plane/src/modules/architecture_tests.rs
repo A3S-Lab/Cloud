@@ -74,8 +74,6 @@ workloads/infrastructure/persistence/postgres/resource_claims.rs -> fleet/infras
 fn duplicate_physical_table_mappings_can_only_shrink() {
     let allowed = lines(
         r#"
-nodes @ edge/infrastructure/persistence/postgres_schema.rs#Nodes
-nodes @ fleet/infrastructure/persistence/postgres/schema.rs#Nodes
 workloads @ edge/infrastructure/persistence/postgres_schema.rs#Workloads
 workloads @ workloads/infrastructure/persistence/postgres/schema.rs#Workloads
 workflow_runs @ workflow/infrastructure/persistence/human_task_postgres/schema.rs#WorkflowRuns
@@ -12164,6 +12162,70 @@ fn workloads_lock_secret_rotations_through_secrets_transaction_participant() {
         assert!(
             production_participant.contains(required),
             "Secrets rotation lock participant lost surface {required}"
+        );
+    }
+}
+
+#[test]
+fn edge_locks_nodes_through_fleet_transaction_participant() {
+    let root = module_root();
+
+    let mut persistence_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("edge/infrastructure/persistence/") {
+            return;
+        }
+        for forbidden in [
+            "=> \"nodes\"",
+            "struct Nodes",
+            "select_from::<Nodes>()",
+            "Nodes::",
+        ] {
+            if source.contains(forbidden) {
+                persistence_violations.insert(format!(
+                    "{path} regained Fleet nodes table authority {forbidden}"
+                ));
+            }
+        }
+    });
+    assert!(
+        persistence_violations.is_empty(),
+        "Edge persistence regained a local nodes mapping:\n{}",
+        persistence_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let mut participant_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("edge/infrastructure/persistence/") {
+            return;
+        }
+        if source.contains("lock_node_organization_for_update") {
+            participant_sites.insert(path);
+        }
+    });
+    assert!(
+        !participant_sites.is_empty(),
+        "Edge persistence stopped using the Fleet node organization lock participant"
+    );
+
+    let participant = std::fs::read_to_string(
+        root.join("fleet/infrastructure/persistence/postgres/node_org_lock_participant.rs"),
+    )
+    .expect("read Fleet node organization lock participant");
+    let production_participant = production_source(&participant);
+    for required in [
+        "pub(crate) async fn lock_node_organization_for_update(",
+        "select_from::<Nodes>()",
+        ".for_update()",
+    ] {
+        assert!(
+            production_participant.contains(required),
+            "Fleet node organization lock participant lost surface {required}"
         );
     }
 }
