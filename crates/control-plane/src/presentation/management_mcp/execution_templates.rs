@@ -1,10 +1,12 @@
 use super::tool_result;
+use crate::access_projection::execution_access;
 use crate::modules::executions::presentation::{
     ExecutionTemplateMutationResponse, ExecutionTemplateRevisionResponse,
 };
 use crate::modules::executions::{
     CreateExecutionTemplateCommand, GetExecutionTemplate, ListExecutionTemplates,
 };
+use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     ExecutionTemplateId, ExecutionTemplateRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
@@ -75,12 +77,14 @@ pub async fn list(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListExecutionTemplatesArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListExecutionTemplates {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: execution_access(&resource_access),
             limit: arguments.limit,
         })
         .await?

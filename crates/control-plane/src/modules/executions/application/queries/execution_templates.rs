@@ -1,4 +1,6 @@
-use crate::modules::executions::application::{ExecutionsProjectScope, IExecutionsProjectAccess};
+use crate::modules::executions::application::{
+    ExecutionAccess, ExecutionsProjectScope, IExecutionsProjectAccess,
+};
 use crate::modules::executions::domain::{ExecutionTemplateRevision, IExecutionTemplateRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -61,6 +63,7 @@ impl QueryHandler<GetExecutionTemplate> for GetExecutionTemplateHandler {
 pub struct ListExecutionTemplates {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: ExecutionAccess,
     pub limit: usize,
 }
 
@@ -97,6 +100,9 @@ impl QueryHandler<ListExecutionTemplates> for ListExecutionTemplatesHandler {
         let projects = Arc::clone(&self.projects);
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
+            if !query.access.project_is_visible(query.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let project_scope =
                 match ExecutionsProjectScope::new(query.organization_id, query.project_id) {
                     Ok(scope) => scope,
@@ -105,7 +111,7 @@ impl QueryHandler<ListExecutionTemplates> for ListExecutionTemplatesHandler {
             match projects.project_exists(project_scope).await {
                 Ok(true) => {}
                 Ok(false) => {
-                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -117,5 +123,54 @@ impl QueryHandler<ListExecutionTemplates> for ListExecutionTemplatesHandler {
                 Err(error) => Ok(Err(error.into())),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::executions::application::resource_access::{
+        ExecutionAccess, ExecutionAccessScope,
+    };
+    use crate::modules::executions::infrastructure::InMemoryExecutionTemplateRepository;
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+
+    struct DenyAllProjects;
+
+    #[async_trait]
+    impl IExecutionsProjectAccess for DenyAllProjects {
+        async fn project_exists(
+            &self,
+            _scope: ExecutionsProjectScope,
+        ) -> Result<bool, crate::modules::shared_kernel::domain::RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn restricted_query_fails_closed_before_listing_an_ungranted_project() {
+        let handler = ListExecutionTemplatesHandler::new(
+            Arc::new(DenyAllProjects),
+            Arc::new(InMemoryExecutionTemplateRepository::new()),
+        );
+        let result = handler
+            .execute(
+                ListExecutionTemplates {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    access: ExecutionAccess::restricted([ExecutionAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    limit: 10,
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message)) if message == "project not found"
+        ));
     }
 }

@@ -9018,6 +9018,7 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
         "pubstructExecutionAccess",
         "pub(crate)structExecutionResourceAccess",
         "access.environment_is_visible(execution.project_id,execution.environment_id)",
+        "fnproject_is_visible(&self,project_id:ProjectId)",
     ] {
         assert!(
             compact_access.contains(required),
@@ -9040,6 +9041,7 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
     for relative in [
         "executions/application/queries/get_execution/query.rs",
         "executions/application/queries/list_executions/query.rs",
+        "executions/application/queries/execution_templates.rs",
         "executions/application/commands/cancel_execution/command.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))

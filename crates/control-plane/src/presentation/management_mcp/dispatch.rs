@@ -356,7 +356,14 @@ pub async fn execute(
         }
         ManagementTool::ExecutionTemplatesList => {
             let arguments = arguments::parse::<ListExecutionTemplatesArguments>(arguments).ok()?;
-            execution_templates::list(query_bus, organization_id, arguments, request_id).await
+            execution_templates::list(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::ExecutionTemplatesGet => {
             let arguments = arguments::parse::<GetExecutionTemplateArguments>(arguments).ok()?;

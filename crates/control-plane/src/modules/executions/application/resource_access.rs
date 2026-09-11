@@ -84,6 +84,15 @@ impl ExecutionAccess {
                 .iter()
                 .any(|scope| scope.allows(project_id, environment_id))
     }
+
+    /// Project-owned surfaces such as execution templates require a project
+    /// grant. An environment-only grant does not broaden project inventory.
+    pub(crate) fn project_is_visible(&self, project_id: ProjectId) -> bool {
+        self.organization_wide
+            || self
+                .granted_scopes
+                .contains(&ExecutionAccessScope::Project { project_id })
+    }
 }
 
 /// Resolves an indirect Execution identifier through the owning repository before
@@ -143,7 +152,9 @@ mod tests {
         let project = ExecutionAccess::restricted([ExecutionAccessScope::Project { project_id }]);
         assert!(project.environment_is_visible(project_id, environment_id));
         assert!(!project.environment_is_visible(ProjectId::new(), environment_id));
-        assert!(ExecutionAccess::organization_wide()
-            .environment_is_visible(ProjectId::new(), EnvironmentId::new()));
+        assert!(
+            ExecutionAccess::organization_wide()
+                .environment_is_visible(ProjectId::new(), EnvironmentId::new())
+        );
     }
 }

@@ -49,6 +49,9 @@ pub fn execution_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                             project_id: ProjectId::from_uuid(
                                 request.param_as::<Uuid>("project_id")?,
                             ),
+                            access: execution_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             limit,
                         })
                         .await?
