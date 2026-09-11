@@ -1,6 +1,6 @@
 use super::request::{request_id, workflow_access};
 use crate::modules::identity::presentation::{
-    with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, ProjectId,
@@ -42,6 +42,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             project_id: ProjectId::from_uuid(
                                 request.param_as::<Uuid>("project_id")?,
                             ),
+                            access: workflow_access(&request)?,
                         })
                         .await?
                     {

@@ -1114,7 +1114,14 @@ pub async fn execute(
         }
         ManagementTool::OntologiesList => {
             let arguments = arguments::parse::<ListOntologiesArguments>(arguments).ok()?;
-            ontology::list_ontologies(query_bus, organization_id, arguments, request_id).await
+            ontology::list_ontologies(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::OntologiesGet => {
             let arguments = arguments::parse::<OntologyArguments>(arguments).ok()?;
@@ -1198,7 +1205,14 @@ pub async fn execute(
         }
         ManagementTool::WorkflowDefinitionsList => {
             let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
-            workflow::list_definitions(query_bus, organization_id, arguments, request_id).await
+            workflow::list_definitions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowDefinitionsGet => {
             let arguments = arguments::parse::<WorkflowDefinitionArguments>(arguments).ok()?;
@@ -1246,7 +1260,14 @@ pub async fn execute(
         }
         ManagementTool::WorkflowGoalsList => {
             let arguments = arguments::parse::<ListProjectWorkflowArguments>(arguments).ok()?;
-            workflow::list_goals(query_bus, organization_id, arguments, request_id).await
+            workflow::list_goals(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowGoalsGet => {
             let arguments = arguments::parse::<WorkflowGoalArguments>(arguments).ok()?;
@@ -1295,7 +1316,14 @@ pub async fn execute(
         }
         ManagementTool::WorkflowRunsList => {
             let arguments = arguments::parse::<ListWorkflowRunsArguments>(arguments).ok()?;
-            workflow::list_runs(query_bus, organization_id, arguments, request_id).await
+            workflow::list_runs(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkflowRunsGet => {
             let arguments = arguments::parse::<WorkflowRunArguments>(arguments).ok()?;

@@ -1,5 +1,5 @@
-use crate::access_projection::workflow_access;
 use super::tool_result;
+use crate::access_projection::workflow_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
@@ -126,12 +126,14 @@ pub async fn list_ontologies(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListOntologiesArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListOntologies {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
         })
         .await?
     {

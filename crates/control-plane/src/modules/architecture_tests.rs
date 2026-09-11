@@ -9267,6 +9267,10 @@ fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_acces
 
     for relative in [
         "workflow/application/queries/get_workflow_run/query.rs",
+        "workflow/application/queries/list_ontologies/query.rs",
+        "workflow/application/queries/list_workflow_definitions/query.rs",
+        "workflow/application/queries/list_workflow_goals/query.rs",
+        "workflow/application/queries/list_workflow_runs/query.rs",
         "workflow/application/commands/cancel_workflow_run/command.rs",
         "workflow/application/workflow_authoring.rs",
     ] {

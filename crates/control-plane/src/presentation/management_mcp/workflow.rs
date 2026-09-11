@@ -1,5 +1,5 @@
-use crate::access_projection::workflow_access;
 use super::tool_result;
+use crate::access_projection::workflow_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, HumanTaskId, OrganizationId, PlanRevisionId, PrincipalId, ProjectId,
@@ -17,12 +17,12 @@ use crate::modules::workflow::{
     CancelWorkflowRun, ChangeHumanTaskAssignment, CreateWorkflowDefinition, CreateWorkflowGoal,
     GetHumanTask, GetPlanRevision, GetWorkflowDefinition, GetWorkflowGoal, GetWorkflowNodeCatalog,
     GetWorkflowRevision, GetWorkflowRun, GetWorkflowRunDiagnostics, GetWorkflowRunHistory,
-    GetWorkflowRunOutput, GetWorkflowRunVariables, HumanTaskAssignmentAction, HumanTaskStatus,
-    ListHumanTasks, ListWorkflowDefinitions, ListWorkflowGoals, ListWorkflowRevisions,
-    ListWorkflowRuns, ReviseWorkflowDefinition, StartWorkflowRun, SubmitHumanTask, WaitWorkflowRun,
-    WorkflowPayloadAcl, WorkflowPayloadKind, WorkflowSemanticContractAcls,
-    HUMAN_TASK_LIST_MAX_LIMIT, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
-    WORKFLOW_RUN_WAIT_MAX_TIMEOUT,
+    GetWorkflowRunOutput, GetWorkflowRunVariables, HUMAN_TASK_LIST_MAX_LIMIT,
+    HumanTaskAssignmentAction, HumanTaskStatus, ListHumanTasks, ListWorkflowDefinitions,
+    ListWorkflowGoals, ListWorkflowRevisions, ListWorkflowRuns, ReviseWorkflowDefinition,
+    StartWorkflowRun, SubmitHumanTask, WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_LIST_MAX_LIMIT,
+    WORKFLOW_RUN_WAIT_MAX_TIMEOUT, WaitWorkflowRun, WorkflowPayloadAcl, WorkflowPayloadKind,
+    WorkflowSemanticContractAcls,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use a3s_form_core::FormInteractionSubmission;
@@ -428,12 +428,14 @@ pub async fn list_definitions(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListProjectWorkflowArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListWorkflowDefinitions {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
         })
         .await?
     {
@@ -549,12 +551,14 @@ pub async fn list_goals(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListProjectWorkflowArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListWorkflowGoals {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
         })
         .await?
     {
@@ -675,12 +679,14 @@ pub async fn list_runs(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListWorkflowRunsArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListWorkflowRuns {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
             limit: arguments.limit.unwrap_or(100),
         })
         .await?
