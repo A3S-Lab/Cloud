@@ -3,6 +3,7 @@ mod environment_access;
 #[cfg(test)]
 mod historical_idempotency_replay_tests;
 pub(crate) mod human_task_access;
+mod human_task_authorization_port;
 mod human_task_form_port;
 mod project_access;
 pub mod queries;
@@ -19,6 +20,9 @@ mod workflow_definition_publication_tests;
 mod workflow_run_reconciler;
 
 pub use environment_access::{IWorkflowEnvironmentAccess, WorkflowEnvironmentScope};
+pub use human_task_authorization_port::{
+    HumanTaskSubmissionAuthorization, IHumanTaskAuthorizationPort,
+};
 pub use human_task_form_port::{
     HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority, IHumanTaskFormPort,
 };

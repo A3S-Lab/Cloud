@@ -2105,9 +2105,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
     let edge_runtime_observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> =
-        Arc::new(crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(
-            Arc::clone(&node_control),
-        ));
+        Arc::new(
+            crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
+                &node_control,
+            )),
+        );
     let route_target_candidates: Arc<
         dyn crate::modules::workloads::IWorkloadHealthyRouteTargetCandidateQueryPort,
     > = Arc::new(
@@ -2124,9 +2126,11 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         .map_err(BootError::Internal)?,
     );
     let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
-        Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
-            Arc::clone(&node_control),
-        ));
+        Arc::new(
+            crate::modules::fleet::FleetGatewaySnapshotCommandService::new(Arc::clone(
+                &node_control,
+            )),
+        );
     let route_commands: Arc<dyn IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let source_webhooks = sources.clone();
@@ -2184,6 +2188,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         Arc::clone(&forms),
         Arc::clone(&form_semantic_core),
     ));
+    let human_task_authorization: Arc<dyn IHumanTaskAuthorizationPort> =
+        Arc::new(IdentityHumanTaskAuthorizationAdapter::new(identity.clone()));
     let durable_cell_applications =
         Arc::new(crate::modules::durable_cells::InMemoryDurableCellApplicationRepository::new());
     let durable_cell_workload_port: Arc<dyn IDurableCellWorkloadPort> =
@@ -2269,6 +2275,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             forms,
             form_semantic_core,
             human_task_forms,
+            human_task_authorization,
             search,
             audit_records: audit_records
                 .unwrap_or_else(|| Arc::new(InMemoryAuditRecordRepository::new())),

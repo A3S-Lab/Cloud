@@ -290,8 +290,8 @@ use crate::modules::plugins::{
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, GetProjectAttributionHandler,
-    IProjectOrganizationAccess, IdentityProjectsOrganizationAccessAdapter,
-    ListEnvironmentsHandler, ListProjectsHandler, ProjectsModule, UpdateProjectAttributionHandler,
+    IProjectOrganizationAccess, IdentityProjectsOrganizationAccessAdapter, ListEnvironmentsHandler,
+    ListProjectsHandler, ProjectsModule, UpdateProjectAttributionHandler,
 };
 use crate::modules::search::{ISearchRepository, SearchModule, SearchResourcesHandler};
 use crate::modules::secrets::application::exact_secret_version_access;
@@ -337,8 +337,9 @@ use crate::modules::workflow::{
     GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunDiagnosticsHandler, GetWorkflowRunHandler, GetWorkflowRunHistoryHandler,
     GetWorkflowRunOutputHandler, GetWorkflowRunVariablesHandler, HumanTaskCoordinator,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskFormPort, IHumanTaskRepository,
-    IOntologyRepository, IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IdentityHumanTaskAuthorizationAdapter,
+    IHumanTaskAuthorizationPort, IHumanTaskFormPort, IHumanTaskRepository, IOntologyRepository,
+    IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
     IWorkflowDefinitionRepository, IWorkflowEnvironmentAccess, IWorkflowGoalRepository,
     IWorkflowProjectAccess, IWorkflowRunCoordinator, IWorkflowRunDiagnosticsReader,
     IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
@@ -701,6 +702,10 @@ async fn build_api_worker_application(
         Arc::clone(&forms),
         Arc::clone(&form_semantic_core),
     ));
+    let human_task_authorization: Arc<dyn IHumanTaskAuthorizationPort> =
+        Arc::new(IdentityHumanTaskAuthorizationAdapter::new(Arc::clone(
+            &resource_authorization_decisions,
+        )));
     let search = adapters.search;
     let audit_records = adapters.audit_records;
     let audit_retention_repository = Arc::clone(&audit_records);
@@ -982,10 +987,9 @@ async fn build_api_worker_application(
     let edge_runtime_observations: Arc<dyn IEdgeRuntimeObservationAccess> = Arc::new(
         FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(&node_control)),
     );
-    let route_target_candidates: Arc<dyn IWorkloadHealthyRouteTargetCandidateQueryPort> =
-        Arc::new(WorkloadHealthyRouteTargetCandidateQueryService::new(
-            Arc::clone(&workloads),
-        ));
+    let route_target_candidates: Arc<dyn IWorkloadHealthyRouteTargetCandidateQueryPort> = Arc::new(
+        WorkloadHealthyRouteTargetCandidateQueryService::new(Arc::clone(&workloads)),
+    );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
         WorkloadsFleetRouteTargetAccessAdapter::new(
             route_target_candidates,
@@ -995,10 +999,9 @@ async fn build_api_worker_application(
         )
         .map_err(ControlPlaneStartupError::NodeControl)?,
     );
-    let fleet_gateway_commands: Arc<dyn IFleetGatewaySnapshotCommandPort> =
-        Arc::new(FleetGatewaySnapshotCommandService::new(Arc::clone(
-            &node_control,
-        )));
+    let fleet_gateway_commands: Arc<dyn IFleetGatewaySnapshotCommandPort> = Arc::new(
+        FleetGatewaySnapshotCommandService::new(Arc::clone(&node_control)),
+    );
     let route_commands: Arc<dyn IGatewayCommandQueue> = Arc::new(FleetGatewayCommandQueue::new(
         Arc::clone(&fleet_gateway_commands),
     ));
@@ -1015,10 +1018,9 @@ async fn build_api_worker_application(
     let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> = Arc::new(
         AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(&mcp_profiles)),
     );
-    let mcp_revision_projection: Arc<dyn IWorkloadMcpActiveRevisionProjectionQueryPort> =
-        Arc::new(WorkloadMcpActiveRevisionProjectionQueryService::new(
-            Arc::clone(&workloads),
-        ));
+    let mcp_revision_projection: Arc<dyn IWorkloadMcpActiveRevisionProjectionQueryPort> = Arc::new(
+        WorkloadMcpActiveRevisionProjectionQueryService::new(Arc::clone(&workloads)),
+    );
     let mcp_revision_access: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess> = Arc::new(
         WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(mcp_revision_projection),
     );
@@ -1667,10 +1669,9 @@ async fn build_api_worker_application(
         None
     };
     let worker_gateway = if run_operations {
-        let gateway_observations: Arc<dyn IGatewayObservationQueue> =
-            Arc::new(FleetGatewayObservationQueue::new(Arc::clone(
-                &fleet_gateway_commands,
-            )));
+        let gateway_observations: Arc<dyn IGatewayObservationQueue> = Arc::new(
+            FleetGatewayObservationQueue::new(Arc::clone(&fleet_gateway_commands)),
+        );
         Some(WorkerGatewayDependencies {
             gateway_certificate_reconciler: GatewayCertificateReconciler::new_managed(
                 Arc::clone(&routes),
@@ -2062,6 +2063,7 @@ async fn build_api_worker_application(
                 forms,
                 form_semantic_core,
                 human_task_forms,
+                human_task_authorization,
                 search,
                 audit_records,
                 audit_export_signer: audit_export_signer.ok_or_else(|| {
@@ -2316,6 +2318,7 @@ struct ManagementApplicationDependencies {
     forms: Arc<dyn IFormRepository>,
     form_semantic_core: Arc<dyn IFormSemanticCore>,
     human_task_forms: Arc<dyn IHumanTaskFormPort>,
+    human_task_authorization: Arc<dyn IHumanTaskAuthorizationPort>,
     search: Arc<dyn ISearchRepository>,
     audit_records: Arc<dyn IAuditRecordRepository>,
     audit_export_signer: Arc<dyn IAuditExportSigner>,
@@ -2423,6 +2426,7 @@ fn build_management_application_with_health(
         forms,
         form_semantic_core,
         human_task_forms,
+        human_task_authorization,
         search,
         audit_records,
         audit_export_signer,
@@ -2784,6 +2788,7 @@ fn build_management_application_with_health(
     let change_human_task_assignments = Arc::clone(&human_tasks);
     let submit_human_tasks = Arc::clone(&human_tasks);
     let submit_human_task_forms = human_task_forms;
+    let submit_human_task_authorization = human_task_authorization;
     let get_human_tasks = Arc::clone(&human_tasks);
     let list_human_tasks = human_tasks;
     let create_form_projects: Arc<dyn IFormProjectAccess> =
@@ -3581,7 +3586,7 @@ fn build_management_application_with_health(
                     SubmitHumanTaskHandler::new(
                         submit_human_tasks,
                         submit_human_task_forms,
-                        Arc::clone(&resource_authorization_decisions),
+                        submit_human_task_authorization,
                     ),
                 )
                 .command_handler::<crate::modules::forms::CreateFormDraft, _>(

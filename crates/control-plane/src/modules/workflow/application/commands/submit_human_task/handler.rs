@@ -1,14 +1,11 @@
 use super::SubmitHumanTask;
-use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisionRepository;
-use crate::modules::identity::domain::services::ResourceAuthorizationDecisionRequest;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     FormSubmissionId, IdempotencyRequest, WorkflowDecisionId,
 };
 use crate::modules::workflow::application::{
-    human_task_access, resource_access, HumanTaskFormEvaluation, HumanTaskMutationResult,
-    IHumanTaskFormPort,
+    HumanTaskFormEvaluation, HumanTaskMutationResult, HumanTaskSubmissionAuthorization,
+    IHumanTaskAuthorizationPort, IHumanTaskFormPort, human_task_access, resource_access,
 };
 use crate::modules::workflow::domain::{
     AcceptedHumanTaskSubmission, DecideHumanTaskWrite, FlowResumePayload, HumanTaskDecisionRecord,
@@ -21,19 +18,19 @@ use uuid::Uuid;
 pub struct SubmitHumanTaskHandler {
     human_tasks: Arc<dyn IHumanTaskRepository>,
     forms: Arc<dyn IHumanTaskFormPort>,
-    authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
+    authorization: Arc<dyn IHumanTaskAuthorizationPort>,
 }
 
 impl SubmitHumanTaskHandler {
     pub fn new(
         human_tasks: Arc<dyn IHumanTaskRepository>,
         forms: Arc<dyn IHumanTaskFormPort>,
-        authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
+        authorization: Arc<dyn IHumanTaskAuthorizationPort>,
     ) -> Self {
         Self {
             human_tasks,
             forms,
-            authorization_decisions,
+            authorization,
         }
     }
 }
@@ -47,7 +44,7 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
     {
         let human_tasks = Arc::clone(&self.human_tasks);
         let forms = Arc::clone(&self.forms);
-        let authorization_decisions = Arc::clone(&self.authorization_decisions);
+        let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
             let mut record = match resource_access::human_task(
                 human_tasks.as_ref(),
@@ -114,7 +111,7 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                 None => {
                     return Ok(Err(ApplicationError::Conflict(
                         "HumanTask has no active Form interaction request".into(),
-                    )))
+                    )));
                 }
             };
             let accepted_value = match forms
@@ -129,32 +126,25 @@ impl CommandHandler<SubmitHumanTask> for SubmitHumanTaskHandler {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(error)),
             };
-            let authorization_reference = match authorization_decisions
-                .authorize_resource(ResourceAuthorizationDecisionRequest {
+            let authorization_reference = match authorization
+                .authorize_submission(HumanTaskSubmissionAuthorization {
                     organization_id: command.organization_id,
+                    project_id: record.task.project_id,
                     principal_id: command.actor_principal_id,
                     credential_id: command.credential_id,
-                    required_scope: crate::modules::identity::domain::value_objects::ApiTokenScope::parse(
-                        crate::modules::identity::domain::value_objects::ApiTokenScope::WORKFLOW_WRITE,
-                    )
-                    .map_err(BootError::Internal)?,
-                    action: "workflow.human-task.submit".into(),
-                    resource: ResourceGrantScope::Project {
-                        project_id: record.task.project_id,
-                    },
                     request_id: command.request_id,
                 })
                 .await
             {
                 Ok(value) => value,
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             };
             let submission_id = match Uuid::parse_str(&command.submission.submission_id) {
                 Ok(value) => FormSubmissionId::from_uuid(value),
                 Err(error) => {
                     return Ok(Err(ApplicationError::Invalid(format!(
                         "Form submission ID is invalid: {error}"
-                    ))))
+                    ))));
                 }
             };
             let submission = match HumanTaskSubmission::accept(AcceptedHumanTaskSubmission {

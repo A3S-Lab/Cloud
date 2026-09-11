@@ -1,5 +1,6 @@
 mod flow_resume;
 mod human_task_flow;
+mod human_task_authorization;
 mod human_task_form;
 pub mod persistence;
 mod project_access;
@@ -12,6 +13,7 @@ pub use human_task_flow::{
     HumanTaskCoordinator, HumanTaskExpiryFailure, HumanTaskResumeFailure, HumanTaskResumeReport,
     HumanTaskResumeWorker, HumanTaskResumeWorkerConfig,
 };
+pub use human_task_authorization::IdentityHumanTaskAuthorizationAdapter;
 pub use human_task_form::FormsHumanTaskFormAdapter;
 pub use project_access::ProjectsWorkflowProjectAccessAdapter;
 pub use project_environment_access::ProjectsWorkflowEnvironmentAccessAdapter;

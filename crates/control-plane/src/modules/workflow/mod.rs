@@ -77,9 +77,10 @@ pub use application::queries::wait_workflow_run::{
 pub use application::{
     AppendWorkflowAuthoringRequest, CreateWorkflowAuthoringJournalRequest,
     GetWorkflowAuthoringJournalRequest, HumanTaskFormEvaluation, HumanTaskFormReleaseAuthority,
-    HumanTaskMutationResult, IHumanTaskFormPort, IWorkflowAuthoringApplicationPort,
-    IWorkflowAuthoringFlowPort, IWorkflowCompositeExecutionPort,
-    IWorkflowDefinitionPublicationPort, IWorkflowEnvironmentAccess, IWorkflowProjectAccess,
+    HumanTaskMutationResult, HumanTaskSubmissionAuthorization, IHumanTaskAuthorizationPort,
+    IHumanTaskFormPort, IWorkflowAuthoringApplicationPort, IWorkflowAuthoringFlowPort,
+    IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
+    IWorkflowEnvironmentAccess, IWorkflowProjectAccess,
     OntologyMutationResult, PageWorkflowAuthoringRequest, WorkflowAccess,
     WorkflowAuthoringApplicationService, WorkflowCompositeExecutionApplicationService,
     WorkflowCompositeExecutionRequest, WorkflowDefinitionMutationResult,
@@ -258,8 +259,9 @@ pub use infrastructure::{
     observe_flow_resume_receipt, FlowWorkflowRunCoordinator, FormsHumanTaskFormAdapter,
     HumanTaskCancellationFailure, HumanTaskCoordinationFailure, HumanTaskCoordinationReport,
     HumanTaskCoordinator, HumanTaskExpiryFailure, HumanTaskResumeFailure, HumanTaskResumeReport,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, ProjectsWorkflowEnvironmentAccessAdapter,
-    ProjectsWorkflowProjectAccessAdapter, WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime,
-    WorkflowRunHistoryReader, WorkflowRunVariableReader, WORKFLOW_RUN_STEP_NAME,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IdentityHumanTaskAuthorizationAdapter,
+    ProjectsWorkflowEnvironmentAccessAdapter, ProjectsWorkflowProjectAccessAdapter,
+    WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
+    WorkflowRunVariableReader, WORKFLOW_RUN_STEP_NAME,
 };
 pub use presentation::WorkflowModule;
