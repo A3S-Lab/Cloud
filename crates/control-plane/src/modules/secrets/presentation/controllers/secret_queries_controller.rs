@@ -25,11 +25,15 @@ pub fn secret_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinit
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                     let request_id = request_id(&request)?;
+                    let access = secret_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListSecrets {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                         })
                         .await?
                     {

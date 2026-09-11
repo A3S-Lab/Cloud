@@ -2355,7 +2355,9 @@ fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
     )
     .expect("read root Operation resource resolver");
     assert!(operation_access.contains("artifact_access_from_operation(access)"));
-    assert!(operation_access.contains("let builds_access = artifact_access_from_operation(access);"));
+    assert!(
+        operation_access.contains("let builds_access = artifact_access_from_operation(access);")
+    );
     assert!(!operation_access.contains("use crate::access_projection::artifact_access;"));
     assert!(!operation_access.contains("artifact_access(evaluator)"));
 
@@ -2720,9 +2722,8 @@ fn fleet_issue_enrollment_token_isolates_identity_behind_one_organization_port()
         );
     }
 
-    let adapter =
-        std::fs::read_to_string(root.join("fleet/infrastructure/organization_access.rs"))
-            .expect("read Fleet Organization access adapter");
+    let adapter = std::fs::read_to_string(root.join("fleet/infrastructure/organization_access.rs"))
+        .expect("read Fleet Organization access adapter");
     let compact_adapter = production_source(&adapter)
         .split_whitespace()
         .collect::<String>();
@@ -2842,9 +2843,7 @@ fn projects_create_project_isolates_identity_behind_one_organization_port() {
             return;
         }
         let path = relative.to_string_lossy();
-        if !(path.contains("organization_access")
-            || path.contains("commands/create_project"))
-        {
+        if !(path.contains("organization_access") || path.contains("commands/create_project")) {
             return;
         }
         if matches!(layer(relative), Some("application" | "domain"))
@@ -2871,7 +2870,8 @@ fn projects_create_project_isolates_identity_behind_one_organization_port() {
         "root composition must construct the Projects Organization ACA exactly once"
     );
     assert!(
-        production_app.contains("CreateProjectHandler::new(project_organizations, create_projects)"),
+        production_app
+            .contains("CreateProjectHandler::new(project_organizations, create_projects)"),
         "root composition stopped wiring CreateProject through the organization port"
     );
 }
@@ -3097,12 +3097,11 @@ fn fleet_list_and_pool_paths_isolate_identity_behind_one_context_owned_access_pr
 
 #[test]
 fn applications_queries_commands_and_delivery_isolate_identity_behind_one_context_owned_access_projection()
-{
+ {
     let root = module_root();
 
-    let access =
-        std::fs::read_to_string(root.join("applications/application/resource_access.rs"))
-            .expect("read Applications resource access boundary");
+    let access = std::fs::read_to_string(root.join("applications/application/resource_access.rs"))
+        .expect("read Applications resource access boundary");
     let production_access = production_source(&access);
     let compact_access = production_access.split_whitespace().collect::<String>();
     for required in [
@@ -3211,12 +3210,12 @@ fn applications_queries_commands_and_delivery_isolate_identity_behind_one_contex
 }
 
 #[test]
-fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_access_projection() {
+fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_access_projection()
+{
     let root = module_root();
 
-    let access =
-        std::fs::read_to_string(root.join("notifications/application/resource_access.rs"))
-            .expect("read Notifications resource access boundary");
+    let access = std::fs::read_to_string(root.join("notifications/application/resource_access.rs"))
+        .expect("read Notifications resource access boundary");
     let production_access = production_source(&access);
     let compact_access = production_access.split_whitespace().collect::<String>();
     for required in [
@@ -3302,10 +3301,8 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
         );
     }
 
-    let controller = std::fs::read_to_string(
-        root.join("notifications/presentation/controller.rs"),
-    )
-    .expect("read Notifications controller");
+    let controller = std::fs::read_to_string(root.join("notifications/presentation/controller.rs"))
+        .expect("read Notifications controller");
     let production_controller = production_source(&controller);
     assert!(
         production_controller.contains("notification_access(&resource_access_evaluator("),
@@ -3336,10 +3333,9 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
         "Notifications MCP must not pass ResourceAccessEvaluator into Application"
     );
 
-    let projector = std::fs::read_to_string(
-        root.join("notifications/infrastructure/outbox_projector.rs"),
-    )
-    .expect("read Notifications outbox projector");
+    let projector =
+        std::fs::read_to_string(root.join("notifications/infrastructure/outbox_projector.rs"))
+            .expect("read Notifications outbox projector");
     let production_projector = production_source(&projector);
     let compact_projector = production_projector.split_whitespace().collect::<String>();
     assert!(
@@ -3369,10 +3365,9 @@ fn notifications_queries_and_commands_isolate_identity_behind_one_context_owned_
 fn notifications_outbox_projector_isolates_identity_behind_one_access_port() {
     let root = module_root();
 
-    let port = std::fs::read_to_string(
-        root.join("notifications/application/outbox_identity_access.rs"),
-    )
-    .expect("read Notifications outbox Identity access port");
+    let port =
+        std::fs::read_to_string(root.join("notifications/application/outbox_identity_access.rs"))
+            .expect("read Notifications outbox Identity access port");
     let compact_port = production_source(&port)
         .split_whitespace()
         .collect::<String>();
@@ -3425,16 +3420,12 @@ fn notifications_outbox_projector_isolates_identity_behind_one_access_port() {
     });
     assert_eq!(
         membership_grant_sites,
-        BTreeSet::from([
-            "notifications/infrastructure/outbox_identity_access.rs".to_owned()
-        ]),
+        BTreeSet::from(["notifications/infrastructure/outbox_identity_access.rs".to_owned()]),
         "all Notifications membership/grant repository access must be confined to the sole outbox Identity adapter"
     );
     assert_eq!(
         port_implementations,
-        BTreeSet::from([
-            "notifications/infrastructure/outbox_identity_access.rs".to_owned()
-        ]),
+        BTreeSet::from(["notifications/infrastructure/outbox_identity_access.rs".to_owned()]),
         "outbox Identity access must have one consumer-side adapter"
     );
 }
@@ -3511,12 +3502,11 @@ fn notifications_owns_outbound_recipient_contact_access_through_one_identity_ada
 
 #[test]
 fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_context_owned_access_projection()
-{
+ {
     let root = module_root();
 
-    let access =
-        std::fs::read_to_string(root.join("durable_cells/application/resource_access.rs"))
-            .expect("read Durable Cells resource access boundary");
+    let access = std::fs::read_to_string(root.join("durable_cells/application/resource_access.rs"))
+        .expect("read Durable Cells resource access boundary");
     let production_access = production_source(&access);
     let compact_access = production_access.split_whitespace().collect::<String>();
     for required in [
@@ -3618,12 +3608,11 @@ fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_cont
 
 #[test]
 fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context_owned_access_projection()
-{
+ {
     let root = module_root();
 
-    let access =
-        std::fs::read_to_string(root.join("connectors/application/resource_access.rs"))
-            .expect("read Connectors resource access boundary");
+    let access = std::fs::read_to_string(root.join("connectors/application/resource_access.rs"))
+        .expect("read Connectors resource access boundary");
     let production_access = production_source(&access);
     let compact_access = production_access.split_whitespace().collect::<String>();
     for required in [
@@ -3694,9 +3683,8 @@ fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context
         );
     }
 
-    let controller =
-        std::fs::read_to_string(root.join("connectors/presentation/controller.rs"))
-            .expect("read Connectors controller");
+    let controller = std::fs::read_to_string(root.join("connectors/presentation/controller.rs"))
+        .expect("read Connectors controller");
     let production_controller = production_source(&controller);
     assert!(
         production_controller.contains("connector_access(&resource_access_evaluator("),
@@ -3727,10 +3715,9 @@ fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context
         "Connectors MCP must not pass ResourceAccessEvaluator into Application"
     );
 
-    let outbound = std::fs::read_to_string(
-        root.join("notifications/application/outbound_dispatch.rs"),
-    )
-    .expect("read Notifications outbound dispatch");
+    let outbound =
+        std::fs::read_to_string(root.join("notifications/application/outbound_dispatch.rs"))
+            .expect("read Notifications outbound dispatch");
     let production_outbound = production_source(&outbound);
     assert!(
         production_outbound.contains("ConnectorAccess::restricted("),
@@ -4037,7 +4024,9 @@ fn edge_route_queries_isolate_identity_behind_one_context_owned_access_projectio
     .expect("read route queries controller");
     let production = production_source(&controller);
     assert_eq!(
-        production.matches("edge_access(&resource_access_evaluator(").count(),
+        production
+            .matches("edge_access(&resource_access_evaluator(")
+            .count(),
         2,
         "ListRoutes and GetRoute must each project Identity into EdgeAccess"
     );
@@ -4160,10 +4149,9 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
 fn edge_list_gateway_certificates_isolates_identity_behind_one_context_owned_access_projection() {
     let root = module_root();
 
-    let query = std::fs::read_to_string(
-        root.join("edge/application/queries/list_gateway_certificates.rs"),
-    )
-    .expect("read ListGatewayCertificates query");
+    let query =
+        std::fs::read_to_string(root.join("edge/application/queries/list_gateway_certificates.rs"))
+            .expect("read ListGatewayCertificates query");
     let production_query = production_source(&query);
     assert!(
         production_query.contains("pub access: EdgeAccess"),
@@ -8996,7 +8984,8 @@ fn operations_list_isolates_identity_behind_one_context_owned_access_projection(
     .expect("read Operations query controller");
     assert!(
         production_source(&controller).contains("operation_access(&resource_access_evaluator(")
-            || production_source(&controller).contains("operation_access(&resource_access_evaluator"),
+            || production_source(&controller)
+                .contains("operation_access(&resource_access_evaluator"),
         "Operations REST entry must project Identity into OperationAccess"
     );
     assert!(
@@ -9114,8 +9103,7 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
         "Operation subject resolver lost ExecutionAccess mapping"
     );
     assert!(
-        !production_source(&operation_access)
-            .contains("OperationSubjectKind::Execution")
+        !production_source(&operation_access).contains("OperationSubjectKind::Execution")
             || !production_source(&operation_access)
                 .split("OperationSubjectKind::Execution")
                 .nth(1)
@@ -9230,8 +9218,7 @@ fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_
         "Operation subject resolver lost AgentAccess mapping"
     );
     assert!(
-        !production_source(&operation_access)
-            .contains("OperationSubjectKind::AgentExecution")
+        !production_source(&operation_access).contains("OperationSubjectKind::AgentExecution")
             || !production_source(&operation_access)
                 .split("OperationSubjectKind::AgentExecution")
                 .nth(1)
@@ -9316,10 +9303,9 @@ fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_acces
         );
     }
 
-    let request = std::fs::read_to_string(
-        root.join("workflow/presentation/controllers/request.rs"),
-    )
-    .expect("read Workflow presentation request helpers");
+    let request =
+        std::fs::read_to_string(root.join("workflow/presentation/controllers/request.rs"))
+            .expect("read Workflow presentation request helpers");
     assert!(
         production_source(&request).contains("project_workflow_access(&resource_access_evaluator("),
         "Workflow request helper must project Identity into WorkflowAccess"
@@ -9932,7 +9918,7 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
         (
             "secrets/presentation/controllers/secret_queries_controller.rs",
             1,
-            1,
+            2,
             "organization_tenant_secret_read_controller(controller)",
         ),
     ] {
@@ -13387,10 +13373,9 @@ fn edge_mcp_gateway_projection_isolates_workload_revision_materialization() {
         );
     }
 
-    let published = std::fs::read_to_string(
-        root.join("workloads/published/active_mcp_revision_projection.rs"),
-    )
-    .expect("read Workloads published MCP revision projection");
+    let published =
+        std::fs::read_to_string(root.join("workloads/published/active_mcp_revision_projection.rs"))
+            .expect("read Workloads published MCP revision projection");
     assert!(
         production_source(&published).contains("ActiveMcpWorkloadRevisionProjection"),
         "Workloads published MCP revision projection fact missing"
@@ -13669,10 +13654,9 @@ fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_po
 fn edge_gateway_queues_consume_fleet_snapshot_command_owner_port() {
     let root = module_root();
 
-    let owner_port = std::fs::read_to_string(
-        root.join("fleet/application/gateway_snapshot_commands.rs"),
-    )
-    .expect("read Fleet Gateway snapshot command port");
+    let owner_port =
+        std::fs::read_to_string(root.join("fleet/application/gateway_snapshot_commands.rs"))
+            .expect("read Fleet Gateway snapshot command port");
     let compact_owner = production_source(&owner_port)
         .split_whitespace()
         .collect::<String>();
@@ -13702,7 +13686,11 @@ fn edge_gateway_queues_consume_fleet_snapshot_command_owner_port() {
             production.contains("IFleetGatewaySnapshotCommandPort"),
             "{relative} lost Fleet Gateway snapshot owner-port surface"
         );
-        for forbidden in ["INodeControlRepository", "NodeCommandDraft", "NodeCommandPayload"] {
+        for forbidden in [
+            "INodeControlRepository",
+            "NodeCommandDraft",
+            "NodeCommandPayload",
+        ] {
             assert!(
                 !production.contains(forbidden),
                 "{relative} regained Fleet repository draft authority {forbidden}"
@@ -14677,12 +14665,11 @@ fn edge_locks_workloads_through_workloads_transaction_participant() {
         "Edge persistence stopped using the Workloads MCP authority lock participant"
     );
 
-    let participant = std::fs::read_to_string(
-        root.join(
+    let participant =
+        std::fs::read_to_string(root.join(
             "workloads/infrastructure/persistence/postgres/mcp_authority_lock_participant.rs",
-        ),
-    )
-    .expect("read Workloads MCP authority lock participant");
+        ))
+        .expect("read Workloads MCP authority lock participant");
     let production_participant = production_source(&participant);
     for required in [
         "pub(crate) async fn lock_running_workload_authority_for_update(",
@@ -14716,7 +14703,9 @@ fn transaction_participants_are_imported_from_owner_module_roots() {
         let path = display(relative);
         for pattern in forbidden {
             if source.contains(pattern) {
-                violations.insert(format!("{path} still imports a txn participant via {pattern}"));
+                violations.insert(format!(
+                    "{path} still imports a txn participant via {pattern}"
+                ));
             }
         }
     });
