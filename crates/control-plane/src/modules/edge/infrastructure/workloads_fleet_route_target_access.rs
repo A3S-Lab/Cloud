@@ -21,13 +21,13 @@ use std::sync::Arc;
 
 use super::runtime_http_upstream::gateway_http_upstream;
 
-pub struct WorkloadRouteTargetReader {
+pub struct WorkloadsFleetRouteTargetAccessAdapter {
     workloads: Arc<dyn IWorkloadRepository>,
     observations: Arc<dyn INodeControlRepository>,
     observation_max_age: Duration,
 }
 
-impl WorkloadRouteTargetReader {
+impl WorkloadsFleetRouteTargetAccessAdapter {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
         observations: Arc<dyn INodeControlRepository>,
@@ -230,7 +230,7 @@ struct RouteDeploymentTarget {
 }
 
 #[async_trait]
-impl IRouteTargetReader for WorkloadRouteTargetReader {
+impl IRouteTargetReader for WorkloadsFleetRouteTargetAccessAdapter {
     async fn resolve_healthy_target(
         &self,
         organization_id: OrganizationId,

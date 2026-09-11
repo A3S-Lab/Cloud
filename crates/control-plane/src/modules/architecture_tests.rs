@@ -10929,6 +10929,127 @@ fn edge_mcp_gateway_projection_owns_workload_revision_binding_facts() {
 }
 
 #[test]
+fn edge_mcp_gateway_projection_isolates_healthy_route_target_reading() {
+    let root = module_root();
+
+    let domain = std::fs::read_to_string(root.join("edge/domain/services/route_target_reader.rs"))
+        .expect("read Edge route target Domain port");
+    let production_domain = production_source(&domain);
+    let compact_domain = production_domain.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIRouteTargetReader:Send+Sync",
+        "asyncfnresolve_healthy_target(",
+        "asyncfnresolve_healthy_target_set(",
+        "pubstructResolvedRouteTarget",
+        "pubstructResolvedRouteTargetSet",
+    ] {
+        assert!(
+            compact_domain.contains(required),
+            "Edge route target Domain lost minimum surface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::workloads",
+        "crate::modules::fleet",
+        "IWorkloadRepository",
+        "INodeControlRepository",
+    ] {
+        assert!(
+            !production_domain.contains(forbidden),
+            "Edge route target Domain leaked foreign authority {forbidden}"
+        );
+    }
+
+    let owned = std::fs::read_to_string(root.join("edge/domain/value_objects/route_target.rs"))
+        .expect("read owned RouteTarget");
+    let production_owned = production_source(&owned);
+    assert!(
+        production_owned.contains("pub struct RouteTarget"),
+        "Edge lost owned RouteTarget value object"
+    );
+    for forbidden in ["crate::modules::workloads", "crate::modules::fleet"] {
+        assert!(
+            !production_owned.contains(forbidden),
+            "owned RouteTarget leaked foreign authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/mcp_route_projection_planner.rs",
+        "edge/infrastructure/mcp_route_target_projection_compiler.rs",
+        "edge/infrastructure/mcp_gateway_projection_planner.rs",
+        "edge/infrastructure/gateway_route_rollout_planner.rs",
+        "edge/application/commands/publish_route/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        for forbidden in [
+            "crate::modules::workloads",
+            "crate::modules::fleet",
+            "IWorkloadRepository",
+            "INodeControlRepository",
+            "WorkloadsFleetRouteTargetAccessAdapter",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign route-target authority {forbidden}"
+            );
+        }
+    }
+
+    for relative in [
+        "edge/infrastructure/mcp_route_projection_planner.rs",
+        "edge/infrastructure/mcp_route_target_projection_compiler.rs",
+        "edge/infrastructure/gateway_route_rollout_planner.rs",
+        "edge/application/commands/publish_route/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IRouteTargetReader")
+                || production.contains("ResolvedRouteTarget")
+                || production.contains("ResolvedRouteTargetSet"),
+            "{relative} lost Edge-owned route target surface"
+        );
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("edge/infrastructure/workloads_fleet_route_target_access.rs"),
+    )
+    .expect("read Workloads+Fleet route target ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct WorkloadsFleetRouteTargetAccessAdapter",
+        "IWorkloadRepository",
+        "INodeControlRepository",
+        "impl IRouteTargetReader for WorkloadsFleetRouteTargetAccessAdapter",
+        "project_replica_runtime_spec",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "route target ACA lost quarantine surface {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert!(
+        production_app.contains("WorkloadsFleetRouteTargetAccessAdapter::new("),
+        "root composition stopped wiring the sole healthy route-target ACA"
+    );
+    assert_eq!(
+        production_app
+            .matches("WorkloadsFleetRouteTargetAccessAdapter::new(")
+            .count(),
+        1,
+        "healthy route-target ACA must have exactly one production composition site"
+    );
+}
+
+#[test]
 fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
     let root = module_root();
 

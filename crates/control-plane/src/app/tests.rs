@@ -2105,7 +2105,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         EdgeGatewayAcknowledgementProjector::new(Arc::clone(&routes)),
     );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
-        WorkloadRouteTargetReader::new(
+        WorkloadsFleetRouteTargetAccessAdapter::new(
             Arc::clone(&workload_port),
             Arc::clone(&node_control),
             chrono::Duration::seconds(5),

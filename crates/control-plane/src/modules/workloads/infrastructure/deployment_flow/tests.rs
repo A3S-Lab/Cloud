@@ -11,7 +11,7 @@ use crate::modules::edge::domain::{
 };
 use crate::modules::edge::infrastructure::{
     EdgeDeploymentRouteUpdater, FleetGatewayCommandQueue, GatewaySnapshotCompiler,
-    GatewaySnapshotCompilerConfig, WorkloadRouteTargetReader,
+    GatewaySnapshotCompilerConfig, WorkloadsFleetRouteTargetAccessAdapter,
 };
 use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::fleet::domain::entities::{EnrollmentToken, NodeCommandDraft, NodePool};
@@ -1089,8 +1089,11 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
         Some(second_node_id)
     );
 
-    let route_reader =
-        WorkloadRouteTargetReader::new(workloads.clone(), nodes.clone(), Duration::seconds(30))?;
+    let route_reader = WorkloadsFleetRouteTargetAccessAdapter::new(
+        workloads.clone(),
+        nodes.clone(),
+        Duration::seconds(30),
+    )?;
     let port_name = RoutePortName::parse("http")?;
     let target_set = route_reader
         .resolve_healthy_target_set(

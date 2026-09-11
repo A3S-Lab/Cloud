@@ -153,7 +153,7 @@ use crate::modules::edge::{
     ProjectsEdgeEnvironmentAccessAdapter, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
     RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
     SecretsEdgeMcpCredentialEncryptionAdapter, VaultGatewayCertificateAuthority,
-    VerifyDomainClaimHandler, WorkloadRouteTargetReader,
+    VerifyDomainClaimHandler, WorkloadsFleetRouteTargetAccessAdapter,
 };
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
@@ -972,7 +972,7 @@ async fn build_api_worker_application(
         RevalidatingGithubInstallationTokens::new(github_authority, github_installation_tokens_raw),
     );
     let route_targets: Arc<dyn IRouteTargetReader> = Arc::new(
-        WorkloadRouteTargetReader::new(
+        WorkloadsFleetRouteTargetAccessAdapter::new(
             Arc::clone(&workloads),
             Arc::clone(&node_control),
             chrono_duration(config.fleet.heartbeat_timeout_ms)

@@ -34,9 +34,9 @@ mod mcp_route_projection_planner;
 mod mcp_route_target_projection_compiler;
 pub mod persistence;
 mod project_environment_access;
-mod route_target_reader;
 mod runtime_http_upstream;
 mod vault_gateway_certificate_authority;
+mod workloads_fleet_route_target_access;
 mod workloads_mcp_workload_revision_access;
 
 #[cfg(test)]
@@ -155,7 +155,7 @@ pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
 pub use project_environment_access::ProjectsEdgeEnvironmentAccessAdapter;
-pub use route_target_reader::WorkloadRouteTargetReader;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) use runtime_http_upstream::gateway_http_upstream;
 pub use vault_gateway_certificate_authority::VaultGatewayCertificateAuthority;
+pub use workloads_fleet_route_target_access::WorkloadsFleetRouteTargetAccessAdapter;

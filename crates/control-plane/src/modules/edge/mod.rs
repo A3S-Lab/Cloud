@@ -88,6 +88,7 @@ pub use infrastructure::{
     PlanMcpRouteProjection, PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjection,
     PlannedMcpGatewayProjectionSet, ProjectsEdgeEnvironmentAccessAdapter,
     SecretsEdgeMcpCredentialEncryptionAdapter, StageManagedRoutePublication,
-    StageMcpGatewaySnapshot, VaultGatewayCertificateAuthority, WorkloadRouteTargetReader,
+    StageMcpGatewaySnapshot, VaultGatewayCertificateAuthority,
+    WorkloadsFleetRouteTargetAccessAdapter,
 };
 pub use presentation::EdgeModule;
