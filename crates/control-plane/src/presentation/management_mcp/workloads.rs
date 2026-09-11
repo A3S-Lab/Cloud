@@ -49,6 +49,7 @@ pub async fn list_workloads(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: EnvironmentScopeArguments,
+    access: WorkloadAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -56,6 +57,7 @@ pub async fn list_workloads(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            access,
         })
         .await?
     {

@@ -9,10 +9,10 @@ use crate::modules::workloads::presentation::dto::{
     DeploymentResponse, WorkloadLogsResponse, WorkloadResponse,
 };
 use crate::presentation::{
-    application_error_response, decode_sequence_cursor, default_live_sequence_limit,
-    organization_tenant_workload_read_controller, request_id, resolve_sequence_cursor,
-    sequence_stream_error, stream_sequence_pages, with_deferred_project_scope,
-    MAX_LIVE_SEQUENCE_RECORDS,
+    MAX_LIVE_SEQUENCE_RECORDS, application_error_response, decode_sequence_cursor,
+    default_live_sequence_limit, organization_tenant_workload_read_controller, request_id,
+    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
+    with_deferred_project_scope,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
@@ -35,6 +35,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let access = workload_access(&request)?;
                     match bus
                         .execute(ListWorkloads {
                             organization_id: OrganizationId::from_uuid(
@@ -46,6 +47,7 @@ pub fn workload_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                         })
                         .await?
                     {

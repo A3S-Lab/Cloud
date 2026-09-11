@@ -1,7 +1,7 @@
 use super::ListWorkloads;
-use crate::modules::shared_kernel::application::ApplicationResult;
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::workloads::application::queries::{
-    reader::WorkloadQueryReader, WorkloadQueryResult,
+    WorkloadQueryResult, reader::WorkloadQueryReader,
 };
 use crate::modules::workloads::application::{
     IWorkloadDeploymentOperationAccess, IWorkloadRuntimeObservationAccess,
@@ -38,6 +38,14 @@ impl QueryHandler<ListWorkloads> for ListWorkloadsHandler {
         let workloads = Arc::clone(&self.workloads);
         let reader = self.reader.clone();
         Box::pin(async move {
+            if !query
+                .access
+                .environment_is_visible(query.project_id, query.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "workloads not found".into(),
+                )));
+            }
             let workloads = match workloads
                 .list_workloads(
                     query.organization_id,
@@ -58,5 +66,76 @@ impl QueryHandler<ListWorkloads> for ListWorkloadsHandler {
             }
             Ok(Ok(results))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
+    };
+    use crate::modules::workloads::application::resource_access::{
+        WorkloadAccess, WorkloadAccessScope,
+    };
+    use crate::modules::workloads::application::{
+        IWorkloadDeploymentOperationAccess, IWorkloadRuntimeObservationAccess,
+        WorkloadDeploymentOperationProjection, WorkloadRuntimeObservationProjection,
+    };
+    use crate::modules::workloads::infrastructure::InMemoryWorkloadRepository;
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+
+    struct StubOperations;
+    struct StubObservations;
+
+    #[async_trait]
+    impl IWorkloadDeploymentOperationAccess for StubOperations {
+        async fn find_projection(
+            &self,
+            _operation_id: OperationId,
+        ) -> Result<Option<WorkloadDeploymentOperationProjection>, RepositoryError> {
+            Ok(None)
+        }
+    }
+
+    #[async_trait]
+    impl IWorkloadRuntimeObservationAccess for StubObservations {
+        async fn latest_runtime_observation(
+            &self,
+            _node_id: NodeId,
+            _unit_id: &str,
+            _generation: u64,
+        ) -> Result<Option<WorkloadRuntimeObservationProjection>, RepositoryError> {
+            Ok(None)
+        }
+    }
+
+    #[tokio::test]
+    async fn restricted_query_fails_closed_before_listing_an_ungranted_environment() {
+        let project_id = ProjectId::new();
+        let handler = ListWorkloadsHandler::new(
+            Arc::new(InMemoryWorkloadRepository::new()),
+            Arc::new(StubOperations),
+            Arc::new(StubObservations),
+        );
+        let result = handler
+            .execute(
+                ListWorkloads {
+                    organization_id: OrganizationId::new(),
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                    access: WorkloadAccess::restricted([WorkloadAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message)) if message == "workloads not found"
+        ));
     }
 }

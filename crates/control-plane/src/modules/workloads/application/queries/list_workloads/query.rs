@@ -1,6 +1,7 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::modules::workloads::application::queries::WorkloadQueryResult;
+use crate::modules::workloads::application::resource_access::WorkloadAccess;
 use a3s_boot::Query;
 
 #[derive(Debug, Clone)]
@@ -8,6 +9,7 @@ pub struct ListWorkloads {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: WorkloadAccess,
 }
 
 impl Query for ListWorkloads {

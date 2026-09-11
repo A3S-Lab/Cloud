@@ -1747,7 +1747,14 @@ pub async fn execute(
         }
         ManagementTool::WorkloadsList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;
-            workloads::list_workloads(query_bus, organization_id, arguments, request_id).await
+            workloads::list_workloads(
+                query_bus,
+                organization_id,
+                arguments,
+                workload_access(&resource_access),
+                request_id,
+            )
+            .await
         }
         ManagementTool::WorkloadsGet => {
             let arguments = arguments::parse::<WorkloadArguments>(arguments).ok()?;

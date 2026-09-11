@@ -8752,8 +8752,8 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
         "Workloads must isolate its one Identity integration behind the runtime-admission port"
     );
     assert_eq!(
-        access_fields, 10,
-        "all seven indirect-resource commands and three queries must carry Workloads-owned access"
+        access_fields, 11,
+        "all seven indirect-resource commands and four queries must carry Workloads-owned access"
     );
     assert_eq!(
         resolver_constructors, 10,
@@ -8844,8 +8844,8 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
     .expect("read Workloads Management MCP adapter");
     assert_eq!(
         management_mcp.matches("access: WorkloadAccess").count(),
-        6,
-        "every indirect-resource Workloads MCP entry must receive the consumer-owned projection"
+        7,
+        "every Workloads MCP entry that authorizes resources must receive the consumer-owned projection"
     );
     for forbidden in [
         "crate::modules::identity",
@@ -8868,8 +8868,8 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
         dispatch
             .matches("workload_access(&resource_access)")
             .count(),
-        6,
-        "Management MCP must project Identity once at every indirect Workloads entry"
+        7,
+        "Management MCP must project Identity once at every authorized Workloads entry"
     );
 
     let operation_access = std::fs::read_to_string(
