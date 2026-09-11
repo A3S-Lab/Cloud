@@ -1,4 +1,4 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::operations::application::OperationAccess;
 use crate::modules::operations::domain::entities::OperationRecord;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -7,7 +7,7 @@ use a3s_boot::Query;
 #[derive(Debug, Clone)]
 pub struct ListOperations {
     pub organization_id: OrganizationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: OperationAccess,
     pub limit: usize,
 }
 

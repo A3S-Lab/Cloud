@@ -37,7 +37,7 @@ impl QueryHandler<ListOperations> for ListOperationsHandler {
         let resource_access = Arc::clone(&self.resource_access);
         Box::pin(async move {
             let requested_limit = query.limit.clamp(1, 200);
-            if query.resource_access.is_organization_wide() {
+            if query.access.is_organization_wide() {
                 return Ok(repository
                     .list(query.organization_id, requested_limit)
                     .await
@@ -58,13 +58,13 @@ impl QueryHandler<ListOperations> for ListOperationsHandler {
                 let next = records.last().map(OperationListCursor::after);
                 let checked = match stream::iter(records.into_iter().map(|record| {
                     let resource_access = Arc::clone(&resource_access);
-                    let evaluator = query.resource_access.clone();
+                    let access = query.access.clone();
                     async move {
                         resource_access
                             .subject_is_visible(
                                 record.request.organization_id,
                                 &record.request.subject,
-                                &evaluator,
+                                &access,
                             )
                             .await
                             .map(|visible| (record, visible))
@@ -95,8 +95,7 @@ impl QueryHandler<ListOperations> for ListOperationsHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+    use crate::modules::operations::application::{OperationAccess, OperationAccessScope};
     use crate::modules::operations::domain::entities::OperationRequest;
     use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
     use crate::modules::operations::infrastructure::persistence::InMemoryOperationRepository;
@@ -119,7 +118,7 @@ mod tests {
             &self,
             _organization_id: OrganizationId,
             subject: &OperationSubject,
-            _evaluator: &ResourceAccessEvaluator,
+            _access: &OperationAccess,
         ) -> ApplicationResult<bool> {
             self.calls.fetch_add(1, Ordering::Relaxed);
             Ok(self.ids.contains(&subject.id()))
@@ -159,11 +158,9 @@ mod tests {
             .execute(
                 ListOperations {
                     organization_id,
-                    resource_access: ResourceAccessEvaluator::restricted([
-                        ResourceGrantScope::Project {
-                            project_id: ProjectId::new(),
-                        },
-                    ]),
+                    access: OperationAccess::restricted([OperationAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
                     limit: 2,
                 },
                 context.clone(),
@@ -184,7 +181,7 @@ mod tests {
             .execute(
                 ListOperations {
                     organization_id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: OperationAccess::organization_wide(),
                     limit: 2,
                 },
                 context,
@@ -242,11 +239,9 @@ mod tests {
             .execute(
                 ListOperations {
                     organization_id,
-                    resource_access: ResourceAccessEvaluator::restricted([
-                        ResourceGrantScope::Project {
-                            project_id: ProjectId::new(),
-                        },
-                    ]),
+                    access: OperationAccess::restricted([OperationAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
                     limit: 1,
                 },
                 CqrsContext::new(ModuleRef::new()),

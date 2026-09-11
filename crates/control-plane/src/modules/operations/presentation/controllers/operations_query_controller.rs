@@ -1,10 +1,11 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::access_projection::operation_access;
 use crate::modules::identity::presentation::{
     resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
     OrganizationTenantGuard,
 };
 use crate::modules::operations::application::queries::list_operations::ListOperations;
 use crate::modules::operations::presentation::dto::OperationListItemResponse;
+use crate::modules::operations::OperationAccess;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use crate::presentation::{
     application_error_response, polling_sse_stream, PollingSseInitial, PollingSseOptions,
@@ -44,9 +45,9 @@ pub fn operations_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                         match bus
                             .execute(ListOperations {
                                 organization_id,
-                                resource_access: resource_access_evaluator(
+                                access: operation_access(&resource_access_evaluator(
                                     &request.require_auth_principal()?,
-                                )?,
+                                )?),
                                 limit,
                             })
                             .await?
@@ -79,7 +80,9 @@ pub fn operations_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
                         operation_snapshot_stream(
                             bus,
                             organization_id,
-                            resource_access_evaluator(&request.require_auth_principal()?)?,
+                            operation_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             last_event_id,
                         )
                     }
@@ -91,14 +94,14 @@ pub fn operations_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
 
 struct OperationSnapshotStreamState {
     organization_id: OrganizationId,
-    resource_access: ResourceAccessEvaluator,
+    access: OperationAccess,
     last_event_id: String,
 }
 
 fn operation_snapshot_stream(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
-    resource_access: ResourceAccessEvaluator,
+    access: OperationAccess,
     last_event_id: String,
 ) -> Result<SseStream> {
     let options = PollingSseOptions::new(
@@ -109,7 +112,7 @@ fn operation_snapshot_stream(
     Ok(polling_sse_stream(
         OperationSnapshotStreamState {
             organization_id,
-            resource_access,
+            access,
             last_event_id,
         },
         PollingSseInitial::Deferred,
@@ -119,7 +122,7 @@ fn operation_snapshot_stream(
                 let operations = bus
                     .execute(ListOperations {
                         organization_id: state.organization_id,
-                        resource_access: state.resource_access.clone(),
+                        access: state.access.clone(),
                         limit: 100,
                     })
                     .await?

@@ -2354,8 +2354,10 @@ fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
             .join("infrastructure/operation_resource_access.rs"),
     )
     .expect("read root Operation resource resolver");
-    assert!(operation_access.contains("use crate::access_projection::artifact_access;"));
-    assert!(operation_access.contains("let access = artifact_access(evaluator);"));
+    assert!(operation_access.contains("artifact_access_from_operation(access)"));
+    assert!(operation_access.contains("let builds_access = artifact_access_from_operation(access);"));
+    assert!(!operation_access.contains("use crate::access_projection::artifact_access;"));
+    assert!(!operation_access.contains("artifact_access(evaluator)"));
 
     let presentation_root = std::fs::read_to_string(
         root.parent()
@@ -7261,9 +7263,9 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
     )
     .expect("read root Operation resource access adapter");
     for required in [
-        "use crate::access_projection::workload_access;",
+        "workload_access_from_operation(access)",
         "WorkloadResourceResolver",
-        "let workloads_access = workload_access(evaluator);",
+        "let workloads_access = workload_access_from_operation(access);",
     ] {
         assert!(
             operation_access.contains(required),
@@ -7278,12 +7280,124 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
     for forbidden in [
         "workloads::application::resource_access",
         "WorkloadResourceAccess",
+        "use crate::access_projection::workload_access;",
+        "workload_access(evaluator)",
     ] {
         assert!(
             !operation_access.contains(forbidden),
             "Operation resource access bypassed the Workloads facade with {forbidden}"
         );
     }
+}
+
+#[test]
+fn operations_list_isolates_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("operations/application/resource_access.rs"))
+        .expect("read Operations resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumOperationAccessScope",
+        "pubstructOperationAccess",
+        "pub(crate)traitIOperationResourceAccess:Send+Sync",
+        "access:&OperationAccess",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Operations lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Operations resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    let query = std::fs::read_to_string(
+        root.join("operations/application/queries/list_operations/query.rs"),
+    )
+    .expect("read ListOperations query");
+    let production_query = production_source(&query);
+    assert!(
+        production_query.contains("pub access: OperationAccess"),
+        "ListOperations stopped carrying Operations-owned access"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+        assert!(
+            !production_query.contains(forbidden),
+            "ListOperations regained Identity authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        root.join("operations/application/queries/list_operations/handler.rs"),
+    )
+    .expect("read ListOperationsHandler");
+    let production_handler = production_source(&handler);
+    assert!(
+        production_handler.contains("query.access.is_organization_wide()")
+            && production_handler.contains("subject_is_visible("),
+        "ListOperationsHandler lost Operations-owned access evaluation"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+        assert!(
+            !production_handler.contains(forbidden),
+            "ListOperationsHandler regained Identity authority {forbidden}"
+        );
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnoperation_access(",
+        "OperationAccess::organization_wide()",
+        "OperationAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Operations access mapping {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("operations/presentation/controllers/operations_query_controller.rs"),
+    )
+    .expect("read Operations query controller");
+    assert!(
+        production_source(&controller).contains("operation_access(&resource_access_evaluator(")
+            || production_source(&controller).contains("operation_access(&resource_access_evaluator"),
+        "Operations REST entry must project Identity into OperationAccess"
+    );
+    assert!(
+        !production_source(&controller).contains("resource_access: resource_access_evaluator"),
+        "Operations REST must not pass ResourceAccessEvaluator into Application"
+    );
+
+    let mcp = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("presentation/management_mcp/operations.rs"),
+    )
+    .expect("read Operations Management MCP adapter");
+    assert!(
+        production_source(&mcp).contains("access: operation_access(&resource_access)"),
+        "Operations MCP entry must project Identity into OperationAccess"
+    );
 }
 
 #[test]

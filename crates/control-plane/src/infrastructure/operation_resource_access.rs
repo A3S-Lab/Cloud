@@ -1,14 +1,15 @@
-use crate::access_projection::artifact_access;
-use crate::access_projection::workload_access;
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::domain::IAgentRepository;
 use crate::modules::artifacts::application::resource_access::BuildRunResourceAccess;
 use crate::modules::artifacts::domain::IBuildRunRepository;
+use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::executions::application::resource_access::ExecutionResourceAccess;
 use crate::modules::executions::domain::IExecutionRepository;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::application::resource_access::IOperationResourceAccess;
 use crate::modules::operations::domain::value_objects::OperationSubject;
+use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     AgentExecutionId, BuildRunId, DeploymentId, ExecutionId, OrganizationId, WorkflowRunId,
@@ -18,6 +19,7 @@ use crate::modules::workflow::application::resource_access::workflow_run;
 use crate::modules::workflow::domain::IWorkflowRunRepository;
 use crate::modules::workloads::application::WorkloadResourceResolver;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
+use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
 use async_trait::async_trait;
 use std::sync::Arc;
 
@@ -25,7 +27,7 @@ use std::sync::Arc;
 ///
 /// Each branch delegates ownership resolution to the bounded context that owns the subject. This
 /// adapter is the only polymorphic dispatch point; it does not copy ownership into Operations or
-/// Identity.
+/// Identity. Entry adapters project Identity into [`OperationAccess`] before this resolver runs.
 pub(crate) struct OperationResourceAccessResolver {
     workloads: WorkloadResourceResolver,
     builds: BuildRunResourceAccess,
@@ -58,9 +60,9 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
         &self,
         organization_id: OrganizationId,
         subject: &OperationSubject,
-        evaluator: &ResourceAccessEvaluator,
+        access: &OperationAccess,
     ) -> ApplicationResult<bool> {
-        let workloads_access = workload_access(evaluator);
+        let workloads_access = workload_access_from_operation(access);
         match OperationSubjectKind::parse(subject.kind()) {
             Some(OperationSubjectKind::Workload) => visible(
                 self.workloads
@@ -81,45 +83,54 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                     .await,
             ),
             Some(OperationSubjectKind::BuildRun) => {
-                let access = artifact_access(evaluator);
+                let builds_access = artifact_access_from_operation(access);
                 visible(
                     self.builds
                         .build_run(
                             organization_id,
                             BuildRunId::from_uuid(subject.id()),
-                            &access,
+                            &builds_access,
                             "build run not found",
                         )
                         .await,
                 )
             }
-            Some(OperationSubjectKind::Execution) => visible(
-                self.executions
-                    .execution(
-                        organization_id,
-                        ExecutionId::from_uuid(subject.id()),
-                        evaluator,
-                    )
-                    .await,
-            ),
-            Some(OperationSubjectKind::AgentExecution) => visible(
-                self.agents
-                    .execution(
-                        organization_id,
-                        AgentExecutionId::from_uuid(subject.id()),
-                        evaluator,
-                    )
-                    .await,
-            ),
-            Some(OperationSubjectKind::WorkflowRun) => visible(
-                workflow_run(
-                    self.workflow_runs.as_ref(),
-                    organization_id,
-                    WorkflowRunId::from_uuid(subject.id()),
-                    evaluator,
+            Some(OperationSubjectKind::Execution) => {
+                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                visible(
+                    self.executions
+                        .execution(
+                            organization_id,
+                            ExecutionId::from_uuid(subject.id()),
+                            &evaluator,
+                        )
+                        .await,
                 )
-                .await,
-            ),
+            }
+            Some(OperationSubjectKind::AgentExecution) => {
+                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                visible(
+                    self.agents
+                        .execution(
+                            organization_id,
+                            AgentExecutionId::from_uuid(subject.id()),
+                            &evaluator,
+                        )
+                        .await,
+                )
+            }
+            Some(OperationSubjectKind::WorkflowRun) => {
+                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                visible(
+                    workflow_run(
+                        self.workflow_runs.as_ref(),
+                        organization_id,
+                        WorkflowRunId::from_uuid(subject.id()),
+                        &evaluator,
+                    )
+                    .await,
+                )
+            }
             None => Ok(false),
         }
     }
@@ -155,6 +166,60 @@ fn visible<T>(result: ApplicationResult<T>) -> ApplicationResult<bool> {
         Err(ApplicationError::NotFound(_)) => Ok(false),
         Err(error) => Err(error),
     }
+}
+
+fn workload_access_from_operation(access: &OperationAccess) -> WorkloadAccess {
+    if access.is_organization_wide() {
+        return WorkloadAccess::organization_wide();
+    }
+    WorkloadAccess::restricted(access.granted_scopes().map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => {
+            WorkloadAccessScope::Project { project_id }
+        }
+        OperationAccessScope::Environment {
+            project_id,
+            environment_id,
+        } => WorkloadAccessScope::Environment {
+            project_id,
+            environment_id,
+        },
+    }))
+}
+
+fn artifact_access_from_operation(access: &OperationAccess) -> ArtifactAccess {
+    if access.is_organization_wide() {
+        return ArtifactAccess::organization_wide();
+    }
+    ArtifactAccess::restricted(access.granted_scopes().map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => {
+            ArtifactAccessScope::Project { project_id }
+        }
+        OperationAccessScope::Environment {
+            project_id,
+            environment_id,
+        } => ArtifactAccessScope::Environment {
+            project_id,
+            environment_id,
+        },
+    }))
+}
+
+/// Temporary bridge for subject owners that still evaluate Identity grant types.
+/// Lives only in this root composition adapter until those contexts own projections.
+fn identity_evaluator_for_legacy_subjects(access: &OperationAccess) -> ResourceAccessEvaluator {
+    if access.is_organization_wide() {
+        return ResourceAccessEvaluator::organization_wide();
+    }
+    ResourceAccessEvaluator::restricted(access.granted_scopes().map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => ResourceGrantScope::Project { project_id },
+        OperationAccessScope::Environment {
+            project_id,
+            environment_id,
+        } => ResourceGrantScope::Environment {
+            project_id,
+            environment_id,
+        },
+    }))
 }
 
 #[cfg(test)]

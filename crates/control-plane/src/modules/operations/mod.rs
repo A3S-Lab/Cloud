@@ -11,7 +11,8 @@ pub use application::commands::reconcile_operations::{
     OperationReconcileFailure, ReconcileOperationsHandler, ReconcileOperationsReport,
 };
 pub use application::queries::list_operations::{ListOperations, ListOperationsHandler};
-pub use application::OperationReconciler;
+pub use application::{OperationAccess, OperationReconciler};
+pub(crate) use application::OperationAccessScope;
 pub use domain::entities::{
     OperationProjection, OperationRecord, OperationRequest, OperationStatus,
 };

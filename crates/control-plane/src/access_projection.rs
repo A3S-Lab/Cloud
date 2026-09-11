@@ -11,6 +11,7 @@ use crate::modules::files::UserFileAccess;
 use crate::modules::forms::{FormAccess, FormAccessScope};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::search::{SearchVisibility, SearchVisibilityScope};
 use crate::modules::secrets::{SecretAccess, SecretAccessScope};
 use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
@@ -160,11 +161,34 @@ pub(crate) fn workload_access(resource_access: &ResourceAccessEvaluator) -> Work
     )
 }
 
+pub(crate) fn operation_access(resource_access: &ResourceAccessEvaluator) -> OperationAccess {
+    if resource_access.is_organization_wide() {
+        return OperationAccess::organization_wide();
+    }
+    OperationAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(OperationAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(OperationAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        artifact_access, asset_access, developer_workflow_access, form_access, search_visibility,
-        secret_access, user_file_access, workload_access,
+        artifact_access, asset_access, developer_workflow_access, form_access, operation_access,
+        search_visibility, secret_access, user_file_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -369,5 +393,26 @@ mod tests {
 
         let organization_wide = workload_access(&ResourceAccessEvaluator::organization_wide());
         assert!(organization_wide.environment_is_visible(ProjectId::new(), EnvironmentId::new()));
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_operations_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = operation_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(!access.is_organization_wide());
+        assert_eq!(access.granted_scopes().count(), 2);
+        assert!(operation_access(&ResourceAccessEvaluator::organization_wide())
+            .is_organization_wide());
     }
 }

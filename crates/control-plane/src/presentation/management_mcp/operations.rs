@@ -1,5 +1,6 @@
 use super::arguments::OperationListArguments;
 use super::tool_result;
+use crate::access_projection::operation_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::operations::presentation::OperationListItemResponse;
 use crate::modules::operations::ListOperations;
@@ -19,7 +20,7 @@ pub async fn list_operations(
     match bus
         .execute(ListOperations {
             organization_id,
-            resource_access,
+            access: operation_access(&resource_access),
             limit: arguments.limit,
         })
         .await?
