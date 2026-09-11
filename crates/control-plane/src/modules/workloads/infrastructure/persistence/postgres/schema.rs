@@ -62,16 +62,8 @@ orm_table! {
         mcp_asset_id: Option<Uuid> => "mcp_asset_id",
         mcp_asset_release_id: Option<Uuid> => "mcp_asset_release_id",
         mcp_profile_digest: Option<String> => "mcp_profile_digest",
-    }
-}
-
-orm_table! {
-    pub(super) struct McpServiceProfiles => "mcp_service_profiles" {
-        organization_id: Uuid => "organization_id",
-        asset_id: Uuid => "asset_id",
-        asset_release_id: Uuid => "asset_release_id",
-        profile_digest: String => "profile_digest",
-        acl: String => "acl",
+        mcp_runtime_port: Option<String> => "mcp_runtime_port",
+        mcp_health_path: Option<String> => "mcp_health_path",
     }
 }
 

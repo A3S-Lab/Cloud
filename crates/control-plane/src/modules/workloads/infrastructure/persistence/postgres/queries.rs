@@ -1,10 +1,10 @@
 use super::rows::{self, DeploymentSelection, RevisionSelection, WorkloadSelection};
 use super::schema::{
-    ActiveWorkloads, DeploymentReplicaBindings, Deployments, McpServiceProfiles, WorkloadReplicas,
+    ActiveWorkloads, DeploymentReplicaBindings, Deployments, WorkloadReplicas,
     WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads,
 };
 use super::{replicas, runtime_execution_bindings};
-use crate::infrastructure::{fetch_all, fetch_optional, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, fetch_all, fetch_optional};
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, EnvironmentId, OrganizationId, ProjectId,
     RepositoryError, Sha256Digest, WorkloadId, WorkloadRevisionId,
@@ -14,8 +14,8 @@ use crate::modules::workloads::domain::entities::{
 };
 use crate::modules::workloads::domain::repositories::ActiveRuntimeTarget;
 use a3s_orm::{
-    select_from, select_from_as, Database, OrderDirection, PostgresDialect, PostgresExecutor,
-    PostgresTransaction,
+    Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, select_from,
+    select_from_as,
 };
 use uuid::Uuid;
 
@@ -73,7 +73,6 @@ pub(super) async fn find_revision(
                 .inner_join::<Workloads>(
                     WorkloadRevisions::workload_id().eq_column(Workloads::id()),
                 )
-                .left_join::<McpServiceProfiles>(mcp_profile_join())
                 .filter(Workloads::organization_id().eq(organization_id.as_uuid()))
                 .filter(WorkloadRevisions::id().eq(revision_id.as_uuid())),
         )
@@ -98,7 +97,6 @@ pub(super) async fn list_revisions(
                 .inner_join::<Workloads>(
                     WorkloadRevisions::workload_id().eq_column(Workloads::id()),
                 )
-                .left_join::<McpServiceProfiles>(mcp_profile_join())
                 .filter(Workloads::organization_id().eq(organization_id.as_uuid()))
                 .filter(WorkloadRevisions::workload_id().eq(workload_id.as_uuid()))
                 .order_by(WorkloadRevisions::generation(), OrderDirection::Desc)
@@ -324,7 +322,6 @@ pub(super) async fn revision_in_transaction(
     let query = select_from::<WorkloadRevisions>()
         .select(RevisionSelection)
         .inner_join::<Workloads>(WorkloadRevisions::workload_id().eq_column(Workloads::id()))
-        .left_join::<McpServiceProfiles>(mcp_profile_join())
         .filter(Workloads::organization_id().eq(organization_id.as_uuid()))
         .filter(WorkloadRevisions::id().eq(revision_id.as_uuid()));
     let query = if lock {
@@ -439,19 +436,6 @@ pub(super) async fn next_revision_generation(
     latest
         .checked_add(1)
         .ok_or_else(|| PostgresPersistenceError::Invariant("workload generation overflowed".into()))
-}
-
-fn mcp_profile_join() -> a3s_orm::Expression {
-    McpServiceProfiles::organization_id()
-        .eq_column(WorkloadRevisions::mcp_organization_id())
-        .and(McpServiceProfiles::asset_id().eq_column(WorkloadRevisions::mcp_asset_id()))
-        .and(
-            McpServiceProfiles::asset_release_id()
-                .eq_column(WorkloadRevisions::mcp_asset_release_id()),
-        )
-        .and(
-            McpServiceProfiles::profile_digest().eq_column(WorkloadRevisions::mcp_profile_digest()),
-        )
 }
 
 fn storage(error: impl std::fmt::Display) -> RepositoryError {

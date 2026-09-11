@@ -1,18 +1,19 @@
 use super::{SecretBinding, SecretBindingTarget, Workload};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
-    ProjectId, SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
+    AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId, ProjectId, SecretId,
+    Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId, canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
-use a3s_acl::{canonical_digest, parse_acl, Document};
+use a3s_acl::{Document, canonical_digest, parse_acl};
 use a3s_cloud_contracts::{
-    agent_harness_compatibility_v1, agent_release_builder_uri, agent_release_manifest_archive,
-    agent_release_source_uri, artifact_uri, AgentReleaseManifest, AgentReleasePersistentDataMode,
-    AgentReleaseSecretRequirement, AgentReleaseSecretTarget, SKILL_BUNDLE_MEDIA_TYPE,
+    AgentReleaseManifest, AgentReleasePersistentDataMode, AgentReleaseSecretRequirement,
+    AgentReleaseSecretTarget, SKILL_BUNDLE_MEDIA_TYPE, agent_harness_compatibility_v1,
+    agent_release_builder_uri, agent_release_manifest_archive, agent_release_source_uri,
+    artifact_uri,
 };
 
 const AGENT_RUNTIME_WORKING_DIRECTORY: &str = "/workspace";
@@ -1097,7 +1098,8 @@ impl AgentWorkloadRevisionBinding {
 /// Immutable product identity attached to an ordinary Workload revision.
 ///
 /// Runtime consumes only `profile_digest`; Cloud retains the exact release
-/// identity so equal behavior profiles never collapse distinct releases.
+/// identity plus the owned profile admission facts needed to revalidate the
+/// ordinary Service template without reading Assets tables.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct McpWorkloadRevisionBinding {
@@ -1105,6 +1107,8 @@ pub struct McpWorkloadRevisionBinding {
     asset_id: AssetId,
     asset_release_id: AssetReleaseId,
     profile_digest: Sha256Digest,
+    runtime_port: String,
+    health_path: String,
 }
 
 /// One exact published Skill bundle mounted into an Agent Service revision.
@@ -1227,17 +1231,37 @@ impl McpWorkloadRevisionBinding {
         &self.profile_digest
     }
 
+    pub fn runtime_port(&self) -> &str {
+        &self.runtime_port
+    }
+
+    pub fn health_path(&self) -> &str {
+        &self.health_path
+    }
+
+    pub fn profile_admission(&self) -> Result<McpProfileAdmission, String> {
+        McpProfileAdmission::new(
+            self.profile_digest.clone(),
+            self.runtime_port.clone(),
+            self.health_path.clone(),
+        )
+    }
+
     pub(crate) fn restore(
         organization_id: OrganizationId,
         asset_id: AssetId,
         asset_release_id: AssetReleaseId,
         profile_digest: Sha256Digest,
+        runtime_port: impl Into<String>,
+        health_path: impl Into<String>,
     ) -> Result<Self, String> {
         let binding = Self {
             organization_id,
             asset_id,
             asset_release_id,
             profile_digest,
+            runtime_port: runtime_port.into(),
+            health_path: health_path.into(),
         };
         binding.validate_identity()?;
         Ok(binding)
@@ -1251,6 +1275,7 @@ impl McpWorkloadRevisionBinding {
         {
             return Err("MCP Workload release binding identity is invalid".into());
         }
+        self.profile_admission()?.validate()?;
         Ok(())
     }
 }
@@ -1522,6 +1547,8 @@ impl WorkloadRevision {
             admission.asset_id,
             admission.asset_release_id,
             admission.profile.digest().clone(),
+            admission.profile.runtime_port(),
+            admission.profile.health_path(),
         )?;
         match &self.mcp_binding {
             Some(existing) if existing == &binding => Ok(false),
@@ -1558,14 +1585,10 @@ impl WorkloadRevision {
     pub(crate) fn restore_mcp_binding(
         &mut self,
         binding: McpWorkloadRevisionBinding,
-        profile: &McpProfileAdmission,
     ) -> Result<(), String> {
         binding.validate_identity()?;
-        profile.validate()?;
-        if binding.profile_digest != *profile.digest() {
-            return Err("MCP Workload release binding and Service profile digest differ".into());
-        }
-        validate_mcp_template(self.resolved_template()?, profile)?;
+        let profile = binding.profile_admission()?;
+        validate_mcp_template(self.resolved_template()?, &profile)?;
         if self.mcp_binding.is_some()
             || self.agent_binding.is_some()
             || self.external_build.is_some()

@@ -74,8 +74,6 @@ workloads/infrastructure/persistence/postgres/resource_claims.rs -> fleet/infras
 fn duplicate_physical_table_mappings_can_only_shrink() {
     let allowed = lines(
         r#"
-mcp_service_profiles @ edge/infrastructure/persistence/postgres_schema.rs#McpServiceProfiles
-mcp_service_profiles @ workloads/infrastructure/persistence/postgres/schema.rs#McpServiceProfiles
 nodes @ edge/infrastructure/persistence/postgres_schema.rs#Nodes
 nodes @ fleet/infrastructure/persistence/postgres/schema.rs#Nodes
 operation_requests @ operations/infrastructure/persistence/postgres/schema.rs#OperationRequests
@@ -2958,8 +2956,10 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
             "Files persistence conformance must compose the one production adapter {adapter}"
         );
     }
-    assert!(conformance
-        .contains("pub fn user_file_organization_access_for_conformance() -> UserFileAccess"));
+    assert!(
+        conformance
+            .contains("pub fn user_file_organization_access_for_conformance() -> UserFileAccess")
+    );
     let conformance_test = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/user_files.rs"),
     )
@@ -3016,8 +3016,10 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         1,
         "the non-default Files conformance assembly must stay confined to its retained gate"
     );
-    assert!(user_file_gate
-        .contains("postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced"));
+    assert!(
+        user_file_gate
+            .contains("postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced")
+    );
 
     let migration = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations/170_user_files.sql"),
@@ -3221,7 +3223,8 @@ fn workloads_domain_mcp_bindings_use_owned_admissions_not_assets_aggregates() {
         "pub struct McpReleaseAdmission",
         "pub fn restore_from_stored_acl",
         "admission: &McpReleaseAdmission",
-        "profile: &McpProfileAdmission",
+        "runtime_port: String",
+        "health_path: String",
     ] {
         assert!(
             production.contains(required),
@@ -3246,19 +3249,45 @@ fn workloads_domain_mcp_bindings_use_owned_admissions_not_assets_aggregates() {
     .expect("read Workloads postgres rows");
     let production_rows = production_source(&rows);
     assert!(
-        production_rows.contains("McpProfileAdmission::restore_from_stored_acl("),
-        "Workloads postgres hydration stopped restoring owned MCP profile admissions"
+        production_rows.contains("mcp_runtime_port")
+            && production_rows.contains("mcp_health_path")
+            && production_rows.contains("McpWorkloadRevisionBinding::restore("),
+        "Workloads postgres hydration stopped restoring owned MCP profile admission facts"
     );
     for forbidden in [
         "crate::modules::assets",
+        "McpServiceProfiles",
         "McpServiceProfile::restore",
         "McpServiceProfile::",
+        "restore_from_stored_acl",
     ] {
         assert!(
             !production_rows.contains(forbidden),
             "Workloads postgres hydration regained Assets MCP profile authority {forbidden}"
         );
     }
+
+    let schema = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/persistence/postgres/schema.rs"),
+    )
+    .expect("read Workloads postgres schema");
+    let production_schema = production_source(&schema);
+    assert!(
+        !production_schema.contains("McpServiceProfiles")
+            && !production_schema.contains("mcp_service_profiles"),
+        "Workloads postgres schema regained a foreign mcp_service_profiles mapping"
+    );
+
+    let queries = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/persistence/postgres/queries.rs"),
+    )
+    .expect("read Workloads postgres queries");
+    let production_queries = production_source(&queries);
+    assert!(
+        !production_queries.contains("McpServiceProfiles")
+            && !production_queries.contains("mcp_profile_join"),
+        "Workloads postgres queries regained a foreign MCP profile join"
+    );
 }
 
 #[test]
@@ -3636,9 +3665,9 @@ fn developer_workflows_artifacts_outcome_handoff_has_one_anti_corruption_adapter
     let production_adapter = production_source(&adapter);
     let compact_adapter = production_adapter.split_whitespace().collect::<String>();
     assert!(
-        compact_adapter.contains(
-            "implIWorkloadBuildOutcomePortforArtifactsWorkloadBuildOutcomeAdapter"
-        ) && production_adapter.contains("Arc<dyn IExternalSourceBuildOutcomeQueryPort>")
+        compact_adapter
+            .contains("implIWorkloadBuildOutcomePortforArtifactsWorkloadBuildOutcomeAdapter")
+            && production_adapter.contains("Arc<dyn IExternalSourceBuildOutcomeQueryPort>")
             && production_adapter.contains("Arc<dyn IBuildPlanRepository>"),
         "the Artifacts adapter must implement the consumer port and combine only the owner outcome query with the local accepted-plan authority"
     );
@@ -4548,8 +4577,10 @@ fn workload_runtime_evidence_history_is_one_typed_identity_authority() {
             .count(),
         1
     );
-    assert!(in_memory
-        .contains("impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository"));
+    assert!(
+        in_memory
+            .contains("impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository")
+    );
 
     for required in [
         "create table workload_runtime_evidence_history",
@@ -5422,7 +5453,7 @@ fn membership_administration_is_one_tenant_scoped_domain_service_without_platfor
             .matches("MembershipAdministration::authorize(")
             .count(),
         14,
-            "both adapters must reuse the one domain service for membership, invitation, and Resource Grant administration"
+        "both adapters must reuse the one domain service for membership, invitation, and Resource Grant administration"
     );
     let mut token_issuance_consumers = String::new();
     let mut token_issuance_boundaries = String::new();
@@ -6099,8 +6130,10 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     assert!(provider_gate.contains("concurrent platform RBAC bootstrap"));
     assert!(provider_gate.contains("concurrent owner revocation"));
     assert!(provider_gate.contains("concurrent policy CAS"));
-    assert!(provider_gate
-        .contains("business mutation and exact credential revocation were not serialized"));
+    assert!(
+        provider_gate
+            .contains("business mutation and exact credential revocation were not serialized")
+    );
     assert!(provider_gate.contains(
         "authorization decision and protected business fact must commit or roll back together"
     ));
@@ -6406,8 +6439,11 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
             "tenant support provider gate lost proof {required}"
         );
     }
-    assert!(workflow
-        .contains("postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"));
+    assert!(
+        workflow.contains(
+            "postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"
+        )
+    );
 }
 
 #[test]
@@ -6549,8 +6585,10 @@ fn privileged_authorization_uses_one_atomic_identity_decision_and_shared_audit_a
             "privileged authorization provider gate lost concurrency proof {required}"
         );
     }
-    assert!(workflow
-        .contains("postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe"));
+    assert!(
+        workflow
+            .contains("postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe")
+    );
 }
 
 #[test]
@@ -9823,8 +9861,10 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let compact_identity_postgres = production_source(&identity_postgres)
         .split_whitespace()
         .collect::<String>();
-    assert!(compact_identity_postgres
-        .contains("implIActiveHumanMembershipQueryPortforPostgresIdentityRepository"));
+    assert!(
+        compact_identity_postgres
+            .contains("implIActiveHumanMembershipQueryPortforPostgresIdentityRepository")
+    );
     for required in [
         "identity_principals",
         "organization_memberships",
@@ -9842,7 +9882,9 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     )
     .expect("read Plugins registry commands controller");
     let production_commands = production_source(&commands_controller);
-    assert!(production_commands.contains("organization_tenant_plugin_write_controller(controller)"));
+    assert!(
+        production_commands.contains("organization_tenant_plugin_write_controller(controller)")
+    );
     assert!(production_commands.contains("EnrollPluginRegistry"));
 
     let controller = std::fs::read_to_string(
@@ -9850,7 +9892,9 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     )
     .expect("read Plugins query controller");
     let production_controller = production_source(&controller);
-    assert!(production_controller.contains("organization_tenant_cloud_read_controller(controller)"));
+    assert!(
+        production_controller.contains("organization_tenant_cloud_read_controller(controller)")
+    );
     for forbidden in [
         "crate::modules::identity",
         "OrganizationTenantGuard",
@@ -10317,8 +10361,10 @@ fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
         std::fs::read_to_string(root.join("search/infrastructure/persistence/postgres.rs"))
             .expect("read Search PostgreSQL adapter");
     assert!(postgres.contains("pub(in crate::modules::search) struct PostgresSearchRepository"));
-    assert!(postgres
-        .contains("pub(in crate::modules::search) const fn new(executor: PostgresExecutor)"));
+    assert!(
+        postgres
+            .contains("pub(in crate::modules::search) const fn new(executor: PostgresExecutor)")
+    );
 
     let mut identity_dependencies = BTreeSet::new();
     visit_production_sources(|relative, source| {
@@ -10340,7 +10386,10 @@ fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
     assert!(
         identity_dependencies.is_empty(),
         "Search owner code imported Identity's evaluator instead of its bounded visibility contract:\n{}",
-        identity_dependencies.into_iter().collect::<Vec<_>>().join("\n")
+        identity_dependencies
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
     );
 
     let visibility =
@@ -10490,8 +10539,10 @@ fn security_composition_stays_behind_owner_and_root_presentation_boundaries() {
     assert!(postgres.contains(
         "pub(in crate::modules::security) struct PostgresGatewayRoutePolicyTimelineRepository"
     ));
-    assert!(postgres
-        .contains("pub(in crate::modules::security) const fn new(executor: PostgresExecutor)"));
+    assert!(
+        postgres
+            .contains("pub(in crate::modules::security) const fn new(executor: PostgresExecutor)")
+    );
 
     let controller = std::fs::read_to_string(root.join("security/presentation/controller.rs"))
         .expect("read Security HTTP adapter");
@@ -12561,9 +12612,11 @@ fn workflow_owns_human_task_submission_through_one_forms_adapter_and_mapper() {
 
     let forms_domain = module_root().join("forms/domain");
     assert!(!forms_domain.join("entities/form_submission.rs").exists());
-    assert!(!forms_domain
-        .join("repositories/form_submission_repository.rs")
-        .exists());
+    assert!(
+        !forms_domain
+            .join("repositories/form_submission_repository.rs")
+            .exists()
+    );
     let decision_record = std::fs::read_to_string(
         module_root().join("workflow/domain/repositories/human_task_repository.rs"),
     )

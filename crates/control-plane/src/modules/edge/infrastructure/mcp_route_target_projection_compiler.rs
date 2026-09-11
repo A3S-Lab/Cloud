@@ -196,10 +196,10 @@ pub(super) mod tests {
         OrganizationId, ProjectId, ResourceName, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
-        HttpHealthCheck, McpProfileAdmission, McpWorkloadRevisionBinding, OciArtifact, ServicePort,
-        ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
+        HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact, ServicePort, ServiceProcess,
+        ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
     };
-    use a3s_cloud_contracts::{McpGrantProjection, McpLimitsProjection, MCP_PROTOCOL_VERSION};
+    use a3s_cloud_contracts::{MCP_PROTOCOL_VERSION, McpGrantProjection, McpLimitsProjection};
     use chrono::{DateTime, Duration, TimeZone, Utc};
     use std::collections::BTreeMap;
 
@@ -293,14 +293,10 @@ pub(super) mod tests {
                     asset_id,
                     asset_release_id,
                     assets_profile.digest().clone(),
-                )
-                .expect("binding"),
-                &McpProfileAdmission::new(
-                    assets_profile.digest().clone(),
                     assets_profile.spec().runtime_port.clone(),
                     assets_profile.spec().health_path.clone(),
                 )
-                .expect("profile admission"),
+                .expect("binding"),
             )
             .expect("restore binding");
         let profile = admit_mcp_service_profile_projection_binding(&McpServiceProfileBinding {
@@ -529,9 +525,11 @@ pub(super) mod tests {
             fixture.revision.generation()
         );
         assert_eq!(projection.targets[1].generation, 11);
-        assert!(projection.targets[1]
-            .unit_id
-            .contains(&format!("replica:{replica_id}:revision")));
+        assert!(
+            projection.targets[1]
+                .unit_id
+                .contains(&format!("replica:{replica_id}:revision"))
+        );
         assert_ne!(
             projection.targets[0].target_id,
             projection.targets[1].target_id
@@ -560,42 +558,48 @@ pub(super) mod tests {
             fixture.revision.workload_updated_at(),
         )
         .expect("mismatched revision");
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &mismatched,
-                "mcp",
-                vec![candidate.clone()],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &mismatched,
+                    "mcp",
+                    vec![candidate.clone()],
+                )
+                .is_err()
+        );
 
         let mut malformed_unit = candidate.clone();
         malformed_unit.resolved.target.runtime_unit_id = "free-form-runtime-unit".into();
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![malformed_unit],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![malformed_unit],
+                )
+                .is_err()
+        );
 
         let mut wrong_canonical_generation = candidate.clone();
         wrong_canonical_generation
             .resolved
             .target
             .runtime_generation += 1;
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![wrong_canonical_generation],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![wrong_canonical_generation],
+                )
+                .is_err()
+        );
 
         let mut wrong_revision = candidate;
         wrong_revision.resolved.target.workload_revision_id = WorkloadRevisionId::new();
@@ -604,78 +608,88 @@ pub(super) mod tests {
             wrong_revision.resolved.workload_id,
             wrong_revision.resolved.target.workload_revision_id
         );
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![wrong_revision],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![wrong_revision],
+                )
+                .is_err()
+        );
     }
 
     #[test]
     fn rejects_invalid_target_sets_and_traffic_controls() {
         let fixture = fixture();
         let compiler = McpRouteTargetProjectionCompiler;
-        assert!(compiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                Vec::new(),
-            )
-            .is_err());
+        assert!(
+            compiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    Vec::new(),
+                )
+                .is_err()
+        );
         assert!(
             McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49152), 0, 0).is_err()
         );
 
         let node_id = NodeId::new();
         let duplicate = target(&fixture, node_id, 49152);
-        assert!(compiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![
-                    McpRouteTargetCandidate::new(duplicate.clone(), 0, 1).expect("first"),
-                    McpRouteTargetCandidate::new(duplicate, 0, 1).expect("duplicate"),
-                ],
-            )
-            .is_err());
-        assert!(compiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![
-                    McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49153), 1, 1,)
-                        .expect("priority")
-                ],
-            )
-            .is_err());
-        assert!(compiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![
-                    McpRouteTargetCandidate::new(
-                        target(&fixture, NodeId::new(), 49154),
-                        0,
-                        u32::MAX,
-                    )
-                    .expect("maximum"),
-                    McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49155), 0, 1,)
-                        .expect("overflow"),
-                ],
-            )
-            .is_err());
+        assert!(
+            compiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![
+                        McpRouteTargetCandidate::new(duplicate.clone(), 0, 1).expect("first"),
+                        McpRouteTargetCandidate::new(duplicate, 0, 1).expect("duplicate"),
+                    ],
+                )
+                .is_err()
+        );
+        assert!(
+            compiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![
+                        McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49153), 1, 1,)
+                            .expect("priority")
+                    ],
+                )
+                .is_err()
+        );
+        assert!(
+            compiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![
+                        McpRouteTargetCandidate::new(
+                            target(&fixture, NodeId::new(), 49154),
+                            0,
+                            u32::MAX,
+                        )
+                        .expect("maximum"),
+                        McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49155), 0, 1,)
+                            .expect("overflow"),
+                    ],
+                )
+                .is_err()
+        );
     }
 
     #[test]
@@ -703,27 +717,31 @@ pub(super) mod tests {
             now(),
         )
         .expect("different profile");
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &different,
-                &fixture.revision,
-                "mcp",
-                vec![candidate.clone()],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &different,
+                    &fixture.revision,
+                    "mcp",
+                    vec![candidate.clone()],
+                )
+                .is_err()
+        );
 
         let mut wrong_port = candidate;
         wrong_port.resolved.target.port_name =
             RoutePortName::parse("http").expect("wrong port name");
-        assert!(McpRouteTargetProjectionCompiler
-            .compile(
-                &fixture.policy,
-                &fixture.profile,
-                &fixture.revision,
-                "mcp",
-                vec![wrong_port],
-            )
-            .is_err());
+        assert!(
+            McpRouteTargetProjectionCompiler
+                .compile(
+                    &fixture.policy,
+                    &fixture.profile,
+                    &fixture.revision,
+                    "mcp",
+                    vec![wrong_port],
+                )
+                .is_err()
+        );
     }
 }

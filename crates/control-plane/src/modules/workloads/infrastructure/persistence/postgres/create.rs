@@ -1,14 +1,15 @@
 use super::schema::{Deployments, WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads};
 use super::{operation_requests, queries, replicas};
 use crate::infrastructure::{
-    execute, fetch_optional, idempotency_replay, is_foreign_key_violation, is_unique_violation,
-    require_one_row, store_idempotency, store_outbox, transaction_error, PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_optional, idempotency_replay,
+    is_foreign_key_violation, is_unique_violation, require_one_row, store_idempotency,
+    store_outbox, transaction_error,
 };
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, PlacementTopology, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
 use crate::modules::workloads::infrastructure::compose_deployment_operation;
-use a3s_orm::{insert_into, select_from, PostgresExecutor, PostgresTransaction};
+use a3s_orm::{PostgresExecutor, PostgresTransaction, insert_into, select_from};
 
 pub(super) async fn deployment(
     executor: &PostgresExecutor,
@@ -214,13 +215,13 @@ async fn lock_or_insert_workload(
     match inserted {
         Ok(rows) => require_one_row("workload", rows)?,
         Err(error) if is_foreign_key_violation(&error) => {
-            return Err(RepositoryError::NotFound.into())
+            return Err(RepositoryError::NotFound.into());
         }
         Err(error) if is_unique_violation(&error) => {
             return Err(RepositoryError::Conflict(
                 "workload name or identity is already in use".into(),
             )
-            .into())
+            .into());
         }
         Err(error) => return Err(error),
     }
@@ -369,6 +370,14 @@ async fn insert_revision(
             .value(
                 WorkloadRevisions::mcp_profile_digest(),
                 mcp_binding.map(|binding| binding.profile_digest().as_str().to_owned()),
+            )
+            .value(
+                WorkloadRevisions::mcp_runtime_port(),
+                mcp_binding.map(|binding| binding.runtime_port().to_owned()),
+            )
+            .value(
+                WorkloadRevisions::mcp_health_path(),
+                mcp_binding.map(|binding| binding.health_path().to_owned()),
             ),
     )
     .await;
@@ -378,7 +387,7 @@ async fn insert_revision(
             return Err(RepositoryError::Conflict(
                 "workload revision identity or generation is already in use".into(),
             )
-            .into())
+            .into());
         }
         Err(error) => return Err(error),
     }

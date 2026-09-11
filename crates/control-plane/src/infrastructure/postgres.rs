@@ -1,6 +1,6 @@
-use super::flow::{scoped_postgres_url, BOOT_SCHEMA, FLOW_SCHEMA};
+use super::flow::{BOOT_SCHEMA, FLOW_SCHEMA, scoped_postgres_url};
 use super::postgres_access::{
-    prepare_postgres_serving_access, reconcile_postgres_serving_access, PostgresServingAccessError,
+    PostgresServingAccessError, prepare_postgres_serving_access, reconcile_postgres_serving_access,
 };
 use super::postgres_schema::{AuditRecords, IdempotencyRecords, OutboxEvents};
 use crate::config::valid_postgres_role_name;
@@ -8,18 +8,18 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, IdempotentWrite, InstallationId, NodeId, OrganizationId,
     ProjectId, RepositoryError, ScopeContext,
 };
-use a3s_boot::{migrate_postgres_queue, BootError, HealthIndicatorResult};
+use a3s_boot::{BootError, HealthIndicatorResult, migrate_postgres_queue};
 use a3s_cloud_contracts::{CloudScopeRef, DomainEventEnvelope};
-use a3s_flow::{migrate_postgres_flow, FlowError};
+use a3s_flow::{FlowError, migrate_postgres_flow};
 use a3s_orm::migration::MigrationRunError;
 use a3s_orm::{
-    insert_into, select_from, sql_query, DecodeError, Executor, FromRow, Migration, Migrator,
-    PostgresDialect, PostgresError, PostgresExecutor, PostgresMigrationError, PostgresTransaction,
-    PostgresTransactionError, Query,
+    DecodeError, Executor, FromRow, Migration, Migrator, PostgresDialect, PostgresError,
+    PostgresExecutor, PostgresMigrationError, PostgresTransaction, PostgresTransactionError, Query,
+    insert_into, select_from, sql_query,
 };
 use chrono::{DateTime, Utc};
-use serde::de::DeserializeOwned;
 use serde::Serialize;
+use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
 pub(crate) struct AuditWrite {
@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 198;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "198";
+pub const CLOUD_MIGRATION_COUNT: i64 = 199;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "199";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1793,6 +1793,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/198_inference_routes.sql"
             )),
         ),
+        Migration::new(
+            "199",
+            "Workload revision MCP profile admission facts",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/199_workload_revision_mcp_profile_admission.sql"
+            )),
+        ),
     ]
 }
 
@@ -3234,7 +3242,10 @@ mod fleet_node_availability_fact_migration_tests {
             "timeout-policy drift alone cannot create an availability fact",
             "not a generic health, incident, metric, queue, scheduler, timer, log, inventory, command, credential, provider-response, or notifications store",
         ] {
-            assert!(canonical.contains(expected), "migration 139 is missing {expected}");
+            assert!(
+                canonical.contains(expected),
+                "migration 139 is missing {expected}"
+            );
         }
         for forbidden in [
             "capabilities json",
@@ -3825,8 +3836,10 @@ mod workflow_default_output_evidence_migration_tests {
         ] {
             assert!(MIGRATION.contains(expected), "missing {expected}");
         }
-        assert!(!MIGRATION
-            .contains("add constraint workflow_step_projections_selected_handle_check check"));
+        assert!(
+            !MIGRATION
+                .contains("add constraint workflow_step_projections_selected_handle_check check")
+        );
         assert!(!MIGRATION.contains("create table"));
     }
 }
