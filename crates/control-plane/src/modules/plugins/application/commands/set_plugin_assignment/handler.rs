@@ -28,6 +28,14 @@ impl CommandHandler<SetPluginAssignment> for SetPluginAssignmentHandler {
     {
         let assignments = Arc::clone(&self.assignments);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "plugin assignments not found".into(),
+                )));
+            }
             if let Err(error) = command.selection.validate() {
                 return Ok(Err(ApplicationError::Invalid(error)));
             }

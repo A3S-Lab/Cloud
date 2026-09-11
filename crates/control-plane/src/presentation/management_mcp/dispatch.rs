@@ -1577,6 +1577,7 @@ pub async fn execute(
                 organization_id,
                 actor_principal_id,
                 arguments,
+                resource_access,
                 request_id,
             )
             .await

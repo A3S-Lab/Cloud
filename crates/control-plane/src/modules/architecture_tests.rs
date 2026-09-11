@@ -2235,6 +2235,25 @@ fn plugins_list_queries_isolate_identity_behind_one_context_owned_access_project
         "ListPluginAssignments must authorize the project path identity"
     );
 
+    let command = std::fs::read_to_string(
+        root.join("plugins/application/commands/set_plugin_assignment/command.rs"),
+    )
+    .expect("read SetPluginAssignment");
+    let production = production_source(&command);
+    assert!(
+        production.contains("pub access: PluginAccess"),
+        "SetPluginAssignment stopped carrying Plugins-owned access"
+    );
+    let set_handler = std::fs::read_to_string(
+        root.join("plugins/application/commands/set_plugin_assignment/handler.rs"),
+    )
+    .expect("read SetPluginAssignment handler");
+    assert!(
+        production_source(&set_handler)
+            .contains("environment_is_visible(command.project_id, command.environment_id)"),
+        "SetPluginAssignment must fail closed on environment visibility"
+    );
+
     let access_projection = std::fs::read_to_string(
         root.parent()
             .expect("src directory")

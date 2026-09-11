@@ -1,3 +1,4 @@
+use crate::modules::plugins::application::PluginAccess;
 use crate::modules::plugins::domain::entities::PluginAssignment;
 use crate::modules::plugins::domain::value_objects::PluginCatalogSelection;
 use crate::modules::shared_kernel::application::ApplicationResult;
@@ -15,6 +16,7 @@ pub struct SetPluginAssignment {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: PluginAccess,
     pub registry_id: PluginRegistryId,
     pub target_host_id: NodeId,
     pub workspace_scope: PluginManagedScope,

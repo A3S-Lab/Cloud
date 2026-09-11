@@ -685,6 +685,7 @@ fn set_assignment_command(
         organization_id,
         project_id,
         environment_id,
+        access: PluginAccess::organization_wide(),
         registry_id,
         target_host_id: host_id,
         workspace_scope: assignment_scope(),
@@ -1144,4 +1145,43 @@ async fn crash_point_1_assignment_survives_before_flow_operation_enqueue() {
     assert_eq!(second.started, 0);
     assert_eq!(second.replayed, 1);
     assert!(second.failures.is_empty());
+}
+
+#[tokio::test]
+async fn set_plugin_assignment_fails_closed_before_creating_in_an_ungranted_environment() {
+    use crate::modules::plugins::application::PluginAccessScope;
+
+    let handler =
+        SetPluginAssignmentHandler::new(Arc::new(InMemoryPluginAssignmentRepository::new()));
+    let project_id = ProjectId::new();
+    let environment_id = EnvironmentId::new();
+    let result = handler
+        .execute(
+            SetPluginAssignment {
+                organization_id: OrganizationId::new(),
+                project_id,
+                environment_id,
+                access: PluginAccess::restricted([PluginAccessScope::Environment {
+                    project_id: ProjectId::new(),
+                    environment_id: EnvironmentId::new(),
+                }]),
+                registry_id: PluginRegistryId::new(),
+                target_host_id: NodeId::new(),
+                workspace_scope: assignment_scope(),
+                selection: assignment_selection("0.1.0"),
+                policy_digest: digest('e'),
+                desired_state: PluginDesiredState::Enabled,
+                actor_id: PrincipalId::new(),
+                idempotency_key: "deny-set".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: Utc::now(),
+            },
+            context(),
+        )
+        .await
+        .expect("handler");
+    assert!(matches!(
+        result,
+        Err(ApplicationError::NotFound(message)) if message == "plugin assignments not found"
+    ));
 }

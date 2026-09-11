@@ -194,6 +194,7 @@ pub async fn set_assignment(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: SetPluginAssignmentArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     let policy_digest =
@@ -203,6 +204,7 @@ pub async fn set_assignment(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            access: plugin_access(&resource_access),
             registry_id: PluginRegistryId::from_uuid(arguments.registry_id),
             target_host_id: NodeId::from_uuid(arguments.target_host_id),
             workspace_scope: arguments.workspace_scope,

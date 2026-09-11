@@ -33,6 +33,9 @@ pub fn plugin_assignment_commands_controller(bus: Arc<CommandBus>) -> Result<Con
                     EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                 let actor_id = actor_principal_id(&request)?;
                 let (idempotency_key, request_id) = request_identity(&request)?;
+                let access = plugin_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?);
                 let policy_digest =
                     Sha256Digest::parse(body.policy_digest).map_err(BootError::BadRequest)?;
                 match bus
@@ -40,6 +43,7 @@ pub fn plugin_assignment_commands_controller(bus: Arc<CommandBus>) -> Result<Con
                         organization_id,
                         project_id,
                         environment_id,
+                        access,
                         registry_id: PluginRegistryId::from_uuid(body.registry_id),
                         target_host_id: NodeId::from_uuid(body.target_host_id),
                         workspace_scope: body.workspace_scope,
