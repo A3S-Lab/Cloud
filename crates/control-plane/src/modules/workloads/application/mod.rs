@@ -8,6 +8,7 @@ mod owner_snapshot;
 pub mod queries;
 mod resource_access;
 mod runtime_execution_admission;
+mod runtime_observation_access;
 mod runtime_projection;
 mod secret_binding_access;
 mod secret_materialization_authorization;
@@ -69,6 +70,9 @@ pub(crate) use resource_access::{WorkloadAccessScope, WorkloadResourceResolver};
 pub use runtime_execution_admission::{
     AdmittedWorkloadRuntimeExecution, DeploymentRuntimeExecutionAdmissionRequest,
     IWorkloadRuntimeExecutionAdmissionPort, NoWorkloadRuntimeExecutionAdmission,
+};
+pub use runtime_observation_access::{
+    IWorkloadRuntimeObservationAccess, WorkloadRuntimeObservationProjection,
 };
 pub(crate) use runtime_projection::{
     project_bound_runtime_spec_with_execution, project_placement_group_runtime_spec_with_execution,

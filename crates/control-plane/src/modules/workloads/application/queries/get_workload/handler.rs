@@ -1,12 +1,11 @@
 use super::GetWorkload;
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::application::queries::{
     reader::WorkloadQueryReader, WorkloadQueryResult,
 };
 use crate::modules::workloads::application::{
-    IWorkloadDeploymentOperationAccess, WorkloadResourceResolver,
+    IWorkloadDeploymentOperationAccess, IWorkloadRuntimeObservationAccess, WorkloadResourceResolver,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
@@ -21,10 +20,10 @@ impl GetWorkloadHandler {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
         operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
-        node_control: Arc<dyn INodeControlRepository>,
+        observations: Arc<dyn IWorkloadRuntimeObservationAccess>,
     ) -> Self {
         Self {
-            reader: WorkloadQueryReader::new(Arc::clone(&workloads), operations, node_control),
+            reader: WorkloadQueryReader::new(Arc::clone(&workloads), operations, observations),
             resources: WorkloadResourceResolver::new(workloads),
         }
     }

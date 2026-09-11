@@ -1,9 +1,10 @@
 pub use crate::modules::fleet::application::{
     NodeLogGapReason as WorkloadLogGapReason, NodeLogRecord as WorkloadLogRecord,
 };
-use crate::modules::fleet::domain::repositories::RuntimeObservationRecord;
 use crate::modules::shared_kernel::domain::{NodeId, WorkloadId, WorkloadRevisionId};
-use crate::modules::workloads::application::WorkloadDeploymentOperationProjection;
+use crate::modules::workloads::application::{
+    WorkloadDeploymentOperationProjection, WorkloadRuntimeObservationProjection,
+};
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentReplicaBinding, Workload, WorkloadControl, WorkloadReplica,
     WorkloadReplicaMember, WorkloadRevision,
@@ -15,7 +16,7 @@ pub struct DeploymentQueryResult {
     pub replica_binding: DeploymentReplicaBinding,
     pub revision: WorkloadRevision,
     pub operation: Option<WorkloadDeploymentOperationProjection>,
-    pub observation: Option<RuntimeObservationRecord>,
+    pub observation: Option<WorkloadRuntimeObservationProjection>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,6 +1,6 @@
 use crate::modules::workloads::application::{
     DeploymentQueryResult, WorkloadDeploymentOperationProjection, WorkloadQueryResult,
-    WorkloadReplicaQueryResult,
+    WorkloadReplicaQueryResult, WorkloadRuntimeObservationProjection,
 };
 use crate::modules::workloads::domain::entities::{
     PlacementTopology, SkillWorkloadRevisionBinding, WorkloadControl, WorkloadRevision,
@@ -432,33 +432,22 @@ impl From<WorkloadDeploymentOperationProjection> for DeploymentOperationResponse
     }
 }
 
-impl From<crate::modules::fleet::domain::repositories::RuntimeObservationRecord>
-    for ObservedRuntimeResponse
-{
-    fn from(record: crate::modules::fleet::domain::repositories::RuntimeObservationRecord) -> Self {
-        let observation = record.observation;
-        let (health_state, health_message) = observation
-            .health
-            .map(|health| (Some(health.state), health.message))
-            .unwrap_or((None, None));
-        let (failure_code, failure_message) = observation
-            .failure
-            .map(|failure| (Some(failure.code), Some(failure.message)))
-            .unwrap_or((None, None));
+impl From<WorkloadRuntimeObservationProjection> for ObservedRuntimeResponse {
+    fn from(record: WorkloadRuntimeObservationProjection) -> Self {
         Self {
             report_id: record.report_id,
             node_id: record.node_id.as_uuid(),
             command_id: record.command_id.map(|id| id.as_uuid()),
-            unit_id: observation.unit_id,
-            generation: observation.generation,
-            spec_digest: observation.spec_digest,
-            state: observation.state,
-            health_state,
-            health_message,
-            provider_resource_id: observation.provider_resource_id,
-            provider_build: observation.provider_build,
-            failure_code,
-            failure_message,
+            unit_id: record.unit_id,
+            generation: record.generation,
+            spec_digest: record.spec_digest,
+            state: record.state,
+            health_state: record.health_state,
+            health_message: record.health_message,
+            provider_resource_id: record.provider_resource_id,
+            provider_build: record.provider_build,
+            failure_code: record.failure_code,
+            failure_message: record.failure_message,
             observed_at: record.observed_at,
             received_at: record.received_at,
         }

@@ -355,9 +355,10 @@ use crate::modules::workloads::{
     BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
-    GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort,
-    IWorkloadDeploymentOperationAccess, IWorkloadRuntimeExecutionAdmissionPort,
+    DeploymentFlowRuntime, FleetWorkloadRuntimeObservationAccessAdapter,
+    FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler, GetWorkloadHandler,
+    GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess,
+    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadRuntimeObservationAccess,
     IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadSkillReleaseAdmissionPort,
     IWorkloadSourceBuildAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
     IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
@@ -2834,6 +2835,11 @@ fn build_management_application_with_health(
     );
     let workload_get_operations = Arc::clone(&workload_list_operations);
     let deployment_get_operations = Arc::clone(&workload_list_operations);
+    let workload_list_observations: Arc<dyn IWorkloadRuntimeObservationAccess> = Arc::new(
+        FleetWorkloadRuntimeObservationAccessAdapter::new(Arc::clone(&node_control)),
+    );
+    let workload_get_observations = Arc::clone(&workload_list_observations);
+    let deployment_get_observations = Arc::clone(&workload_list_observations);
     let list_api_tokens = Arc::clone(&api_tokens);
     let get_api_tokens = Arc::clone(&api_tokens);
     let begin_oidc_organizations = Arc::clone(&organizations);
@@ -2906,9 +2912,6 @@ fn build_management_application_with_health(
     let acknowledge_commands = Arc::clone(&node_control);
     let observation_commands = Arc::clone(&node_control);
     let log_commands = Arc::clone(&node_control);
-    let workload_list_observations = Arc::clone(&node_control);
-    let workload_get_observations = Arc::clone(&node_control);
-    let deployment_get_observations = Arc::clone(&node_control);
     let workload_log_metadata = Arc::clone(&node_control);
     let gateway_commands = node_control;
     let create_domain_claims = Arc::clone(&routes);

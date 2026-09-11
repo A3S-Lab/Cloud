@@ -9102,6 +9102,126 @@ fn workloads_deployment_queries_isolate_operations_behind_one_owner_port() {
 }
 
 #[test]
+fn workloads_deployment_queries_isolate_fleet_observations_behind_one_owner_port() {
+    let root = module_root();
+
+    let port =
+        std::fs::read_to_string(root.join("workloads/application/runtime_observation_access.rs"))
+            .expect("read Workloads Runtime observation access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadRuntimeObservationProjection",
+        "pubtraitIWorkloadRuntimeObservationAccess:Send+Sync",
+        "latest_runtime_observation(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads lost its narrow Fleet observation boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Workloads Runtime observation port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    let reader = std::fs::read_to_string(root.join("workloads/application/queries/reader.rs"))
+        .expect("read Workloads query reader");
+    let production_reader = production_source(&reader);
+    assert!(
+        production_reader.contains("IWorkloadRuntimeObservationAccess"),
+        "Workload query reader lost IWorkloadRuntimeObservationAccess wiring"
+    );
+    for forbidden in [
+        "INodeControlRepository",
+        "crate::modules::fleet",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_reader.contains(forbidden),
+            "Workload query reader regained Fleet observation authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workloads/application/queries/get_deployment/handler.rs",
+        "workloads/application/queries/get_workload/handler.rs",
+        "workloads/application/queries/list_workloads/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read query handler");
+        let production = production_source(&source);
+        assert!(
+            production.contains("IWorkloadRuntimeObservationAccess"),
+            "{relative} lost IWorkloadRuntimeObservationAccess wiring"
+        );
+        for forbidden in ["INodeControlRepository", "crate::modules::fleet"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository {forbidden}"
+            );
+        }
+    }
+
+    let result = std::fs::read_to_string(root.join("workloads/application/queries/result.rs"))
+        .expect("read Workloads query results");
+    let production_result = production_source(&result);
+    assert!(
+        production_result.contains("WorkloadRuntimeObservationProjection"),
+        "DeploymentQueryResult stopped using WorkloadRuntimeObservationProjection"
+    );
+    assert!(
+        !production_result.contains("RuntimeObservationRecord"),
+        "DeploymentQueryResult regained foreign RuntimeObservationRecord"
+    );
+
+    let response = std::fs::read_to_string(
+        root.join("workloads/presentation/dto/response/workload_response.rs"),
+    )
+    .expect("read Workloads response DTO");
+    let production_response = production_source(&response);
+    assert!(
+        production_response.contains("WorkloadRuntimeObservationProjection"),
+        "Workload response DTO lost owned Runtime observation mapping"
+    );
+    assert!(
+        !production_response.contains("crate::modules::fleet"),
+        "Workload response DTO regained Fleet imports"
+    );
+
+    let adapter = std::fs::read_to_string(
+        root.join("workloads/infrastructure/fleet_runtime_observation_access.rs"),
+    )
+    .expect("read Workloads Fleet observation adapter");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "impl IWorkloadRuntimeObservationAccess",
+        "INodeControlRepository",
+        "WorkloadRuntimeObservationProjection",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Workloads Fleet observation adapter lost {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read production composition");
+    assert_eq!(
+        app.matches("FleetWorkloadRuntimeObservationAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads Fleet observation adapter exactly once"
+    );
+}
+
+#[test]
 fn workloads_secret_bindings_isolate_secrets_behind_one_owner_port() {
     let root = module_root();
 

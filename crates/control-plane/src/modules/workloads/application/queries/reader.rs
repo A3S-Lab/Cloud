@@ -1,7 +1,8 @@
 use super::{DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult};
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
-use crate::modules::workloads::application::IWorkloadDeploymentOperationAccess;
+use crate::modules::workloads::application::{
+    IWorkloadDeploymentOperationAccess, IWorkloadRuntimeObservationAccess,
+};
 use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use std::collections::BTreeMap;
@@ -11,19 +12,19 @@ use std::sync::Arc;
 pub(super) struct WorkloadQueryReader {
     workloads: Arc<dyn IWorkloadRepository>,
     operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
-    node_control: Arc<dyn INodeControlRepository>,
+    observations: Arc<dyn IWorkloadRuntimeObservationAccess>,
 }
 
 impl WorkloadQueryReader {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
         operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
-        node_control: Arc<dyn INodeControlRepository>,
+        observations: Arc<dyn IWorkloadRuntimeObservationAccess>,
     ) -> Self {
         Self {
             workloads,
             operations,
-            node_control,
+            observations,
         }
     }
 
@@ -162,7 +163,7 @@ impl WorkloadQueryReader {
             .await?;
         let observation = match deployment.node_id {
             Some(node_id) => {
-                self.node_control
+                self.observations
                     .latest_runtime_observation(
                         node_id,
                         &replica_binding.runtime_unit_id,
