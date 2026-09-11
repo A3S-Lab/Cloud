@@ -6,6 +6,7 @@ mod github_source_discovery;
 mod owner_scope_access;
 mod preview_source_revision_projection;
 pub mod queries;
+mod resource_access;
 mod source_build_input;
 mod source_repository_credential;
 
@@ -14,12 +15,12 @@ pub use github_connection_authority_reconciler::{
     GithubConnectionAuthorityReconcileReport, GithubConnectionAuthorityReconciler,
 };
 pub use github_source_discovery::{
+    DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE, GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN,
     GithubDiscoveredReference, GithubDiscoveredReferenceKind, GithubDiscoveredRepository,
     GithubRepositoryDiscoveryPage, GithubRepositoryDiscoveryProviderRequest,
     GithubRepositoryReferenceDiscoveryPage, GithubRepositoryReferenceDiscoveryProviderRequest,
     GithubSourceDiscoveryProviderError, GithubSourceDiscoveryProviderPage,
     GithubSourceDiscoveryQueryService, GithubSourceDiscoveryScope, IGithubSourceDiscoveryProvider,
-    DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE, GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN,
     MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES, MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
 };
 pub use owner_scope_access::{ISourceEnvironmentAccess, ISourceOrganizationAccess};
@@ -29,6 +30,8 @@ pub use preview_source_revision_projection::{
     PreviewSourceRevisionProjectionOutcome, PreviewSourceRevisionProjectionReceipt,
     ProjectPreviewSourceRevision,
 };
+pub use resource_access::SourceAccess;
+pub(crate) use resource_access::SourceAccessScope;
 #[cfg(test)]
 pub(crate) use source_build_input::publish_source_build_input;
 pub use source_build_input::{

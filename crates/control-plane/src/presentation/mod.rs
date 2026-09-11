@@ -9,16 +9,16 @@ mod sequence_stream;
 
 pub(crate) use crate::access_projection::{
     artifact_access, asset_access, developer_workflow_access, form_access, search_visibility,
-    secret_access, user_file_access, workload_access,
+    secret_access, source_access, user_file_access, workload_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::OrganizationAdministratorGuard;
 pub(crate) use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use a3s_boot::{
-    BootError, BootRequest, ControllerDefinition, Result, RouteDefinition, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, ControllerDefinition, Result, RouteDefinition,
 };
 
 /// Applies the single root-owned HTTP policy for an organization administrator
@@ -174,25 +174,25 @@ pub(crate) fn bounded_acl_document(
 }
 
 pub use api_contract::{
-    generate_openapi_contract, openapi_info, ApiContractModule, API_CONTRACT_VERSION_HEADER,
-    API_MAJOR_VERSION, API_PREFIX, MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION,
-    OPENAPI_DOCUMENT_PATH, OPENAPI_PUBLIC_PATH,
+    API_CONTRACT_VERSION_HEADER, API_MAJOR_VERSION, API_PREFIX, ApiContractModule,
+    MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION, OPENAPI_DOCUMENT_PATH, OPENAPI_PUBLIC_PATH,
+    generate_openapi_contract, openapi_info,
+};
+pub use api_response_interceptor::{
+    ApiErrorFilter, ApiResponseInterceptor, application_error_response,
 };
 pub(crate) use api_response_interceptor::{
     api_success_envelope, application_error_envelope, boot_error_response,
 };
-pub use api_response_interceptor::{
-    application_error_response, ApiErrorFilter, ApiResponseInterceptor,
-};
-pub use management_mcp::{ManagementMcpModule, MANAGEMENT_MCP_PROTOCOL_VERSION};
+pub use management_mcp::{MANAGEMENT_MCP_PROTOCOL_VERSION, ManagementMcpModule};
 pub(crate) use oauth_transport::{
-    bounded_oauth_query_pairs, oauth_callback_query, oauth_no_store, OAuthNoStoreErrorFilter,
+    OAuthNoStoreErrorFilter, bounded_oauth_query_pairs, oauth_callback_query, oauth_no_store,
 };
-pub(crate) use polling_sse::{polling_sse_stream, PollingSseInitial, PollingSseOptions};
+pub(crate) use polling_sse::{PollingSseInitial, PollingSseOptions, polling_sse_stream};
 pub(crate) use request_context::{actor_principal_id, request_id, request_identity};
 pub use request_id_middleware::RequestIdMiddleware;
 pub(crate) use sequence_stream::{
-    decode_sequence_cursor, default_live_sequence_limit, format_sequence_cursor,
-    parse_sequence_cursor, resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
-    SequencePage, SequenceRecord, MAX_LIVE_SEQUENCE_RECORDS,
+    MAX_LIVE_SEQUENCE_RECORDS, SequencePage, SequenceRecord, decode_sequence_cursor,
+    default_live_sequence_limit, format_sequence_cursor, parse_sequence_cursor,
+    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
 };

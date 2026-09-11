@@ -1,8 +1,8 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
-use crate::modules::sources::presentation::dto::GithubRepositorySubscriptionResponse;
 use crate::modules::sources::ListGithubRepositorySubscriptions;
-use crate::presentation::application_error_response;
+use crate::modules::sources::presentation::dto::GithubRepositorySubscriptionResponse;
+use crate::presentation::{application_error_response, source_access};
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -24,11 +24,15 @@ pub fn github_repository_subscription_queries_controller(
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                     let request_id = request_id(&request)?;
+                    let access = source_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListGithubRepositorySubscriptions {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                         })
                         .await?
                     {

@@ -2104,6 +2104,93 @@ fn sources_owner_scope_uses_two_minimum_ports_and_one_adapter_module() {
 }
 
 #[test]
+fn sources_list_queries_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("sources/application/resource_access.rs"))
+        .expect("read Sources resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumSourceAccessScope",
+        "pubstructSourceAccess",
+        "fnenvironment_is_visible(&self,project_id:ProjectId,environment_id:EnvironmentId,)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Sources lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Sources resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "sources/application/queries/list_source_revisions/query.rs",
+        "sources/application/queries/list_github_repository_subscriptions/query.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: SourceAccess"),
+            "{relative} stopped carrying Sources-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnsource_access(",
+        "SourceAccess::organization_wide()",
+        "SourceAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Sources access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "sources/presentation/controllers/source_revision_queries_controller.rs",
+        "sources/presentation/controllers/github_repository_subscription_queries_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("source_access(&resource_access_evaluator("),
+            "{relative} must project Identity into SourceAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+}
+
+#[test]
 fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
     let root = module_root();
     let access_path = "artifacts/application/resource_access.rs";

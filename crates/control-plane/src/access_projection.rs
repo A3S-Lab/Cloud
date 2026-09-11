@@ -25,6 +25,7 @@ use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::projects::{ProjectAccess, ProjectAccessScope};
 use crate::modules::search::{SearchVisibility, SearchVisibilityScope};
 use crate::modules::secrets::{SecretAccess, SecretAccessScope};
+use crate::modules::sources::{SourceAccess, SourceAccessScope};
 use crate::modules::workflow::{WorkflowAccess, WorkflowAccessScope};
 use crate::modules::workloads::{WorkloadAccess, WorkloadAccessScope};
 
@@ -114,6 +115,29 @@ pub(crate) fn secret_access(resource_access: &ResourceAccessEvaluator) -> Secret
                     project_id,
                     environment_id,
                 } => Some(SecretAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
+pub(crate) fn source_access(resource_access: &ResourceAccessEvaluator) -> SourceAccess {
+    if resource_access.is_organization_wide() {
+        return SourceAccess::organization_wide();
+    }
+    SourceAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(SourceAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(SourceAccessScope::Environment {
                     project_id,
                     environment_id,
                 }),

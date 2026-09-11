@@ -1,8 +1,8 @@
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::modules::sources::application::queries::list_source_revisions::ListSourceRevisions;
 use crate::modules::sources::presentation::dto::SourceRevisionResponse;
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, source_access};
 use a3s_boot::{BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -21,11 +21,15 @@ pub fn source_revision_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                     let environment_id =
                         EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
                     let request_id = request_id(&request)?;
+                    let access = source_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListSourceRevisions {
                             organization_id,
                             project_id,
                             environment_id,
+                            access,
                         })
                         .await?
                     {

@@ -4,10 +4,13 @@ pub mod infrastructure;
 pub mod presentation;
 pub mod published;
 
+pub(crate) use application::SourceAccessScope;
+
 #[cfg(test)]
 pub(crate) use application::publish_source_build_input;
 pub use application::{
-    AuthorizedSourceCheckoutService, GithubConnectionAuthorityReconcileReport,
+    AuthorizedSourceCheckoutService, DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+    GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN, GithubConnectionAuthorityReconcileReport,
     GithubConnectionAuthorityReconciler, GithubDiscoveredReference, GithubDiscoveredReferenceKind,
     GithubDiscoveredRepository, GithubRepositoryDiscoveryPage,
     GithubRepositoryDiscoveryProviderRequest, GithubRepositoryReferenceDiscoveryPage,
@@ -15,13 +18,12 @@ pub use application::{
     GithubSourceDiscoveryProviderPage, GithubSourceDiscoveryQueryService,
     GithubSourceDiscoveryScope, IAuthorizedSourceCheckout, IGithubSourceDiscoveryProvider,
     IPreviewSourceRevisionProjectionPort, ISourceBuildInputQueryPort,
-    ISourceRepositoryCredentialProvider, PreviewSourceRevisionDesiredState,
+    ISourceRepositoryCredentialProvider, MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES,
+    MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE, PreviewSourceRevisionDesiredState,
     PreviewSourceRevisionProjectionOutcome, PreviewSourceRevisionProjectionReceipt,
-    ProjectPreviewSourceRevision, SourceBuildInputQueryError, SourceBuildInputQueryService,
-    SourceRepositoryCredentialError, SourceRepositoryCredentialRequest,
-    SourceRepositoryCredentialService, DEFAULT_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
-    GITHUB_SOURCE_DISCOVERY_CURSOR_PATTERN, MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES,
-    MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
+    ProjectPreviewSourceRevision, SourceAccess, SourceBuildInputQueryError,
+    SourceBuildInputQueryService, SourceRepositoryCredentialError,
+    SourceRepositoryCredentialRequest, SourceRepositoryCredentialService,
 };
 
 pub use application::commands::accept_source_webhook_delivery::{
@@ -79,7 +81,7 @@ pub use infrastructure::{
 };
 pub use presentation::SourcesModule;
 pub(crate) use presentation::{
-    GithubRepositoryDiscoveryPageResponse, GithubRepositoryReferenceDiscoveryPageResponse,
     GITHUB_REPOSITORY_DISCOVERY_ROUTE, GITHUB_REPOSITORY_REFERENCE_DISCOVERY_ROUTE,
-    GITHUB_SOURCE_CONNECTION_ROUTE, SOURCES_CONTROLLER_PREFIX,
+    GITHUB_SOURCE_CONNECTION_ROUTE, GithubRepositoryDiscoveryPageResponse,
+    GithubRepositoryReferenceDiscoveryPageResponse, SOURCES_CONTROLLER_PREFIX,
 };
