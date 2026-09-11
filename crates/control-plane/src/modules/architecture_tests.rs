@@ -9350,6 +9350,7 @@ fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_
         "agents/application/queries/get_agent_execution/mod.rs",
         "agents/application/queries/get_agent_conversation/mod.rs",
         "agents/application/queries/list_agent_conversations/mod.rs",
+        "agents/application/commands/create_agent_conversation/command.rs",
         "agents/application/commands/start_agent_execution/command.rs",
         "agents/application/commands/cancel_agent_execution/command.rs",
         "agents/application/commands/decide_agent_approval_checkpoint/command.rs",

@@ -144,6 +144,7 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
         organization_id,
         project_id,
         environment_id,
+        access: AgentAccess::organization_wide(),
         idempotency_key: "agent-conversation:create".into(),
         request_id: Uuid::now_v7(),
         requested_at,
@@ -336,6 +337,45 @@ async fn conversation_execution_and_semantic_events_are_replayable_end_to_end() 
     assert_eq!(
         page.records[2].kind,
         AgentExecutionEventKind::ExecutionCompleted
+    );
+}
+
+#[tokio::test]
+async fn create_agent_conversation_fails_closed_before_creating_in_an_ungranted_environment() {
+    use crate::modules::agents::application::AgentAccessScope;
+
+    let environment = Environment::create(
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        EnvironmentName::parse("Production").expect("Environment name"),
+        canonical_timestamp(Utc::now()),
+    );
+    let handler = CreateAgentConversationHandler::new(
+        Arc::new(TestEnvironmentAccess { environment }),
+        Arc::new(InMemoryAgentRepository::new()),
+    );
+    let result = handler
+        .execute(
+            CreateAgentConversation {
+                organization_id: OrganizationId::new(),
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+                access: AgentAccess::restricted([AgentAccessScope::Environment {
+                    project_id: ProjectId::new(),
+                    environment_id: EnvironmentId::new(),
+                }]),
+                idempotency_key: "deny-create".into(),
+                request_id: Uuid::now_v7(),
+                requested_at: canonical_timestamp(Utc::now()),
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await
+        .expect("handler");
+    assert_eq!(
+        result,
+        Err(ApplicationError::NotFound("environment not found".into()))
     );
 }
 

@@ -12,8 +12,8 @@ use crate::modules::agents::presentation::dto::{
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
@@ -21,8 +21,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
+    RouteDefinition,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -43,6 +43,9 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                 let bus = Arc::clone(&bus);
                 async move {
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = agent_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(CreateAgentConversation {
                             organization_id: OrganizationId::from_uuid(
@@ -54,6 +57,7 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),

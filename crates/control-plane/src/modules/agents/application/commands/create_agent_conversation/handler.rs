@@ -38,6 +38,14 @@ impl CommandHandler<CreateAgentConversation> for CreateAgentConversationHandler 
         let environments = Arc::clone(&self.environments);
         let agents = Arc::clone(&self.agents);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found".into(),
+                )));
+            }
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
             }

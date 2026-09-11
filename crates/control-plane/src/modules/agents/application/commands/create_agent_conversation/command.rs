@@ -1,3 +1,4 @@
+use crate::modules::agents::application::AgentAccess;
 use crate::modules::agents::domain::AgentConversation;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
@@ -11,6 +12,7 @@ pub struct CreateAgentConversation {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: AgentAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
