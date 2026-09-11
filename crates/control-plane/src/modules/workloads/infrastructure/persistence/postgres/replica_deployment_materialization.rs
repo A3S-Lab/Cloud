@@ -275,7 +275,15 @@ async fn materialize_in_transaction(
             .map_err(invariant)?
         }
     };
-    operation_requests::insert(transaction, &write.operation).await?;
+    operation_requests::insert(
+        transaction,
+        &crate::modules::workloads::infrastructure::compose_replica_deployment_operation(
+            &write.operation,
+            write.placement_group_binding.as_ref(),
+        )
+        .map_err(invariant)?,
+    )
+    .await?;
     create::insert_deployment(transaction, &write.deployment).await?;
     replicas::insert_binding(transaction, &write.binding).await?;
     for binding in write.member_bindings.iter().skip(1) {

@@ -10,6 +10,7 @@ use crate::modules::workloads::domain::entities::{
 use crate::modules::workloads::domain::repositories::{
     IWorkloadPlacementGroupRepository, IWorkloadReplicaDeploymentRepository, IWorkloadRepository,
 };
+use crate::modules::workloads::infrastructure::compose_replica_deployment_operation;
 use crate::modules::workloads::{
     PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
 };
@@ -102,12 +103,17 @@ async fn placement_group_materialization_is_atomic_replay_safe_and_immutable() {
     assert_eq!(left.member_bindings, right.member_bindings);
     assert_eq!(left.placement_group_binding, right.placement_group_binding);
     let materialization = if left.created { &left } else { &right };
+    let operation = compose_replica_deployment_operation(
+        &materialization.operation,
+        materialization.placement_group_binding.as_ref(),
+    )
+    .expect("compose placement-group operation");
     assert_eq!(
-        materialization.operation.workflow.name(),
+        operation.workflow.name(),
         PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME
     );
     assert_eq!(
-        materialization.operation.workflow.version(),
+        operation.workflow.version(),
         PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION
     );
     assert_eq!(materialization.member_bindings.len(), 3);

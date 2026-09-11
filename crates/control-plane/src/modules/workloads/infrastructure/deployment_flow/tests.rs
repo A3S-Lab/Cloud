@@ -1,7 +1,4 @@
 use super::{DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime};
-use crate::modules::workloads::infrastructure::{
-    compose_deployment_operation, compose_stop_operation,
-};
 use crate::modules::edge::domain::events::GatewayScopeCreated;
 use crate::modules::edge::domain::repositories::{
     CreateGatewayScopeWrite, IEdgeRepository, StageRoutePublication,
@@ -60,6 +57,9 @@ use crate::modules::workloads::domain::services::{
     WorkloadPrestartGateRequest, WorkloadPrestartGateStatus,
 };
 use crate::modules::workloads::domain::WorkloadStopOperationIntent;
+use crate::modules::workloads::infrastructure::{
+    compose_deployment_operation, compose_replica_deployment_operation, compose_stop_operation,
+};
 use crate::modules::workloads::infrastructure::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, ReplicaDeploymentMaterializer,
 };
@@ -199,6 +199,15 @@ impl IWorkloadRuntimeExecutionAdmissionPort for RacingRuntimeExecutionAdmission 
     }
 }
 
+fn composed_replica_operation(
+    materialization: &crate::modules::workloads::domain::repositories::ReplicaDeploymentMaterialization,
+) -> Result<crate::modules::operations::domain::entities::OperationRequest, String> {
+    compose_replica_deployment_operation(
+        &materialization.operation,
+        materialization.placement_group_binding.as_ref(),
+    )
+}
+
 #[tokio::test]
 async fn concurrent_runtime_execution_admission_adopts_one_durable_winner(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -333,17 +342,18 @@ async fn placement_group_deployment_flow_waits_without_partial_dispatch_and_canc
         &nodes,
         Duration::seconds(10),
     )?));
-    let run_id = materialization.operation.id.to_string();
+    let operation = composed_replica_operation(&materialization)?;
+    let run_id = operation.id.to_string();
     engine
         .start_with_id(
             run_id.clone(),
             WorkflowSpec::rust_embedded(
-                materialization.operation.workflow.name(),
-                materialization.operation.workflow.version(),
+                operation.workflow.name(),
+                operation.workflow.version(),
                 "a3s-cloud",
                 "main",
             ),
-            materialization.operation.input,
+            operation.input,
         )
         .await?;
     assert_eq!(
@@ -442,17 +452,18 @@ async fn placement_group_deployment_flow_marks_expired_scheduling_as_failed(
         &nodes,
         Duration::milliseconds(1),
     )?));
-    let run_id = materialization.operation.id.to_string();
+    let operation = composed_replica_operation(&materialization)?;
+    let run_id = operation.id.to_string();
     engine
         .start_with_id(
             run_id.clone(),
             WorkflowSpec::rust_embedded(
-                materialization.operation.workflow.name(),
-                materialization.operation.workflow.version(),
+                operation.workflow.name(),
+                operation.workflow.version(),
                 "a3s-cloud",
                 "main",
             ),
-            materialization.operation.input,
+            operation.input,
         )
         .await?;
     assert_eq!(
@@ -522,7 +533,8 @@ async fn placement_group_deployment_flow_reserves_and_places_every_member_atomic
         .materialize_replica_deployment(candidate, base + Duration::milliseconds(2))
         .await?
         .ok_or("placement-group Deployment Flow materialization was skipped")?;
-    assert_eq!(materialization.operation.workflow.version(), "2");
+    let operation = composed_replica_operation(&materialization)?;
+    assert_eq!(operation.workflow.version(), "2");
 
     let nodes = Arc::new(InMemoryNodeRepository::new());
     for (name, digest) in [
@@ -548,17 +560,17 @@ async fn placement_group_deployment_flow_reserves_and_places_every_member_atomic
         resource_claims.clone(),
         Duration::seconds(10),
     )?));
-    let run_id = materialization.operation.id.to_string();
+    let run_id = operation.id.to_string();
     engine
         .start_with_id(
             run_id.clone(),
             WorkflowSpec::rust_embedded(
-                materialization.operation.workflow.name(),
-                materialization.operation.workflow.version(),
+                operation.workflow.name(),
+                operation.workflow.version(),
                 "a3s-cloud",
                 "main",
             ),
-            materialization.operation.input,
+            operation.input,
         )
         .await?;
     assert_eq!(
@@ -734,17 +746,18 @@ async fn placement_group_deployment_flow_recovers_claims_reserved_before_member_
         resource_claims,
         Duration::seconds(10),
     )?));
-    let run_id = materialization.operation.id.to_string();
+    let operation = composed_replica_operation(&materialization)?;
+    let run_id = operation.id.to_string();
     engine
         .start_with_id(
             run_id.clone(),
             WorkflowSpec::rust_embedded(
-                materialization.operation.workflow.name(),
-                materialization.operation.workflow.version(),
+                operation.workflow.name(),
+                operation.workflow.version(),
                 "a3s-cloud",
                 "main",
             ),
-            materialization.operation.input,
+            operation.input,
         )
         .await?;
     assert_eq!(
@@ -1026,13 +1039,10 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
         .await?;
     let expected = project_replica_runtime_spec(&revision, &replica)?;
 
-    let operation_id = materialization.operation.id.to_string();
+    let operation = composed_replica_operation(&materialization)?;
+    let operation_id = operation.id.to_string();
     engine
-        .start_with_id(
-            operation_id.clone(),
-            workflow_spec(),
-            materialization.operation.input,
-        )
+        .start_with_id(operation_id.clone(), workflow_spec(), operation.input)
         .await?;
     let leased =
         prepare_and_lease_apply(&engine, &nodes, second_node_id, second_agent_instance_id, 0)
@@ -1129,11 +1139,12 @@ async fn materialized_replica_flows_through_the_exact_replica_runtime_identity(
         )
         .await?;
     let cleanup_spec = project_replica_runtime_spec(&revision, &cleanup_replica)?;
+    let cleanup_operation = composed_replica_operation(&cleanup_materialization)?;
     engine
         .start_with_id(
-            cleanup_materialization.operation.id.to_string(),
+            cleanup_operation.id.to_string(),
             workflow_spec(),
-            cleanup_materialization.operation.input,
+            cleanup_operation.input,
         )
         .await?;
     let cleanup_apply_lease =
@@ -2024,7 +2035,10 @@ async fn active_workload_stop_waits_for_stopped_evidence_and_clears_active_revis
     let replayed = workloads.request_workload_stop(stop_request).await?;
     assert!(!accepted.replayed);
     assert!(replayed.replayed);
-    assert_eq!(accepted.operation.operation_id, replayed.operation.operation_id);
+    assert_eq!(
+        accepted.operation.operation_id,
+        replayed.operation.operation_id
+    );
 
     let stop_input = compose_stop_operation(&accepted.operation)?.input;
     let failure = engine

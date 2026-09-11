@@ -1,9 +1,11 @@
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, STOP_WORKFLOW_NAME,
-    STOP_WORKFLOW_VERSION,
+    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
+    PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+    STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
 };
+use crate::modules::workloads::domain::entities::DeploymentPlacementGroupBinding;
 use crate::modules::workloads::domain::{
     WorkloadDeploymentOperationIntent, WorkloadStopOperationIntent,
     WorkloadWriterFenceContinuationIntent,
@@ -28,6 +30,44 @@ pub fn compose_deployment_operation(
         }),
         intent.requested_at,
     ))
+}
+
+pub fn compose_placement_group_deployment_operation(
+    intent: &WorkloadDeploymentOperationIntent,
+    binding: &DeploymentPlacementGroupBinding,
+) -> Result<OperationRequest, String> {
+    binding.validate()?;
+    Ok(OperationRequest::new(
+        intent.operation_id,
+        intent.organization_id,
+        OperationSubject::new("deployment", intent.deployment_id.as_uuid())?,
+        WorkflowIdentity::new(
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
+            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
+        )?,
+        serde_json::json!({
+            "deploymentId": intent.deployment_id,
+            "groupId": binding.group_id,
+            "groupPlanDigest": binding.group_plan_digest,
+            "memberCount": binding.member_count,
+            "organizationId": intent.organization_id,
+            "replicaGeneration": binding.replica_generation,
+            "replicaId": binding.replica_id,
+            "revisionId": intent.revision_id,
+            "workloadId": intent.workload_id,
+        }),
+        intent.requested_at,
+    ))
+}
+
+pub fn compose_replica_deployment_operation(
+    intent: &WorkloadDeploymentOperationIntent,
+    placement_group_binding: Option<&DeploymentPlacementGroupBinding>,
+) -> Result<OperationRequest, String> {
+    match placement_group_binding {
+        Some(binding) => compose_placement_group_deployment_operation(intent, binding),
+        None => compose_deployment_operation(intent),
+    }
 }
 
 pub fn compose_stop_operation(

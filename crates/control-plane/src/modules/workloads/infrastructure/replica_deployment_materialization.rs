@@ -1,11 +1,5 @@
-use crate::modules::operations::domain::entities::OperationRequest;
-use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, OperationId, RepositoryError,
-};
-use crate::modules::workloads::application::{
-    DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION,
-    PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME, PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
 };
 use crate::modules::workloads::domain::entities::{
     Deployment, DeploymentPlacementGroupBinding, DeploymentReplicaBinding,
@@ -17,6 +11,7 @@ use crate::modules::workloads::domain::repositories::{
     IWorkloadReplicaDeploymentRepository, ReplicaDeploymentCandidate,
     ReplicaDeploymentMaterialization,
 };
+use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 use a3s_cloud_contracts::DomainEventEnvelope;
 use chrono::{DateTime, Utc};
 use std::collections::BTreeSet;
@@ -31,7 +26,7 @@ const CORRELATION_ID_DOMAIN: &str = "a3s.cloud.replica-deployment-materializatio
 
 pub(crate) struct ReplicaDeploymentWrite {
     pub deployment: Deployment,
-    pub operation: OperationRequest,
+    pub operation: WorkloadDeploymentOperationIntent,
     pub binding: DeploymentReplicaBinding,
     pub member_bindings: Vec<DeploymentReplicaBinding>,
     pub placement_group_binding: Option<DeploymentPlacementGroupBinding>,
@@ -179,7 +174,7 @@ pub(crate) fn build_replica_deployment_write(
         replica_operation_id(candidate),
         requested_at,
     );
-    let operation = replica_operation(&deployment)?;
+    let operation = replica_operation_intent(&deployment);
     let binding = DeploymentReplicaBinding::create(&deployment, revision, replica, member)?;
     let event = DeploymentRequested::envelope(
         &deployment,
@@ -262,7 +257,7 @@ pub(crate) fn build_group_deployment_write(
         members,
         &member_bindings,
     )?;
-    let operation = group_operation(&deployment, &placement_group_binding)?;
+    let operation = replica_operation_intent(&deployment);
     let event = DeploymentRequested::envelope(
         &deployment,
         revision,
@@ -293,10 +288,10 @@ pub(crate) fn materialization_from_existing(
     {
         return Err("stored replica deployment does not match its deterministic identity".into());
     }
-    let operation = match &placement_group_binding {
-        Some(binding) => group_operation(&deployment, binding)?,
-        None => replica_operation(&deployment)?,
-    };
+    if let Some(binding) = &placement_group_binding {
+        binding.validate()?;
+    }
+    let operation = replica_operation_intent(&deployment);
     Ok(ReplicaDeploymentMaterialization {
         candidate,
         deployment,
@@ -358,20 +353,15 @@ fn validate_materialization_context(
     Ok(())
 }
 
-fn replica_operation(deployment: &Deployment) -> Result<OperationRequest, String> {
-    Ok(OperationRequest::new(
+fn replica_operation_intent(deployment: &Deployment) -> WorkloadDeploymentOperationIntent {
+    WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         deployment.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "organizationId": deployment.organization_id,
-            "revisionId": deployment.revision_id,
-            "workloadId": deployment.workload_id,
-        }),
+        deployment.id,
+        deployment.revision_id,
+        deployment.workload_id,
         deployment.requested_at,
-    ))
+    )
 }
 
 pub(crate) fn validate_existing_materialization(
@@ -484,34 +474,6 @@ pub(crate) fn validate_existing_group_materialization_context(
             .validate_against_placement_group_member(deployment, revision, replica, member, plan)?;
     }
     Ok(())
-}
-
-fn group_operation(
-    deployment: &Deployment,
-    binding: &DeploymentPlacementGroupBinding,
-) -> Result<OperationRequest, String> {
-    binding.validate()?;
-    Ok(OperationRequest::new(
-        deployment.operation_id,
-        deployment.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new(
-            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME,
-            PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION,
-        )?,
-        serde_json::json!({
-            "deploymentId": deployment.id,
-            "groupId": binding.group_id,
-            "groupPlanDigest": binding.group_plan_digest,
-            "memberCount": binding.member_count,
-            "organizationId": deployment.organization_id,
-            "replicaGeneration": binding.replica_generation,
-            "replicaId": binding.replica_id,
-            "revisionId": deployment.revision_id,
-            "workloadId": deployment.workload_id,
-        }),
-        deployment.requested_at,
-    ))
 }
 
 fn replica_deployment_id(candidate: ReplicaDeploymentCandidate) -> DeploymentId {

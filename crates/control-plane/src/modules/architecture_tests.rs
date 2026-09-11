@@ -11076,6 +11076,14 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
         production_repository.contains("pub operation: WorkloadStopOperationIntent"),
         "WorkloadStopBundle must return owned WorkloadStopOperationIntent"
     );
+    assert!(
+        !production_repository.contains("crate::modules::operations"),
+        "Workloads Domain repository regained Operations authority"
+    );
+    assert!(
+        !contains_bare_token(production_repository.as_str(), "OperationRequest"),
+        "Workloads Domain repository still embeds OperationRequest"
+    );
 
     let writer_fence =
         std::fs::read_to_string(root.join("durable_cells/application/writer_fence.rs"))
@@ -11139,6 +11147,8 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
         .collect::<String>();
     for required in [
         "fncompose_deployment_operation(",
+        "fncompose_placement_group_deployment_operation(",
+        "fncompose_replica_deployment_operation(",
         "fncompose_stop_operation(",
         "fncompose_writer_fence_operation(",
         "OperationRequest::new(",

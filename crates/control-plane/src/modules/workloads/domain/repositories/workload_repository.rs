@@ -1,4 +1,3 @@
-use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, DeploymentId, EnvironmentId, IdempotencyRequest, IdempotentWrite,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RepositoryError, SecretId, WorkloadId,
@@ -98,7 +97,7 @@ pub struct ReplicaDeploymentCandidate {
 pub struct ReplicaDeploymentMaterialization {
     pub candidate: ReplicaDeploymentCandidate,
     pub deployment: Deployment,
-    pub operation: OperationRequest,
+    pub operation: WorkloadDeploymentOperationIntent,
     pub member_bindings: Vec<DeploymentReplicaBinding>,
     pub placement_group_binding: Option<DeploymentPlacementGroupBinding>,
     pub created: bool,
