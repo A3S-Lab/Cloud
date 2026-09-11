@@ -32,6 +32,9 @@ impl CommandHandler<CreateFormDraft> for CreateFormDraftHandler {
         let projects = Arc::clone(&self.projects);
         let forms = Arc::clone(&self.forms);
         Box::pin(async move {
+            if !command.access.project_is_visible(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let document = match FormDocument::parse(command.document_json.as_bytes()) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
@@ -60,7 +63,7 @@ impl CommandHandler<CreateFormDraft> for CreateFormDraftHandler {
                     return Ok(Ok(FormDraftMutationResult {
                         draft: replay.value,
                         replayed: true,
-                    }))
+                    }));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -74,7 +77,7 @@ impl CommandHandler<CreateFormDraft> for CreateFormDraftHandler {
             {
                 Ok(true) => {}
                 Ok(false) => {
-                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }

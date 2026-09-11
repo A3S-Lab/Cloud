@@ -80,12 +80,14 @@ pub async fn create_draft(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CreateFormDraftArguments,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateFormDraft {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access,
             name: arguments.name,
             description: arguments.description,
             document_json: arguments.document,

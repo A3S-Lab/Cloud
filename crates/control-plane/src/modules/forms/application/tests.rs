@@ -32,6 +32,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
     let create = CreateFormDraft {
         organization_id,
         project_id,
+        access: FormAccess::organization_wide(),
         name: "Approval".into(),
         description: "Manager approval".into(),
         document_json: document("Approval", false),
@@ -185,6 +186,7 @@ async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
             CreateFormDraft {
                 organization_id,
                 project_id,
+                access: FormAccess::organization_wide(),
                 name: "Invalid".into(),
                 description: String::new(),
                 document_json: "{}".into(),
@@ -241,11 +243,42 @@ async fn create_requires_project_evidence_through_the_forms_owned_port() {
             CreateFormDraft {
                 organization_id: OrganizationId::new(),
                 project_id: ProjectId::new(),
+                access: FormAccess::organization_wide(),
                 name: "Missing project".into(),
                 description: String::new(),
                 document_json: document("Missing project", false),
                 actor_principal_id: PrincipalId::new(),
                 idempotency_key: "missing-project".into(),
+                request_id: Uuid::now_v7(),
+            },
+            context(),
+        )
+        .await
+        .expect("create command");
+
+    assert_eq!(
+        result,
+        Err(ApplicationError::NotFound("project not found".into()))
+    );
+}
+
+#[tokio::test]
+async fn create_form_draft_fails_closed_before_creating_in_an_ungranted_project() {
+    let forms = Arc::new(InMemoryFormRepository::new());
+    let project_id = ProjectId::new();
+    let result = CreateFormDraftHandler::new(project_access(true), forms)
+        .execute(
+            CreateFormDraft {
+                organization_id: OrganizationId::new(),
+                project_id,
+                access: FormAccess::restricted([FormAccessScope::Project {
+                    project_id: ProjectId::new(),
+                }]),
+                name: "Denied".into(),
+                description: String::new(),
+                document_json: document("Denied", false),
+                actor_principal_id: PrincipalId::new(),
+                idempotency_key: "deny-create".into(),
                 request_id: Uuid::now_v7(),
             },
             context(),

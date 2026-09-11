@@ -9615,7 +9615,7 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
         "Forms must isolate Projects behind one infrastructure adapter"
     );
     assert_eq!(
-        access_fields, 6,
+        access_fields, 7,
         "Form commands/queries that authorize resources must carry Forms-owned access"
     );
     assert_eq!(
@@ -9646,6 +9646,7 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
     for required in [
         "projects:Arc<dynIFormProjectAccess>",
         ".project_exists(FormProjectScope{",
+        "command.access.project_is_visible(command.project_id)",
     ] {
         assert!(
             compact_create.contains(required),

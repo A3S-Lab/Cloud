@@ -29,12 +29,14 @@ pub fn form_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefini
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let access = form_access(&request)?;
                     let actor_principal_id = actor_principal_id(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateFormDraft {
                             organization_id,
                             project_id,
+                            access,
                             name,
                             description,
                             document_json,

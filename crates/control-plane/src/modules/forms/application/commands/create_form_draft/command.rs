@@ -1,4 +1,4 @@
-use crate::modules::forms::application::FormDraftMutationResult;
+use crate::modules::forms::application::{FormAccess, FormDraftMutationResult};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use a3s_boot::Command;
@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct CreateFormDraft {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: FormAccess,
     pub name: String,
     pub description: String,
     pub document_json: String,
