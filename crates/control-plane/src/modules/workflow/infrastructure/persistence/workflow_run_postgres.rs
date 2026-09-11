@@ -2,17 +2,18 @@ mod rows;
 mod schema;
 
 use self::rows::{
-    decode_run, decode_step, WorkflowRunRow, WorkflowRunSelection, WorkflowStepRow,
-    WorkflowStepSelection,
+    WorkflowRunRow, WorkflowRunSelection, WorkflowStepRow, WorkflowStepSelection, decode_run,
+    decode_step,
 };
-use self::schema::{OperationRequests, WorkflowRuns, WorkflowStepProjections};
+use self::schema::{WorkflowRuns, WorkflowStepProjections};
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
-    is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
-    transaction_error, AuditWrite, PostgresPersistenceError,
+    AuditWrite, PostgresPersistenceError, execute, fetch_all, fetch_optional, idempotency_replay,
+    is_foreign_key_violation, is_unique_violation, require_one_row, store_audit, store_idempotency,
+    store_outbox, transaction_error,
 };
 use crate::modules::operations::domain::entities::OperationRequest;
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
+use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{
     IdempotentWrite, OrganizationId, PrincipalId, ProjectId, RepositoryError, WorkflowRunId,
 };
@@ -21,7 +22,7 @@ use crate::modules::workflow::domain::{
     CancelWorkflowRunWrite, CreateWorkflowRunWrite, IWorkflowRunRepository, WorkflowRun,
     WorkflowRunRecord, WorkflowStepProjection,
 };
-use a3s_orm::{insert_into, select_from, update_table, OrderDirection, PostgresExecutor};
+use a3s_orm::{OrderDirection, PostgresExecutor, insert_into, select_from, update_table};
 use async_trait::async_trait;
 use uuid::Uuid;
 
@@ -75,14 +76,14 @@ impl IWorkflowRunRepository for PostgresWorkflowRunRepository {
                     match insertion {
                         Ok(()) => {}
                         Err(error) if is_foreign_key_violation(&error) => {
-                            return Err(RepositoryError::NotFound.into())
+                            return Err(RepositoryError::NotFound.into());
                         }
                         Err(error) if is_unique_violation(&error) => {
                             return Err(RepositoryError::Conflict(
                                 "WorkflowRun or correlated Operation identity already exists"
                                     .into(),
                             )
-                            .into())
+                            .into());
                         }
                         Err(error) => return Err(error),
                     }
@@ -334,31 +335,7 @@ async fn insert_operation(
         serde_json::to_value(&run.execution_input)?,
         run.requested_at,
     );
-    require_one_row(
-        "WorkflowRun Operation",
-        execute(
-            transaction,
-            insert_into::<OperationRequests>()
-                .value(OperationRequests::operation_id(), operation.id.as_uuid())
-                .value(
-                    OperationRequests::organization_id(),
-                    operation.organization_id.as_uuid(),
-                )
-                .value(OperationRequests::subject_kind(), operation.subject.kind())
-                .value(OperationRequests::subject_id(), operation.subject.id())
-                .value(
-                    OperationRequests::workflow_name(),
-                    operation.workflow.name(),
-                )
-                .value(
-                    OperationRequests::workflow_version(),
-                    operation.workflow.version(),
-                )
-                .value(OperationRequests::input(), operation.input)
-                .value(OperationRequests::requested_at(), operation.requested_at),
-        )
-        .await?,
-    )
+    insert_operation_request_in_transaction(transaction, &operation).await
 }
 
 async fn insert_run(

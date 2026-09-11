@@ -26,7 +26,6 @@ fn postgres_workflow_run_persistence_uses_only_typed_a3s_orm_queries() {
     for typed_query in [
         "select_from::<WorkflowRuns>()",
         "select_from::<WorkflowStepProjections>()",
-        "insert_into::<OperationRequests>()",
         "insert_into::<WorkflowRuns>()",
         "insert_into::<WorkflowStepProjections>()",
         "update_table::<WorkflowRuns>()",
@@ -34,4 +33,13 @@ fn postgres_workflow_run_persistence_uses_only_typed_a3s_orm_queries() {
     ] {
         assert!(repository.contains(typed_query), "missing {typed_query}");
     }
+    assert!(
+        repository.contains("insert_operation_request_in_transaction"),
+        "WorkflowRun persistence stopped using the Operations transaction participant"
+    );
+    assert!(
+        !repository.contains("insert_into::<OperationRequests>()")
+            && !include_str!("workflow_run_postgres/schema.rs").contains("OperationRequests"),
+        "WorkflowRun persistence regained a local operation_requests mapping"
+    );
 }

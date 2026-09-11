@@ -76,8 +76,6 @@ fn duplicate_physical_table_mappings_can_only_shrink() {
         r#"
 nodes @ edge/infrastructure/persistence/postgres_schema.rs#Nodes
 nodes @ fleet/infrastructure/persistence/postgres/schema.rs#Nodes
-operation_requests @ operations/infrastructure/persistence/postgres/schema.rs#OperationRequests
-operation_requests @ workflow/infrastructure/persistence/workflow_run_postgres/schema.rs#OperationRequests
 workloads @ edge/infrastructure/persistence/postgres_schema.rs#Workloads
 workloads @ workloads/infrastructure/persistence/postgres/schema.rs#Workloads
 workflow_runs @ workflow/infrastructure/persistence/human_task_postgres/schema.rs#WorkflowRuns
@@ -12060,6 +12058,52 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
             "Operations request participant lost surface {required}"
         );
     }
+}
+
+#[test]
+fn workflow_creates_operation_requests_through_operations_transaction_participant() {
+    let root = module_root();
+
+    let mut persistence_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("workflow/infrastructure/persistence/") {
+            return;
+        }
+        for forbidden in [
+            "=> \"operation_requests\"",
+            "struct OperationRequests",
+            "insert_into::<OperationRequests>()",
+        ] {
+            if source.contains(forbidden) {
+                persistence_violations.insert(format!(
+                    "{path} regained Operations table authority {forbidden}"
+                ));
+            }
+        }
+    });
+    assert!(
+        persistence_violations.is_empty(),
+        "Workflow persistence regained a local operation_requests mapping:\n{}",
+        persistence_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let repository = std::fs::read_to_string(
+        root.join("workflow/infrastructure/persistence/workflow_run_postgres.rs"),
+    )
+    .expect("read WorkflowRun postgres persistence");
+    let production_repository = production_source(&repository);
+    assert!(
+        production_repository.contains("insert_operation_request_in_transaction"),
+        "WorkflowRun persistence stopped using the Operations transaction participant"
+    );
+    assert!(
+        production_repository.contains("OperationRequest::new("),
+        "WorkflowRun persistence stopped composing OperationRequest at the persistence edge"
+    );
 }
 
 #[test]
