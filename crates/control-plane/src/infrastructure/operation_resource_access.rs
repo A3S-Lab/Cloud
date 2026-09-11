@@ -5,6 +5,7 @@ use crate::modules::artifacts::domain::IBuildRunRepository;
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::executions::application::resource_access::ExecutionResourceAccess;
 use crate::modules::executions::domain::IExecutionRepository;
+use crate::modules::executions::{ExecutionAccess, ExecutionAccessScope};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::application::resource_access::IOperationResourceAccess;
@@ -96,13 +97,13 @@ impl IOperationResourceAccess for OperationResourceAccessResolver {
                 )
             }
             Some(OperationSubjectKind::Execution) => {
-                let evaluator = identity_evaluator_for_legacy_subjects(access);
+                let executions_access = execution_access_from_operation(access);
                 visible(
                     self.executions
                         .execution(
                             organization_id,
                             ExecutionId::from_uuid(subject.id()),
-                            &evaluator,
+                            &executions_access,
                         )
                         .await,
                 )
@@ -204,8 +205,26 @@ fn artifact_access_from_operation(access: &OperationAccess) -> ArtifactAccess {
     }))
 }
 
+fn execution_access_from_operation(access: &OperationAccess) -> ExecutionAccess {
+    if access.is_organization_wide() {
+        return ExecutionAccess::organization_wide();
+    }
+    ExecutionAccess::restricted(access.granted_scopes().map(|scope| match scope {
+        OperationAccessScope::Project { project_id } => {
+            ExecutionAccessScope::Project { project_id }
+        }
+        OperationAccessScope::Environment {
+            project_id,
+            environment_id,
+        } => ExecutionAccessScope::Environment {
+            project_id,
+            environment_id,
+        },
+    }))
+}
+
 /// Temporary bridge for subject owners that still evaluate Identity grant types.
-/// Lives only in this root composition adapter until those contexts own projections.
+/// Lives only in this root composition adapter until Agents/Workflow own projections.
 fn identity_evaluator_for_legacy_subjects(access: &OperationAccess) -> ResourceAccessEvaluator {
     if access.is_organization_wide() {
         return ResourceAccessEvaluator::organization_wide();

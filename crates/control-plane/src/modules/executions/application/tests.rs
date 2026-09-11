@@ -1,9 +1,10 @@
 use super::{
     CancelExecution, CancelExecutionHandler, CreateExecutionCommand, CreateExecutionHandler,
-    ExecutionReconciler, GetExecution, GetExecutionHandler, IExecutionsEnvironmentAccess,
-    IWorkflowExecutionPort, WorkflowExecutionApplicationService, WorkflowExecutionRequest,
-    EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
+    ExecutionAccess, ExecutionReconciler, GetExecution, GetExecutionHandler,
+    IExecutionsEnvironmentAccess, IWorkflowExecutionPort, WorkflowExecutionApplicationService,
+    WorkflowExecutionRequest, EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
 };
+use crate::modules::executions::application::ExecutionAccessScope;
 use crate::modules::executions::domain::events::{ExecutionRequested, ExecutionTemplatePublished};
 use crate::modules::executions::domain::{
     CreateExecution, CreateExecutionTemplateRevision, Execution, ExecutionArtifact,
@@ -17,8 +18,6 @@ use crate::modules::executions::infrastructure::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
     ProjectsExecutionsEnvironmentAccessAdapter,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::projects::domain::entities::Environment;
@@ -258,7 +257,7 @@ async fn create_and_cancel_are_idempotent_and_emit_cloud_events() {
     let cancellation = CancelExecution {
         organization_id,
         execution_id: first.execution.id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: ExecutionAccess::organization_wide(),
         idempotency_key: "cancel-1".into(),
         request_id: Uuid::now_v7(),
         requested_at,
@@ -305,24 +304,23 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
         .expect("framework")
         .expect("create")
         .execution;
-    let environment_access =
-        ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
-            project_id,
-            environment_id,
-        }]);
+    let environment_access = ExecutionAccess::restricted([ExecutionAccessScope::Environment {
+        project_id,
+        environment_id,
+    }]);
     let project_access =
-        ResourceAccessEvaluator::restricted([ResourceGrantScope::Project { project_id }]);
-    let revoked_access = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+        ExecutionAccess::restricted([ExecutionAccessScope::Project { project_id }]);
+    let revoked_access = ExecutionAccess::restricted([ExecutionAccessScope::Project {
         project_id: ProjectId::new(),
     }]);
     let get = GetExecutionHandler::new(executions.clone());
-    for resource_access in [environment_access.clone(), project_access] {
+    for access in [environment_access.clone(), project_access] {
         assert_eq!(
             get.execute(
                 GetExecution {
                     organization_id,
                     execution_id: execution.id,
-                    resource_access,
+                    access,
                 },
                 context(),
             )
@@ -337,7 +335,7 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
             GetExecution {
                 organization_id,
                 execution_id: execution.id,
-                resource_access: revoked_access.clone(),
+                access: revoked_access.clone(),
             },
             context(),
         )
@@ -349,7 +347,7 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
             GetExecution {
                 organization_id,
                 execution_id: crate::modules::shared_kernel::domain::ExecutionId::new(),
-                resource_access: environment_access.clone(),
+                access: environment_access.clone(),
             },
             context(),
         )
@@ -362,7 +360,7 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
     let command = CancelExecution {
         organization_id,
         execution_id: execution.id,
-        resource_access: environment_access,
+        access: environment_access,
         idempotency_key: "restricted-cancel".into(),
         request_id: Uuid::now_v7(),
         requested_at,
@@ -378,7 +376,7 @@ async fn indirect_access_uses_execution_environment_and_authorizes_before_replay
     let replay_after_revocation = cancel
         .execute(
             CancelExecution {
-                resource_access: revoked_access,
+                access: revoked_access,
                 ..command
             },
             context(),
@@ -408,13 +406,13 @@ async fn public_execution_queries_and_cancellation_hide_internal_bound_tasks() {
         })
         .await
         .expect("create bound Task");
-    let access = ResourceAccessEvaluator::organization_wide();
+    let access = ExecutionAccess::organization_wide();
     let hidden = GetExecutionHandler::new(executions.clone())
         .execute(
             GetExecution {
                 organization_id,
                 execution_id: execution.id,
-                resource_access: access.clone(),
+                access: access.clone(),
             },
             context(),
         )
@@ -430,7 +428,7 @@ async fn public_execution_queries_and_cancellation_hide_internal_bound_tasks() {
             CancelExecution {
                 organization_id,
                 execution_id: execution.id,
-                resource_access: access,
+                access,
                 idempotency_key: "forbidden-bound-cancel".into(),
                 request_id: Uuid::now_v7(),
                 requested_at,

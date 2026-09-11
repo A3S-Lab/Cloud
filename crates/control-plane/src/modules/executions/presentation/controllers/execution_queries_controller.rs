@@ -1,4 +1,5 @@
 use super::request::request_id;
+use crate::access_projection::execution_access;
 use crate::modules::executions::application::{
     GetExecution, GetExecutionTemplate, ListExecutionTemplates, ListExecutions,
 };
@@ -149,9 +150,9 @@ pub fn execution_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 execution_id: ExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
+                                access: execution_access(&resource_access_evaluator(
                                     &request.require_auth_principal()?,
-                                )?,
+                                )?),
                             })
                             .await?
                         {

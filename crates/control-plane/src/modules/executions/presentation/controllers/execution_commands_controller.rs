@@ -1,4 +1,5 @@
 use super::request::{actor_principal_id, request_identity};
+use crate::access_projection::execution_access;
 use crate::modules::executions::application::{
     CancelExecution, CreateExecutionCommand, CreateExecutionTemplateCommand,
 };
@@ -116,9 +117,9 @@ pub fn execution_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                                 execution_id: ExecutionId::from_uuid(
                                     request.param_as::<Uuid>("execution_id")?,
                                 ),
-                                resource_access: resource_access_evaluator(
+                                access: execution_access(&resource_access_evaluator(
                                     &request.require_auth_principal()?,
-                                )?,
+                                )?),
                                 idempotency_key,
                                 request_id,
                                 requested_at: Utc::now(),

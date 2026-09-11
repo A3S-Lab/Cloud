@@ -33,6 +33,8 @@ pub use queries::{
     GetExecution, GetExecutionHandler, GetExecutionTemplate, GetExecutionTemplateHandler,
     ListExecutionTemplates, ListExecutionTemplatesHandler, ListExecutions, ListExecutionsHandler,
 };
+pub use resource_access::ExecutionAccess;
+pub(crate) use resource_access::ExecutionAccessScope;
 pub use workflow_execution_port::{
     IWorkflowExecutionPort, WorkflowExecutionApplicationService, WorkflowExecutionRequest,
 };

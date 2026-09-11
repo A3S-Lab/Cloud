@@ -27,7 +27,7 @@ impl QueryHandler<GetExecution> for GetExecutionHandler {
                 .execution(
                     query.organization_id,
                     query.execution_id,
-                    &query.resource_access,
+                    &query.access,
                 )
                 .await)
         })

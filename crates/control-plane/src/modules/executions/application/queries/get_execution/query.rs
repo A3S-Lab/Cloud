@@ -1,5 +1,5 @@
+use crate::modules::executions::application::ExecutionAccess;
 use crate::modules::executions::domain::Execution;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{ExecutionId, OrganizationId};
 use a3s_boot::Query;
@@ -8,7 +8,7 @@ use a3s_boot::Query;
 pub struct GetExecution {
     pub organization_id: OrganizationId,
     pub execution_id: ExecutionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: ExecutionAccess,
 }
 
 impl Query for GetExecution {

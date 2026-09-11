@@ -7401,6 +7401,118 @@ fn operations_list_isolates_identity_behind_one_context_owned_access_projection(
 }
 
 #[test]
+fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("executions/application/resource_access.rs"))
+        .expect("read Executions resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)enumExecutionAccessScope",
+        "pubstructExecutionAccess",
+        "pub(crate)structExecutionResourceAccess",
+        "access.environment_is_visible(execution.project_id,execution.environment_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Executions lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Executions resource access copied Identity authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "executions/application/queries/get_execution/query.rs",
+        "executions/application/commands/cancel_execution/command.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: ExecutionAccess"),
+            "{relative} stopped carrying Executions-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnexecution_access(",
+        "ExecutionAccess::organization_wide()",
+        "ExecutionAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Executions access mapping {required}"
+        );
+    }
+
+    for relative in [
+        "executions/presentation/controllers/execution_queries_controller.rs",
+        "executions/presentation/controllers/execution_commands_controller.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("access: execution_access(&resource_access_evaluator("),
+            "{relative} must project Identity into ExecutionAccess"
+        );
+        assert!(
+            !production.contains("resource_access: resource_access_evaluator"),
+            "{relative} must not pass ResourceAccessEvaluator into Application"
+        );
+    }
+
+    let operation_access = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("infrastructure/operation_resource_access.rs"),
+    )
+    .expect("read root Operation resource access adapter");
+    assert!(
+        production_source(&operation_access).contains("execution_access_from_operation(access)"),
+        "Operation subject resolver lost ExecutionAccess mapping"
+    );
+    assert!(
+        !production_source(&operation_access)
+            .contains("OperationSubjectKind::Execution")
+            || !production_source(&operation_access)
+                .split("OperationSubjectKind::Execution")
+                .nth(1)
+                .unwrap_or_default()
+                .split("OperationSubjectKind::")
+                .next()
+                .unwrap_or_default()
+                .contains("identity_evaluator_for_legacy_subjects"),
+        "Execution subjects must not use the legacy Identity bridge"
+    );
+}
+
+#[test]
 fn forms_access_and_project_ownership_have_one_bounded_authority() {
     let root = module_root();
     let access_path = "forms/application/resource_access.rs";
