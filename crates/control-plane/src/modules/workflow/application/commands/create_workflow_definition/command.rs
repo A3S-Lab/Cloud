@@ -1,7 +1,8 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use crate::modules::workflow::application::{
-    WorkflowDefinitionMutationResult, WorkflowPayloadAcl, WorkflowSemanticContractAcls,
+    WorkflowAccess, WorkflowDefinitionMutationResult, WorkflowPayloadAcl,
+    WorkflowSemanticContractAcls,
 };
 use a3s_boot::Command;
 use uuid::Uuid;
@@ -10,6 +11,7 @@ use uuid::Uuid;
 pub struct CreateWorkflowDefinition {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: WorkflowAccess,
     pub definition_acl: String,
     pub payloads: Vec<WorkflowPayloadAcl>,
     pub semantic_contracts: Option<WorkflowSemanticContractAcls>,

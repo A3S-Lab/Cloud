@@ -55,6 +55,9 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
         let ontologies = Arc::clone(&self.ontologies);
         let goals = Arc::clone(&self.goals);
         Box::pin(async move {
+            if !command.access.project_is_visible(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let scope = match WorkflowProjectScope::new(command.organization_id, command.project_id)
             {
                 Ok(scope) => scope,
@@ -63,7 +66,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
             match projects.project_exists(scope).await {
                 Ok(true) => {}
                 Ok(false) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -86,7 +89,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                     Ok(false) | Err(RepositoryError::NotFound) => {
                         return Ok(Err(ApplicationError::NotFound(
                             "environment not found in project".into(),
-                        )))
+                        )));
                     }
                     Err(error) => return Ok(Err(error.into())),
                 }
@@ -99,7 +102,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 Ok(Some(_)) | Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "WorkflowDefinition not found in project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -115,7 +118,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Workflow revision not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -131,7 +134,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 Ok(Some(_)) | Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Ontology revision not found in project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -159,7 +162,7 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                     return Ok(Ok(WorkflowGoalMutationResult {
                         record,
                         replayed: true,
-                    }))
+                    }));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -204,5 +207,75 @@ impl CommandHandler<CreateWorkflowGoal> for CreateWorkflowGoalHandler {
                 replayed: result.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
+    use crate::modules::workflow::application::{WorkflowAccess, WorkflowAccessScope};
+    use crate::modules::workflow::{
+        InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
+        InMemoryWorkflowGoalRepository,
+    };
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+    use uuid::Uuid;
+
+    struct AllowProject;
+
+    #[async_trait]
+    impl IWorkflowProjectAccess for AllowProject {
+        async fn project_exists(
+            &self,
+            _scope: WorkflowProjectScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    struct AllowEnvironment;
+
+    #[async_trait]
+    impl IWorkflowEnvironmentAccess for AllowEnvironment {
+        async fn environment_exists(
+            &self,
+            _scope: WorkflowEnvironmentScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn create_workflow_goal_fails_closed_before_project_lookup_in_an_ungranted_project() {
+        let handler = CreateWorkflowGoalHandler::new(
+            Arc::new(AllowProject),
+            Arc::new(AllowEnvironment),
+            Arc::new(InMemoryWorkflowDefinitionRepository::new()),
+            Arc::new(InMemoryOntologyRepository::new()),
+            Arc::new(InMemoryWorkflowGoalRepository::new()),
+        );
+        let result = handler
+            .execute(
+                CreateWorkflowGoal {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    access: WorkflowAccess::restricted([WorkflowAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    goal_acl: "goal {}".into(),
+                    actor_principal_id: PrincipalId::new(),
+                    idempotency_key: "deny-create".into(),
+                    request_id: Uuid::now_v7(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert_eq!(
+            result,
+            Err(ApplicationError::NotFound("project not found".into()))
+        );
     }
 }

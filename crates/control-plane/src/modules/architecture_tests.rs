@@ -9487,6 +9487,9 @@ fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_acces
         "workflow/application/queries/list_workflow_runs/query.rs",
         "workflow/application/commands/cancel_workflow_run/command.rs",
         "workflow/application/commands/create_ontology/command.rs",
+        "workflow/application/commands/create_workflow_definition/command.rs",
+        "workflow/application/commands/create_workflow_goal/command.rs",
+        "workflow/application/commands/start_workflow_run/command.rs",
         "workflow/application/workflow_authoring.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
@@ -9983,10 +9986,9 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
     assert!(create.contains("environment_is_visible(command.project_id, command.environment_id)"));
     assert!(!create.contains("IEnvironmentRepository"));
 
-    let create_command = std::fs::read_to_string(
-        root.join("secrets/application/commands/create_secret/command.rs"),
-    )
-    .expect("read CreateSecret command");
+    let create_command =
+        std::fs::read_to_string(root.join("secrets/application/commands/create_secret/command.rs"))
+            .expect("read CreateSecret command");
     assert!(
         production_source(&create_command).contains("pub access: SecretAccess"),
         "CreateSecret must carry Secrets-owned access"

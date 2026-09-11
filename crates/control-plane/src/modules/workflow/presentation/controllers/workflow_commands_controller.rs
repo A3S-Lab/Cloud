@@ -4,7 +4,7 @@ use super::request::{
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
-    with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     HumanTaskId, OrganizationId, ProjectId, WorkflowDefinitionId,
@@ -20,8 +20,8 @@ use crate::modules::workflow::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
+    RouteDefinition,
 };
 use a3s_form_core::FormInteractionSubmission;
 use std::sync::Arc;
@@ -52,10 +52,12 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let actor_principal_id = actor_principal_id(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = workflow_access(&request)?;
                     match bus
                         .execute(CreateWorkflowDefinition {
                             organization_id,
                             project_id,
+                            access,
                             definition_acl,
                             payloads,
                             semantic_contracts,
@@ -129,10 +131,12 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                     let goal_acl = workflow_goal_acl(&request)?;
                     let actor_principal_id = actor_principal_id(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = workflow_access(&request)?;
                     match bus
                         .execute(CreateWorkflowGoal {
                             organization_id,
                             project_id,
+                            access,
                             goal_acl,
                             actor_principal_id,
                             idempotency_key,
@@ -160,10 +164,12 @@ pub fn workflow_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDe
                     let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
                     let actor_principal_id = actor_principal_id(&request)?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = workflow_access(&request)?;
                     match bus
                         .execute(StartWorkflowRun {
                             organization_id,
                             project_id,
+                            access,
                             workflow_goal_id:
                                 crate::modules::shared_kernel::domain::WorkflowGoalId::from_uuid(
                                     body.workflow_goal_id,

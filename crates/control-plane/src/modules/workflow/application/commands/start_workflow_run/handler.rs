@@ -3,9 +3,9 @@ use crate::modules::shared_kernel::application::{ApplicationError, ApplicationRe
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, WorkflowRunId};
 use crate::modules::workflow::application::WorkflowRunMutationResult;
 use crate::modules::workflow::domain::{
-    workflow_run_timeout_seconds, CreateWorkflowRunWrite, IWorkflowDefinitionRepository,
-    IWorkflowGoalRepository, IWorkflowRunRepository, WorkflowRunCompiler, WorkflowRunRecord,
-    WorkflowRunRequested,
+    CreateWorkflowRunWrite, IWorkflowDefinitionRepository, IWorkflowGoalRepository,
+    IWorkflowRunRepository, WorkflowRunCompiler, WorkflowRunRecord, WorkflowRunRequested,
+    workflow_run_timeout_seconds,
 };
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
@@ -41,6 +41,9 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
         let workflows = Arc::clone(&self.workflows);
         let runs = Arc::clone(&self.runs);
         Box::pin(async move {
+            if !command.access.project_is_visible(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let timeout_seconds = match workflow_run_timeout_seconds(command.timeout_seconds) {
                 Ok(value) => value,
                 Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
@@ -53,7 +56,7 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                 Ok(Some(_)) | Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "WorkflowGoal not found in project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -69,7 +72,7 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                 Ok(Some(_)) | Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "PlanRevision not found in WorkflowGoal".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -85,7 +88,7 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                 Ok(Some(_)) | Ok(None) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Workflow revision not found in project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -114,7 +117,7 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                     return Ok(Ok(WorkflowRunMutationResult {
                         record,
                         replayed: true,
-                    }))
+                    }));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -154,5 +157,54 @@ impl CommandHandler<StartWorkflowRun> for StartWorkflowRunHandler {
                 replayed: write.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::shared_kernel::domain::{
+        OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowGoalId,
+    };
+    use crate::modules::workflow::application::{WorkflowAccess, WorkflowAccessScope};
+    use crate::modules::workflow::{
+        InMemoryWorkflowDefinitionRepository, InMemoryWorkflowGoalRepository,
+        InMemoryWorkflowRunRepository,
+    };
+    use a3s_boot::ModuleRef;
+    use chrono::Utc;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn start_workflow_run_fails_closed_before_goal_lookup_in_an_ungranted_project() {
+        let handler = StartWorkflowRunHandler::new(
+            Arc::new(InMemoryWorkflowGoalRepository::new()),
+            Arc::new(InMemoryWorkflowDefinitionRepository::new()),
+            Arc::new(InMemoryWorkflowRunRepository::new()),
+        );
+        let result = handler
+            .execute(
+                StartWorkflowRun {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    access: WorkflowAccess::restricted([WorkflowAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    workflow_goal_id: WorkflowGoalId::new(),
+                    plan_revision_id: PlanRevisionId::new(),
+                    timeout_seconds: Some(30),
+                    actor_principal_id: PrincipalId::new(),
+                    idempotency_key: "deny-start".into(),
+                    request_id: Uuid::now_v7(),
+                    requested_at: Utc::now(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert_eq!(
+            result,
+            Err(ApplicationError::NotFound("project not found".into()))
+        );
     }
 }

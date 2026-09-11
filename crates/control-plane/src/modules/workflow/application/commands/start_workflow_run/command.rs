@@ -2,7 +2,7 @@ use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, PlanRevisionId, PrincipalId, ProjectId, WorkflowGoalId,
 };
-use crate::modules::workflow::application::WorkflowRunMutationResult;
+use crate::modules::workflow::application::{WorkflowAccess, WorkflowRunMutationResult};
 use a3s_boot::Command;
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -11,6 +11,7 @@ use uuid::Uuid;
 pub struct StartWorkflowRun {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: WorkflowAccess,
     pub workflow_goal_id: WorkflowGoalId,
     pub plan_revision_id: PlanRevisionId,
     pub timeout_seconds: Option<u64>,

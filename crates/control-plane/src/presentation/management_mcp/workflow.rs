@@ -327,12 +327,14 @@ pub async fn create_definition(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CreateWorkflowDefinitionArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateWorkflowDefinition {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
             definition_acl: arguments.definition_acl,
             payloads: arguments
                 .payloads
@@ -402,12 +404,14 @@ pub async fn create_goal(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CreateWorkflowGoalArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateWorkflowGoal {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
             goal_acl: arguments.acl,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,
@@ -620,12 +624,14 @@ pub async fn start_run(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: StartWorkflowRunArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(StartWorkflowRun {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: workflow_access(&resource_access),
             workflow_goal_id: WorkflowGoalId::from_uuid(arguments.workflow_goal_id),
             plan_revision_id: PlanRevisionId::from_uuid(arguments.plan_revision_id),
             timeout_seconds: arguments.timeout_seconds,

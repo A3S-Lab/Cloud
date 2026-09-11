@@ -1,6 +1,6 @@
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
-use crate::modules::workflow::application::WorkflowGoalMutationResult;
+use crate::modules::workflow::application::{WorkflowAccess, WorkflowGoalMutationResult};
 use a3s_boot::Command;
 use uuid::Uuid;
 
@@ -8,6 +8,7 @@ use uuid::Uuid;
 pub struct CreateWorkflowGoal {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: WorkflowAccess,
     pub goal_acl: String,
     pub actor_principal_id: PrincipalId,
     pub idempotency_key: String,

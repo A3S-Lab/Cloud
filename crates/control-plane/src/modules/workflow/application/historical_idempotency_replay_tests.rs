@@ -7,13 +7,14 @@ use super::{
     IWorkflowDefinitionPublicationPort, WorkflowDefinitionPublicationProvenance,
     WorkflowDefinitionPublicationRequest, WorkflowDefinitionPublicationService, WorkflowPayloadAcl,
 };
+use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::projects::domain::events::ProjectCreated;
 use crate::modules::projects::domain::repositories::IProjectRepository;
 use crate::modules::projects::domain::value_objects::ProjectName;
-use crate::modules::projects::InMemoryProjectsRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, WorkflowRevisionId};
+use crate::modules::workflow::application::WorkflowAccess;
 use crate::modules::workflow::domain::{
     CreateOntologyWrite, CreateWorkflowDefinitionWrite, CreateWorkflowGoalWrite,
     CreateWorkflowRunWrite, IOntologyRepository, IWorkflowDefinitionRepository,
@@ -23,7 +24,7 @@ use crate::modules::workflow::domain::{
     WorkflowRevisionPublished, WorkflowRunRequested,
 };
 use crate::modules::workflow::test_support::{
-    historic_provider_workflow_fixture, HistoricProviderWorkflowFixture,
+    HistoricProviderWorkflowFixture, historic_provider_workflow_fixture,
 };
 use crate::modules::workflow::{
     InMemoryOntologyRepository, InMemoryWorkflowDefinitionRepository,
@@ -35,7 +36,6 @@ use chrono::Duration;
 use serde_json::json;
 use std::sync::Arc;
 use uuid::Uuid;
-use crate::modules::workflow::application::WorkflowAccess;
 
 const CREATE_KEY: &str = "historic-definition";
 const REVISE_KEY: &str = "historic-revision";
@@ -449,6 +449,7 @@ fn goal_command(
     CreateWorkflowGoal {
         organization_id: fixture.organization_id,
         project_id: fixture.project_id,
+        access: WorkflowAccess::organization_wide(),
         goal_acl: contract.canonical_acl().to_owned(),
         actor_principal_id: fixture.principal_id,
         idempotency_key: key.into(),
@@ -464,6 +465,7 @@ fn run_command(
     StartWorkflowRun {
         organization_id: fixture.organization_id,
         project_id: fixture.project_id,
+        access: WorkflowAccess::organization_wide(),
         workflow_goal_id: fixture.goal.id,
         plan_revision_id: fixture.plan_revision.id,
         timeout_seconds: Some(timeout_seconds),
