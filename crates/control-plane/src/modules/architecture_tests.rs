@@ -9773,7 +9773,7 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
     .expect("read Forms Management MCP adapter");
     assert_eq!(
         management_mcp.matches("access: FormAccess").count(),
-        6,
+        7,
         "every Form MCP entry that authorizes resources must receive the consumer-owned projection"
     );
     for forbidden in [
@@ -9795,7 +9795,7 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
     .expect("read Management MCP dispatch");
     assert_eq!(
         dispatch.matches("form_access(&resource_access)").count(),
-        6,
+        7,
         "Management MCP must project Identity once at every authorized Form entry"
     );
 
