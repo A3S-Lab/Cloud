@@ -17,23 +17,19 @@ struct RecordingApprovalAuthorizer {
 }
 
 #[async_trait::async_trait]
-impl IResourceAuthorizationDecisionRepository for RecordingApprovalAuthorizer {
-    async fn authorize_resource(
+impl IAgentApprovalAuthorizationPort for RecordingApprovalAuthorizer {
+    async fn authorize_decision(
         &self,
-        request: ResourceAuthorizationDecisionRequest,
-    ) -> Result<AuthorizationDecisionRef, RepositoryError> {
-        if request.action != "agent.execution.approval.decide" {
-            return Err(RepositoryError::Storage(
-                "Agent approval fixture received another authorization action".into(),
-            ));
-        }
+        request: AgentApprovalAuthorization,
+    ) -> ApplicationResult<AuthorizationDecisionRef> {
+        request.validate().map_err(ApplicationError::Invalid)?;
         self.calls.fetch_add(1, Ordering::SeqCst);
         AuthorizationDecisionRef::new(
             format!("agent-approval-postgres:{}", request.request_id),
             Sha256Digest::parse(format!("sha256:{}", "9".repeat(64)))
-                .map_err(RepositoryError::Storage)?,
+                .map_err(ApplicationError::Internal)?,
         )
-        .map_err(RepositoryError::Storage)
+        .map_err(ApplicationError::Internal)
     }
 }
 
@@ -267,7 +263,7 @@ async fn decide_approval_across_reconnect(
         expected_version: scenario.checkpoint.aggregate_version,
         outcome,
         reason: Some(format!("{idempotency_key} by integration policy")),
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: AgentAccess::organization_wide(),
         actor_principal_id,
         credential_id: ApiTokenId::new(),
         idempotency_key: idempotency_key.into(),

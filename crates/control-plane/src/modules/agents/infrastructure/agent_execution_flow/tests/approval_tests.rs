@@ -1,13 +1,11 @@
 use super::*;
 use crate::modules::agents::application::{
-    AgentAccess, DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
+    AgentAccess, AgentApprovalAuthorization, DecideAgentApprovalCheckpoint,
+    DecideAgentApprovalCheckpointHandler, IAgentApprovalAuthorizationPort,
 };
 use crate::modules::agents::domain::IAgentApprovalCheckpointRepository;
-use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisionRepository;
-use crate::modules::identity::domain::services::ResourceAuthorizationDecisionRequest;
-use crate::modules::shared_kernel::domain::{
-    ApiTokenId, AuthorizationDecisionRef, RepositoryError,
-};
+use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::shared_kernel::domain::{ApiTokenId, AuthorizationDecisionRef};
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -17,19 +15,19 @@ struct RecordingApprovalAuthorizer {
 }
 
 #[async_trait::async_trait]
-impl IResourceAuthorizationDecisionRepository for RecordingApprovalAuthorizer {
-    async fn authorize_resource(
+impl IAgentApprovalAuthorizationPort for RecordingApprovalAuthorizer {
+    async fn authorize_decision(
         &self,
-        request: ResourceAuthorizationDecisionRequest,
-    ) -> Result<AuthorizationDecisionRef, RepositoryError> {
-        assert_eq!(request.action, "agent.execution.approval.decide");
+        request: AgentApprovalAuthorization,
+    ) -> ApplicationResult<AuthorizationDecisionRef> {
+        request.validate().map_err(ApplicationError::Invalid)?;
         self.calls.fetch_add(1, Ordering::SeqCst);
         AuthorizationDecisionRef::new(
             format!("agent-flow-approval-authorization:{}", request.request_id),
             Sha256Digest::parse(format!("sha256:{}", "9".repeat(64)))
-                .map_err(RepositoryError::Storage)?,
+                .map_err(ApplicationError::Internal)?,
         )
-        .map_err(RepositoryError::Storage)
+        .map_err(ApplicationError::Internal)
     }
 }
 
@@ -228,17 +226,21 @@ async fn approval_checkpoint_resumes_only_after_one_exact_durable_decision() {
         )
         .await
         .expect_err("active approval must reject provider recovery");
-    assert!(rejection
-        .to_string()
-        .contains("paused Agent provider advanced before exact resume"));
-    assert!(agents
-        .find_execution(organization_id, execution.id)
-        .await
-        .expect("find execution after rejected recovery")
-        .expect("execution after rejected recovery")
-        .code
-        .as_ref()
-        .is_some_and(|current| current.has_same_run_binding(&binding)));
+    assert!(
+        rejection
+            .to_string()
+            .contains("paused Agent provider advanced before exact resume")
+    );
+    assert!(
+        agents
+            .find_execution(organization_id, execution.id)
+            .await
+            .expect("find execution after rejected recovery")
+            .expect("execution after rejected recovery")
+            .code
+            .as_ref()
+            .is_some_and(|current| current.has_same_run_binding(&binding))
+    );
 
     let mut dispatched = match super::super::runtime::observe(
         &flow_runtime,
@@ -829,9 +831,11 @@ async fn provider_cannot_enter_approval_without_an_exact_checkpoint() {
         current.status,
         crate::modules::agents::domain::AgentExecutionStatus::Pending
     );
-    assert!(agents
-        .find_active_checkpoint(organization_id, execution.id)
-        .await
-        .expect("find active checkpoint")
-        .is_none());
+    assert!(
+        agents
+            .find_active_checkpoint(organization_id, execution.id)
+            .await
+            .expect("find active checkpoint")
+            .is_none()
+    );
 }

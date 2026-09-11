@@ -14872,6 +14872,67 @@ fn workflow_owns_human_task_submission_authorization_through_one_identity_adapte
     );
 }
 
+#[test]
+fn agents_owns_approval_checkpoint_authorization_through_one_identity_adapter() {
+    let port = std::fs::read_to_string(
+        module_root().join("agents/application/approval_authorization_port.rs"),
+    )
+    .expect("read Agents approval authorization port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_port.contains("traitIAgentApprovalAuthorizationPort:Send+Sync"),
+        "Agents lost its consumer-owned approval authorization boundary"
+    );
+    assert!(
+        !production_source(&port).contains("crate::modules::identity"),
+        "the consumer-owned Agents approval authorization port imported Identity internals"
+    );
+
+    let handler = std::fs::read_to_string(
+        module_root()
+            .join("agents/application/commands/decide_agent_approval_checkpoint/handler.rs"),
+    )
+    .expect("read DecideAgentApprovalCheckpoint handler");
+    let handler = production_source(&handler);
+    assert!(handler.contains("IAgentApprovalAuthorizationPort"));
+    assert_eq!(handler.matches(".authorize_decision(").count(), 1);
+    assert!(
+        !handler.contains("crate::modules::identity"),
+        "Agents Application bypassed its approval authorization port"
+    );
+    assert!(
+        !handler.contains("IResourceAuthorizationDecisionRepository"),
+        "Agents Application still depends on Identity resource-authorization repository"
+    );
+
+    let mut identity_import_sites = BTreeSet::new();
+    let mut port_implementations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let source = production_source(source);
+        if context(relative) == Some("agents")
+            && source.contains("crate::modules::identity")
+            && source.contains("IResourceAuthorizationDecisionRepository")
+        {
+            identity_import_sites.insert(display(relative));
+        }
+        if source.contains("impl IAgentApprovalAuthorizationPort for") {
+            port_implementations.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        identity_import_sites,
+        BTreeSet::from(["agents/infrastructure/approval_authorization.rs".to_owned()]),
+        "all Agents-to-Identity resource-authorization access must be confined to the sole consumer-side adapter"
+    );
+    assert_eq!(
+        port_implementations,
+        BTreeSet::from(["agents/infrastructure/approval_authorization.rs".to_owned()]),
+        "Agent approval checkpoint authorization must have one consumer-side adapter"
+    );
+}
+
 fn foreign_outer_layer_sites() -> BTreeSet<String> {
     let mut sites = BTreeSet::new();
     visit_production_sources(|relative, source| {

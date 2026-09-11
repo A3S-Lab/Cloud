@@ -14,8 +14,9 @@ use crate::modules::agents::{
     GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
     GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
-    IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort, IAgentRepository,
-    IAgentsEnvironmentAccess, IWorkflowAgentPort, ListAgentApprovalCheckpointsHandler,
+    IAgentApprovalAuthorizationPort, IAgentExecutionCheckpointObjectStore,
+    IAgentReleaseAdmissionPort, IAgentRepository, IAgentsEnvironmentAccess, IWorkflowAgentPort,
+    IdentityAgentApprovalAuthorizationAdapter, ListAgentApprovalCheckpointsHandler,
     ListAgentConversationsHandler, ListAgentExecutionCheckpointsHandler,
     ListAgentExecutionsHandler, ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
     WorkflowAgentApplicationService,
@@ -3814,7 +3815,9 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::agents::DecideAgentApprovalCheckpoint, _>(
                     DecideAgentApprovalCheckpointHandler::new(
                         decide_agent_approval_checkpoints,
-                        resource_authorization_decisions,
+                        Arc::new(IdentityAgentApprovalAuthorizationAdapter::new(Arc::clone(
+                            &resource_authorization_decisions,
+                        ))) as Arc<dyn IAgentApprovalAuthorizationPort>,
                     ),
                 )
                 .command_handler::<crate::modules::agents::AppendAgentExecutionEvents, _>(

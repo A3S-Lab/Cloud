@@ -1,6 +1,7 @@
 mod agent_execution_operation_scheduler;
 mod agent_execution_reconciler;
 mod agent_release_admission;
+mod approval_authorization_port;
 pub mod commands;
 mod environment_access;
 pub mod queries;
@@ -14,6 +15,7 @@ pub use agent_execution_operation_scheduler::{
 };
 pub use agent_execution_reconciler::*;
 pub use agent_release_admission::*;
+pub use approval_authorization_port::{AgentApprovalAuthorization, IAgentApprovalAuthorizationPort};
 pub use commands::*;
 pub use environment_access::{AgentsEnvironmentScope, IAgentsEnvironmentAccess};
 pub use queries::*;

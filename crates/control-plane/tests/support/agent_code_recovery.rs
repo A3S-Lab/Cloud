@@ -15,18 +15,20 @@ use a3s_cloud_contracts::{
 };
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
-    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentApprovalCheckpoint,
-    AgentApprovalCheckpointStatus, AgentCodeRunBinding, AgentExecution,
-    AgentExecutionCancellationRequested, AgentExecutionCheckpointObjectError,
-    AgentExecutionCheckpointObjectReference, AgentExecutionCheckpointObjectWrite,
-    AgentExecutionEventKind, AgentExecutionFlowConfig, AgentExecutionFlowConfigOptions,
-    AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
+    AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentAccess,
+    AgentApprovalAuthorization, AgentApprovalCheckpoint, AgentApprovalCheckpointStatus,
+    AgentCodeRunBinding, AgentExecution, AgentExecutionCancellationRequested,
+    AgentExecutionCheckpointObjectError, AgentExecutionCheckpointObjectReference,
+    AgentExecutionCheckpointObjectWrite, AgentExecutionEventKind, AgentExecutionFlowConfig,
+    AgentExecutionFlowConfigOptions, AgentExecutionFlowRuntime,
+    AgentExecutionFlowRuntimeDependencies, AgentExecutionStatus,
     AssetsAgentReleaseAdmissionAdapter, BindAgentCodeRunWrite,
     BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
     DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
-    IAgentApprovalCheckpointRepository, IAgentExecutionCheckpointObjectStore, IAgentRepository,
-    PostgresAgentRepository, RequestAgentExecutionCancellationWrite, StartAgentExecution,
-    StartAgentExecutionHandler, NATIVE_CODE_AGENT_PROVIDER_KIND,
+    IAgentApprovalAuthorizationPort, IAgentApprovalCheckpointRepository,
+    IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
+    RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
+    NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
 use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, PostgresBuildRunRepository,
@@ -46,12 +48,11 @@ use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
     EnrollmentTokenCredential, NodeCapabilities, NodeName,
 };
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
-use a3s_cloud_control_plane::modules::identity::{
-    IResourceAuthorizationDecisionRepository, ResourceAuthorizationDecisionRequest,
-};
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::PostgresSecretRepository;
+use a3s_cloud_control_plane::modules::shared_kernel::application::{
+    ApplicationError, ApplicationResult,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     canonical_json_bounded, sha256_digest, AgentConversationId, AgentExecutionId, ApiTokenId,
     AssetId, AssetReleaseId, AuthorizationDecisionRef, EnrollmentTokenId, EnvironmentId,

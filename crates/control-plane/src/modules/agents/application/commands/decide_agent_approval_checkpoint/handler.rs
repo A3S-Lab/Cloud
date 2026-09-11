@@ -1,31 +1,31 @@
 use super::{DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointResult};
 use crate::modules::agents::application::resource_access::AgentResourceAccess;
 use crate::modules::agents::application::support::{idempotency, validate_request_id};
-use crate::modules::agents::domain::{
-    validate_agent_approval_reason, DecideAgentApprovalCheckpointWrite, IAgentRepository,
+use crate::modules::agents::application::{
+    AgentApprovalAuthorization, IAgentApprovalAuthorizationPort,
 };
-use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisionRepository;
-use crate::modules::identity::domain::services::ResourceAuthorizationDecisionRequest;
-use crate::modules::identity::domain::value_objects::{ApiTokenScope, ResourceGrantScope};
+use crate::modules::agents::domain::{
+    DecideAgentApprovalCheckpointWrite, IAgentRepository, validate_agent_approval_reason,
+};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
-use crate::modules::shared_kernel::domain::{canonical_timestamp, AgentApprovalDecisionId};
+use crate::modules::shared_kernel::domain::{AgentApprovalDecisionId, canonical_timestamp};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use a3s_cloud_contracts::AgentProviderApprovalOutcomeV1;
 use std::sync::Arc;
 
 pub struct DecideAgentApprovalCheckpointHandler {
     agents: Arc<dyn IAgentRepository>,
-    authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
+    authorization: Arc<dyn IAgentApprovalAuthorizationPort>,
 }
 
 impl DecideAgentApprovalCheckpointHandler {
     pub fn new(
         agents: Arc<dyn IAgentRepository>,
-        authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
+        authorization: Arc<dyn IAgentApprovalAuthorizationPort>,
     ) -> Self {
         Self {
             agents,
-            authorization_decisions,
+            authorization,
         }
     }
 }
@@ -40,7 +40,7 @@ impl CommandHandler<DecideAgentApprovalCheckpoint> for DecideAgentApprovalCheckp
         a3s_boot::Result<ApplicationResult<DecideAgentApprovalCheckpointResult>>,
     > {
         let agents = Arc::clone(&self.agents);
-        let authorization_decisions = Arc::clone(&self.authorization_decisions);
+        let authorization = Arc::clone(&self.authorization);
         Box::pin(async move {
             if let Err(error) = validate_request_id(command.request_id) {
                 return Ok(Err(error));
@@ -85,7 +85,7 @@ impl CommandHandler<DecideAgentApprovalCheckpoint> for DecideAgentApprovalCheckp
                 | Err(crate::modules::shared_kernel::domain::RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Agent approval checkpoint not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -126,24 +126,19 @@ impl CommandHandler<DecideAgentApprovalCheckpoint> for DecideAgentApprovalCheckp
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
             }
-            let authorization_decision = match authorization_decisions
-                .authorize_resource(ResourceAuthorizationDecisionRequest {
+            let authorization_decision = match authorization
+                .authorize_decision(AgentApprovalAuthorization {
                     organization_id: command.organization_id,
+                    project_id: access.conversation.project_id,
+                    environment_id: access.conversation.environment_id,
                     principal_id: command.actor_principal_id,
                     credential_id: command.credential_id,
-                    required_scope: ApiTokenScope::parse(ApiTokenScope::EXECUTION_WRITE)
-                        .map_err(BootError::Internal)?,
-                    action: "agent.execution.approval.decide".into(),
-                    resource: ResourceGrantScope::Environment {
-                        project_id: access.conversation.project_id,
-                        environment_id: access.conversation.environment_id,
-                    },
                     request_id: command.request_id,
                 })
                 .await
             {
                 Ok(reference) => reference,
-                Err(error) => return Ok(Err(error.into())),
+                Err(error) => return Ok(Err(error)),
             };
             let decision_id = AgentApprovalDecisionId::from_uuid(uuid::Uuid::new_v5(
                 &checkpoint.id.as_uuid(),

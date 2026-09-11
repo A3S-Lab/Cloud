@@ -4,6 +4,7 @@ mod agent_execution_flow;
 mod agent_execution_operation_scheduler;
 mod agent_provider;
 mod agent_release_admission;
+mod approval_authorization;
 mod persistence;
 mod project_environment_access;
 
@@ -25,5 +26,6 @@ pub use agent_provider::{
     ReferenceEchoAgentExecutionProvider,
 };
 pub use agent_release_admission::AssetsAgentReleaseAdmissionAdapter;
+pub use approval_authorization::IdentityAgentApprovalAuthorizationAdapter;
 pub use persistence::{InMemoryAgentRepository, PostgresAgentRepository};
 pub use project_environment_access::ProjectsAgentsEnvironmentAccessAdapter;

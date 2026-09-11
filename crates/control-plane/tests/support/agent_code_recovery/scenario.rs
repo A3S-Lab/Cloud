@@ -390,7 +390,7 @@ async fn prepare_started_provider_scenario_with_tools(
             StartAgentExecution {
                 organization_id,
                 conversation_id: conversation.conversation.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: AgentAccess::organization_wide(),
                 agent_asset_id: asset.id,
                 agent_asset_release_id: published.id,
                 provider_kind: provider_kind.into(),

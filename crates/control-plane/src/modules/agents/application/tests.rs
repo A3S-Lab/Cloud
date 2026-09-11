@@ -13,7 +13,7 @@ use crate::modules::agents::domain::{
 };
 use crate::modules::agents::{
     AssetsAgentReleaseAdmissionAdapter, BuiltInAgentExecutionProviderRegistry,
-    InMemoryAgentRepository,
+    IdentityAgentApprovalAuthorizationAdapter, InMemoryAgentRepository,
 };
 use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
@@ -73,7 +73,9 @@ async fn approval_checkpoint_list_rejects_limits_outside_the_api_contract() {
 async fn approval_checkpoint_decision_rejects_an_invalid_reason_before_authorization() {
     let handler = DecideAgentApprovalCheckpointHandler::new(
         Arc::new(InMemoryAgentRepository::new()),
-        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(IdentityAgentApprovalAuthorizationAdapter::new(Arc::new(
+            InMemoryIdentityRepository::new(),
+        ))),
     );
     let result = handler
         .execute(
