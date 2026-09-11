@@ -14,6 +14,7 @@ pub async fn list_routes(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: EnvironmentScopeArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
@@ -21,6 +22,7 @@ pub async fn list_routes(
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
+            access: edge_access(&resource_access),
         })
         .await?
     {

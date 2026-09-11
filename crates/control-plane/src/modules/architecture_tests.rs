@@ -3866,7 +3866,7 @@ fn identity_inference_key_queries_isolate_evaluator_behind_one_context_owned_acc
 }
 
 #[test]
-fn edge_get_route_isolates_identity_behind_one_context_owned_access_projection() {
+fn edge_route_queries_isolate_identity_behind_one_context_owned_access_projection() {
     let root = module_root();
 
     let access = std::fs::read_to_string(root.join("edge/application/resource_access.rs"))
@@ -3896,19 +3896,41 @@ fn edge_get_route_isolates_identity_behind_one_context_owned_access_projection()
         );
     }
 
-    let query = std::fs::read_to_string(root.join("edge/application/queries/get_route.rs"))
-        .expect("read GetRoute query");
-    let production_query = production_source(&query);
-    assert!(
-        production_query.contains("pub access: EdgeAccess"),
-        "GetRoute stopped carrying Edge-owned access"
-    );
-    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+    for relative in [
+        "edge/application/queries/get_route.rs",
+        "edge/application/queries/list_routes.rs",
+    ] {
+        let query = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production_query = production_source(&query);
         assert!(
-            !production_query.contains(forbidden),
-            "GetRoute regained Identity authority {forbidden}"
+            production_query.contains("pub access: EdgeAccess"),
+            "{relative} stopped carrying Edge-owned access"
         );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production_query.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
     }
+
+    let list_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/list_routes.rs"))
+            .expect("read ListRoutes query");
+    let compact_list = production_source(&list_handler)
+        .split_whitespace()
+        .collect::<String>();
+    let access_check = compact_list
+        .find(".access.environment_is_visible(")
+        .expect("ListRoutes checks Edge visibility");
+    let repository_read = compact_list
+        .find(".list_routes(")
+        .expect("ListRoutes still lists through the Edge repository");
+    assert!(
+        access_check < repository_read,
+        "ListRoutes must fail closed on visibility before listing routes"
+    );
 
     let access_projection = std::fs::read_to_string(
         root.parent()
@@ -3934,14 +3956,15 @@ fn edge_get_route_isolates_identity_behind_one_context_owned_access_projection()
     )
     .expect("read route queries controller");
     let production = production_source(&controller);
-    assert!(
-        production.contains("edge_access(&resource_access_evaluator("),
-        "GetRoute must project Identity into EdgeAccess"
+    assert_eq!(
+        production.matches("edge_access(&resource_access_evaluator(").count(),
+        2,
+        "ListRoutes and GetRoute must each project Identity into EdgeAccess"
     );
     assert!(
         !production.contains("resource_access: resource_access_evaluator")
             && !production.contains("resource_access,"),
-        "GetRoute must not pass ResourceAccessEvaluator into Application"
+        "Edge route queries must not pass ResourceAccessEvaluator into Application"
     );
 
     let mcp = std::fs::read_to_string(
@@ -3951,13 +3974,16 @@ fn edge_get_route_isolates_identity_behind_one_context_owned_access_projection()
     )
     .expect("read Edge management MCP");
     let production_mcp = production_source(&mcp);
-    assert!(
-        production_mcp.contains("access: edge_access(&resource_access)"),
-        "Edge MCP GetRoute must project Identity into EdgeAccess"
+    assert_eq!(
+        production_mcp
+            .matches("access: edge_access(&resource_access)")
+            .count(),
+        2,
+        "Edge MCP ListRoutes and GetRoute must each project Identity into EdgeAccess"
     );
     assert!(
         !production_mcp.contains("resource_access,"),
-        "Edge MCP GetRoute must not pass ResourceAccessEvaluator into Application CQRS fields"
+        "Edge MCP route queries must not pass ResourceAccessEvaluator into Application CQRS fields"
     );
 }
 

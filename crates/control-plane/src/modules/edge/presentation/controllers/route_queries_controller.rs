@@ -23,17 +23,20 @@ pub fn route_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let environment_id =
+                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListRoutes {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
+                            project_id,
+                            environment_id,
+                            access,
                         })
                         .await?
                     {

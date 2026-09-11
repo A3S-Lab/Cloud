@@ -1817,7 +1817,14 @@ pub async fn execute(
         }
         ManagementTool::RoutesList => {
             let arguments = arguments::parse::<EnvironmentScopeArguments>(arguments).ok()?;
-            edge::list_routes(query_bus, organization_id, arguments, request_id).await
+            edge::list_routes(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::RoutesGet => {
             let arguments = arguments::parse::<RouteArguments>(arguments).ok()?;
