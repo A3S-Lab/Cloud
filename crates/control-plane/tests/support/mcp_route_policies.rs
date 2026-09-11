@@ -15,6 +15,7 @@ use a3s_cloud_control_plane::modules::edge::domain::events::{
 use a3s_cloud_control_plane::modules::edge::domain::repositories::{
     CreateMcpCredentialWrite, StageRoutePublication,
 };
+use a3s_cloud_control_plane::modules::edge::domain::EdgeEncryptedCredentialValue;
 use a3s_cloud_control_plane::modules::edge::{
     AssetsEdgeMcpServiceProfileAccessAdapter, CompileMcpGatewaySnapshot,
     CompiledGatewayRouteRollout, CreateDomainClaimWrite, DomainClaim, DomainNamePattern,
@@ -42,7 +43,6 @@ use a3s_cloud_control_plane::modules::inference::EmptyInferenceRouteAclProjectio
 use a3s_cloud_control_plane::modules::operations::{
     OperationRequest, OperationSubject, WorkflowIdentity,
 };
-use a3s_cloud_control_plane::modules::edge::domain::EdgeEncryptedCredentialValue;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, DeploymentId, DomainClaimId, EnvironmentId, GatewayCertificateId,
     GatewayRolloutId, GatewayScopeId, GitCommitSha, IdempotencyRequest, McpCredentialId,
@@ -1016,10 +1016,14 @@ pub async fn exercise(
         desired_edge.clone(),
         desired_planner,
         fixture_gateway_snapshot_compiler()?,
-        Arc::new(EmptyInferenceCredentialAclProjectionPort),
-        Arc::new(EmptyInferenceRouteAclProjectionPort),
         Arc::new(
-            a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort,
+            a3s_cloud_control_plane::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                Arc::new(EmptyInferenceCredentialAclProjectionPort),
+                Arc::new(EmptyInferenceRouteAclProjectionPort),
+                Arc::new(
+                    a3s_cloud_control_plane::modules::inference::EmptyInferenceWorkerAclProjectionPort,
+                ),
+            ),
         ),
         std::time::Duration::from_secs(60),
         Duration::minutes(5),

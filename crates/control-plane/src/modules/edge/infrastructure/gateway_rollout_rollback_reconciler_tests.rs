@@ -471,13 +471,17 @@ async fn managed_rollout_rollback_stages_inference_credential_and_route_acl_with
         repository,
         managed_repository,
         desired_state,
-        Arc::new(StubCredentialPort {
-            projection: credential,
-        }),
-        Arc::new(StubRoutePort {
-            projection: inference_route,
-        }),
-        Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                Arc::new(StubCredentialPort {
+                    projection: credential,
+                }),
+                Arc::new(StubRoutePort {
+                    projection: inference_route,
+                }),
+                Arc::new(EmptyInferenceWorkerAclProjectionPort),
+            ),
+        ),
         rollback_compiler(&fixture),
         StdDuration::from_secs(60),
         10,

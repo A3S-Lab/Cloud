@@ -1,4 +1,6 @@
-use crate::modules::edge::application::IEdgeRuntimeObservationAccess;
+use crate::modules::edge::application::{
+    IEdgeManagedInferenceAclAccess, IEdgeRuntimeObservationAccess,
+};
 use crate::modules::edge::domain::events::GatewayRouteCutoverStaged;
 use crate::modules::edge::domain::repositories::{
     GatewayRouteCutoverResult, IEdgeRepository, StageGatewayRouteCutover,
@@ -9,15 +11,10 @@ use crate::modules::edge::domain::{
     RouteState, RouteTarget,
 };
 use crate::modules::edge::infrastructure::{
-    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    load_inference_worker_projections_for_routes, CompileManagedGatewayRouteSnapshot,
-    GatewayManagedSnapshotComposition, GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler,
-    GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository,
-    PlanGatewayNodeDesiredState, StageManagedGatewayRouteCutover,
-};
-use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
+    CompileManagedGatewayRouteSnapshot, GatewayManagedSnapshotComposition,
+    GatewayNodeDesiredStatePlanner, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
+    GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
+    StageManagedGatewayRouteCutover,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, IdempotencyRequest, NodeCommandId, RepositoryError,
@@ -48,9 +45,7 @@ pub struct EdgeDeploymentRouteUpdater {
 struct ManagedGatewayRouteCutover {
     snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
     desired_state: GatewayNodeDesiredStatePlanner,
-    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-    inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-    inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+    inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
 }
 
 impl EdgeDeploymentRouteUpdater {
@@ -82,9 +77,7 @@ impl EdgeDeploymentRouteUpdater {
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
         command_ttl: Duration,
     ) -> Result<Self, String> {
         if command_ttl <= Duration::zero() {
@@ -99,9 +92,7 @@ impl EdgeDeploymentRouteUpdater {
             managed: Some(ManagedGatewayRouteCutover {
                 snapshots,
                 desired_state,
-                inference_credentials,
-                inference_routes,
-                inference_workers,
+                inference_acl,
             }),
         })
     }
@@ -394,25 +385,13 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
             Some(desired_state) => {
                 let managed = self.managed.as_ref().ok_or_else(|| {
                     RepositoryError::Storage(
-                        "managed Gateway route cutover missing inference projection ports".into(),
+                        "managed Gateway route cutover missing inference ACL access".into(),
                     )
                 })?;
-                let inference_credentials = load_inference_credential_projections_for_routes(
-                    managed.inference_credentials.as_ref(),
-                    &complete_routes,
-                )
-                .await?;
-                let inference_routes = load_inference_route_projections_for_routes(
-                    managed.inference_routes.as_ref(),
-                    &complete_routes,
-                )
-                .await?;
-                let inference_workers = load_inference_worker_projections_for_routes(
-                    managed.inference_workers.as_ref(),
-                    &complete_routes,
-                    issued_at,
-                )
-                .await?;
+                let inference_acl = managed
+                    .inference_acl
+                    .load_for_routes(&complete_routes, &[], issued_at)
+                    .await?;
                 let candidate = self
                     .compiler
                     .compile_managed_route_snapshot(CompileManagedGatewayRouteSnapshot {
@@ -421,9 +400,9 @@ impl IDeploymentRouteUpdater for EdgeDeploymentRouteUpdater {
                         certificate_id,
                         snapshot_routes: complete_routes.clone(),
                         additional_domain_claims: Vec::new(),
-                        inference_credentials,
-                        inference_routes,
-                        inference_workers,
+                        inference_credentials: inference_acl.credentials,
+                        inference_routes: inference_acl.routes,
+                        inference_workers: inference_acl.workers,
                     })
                     .map_err(RepositoryError::Conflict)?;
                 (candidate.snapshot().clone(), Some(candidate))

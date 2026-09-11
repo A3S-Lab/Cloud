@@ -1,4 +1,5 @@
 use super::{PublishRoute, PublishRouteResult};
+use crate::modules::edge::application::IEdgeManagedInferenceAclAccess;
 use crate::modules::edge::domain::repositories::{
     EdgeRoutePublicationResult, GatewayRolloutResult, IEdgeRepository, StageRoutePublication,
 };
@@ -8,10 +9,6 @@ use crate::modules::edge::infrastructure::{
     GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler, GatewayRouteRolloutPlanner,
     GatewaySnapshotCompiler, IMcpGatewaySnapshotRepository, PlanGatewayRouteRollout,
     PlanManagedGatewayRouteRollout, StageManagedRoutePublication,
-};
-use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
@@ -56,9 +53,7 @@ impl PublishRouteHandler {
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
         command_ttl: Duration,
     ) -> Result<Self, String> {
         let rollout_compiler =
@@ -68,9 +63,7 @@ impl PublishRouteHandler {
             targets,
             rollout_compiler,
             desired_state,
-            inference_credentials,
-            inference_routes,
-            inference_workers,
+            inference_acl,
         );
         Ok(Self {
             routes,

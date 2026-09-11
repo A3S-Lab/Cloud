@@ -1,15 +1,10 @@
 use super::{
-    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    load_inference_worker_projections_for_routes, CompileMcpGatewaySnapshot,
-    GatewaySnapshotCompiler, GatewaySnapshotMetadata, IMcpGatewayNodeProjectionPlanner,
-    IMcpGatewaySnapshotRepository, McpGatewaySnapshotReconciliationState,
-    PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
+    CompileMcpGatewaySnapshot, GatewaySnapshotCompiler, GatewaySnapshotMetadata,
+    IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
+    McpGatewaySnapshotReconciliationState, PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
 };
+use crate::modules::edge::application::IEdgeManagedInferenceAclAccess;
 use crate::modules::edge::domain::GatewayPublicationState;
-use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
-};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayScopeId, NodeCommandId, NodeId, RepositoryError,
 };
@@ -43,9 +38,7 @@ pub struct McpGatewayDesiredStateReconciler {
     repository: Arc<dyn IMcpGatewaySnapshotRepository>,
     planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
     compiler: GatewaySnapshotCompiler,
-    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-    inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-    inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+    inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
     interval: Duration,
     command_ttl: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
@@ -61,9 +54,7 @@ impl McpGatewayDesiredStateReconciler {
         repository: Arc<dyn IMcpGatewaySnapshotRepository>,
         planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
         compiler: GatewaySnapshotCompiler,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
         interval: Duration,
         command_ttl: ChronoDuration,
         empty_snapshot_ttl: ChronoDuration,
@@ -90,9 +81,7 @@ impl McpGatewayDesiredStateReconciler {
             repository,
             planner,
             compiler,
-            inference_credentials,
-            inference_routes,
-            inference_workers,
+            inference_acl,
             interval,
             command_ttl,
             empty_snapshot_ttl,
@@ -313,58 +302,25 @@ impl McpGatewayDesiredStateReconciler {
                     .iter()
                     .map(|input| input.route.clone())
                     .collect::<Vec<_>>();
-                let inference_credentials = match load_inference_credential_projections_for_routes(
-                    self.inference_credentials.as_ref(),
-                    &ordinary_routes,
-                )
-                .await
+                let inference_acl_snapshot = match self
+                    .inference_acl
+                    .load_for_routes(&ordinary_routes, &[], now)
+                    .await
                 {
-                    Ok(credentials) => credentials,
+                    Ok(snapshot) => snapshot,
                     Err(_) => {
                         report.failures.push(failure(
                             gateway_scope_id,
                             node_id,
                             "compile",
-                            "Identity inference credential projection failed",
+                            "managed inference ACL projection failed",
                         ));
                         continue;
                     }
                 };
-                let inference_routes = match load_inference_route_projections_for_routes(
-                    self.inference_routes.as_ref(),
-                    &ordinary_routes,
-                )
-                .await
-                {
-                    Ok(routes) => routes,
-                    Err(_) => {
-                        report.failures.push(failure(
-                            gateway_scope_id,
-                            node_id,
-                            "compile",
-                            "Inference route ACL projection failed",
-                        ));
-                        continue;
-                    }
-                };
-                let inference_workers = match load_inference_worker_projections_for_routes(
-                    self.inference_workers.as_ref(),
-                    &ordinary_routes,
-                    now,
-                )
-                .await
-                {
-                    Ok(workers) => workers,
-                    Err(_) => {
-                        report.failures.push(failure(
-                            gateway_scope_id,
-                            node_id,
-                            "compile",
-                            "Inference worker ACL projection failed",
-                        ));
-                        continue;
-                    }
-                };
+                let inference_credentials = inference_acl_snapshot.credentials;
+                let inference_routes = inference_acl_snapshot.routes;
+                let inference_workers = inference_acl_snapshot.workers;
                 match self
                     .compiler
                     .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {

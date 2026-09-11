@@ -1,12 +1,11 @@
 use super::gateway_snapshot_compiler::managed_snapshot_expires_at;
 use super::{
-    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    load_inference_worker_projections_for_routes,
     CompileManagedGatewayCertificateConvergenceSnapshot, GatewayManagedSnapshotComposition,
     GatewayNodeDesiredStatePlanner, GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner,
     GatewaySnapshotRouteInput, IMcpGatewaySnapshotRepository, PlanGatewayNodeDesiredState,
     StageManagedGatewayCertificateConvergence,
 };
+use crate::modules::edge::application::IEdgeManagedInferenceAclAccess;
 use crate::modules::edge::domain::events::{
     GatewayCertificateConvergenceStaged, GatewayCertificateExpiryChanged,
 };
@@ -21,10 +20,6 @@ use crate::modules::edge::domain::{
     DomainClaimState, GatewayCertificate, GatewayCertificateConvergence,
     GatewayCertificateConvergenceReason, GatewayCertificateState, GatewayPublication,
     GatewayRouteVersion, Route,
-};
-use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayCertificateId, NodeCommandId, NodeId, RepositoryError,
@@ -65,9 +60,7 @@ pub struct GatewayCertificateReconciler {
     repository: Arc<dyn IEdgeRepository>,
     managed_repository: Option<Arc<dyn IMcpGatewaySnapshotRepository>>,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
-    inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
-    inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
-    inference_workers: Option<Arc<dyn IInferenceWorkerAclProjectionPort>>,
+    inference_acl: Option<Arc<dyn IEdgeManagedInferenceAclAccess>>,
     commands: Arc<dyn IGatewayCommandQueue>,
     certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
     compiler: super::GatewaySnapshotCompiler,
@@ -108,9 +101,7 @@ impl GatewayCertificateReconciler {
             repository,
             managed_repository: None,
             desired_state: None,
-            inference_credentials: None,
-            inference_routes: None,
-            inference_workers: None,
+            inference_acl: None,
             commands,
             certificate_authority,
             compiler,
@@ -127,9 +118,7 @@ impl GatewayCertificateReconciler {
         repository: Arc<dyn IEdgeRepository>,
         managed_repository: Arc<dyn IMcpGatewaySnapshotRepository>,
         desired_state: GatewayNodeDesiredStatePlanner,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
         commands: Arc<dyn IGatewayCommandQueue>,
         certificate_authority: Arc<dyn IGatewayCertificateAuthority>,
         compiler: super::GatewaySnapshotCompiler,
@@ -152,9 +141,7 @@ impl GatewayCertificateReconciler {
         )?;
         reconciler.managed_repository = Some(managed_repository);
         reconciler.desired_state = Some(desired_state);
-        reconciler.inference_credentials = Some(inference_credentials);
-        reconciler.inference_routes = Some(inference_routes);
-        reconciler.inference_workers = Some(inference_workers);
+        reconciler.inference_acl = Some(inference_acl);
         Ok(reconciler)
     }
 
@@ -642,45 +629,22 @@ impl GatewayCertificateReconciler {
         let reuse = reason == GatewayCertificateConvergenceReason::SnapshotRenewal;
         let mut replacement_certificate_id = (!reuse && has_traffic)
             .then(|| deterministic_certificate_id(target.scope.node_id, revision));
-        let inference_credentials = {
-            let port = self.inference_credentials.as_ref().ok_or_else(|| {
-                RepositoryError::Storage(
-                    "managed Gateway certificate convergence missing inference credential projection port"
-                        .into(),
-                )
-            })?;
-            let load_routes = ordinary_routes_for_inference_projection(
-                &retained_routes,
-                desired_state.active_routes(),
-            );
-            load_inference_credential_projections_for_routes(port.as_ref(), &load_routes).await?
-        };
-        let inference_routes = {
-            let port = self.inference_routes.as_ref().ok_or_else(|| {
-                RepositoryError::Storage(
-                    "managed Gateway certificate convergence missing inference route projection port"
-                        .into(),
-                )
-            })?;
-            let load_routes = ordinary_routes_for_inference_projection(
-                &retained_routes,
-                desired_state.active_routes(),
-            );
-            load_inference_route_projections_for_routes(port.as_ref(), &load_routes).await?
-        };
-        let inference_workers = {
-            let port = self.inference_workers.as_ref().ok_or_else(|| {
-                RepositoryError::Storage(
-                    "managed Gateway certificate convergence missing inference worker projection port"
-                        .into(),
-                )
-            })?;
-            let load_routes = ordinary_routes_for_inference_projection(
-                &retained_routes,
-                desired_state.active_routes(),
-            );
-            load_inference_worker_projections_for_routes(port.as_ref(), &load_routes, now).await?
-        };
+        let inference_acl = self.inference_acl.as_ref().ok_or_else(|| {
+            RepositoryError::Storage(
+                "managed Gateway certificate convergence missing inference ACL projection port"
+                    .into(),
+            )
+        })?;
+        let load_routes = ordinary_routes_for_inference_projection(
+            &retained_routes,
+            desired_state.active_routes(),
+        );
+        let inference_acl_snapshot = inference_acl
+            .load_for_routes(&load_routes, &[], now)
+            .await?;
+        let inference_credentials = inference_acl_snapshot.credentials;
+        let inference_routes = inference_acl_snapshot.routes;
+        let inference_workers = inference_acl_snapshot.workers;
         let candidate = if reuse {
             match self
                 .compiler

@@ -1,20 +1,15 @@
+use crate::modules::edge::application::{
+    EdgeManagedInferenceAclEnvironment, IEdgeManagedInferenceAclAccess,
+};
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::domain::services::IRouteTargetReader;
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayScope, RouteHostname, RoutePath, RoutePortName,
 };
 use crate::modules::edge::infrastructure::{
-    inference_credential_scopes_from_routes, inference_route_scopes_from_routes,
     CompileGatewayRouteRollout, CompileManagedGatewayRouteRollout, CompiledGatewayRouteRollout,
     GatewayMemberSnapshotContext, GatewayNodeDesiredStatePlanner, GatewayRouteRolloutCompiler,
     PlanGatewayNodeDesiredState,
-};
-use crate::modules::identity::application::{
-    IInferenceCredentialAclProjectionPort, InferenceCredentialEnvironmentScope,
-};
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
-    InferenceRouteEnvironmentScope,
 };
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayRolloutId, NodeId, RepositoryError, RouteId, WorkloadRevisionId,
@@ -62,9 +57,7 @@ pub struct GatewayRouteRolloutPlanner {
     targets: Arc<dyn IRouteTargetReader>,
     compiler: GatewayRouteRolloutCompiler,
     desired_state: Option<GatewayNodeDesiredStatePlanner>,
-    inference_credentials: Option<Arc<dyn IInferenceCredentialAclProjectionPort>>,
-    inference_routes: Option<Arc<dyn IInferenceRouteAclProjectionPort>>,
-    inference_workers: Option<Arc<dyn IInferenceWorkerAclProjectionPort>>,
+    inference_acl: Option<Arc<dyn IEdgeManagedInferenceAclAccess>>,
 }
 
 impl GatewayRouteRolloutPlanner {
@@ -78,9 +71,7 @@ impl GatewayRouteRolloutPlanner {
             targets,
             compiler,
             desired_state: None,
-            inference_credentials: None,
-            inference_routes: None,
-            inference_workers: None,
+            inference_acl: None,
         }
     }
 
@@ -89,18 +80,14 @@ impl GatewayRouteRolloutPlanner {
         targets: Arc<dyn IRouteTargetReader>,
         compiler: GatewayRouteRolloutCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
     ) -> Self {
         Self {
             routes,
             targets,
             compiler,
             desired_state: Some(desired_state),
-            inference_credentials: Some(inference_credentials),
-            inference_routes: Some(inference_routes),
-            inference_workers: Some(inference_workers),
+            inference_acl: Some(inference_acl),
         }
     }
 
@@ -218,21 +205,18 @@ impl GatewayRouteRolloutPlanner {
                 })
             }))
             .await?;
-        let inference_port = self.inference_credentials.as_ref().ok_or_else(|| {
+        let inference_acl = self.inference_acl.as_ref().ok_or_else(|| {
             RepositoryError::Storage(
-                "managed Gateway inference credential projection is not configured".into(),
+                "managed Gateway inference ACL projection is not configured".into(),
             )
         })?;
-        let inference_route_port = self.inference_routes.as_ref().ok_or_else(|| {
-            RepositoryError::Storage(
-                "managed Gateway inference route projection is not configured".into(),
-            )
-        })?;
-        let inference_worker_port = self.inference_workers.as_ref().ok_or_else(|| {
-            RepositoryError::Storage(
-                "managed Gateway inference worker projection is not configured".into(),
-            )
-        })?;
+        let claim_environment = EdgeManagedInferenceAclEnvironment::new(
+            request.domain_claim.organization_id,
+            request.domain_claim.project_id,
+            request.domain_claim.environment_id,
+        )
+        .map_err(RepositoryError::Conflict)?;
+        let additional_environments = [claim_environment];
         let mut member_inference_credentials = BTreeMap::<NodeId, _>::new();
         let mut member_inference_routes = BTreeMap::<NodeId, _>::new();
         let mut member_inference_workers = BTreeMap::<NodeId, _>::new();
@@ -242,44 +226,17 @@ impl GatewayRouteRolloutPlanner {
                 .iter()
                 .map(|input| input.route.clone())
                 .collect::<Vec<_>>();
-            let mut scopes = inference_credential_scopes_from_routes(&ordinary_routes)
-                .map_err(RepositoryError::Conflict)?;
-            let claim_scope = InferenceCredentialEnvironmentScope::new(
-                request.domain_claim.organization_id,
-                request.domain_claim.project_id,
-                request.domain_claim.environment_id,
-            )
-            .map_err(RepositoryError::Conflict)?;
-            if !scopes.contains(&claim_scope) {
-                scopes.push(claim_scope);
-                scopes.sort();
-            }
-            let credentials = inference_port
-                .list_inference_credential_acl_projections(&scopes)
+            let snapshot = inference_acl
+                .load_for_routes(
+                    &ordinary_routes,
+                    &additional_environments,
+                    request.issued_at,
+                )
                 .await?;
-            member_inference_credentials.insert(desired.physical_scope().node_id, credentials);
-
-            let mut route_scopes = inference_route_scopes_from_routes(&ordinary_routes)
-                .map_err(RepositoryError::Conflict)?;
-            let route_claim_scope = InferenceRouteEnvironmentScope::new(
-                request.domain_claim.organization_id,
-                request.domain_claim.project_id,
-                request.domain_claim.environment_id,
-            )
-            .map_err(RepositoryError::Conflict)?;
-            if !route_scopes.contains(&route_claim_scope) {
-                route_scopes.push(route_claim_scope);
-                route_scopes.sort();
-            }
-            let routes = inference_route_port
-                .list_inference_route_acl_projections(&route_scopes)
-                .await?;
-            member_inference_routes.insert(desired.physical_scope().node_id, routes);
-
-            let workers = inference_worker_port
-                .list_inference_worker_acl_projections(&route_scopes, request.issued_at)
-                .await?;
-            member_inference_workers.insert(desired.physical_scope().node_id, workers);
+            member_inference_credentials
+                .insert(desired.physical_scope().node_id, snapshot.credentials);
+            member_inference_routes.insert(desired.physical_scope().node_id, snapshot.routes);
+            member_inference_workers.insert(desired.physical_scope().node_id, snapshot.workers);
         }
         self.compiler
             .compile_managed(CompileManagedGatewayRouteRollout {

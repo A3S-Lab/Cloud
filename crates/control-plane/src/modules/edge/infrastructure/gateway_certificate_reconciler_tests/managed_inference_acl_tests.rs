@@ -229,13 +229,18 @@ fn managed_reconciler(
         managed_repository.clone(),
         Arc::new(EmptyProjectionPlanner),
     );
+    let inference_acl = Arc::new(
+        crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+            inference_credentials,
+            inference_routes,
+            Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        ),
+    );
     GatewayCertificateReconciler::new_managed(
         repository,
         managed_repository,
         desired_state,
-        inference_credentials,
-        inference_routes,
-        Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        inference_acl,
         queue,
         authority,
         fixture.compiler.clone(),
@@ -258,7 +263,9 @@ async fn managed_certificate_convergence_stages_inference_credential_and_route_a
 
     let fixture = Fixture::new();
     let base = Utc::now();
-    let claim = fixture.verified_claim("cert-inference.example.com", base).await;
+    let claim = fixture
+        .verified_claim("cert-inference.example.com", base)
+        .await;
     let (route, _certificate) = fixture
         .activate_route(
             &claim,

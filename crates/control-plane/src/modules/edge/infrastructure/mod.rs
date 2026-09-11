@@ -15,6 +15,7 @@ mod gateway_rollout_rollback_reconciler;
 mod gateway_route_rollout_compiler;
 mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
+mod identity_inference_managed_acl_access;
 mod inference_credential_scope;
 mod inference_edge_route_binding_admission;
 mod inference_route_scope;
@@ -65,6 +66,7 @@ pub use assets_mcp_service_profile_access::AssetsEdgeMcpServiceProfileAccessAdap
 pub use deployment_route_updater::EdgeDeploymentRouteUpdater;
 pub use domain_ownership_verifier::{DnsDomainOwnershipVerifier, LocalDomainOwnershipVerifier};
 pub use fleet_node_access::FleetEdgeNodeAccessAdapter;
+pub use fleet_runtime_observation_access::FleetEdgeRuntimeObservationAccessAdapter;
 pub use gateway_acknowledgement_projector::EdgeGatewayAcknowledgementProjector;
 pub use gateway_certificate_reconciler::{
     GatewayCertificateReconciler, GatewayCertificateReconciliationFailure,
@@ -105,6 +107,7 @@ pub use gateway_snapshot_compiler::{
     GatewayDomainClaimVersion, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
+pub use identity_inference_managed_acl_access::IdentityInferenceEdgeManagedAclAccessAdapter;
 pub use inference_credential_scope::{
     inference_credential_scopes_from_routes, load_inference_credential_projections_for_routes,
 };
@@ -155,7 +158,6 @@ pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRoutePr
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
-pub use fleet_runtime_observation_access::FleetEdgeRuntimeObservationAccessAdapter;
 pub use project_environment_access::ProjectsEdgeEnvironmentAccessAdapter;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) use runtime_http_upstream::gateway_http_upstream;

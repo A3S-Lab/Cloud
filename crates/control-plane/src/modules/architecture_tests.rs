@@ -11133,9 +11133,8 @@ fn edge_mcp_gateway_projection_isolates_healthy_route_target_reading() {
 fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_port() {
     let root = module_root();
 
-    let port =
-        std::fs::read_to_string(root.join("edge/application/runtime_observation_access.rs"))
-            .expect("read Edge Runtime observation access port");
+    let port = std::fs::read_to_string(root.join("edge/application/runtime_observation_access.rs"))
+        .expect("read Edge Runtime observation access port");
     let compact_port = production_source(&port)
         .split_whitespace()
         .collect::<String>();
@@ -11214,6 +11213,119 @@ fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_po
             .count(),
         1,
         "root composition must construct the Edge Runtime observation ACA exactly once"
+    );
+}
+
+#[test]
+fn edge_managed_inference_acl_isolates_identity_and_inference_behind_one_owner_port() {
+    let root = module_root();
+
+    let port =
+        std::fs::read_to_string(root.join("edge/application/managed_inference_acl_access.rs"))
+            .expect("read Edge managed inference ACL access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeManagedInferenceAclEnvironment",
+        "pubstructEdgeManagedInferenceAclSnapshot",
+        "pubtraitIEdgeManagedInferenceAclAccess:Send+Sync",
+        "asyncfnload_for_routes(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge lost its managed inference ACL boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "crate::modules::inference",
+        "IInferenceCredentialAclProjectionPort",
+        "IInferenceRouteAclProjectionPort",
+        "IInferenceWorkerAclProjectionPort",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Edge managed inference ACL port leaked foreign authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/deployment_route_updater.rs",
+        "edge/infrastructure/gateway_certificate_reconciler.rs",
+        "edge/infrastructure/gateway_rollout_rollback_reconciler.rs",
+        "edge/infrastructure/gateway_route_rollout_planner.rs",
+        "edge/infrastructure/mcp_gateway_desired_state_reconciler.rs",
+        "edge/application/commands/publish_route/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        for forbidden in [
+            "IInferenceCredentialAclProjectionPort",
+            "IInferenceRouteAclProjectionPort",
+            "IInferenceWorkerAclProjectionPort",
+            "load_inference_credential_projections_for_routes",
+            "load_inference_route_projections_for_routes",
+            "load_inference_worker_projections_for_routes",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained foreign managed inference ACL authority {forbidden}"
+            );
+        }
+        let compact = production.split_whitespace().collect::<String>();
+        assert!(
+            compact.contains("Arc<dynIEdgeManagedInferenceAclAccess>"),
+            "{relative} stopped depending on the Edge-owned managed inference ACL port"
+        );
+        if !relative.ends_with("publish_route/handler.rs") {
+            assert!(
+                compact.contains(".load_for_routes("),
+                "{relative} stopped staging managed inference ACL through the Edge-owned port"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("edge/infrastructure/identity_inference_managed_acl_access.rs"),
+    )
+    .expect("read Identity/Inference managed ACL ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct IdentityInferenceEdgeManagedAclAccessAdapter",
+        "IInferenceCredentialAclProjectionPort",
+        "IInferenceRouteAclProjectionPort",
+        "IInferenceWorkerAclProjectionPort",
+        "impl IEdgeManagedInferenceAclAccess for IdentityInferenceEdgeManagedAclAccessAdapter",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "managed inference ACL ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "managed inference ACL ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("IdentityInferenceEdgeManagedAclAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the managed inference ACL ACA exactly once"
     );
 }
 
@@ -11334,9 +11446,10 @@ fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
         );
     }
 
-    let receipt =
-        std::fs::read_to_string(root.join("edge/domain/entities/mcp_credential_delivery_receipt.rs"))
-            .expect("read MCP credential delivery receipt");
+    let receipt = std::fs::read_to_string(
+        root.join("edge/domain/entities/mcp_credential_delivery_receipt.rs"),
+    )
+    .expect("read MCP credential delivery receipt");
     let production_receipt = production_source(&receipt);
     assert!(
         production_receipt.contains("EdgeEncryptedCredentialValue"),

@@ -541,9 +541,13 @@ async fn bounded_scope_cursor_rotates_without_starving_later_scopes() {
         repository.clone(),
         Arc::new(EmptyProjectionPlanner::default()),
         compiler(),
-        Arc::new(EmptyInferenceCredentialAclProjectionPort),
-        Arc::new(EmptyInferenceRouteAclProjectionPort),
-        Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                Arc::new(EmptyInferenceCredentialAclProjectionPort),
+                Arc::new(EmptyInferenceRouteAclProjectionPort),
+                Arc::new(EmptyInferenceWorkerAclProjectionPort),
+            ),
+        ),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),
@@ -859,9 +863,13 @@ fn reconciler_with_inference_ports(
         repository,
         planner,
         compiler(),
-        inference_credentials,
-        inference_routes,
-        Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                inference_credentials,
+                inference_routes,
+                Arc::new(EmptyInferenceWorkerAclProjectionPort),
+            ),
+        ),
         Duration::from_secs(1),
         ChronoDuration::minutes(1),
         ChronoDuration::hours(1),

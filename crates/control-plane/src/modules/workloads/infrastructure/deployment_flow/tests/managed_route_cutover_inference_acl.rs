@@ -375,13 +375,17 @@ async fn managed_route_cutover_stages_inference_credential_and_route_acl_without
         gateway_commands,
         compiler,
         desired_state,
-        Arc::new(StubCredentialPort {
-            projection: credential,
-        }),
-        Arc::new(StubRoutePort {
-            projection: inference_route,
-        }),
-        Arc::new(EmptyInferenceWorkerAclProjectionPort),
+        Arc::new(
+            crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                Arc::new(StubCredentialPort {
+                    projection: credential,
+                }),
+                Arc::new(StubRoutePort {
+                    projection: inference_route,
+                }),
+                Arc::new(EmptyInferenceWorkerAclProjectionPort),
+            ),
+        ),
         Duration::seconds(5),
     )?;
 

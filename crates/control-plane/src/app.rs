@@ -142,8 +142,9 @@ use crate::modules::edge::{
     GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
     GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
-    IEdgeEnvironmentAccess, IEdgeMcpCredentialEncryption, IEdgeMcpServiceProfileAccess,
-    IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess, IEdgeRuntimeObservationAccess,
+    IEdgeEnvironmentAccess, IEdgeManagedInferenceAclAccess, IEdgeMcpCredentialEncryption,
+    IEdgeMcpServiceProfileAccess, IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess,
+    IEdgeRuntimeObservationAccess, IdentityInferenceEdgeManagedAclAccessAdapter,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
     ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
     LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
@@ -230,18 +231,18 @@ use crate::modules::identity::{
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
     GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess,
     IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
-    IInferenceCredentialAclProjectionPort, IdentityInferenceGrantCredentialAdmissionAdapter,
-    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
-    ListApiTokensHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
-    ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
-    ListRecipientContactsHandler, ListResourceGrantsHandler, ListTrustDomainRevisionsHandler,
-    ListWorkloadIdentityPolicyRevisionsHandler, OpenIdConnectProviderService,
-    ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
-    ProposeTenantSupportGrantHandler, RecipientContactVerificationDeliveryDispatcher,
-    RevokeApiTokenHandler, RevokeInferenceKeyHandler, RevokeMembershipHandler,
-    RevokeMembershipInvitationHandler, RevokePlatformRoleBindingHandler,
-    RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
-    RotateInferenceKeyHandler, SmtpRecipientContactVerificationDeliveryService,
+    IdentityInferenceGrantCredentialAdmissionAdapter, IdentityModule, InferenceCredentialIssuer,
+    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler, ListInferenceKeysHandler,
+    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
+    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
+    ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
+    OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
+    ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
+    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
+    RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
+    RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
+    RevokeTenantSupportGrantHandler, RotateInferenceKeyHandler,
+    SmtpRecipientContactVerificationDeliveryService,
     WorkloadRuntimeExecutionAuthorizationQueryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
@@ -994,14 +995,12 @@ async fn build_api_worker_application(
         managed_state_file: config.edge.managed_state_file.clone(),
     })
     .map_err(ControlPlaneStartupError::NodeControl)?;
-    let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> =
-        Arc::new(AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(
-            &mcp_profiles,
-        )));
-    let mcp_revision_access: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess> =
-        Arc::new(WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(
-            Arc::clone(&workloads),
-        ));
+    let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> = Arc::new(
+        AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(&mcp_profiles)),
+    );
+    let mcp_revision_access: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess> = Arc::new(
+        WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::clone(&workloads)),
+    );
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         Arc::clone(&mcp_route_policy_repository),
         Arc::clone(&routes),
@@ -1027,10 +1026,15 @@ async fn build_api_worker_application(
         Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&mcp_node_projection_planner),
     );
-    let edge_runtime_observations: Arc<dyn IEdgeRuntimeObservationAccess> =
-        Arc::new(FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
-            &node_control,
-        )));
+    let edge_runtime_observations: Arc<dyn IEdgeRuntimeObservationAccess> = Arc::new(
+        FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(&node_control)),
+    );
+    let edge_managed_inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess> =
+        Arc::new(IdentityInferenceEdgeManagedAclAccessAdapter::new(
+            Arc::clone(&inference_credential_acl_projections),
+            Arc::clone(&inference_route_acl_projections),
+            Arc::clone(&inference_worker_acl_projections),
+        ));
     let deployment_route_updates: Arc<dyn IDeploymentRouteUpdater> = Arc::new(
         EdgeDeploymentRouteUpdater::new_managed(
             Arc::clone(&routes),
@@ -1039,9 +1043,7 @@ async fn build_api_worker_application(
             Arc::clone(&route_commands),
             deployment_route_compiler.clone(),
             gateway_node_desired_state_planner.clone(),
-            Arc::clone(&inference_credential_acl_projections),
-            Arc::clone(&inference_route_acl_projections),
-            Arc::clone(&inference_worker_acl_projections),
+            Arc::clone(&edge_managed_inference_acl),
             chrono_duration(config.edge.command_ttl_ms)
                 .map_err(|error| ControlPlaneStartupError::NodeControl(error.to_string()))?,
         )
@@ -1654,9 +1656,7 @@ async fn build_api_worker_application(
                 Arc::clone(&routes),
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
-                Arc::clone(&inference_credential_acl_projections),
-                Arc::clone(&inference_route_acl_projections),
-                Arc::clone(&inference_worker_acl_projections),
+                Arc::clone(&edge_managed_inference_acl),
                 Arc::clone(&route_commands),
                 Arc::clone(&gateway_certificate_authority),
                 deployment_route_compiler.clone(),
@@ -1671,9 +1671,7 @@ async fn build_api_worker_application(
                 Arc::clone(&mcp_gateway_snapshots),
                 Arc::clone(&mcp_node_projection_planner),
                 deployment_route_compiler.clone(),
-                Arc::clone(&inference_credential_acl_projections),
-                Arc::clone(&inference_route_acl_projections),
-                Arc::clone(&inference_worker_acl_projections),
+                Arc::clone(&edge_managed_inference_acl),
                 Duration::from_millis(config.edge.certificate_reconciliation_interval_ms),
                 chrono_duration(config.edge.command_ttl_ms)?,
                 chrono::Duration::hours(24),
@@ -1714,9 +1712,7 @@ async fn build_api_worker_application(
                 Arc::clone(&routes),
                 Arc::clone(&mcp_gateway_snapshots),
                 gateway_node_desired_state_planner.clone(),
-                Arc::clone(&inference_credential_acl_projections),
-                Arc::clone(&inference_route_acl_projections),
-                Arc::clone(&inference_worker_acl_projections),
+                Arc::clone(&edge_managed_inference_acl),
                 GatewayRolloutRollbackCompiler::new(
                     deployment_route_compiler.clone(),
                     chrono_duration(config.edge.command_ttl_ms)?,
@@ -2020,10 +2016,7 @@ async fn build_api_worker_application(
                 trust_domains,
                 workload_identity_policies,
                 inference_credentials,
-                inference_credential_acl_projections,
                 inference_routes,
-                inference_route_acl_projections,
-                inference_worker_acl_projections,
                 projects: projects.clone(),
                 environments,
                 ontologies,
@@ -2101,6 +2094,7 @@ async fn build_api_worker_application(
                 route_commands,
                 mcp_gateway_snapshots: Some(mcp_gateway_snapshots),
                 gateway_node_desired_state_planner: Some(gateway_node_desired_state_planner),
+                edge_managed_inference_acl: Arc::clone(&edge_managed_inference_acl),
                 operations: operation_repository,
                 nodes,
                 node_pools,
@@ -2288,12 +2282,7 @@ struct ManagementApplicationDependencies {
     trust_domains: Arc<dyn ITrustDomainRepository>,
     workload_identity_policies: Arc<dyn IWorkloadIdentityPolicyRepository>,
     inference_credentials: Arc<dyn IInferenceCredentialLifecycleRepository>,
-    inference_credential_acl_projections: Arc<dyn IInferenceCredentialAclProjectionPort>,
     inference_routes: Arc<dyn crate::modules::inference::IInferenceRouteRepository>,
-    inference_route_acl_projections:
-        Arc<dyn crate::modules::inference::IInferenceRouteAclProjectionPort>,
-    inference_worker_acl_projections:
-        Arc<dyn crate::modules::inference::IInferenceWorkerAclProjectionPort>,
     projects: Arc<dyn IProjectRepository>,
     environments: Arc<dyn IEnvironmentRepository>,
     ontologies: Arc<dyn IOntologyRepository>,
@@ -2355,6 +2344,7 @@ struct ManagementApplicationDependencies {
     route_commands: Arc<dyn IGatewayCommandQueue>,
     mcp_gateway_snapshots: Option<Arc<dyn crate::modules::edge::IMcpGatewaySnapshotRepository>>,
     gateway_node_desired_state_planner: Option<GatewayNodeDesiredStatePlanner>,
+    edge_managed_inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
     operations: Arc<dyn IOperationRepository>,
     nodes: Arc<dyn INodeRepository>,
     node_pools: Arc<dyn INodePoolRepository>,
@@ -2399,10 +2389,7 @@ fn build_management_application_with_health(
         trust_domains,
         workload_identity_policies,
         inference_credentials,
-        inference_credential_acl_projections,
         inference_routes,
-        inference_route_acl_projections,
-        inference_worker_acl_projections,
         projects,
         environments,
         ontologies,
@@ -2464,6 +2451,7 @@ fn build_management_application_with_health(
         route_commands,
         mcp_gateway_snapshots,
         gateway_node_desired_state_planner,
+        edge_managed_inference_acl,
         operations,
         nodes,
         node_pools,
@@ -3133,9 +3121,7 @@ fn build_management_application_with_health(
                 route_commands,
                 route_compiler,
                 gateway_node_desired_state_planner,
-                Arc::clone(&inference_credential_acl_projections),
-                Arc::clone(&inference_route_acl_projections),
-                Arc::clone(&inference_worker_acl_projections),
+                edge_managed_inference_acl,
                 chrono_duration(config.edge.command_ttl_ms)?,
             )
         }

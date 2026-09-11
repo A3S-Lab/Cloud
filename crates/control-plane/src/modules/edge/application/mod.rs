@@ -1,5 +1,6 @@
 pub mod commands;
 mod environment_access;
+mod managed_inference_acl_access;
 mod mcp_credential_delivery;
 mod mcp_credential_delivery_receipt_sweeper;
 mod mcp_credential_encryption;
@@ -12,6 +13,10 @@ mod resource_access;
 mod runtime_observation_access;
 
 pub use environment_access::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
+pub use managed_inference_acl_access::{
+    EdgeManagedInferenceAclEnvironment, EdgeManagedInferenceAclSnapshot,
+    IEdgeManagedInferenceAclAccess,
+};
 pub use mcp_credential_delivery::{
     McpCredentialDeliveryResult, McpCredentialMutationResult,
     MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
@@ -24,7 +29,9 @@ pub use mcp_workload_revision_projection_access::{
     EdgeMcpWorkloadRevisionProjectionScope, IEdgeMcpWorkloadRevisionProjectionAccess,
 };
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};
-pub use runtime_observation_access::{EdgeRuntimeObservationProjection, IEdgeRuntimeObservationAccess};
+pub use runtime_observation_access::{
+    EdgeRuntimeObservationProjection, IEdgeRuntimeObservationAccess,
+};
 
 pub use commands::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,

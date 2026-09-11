@@ -1,15 +1,10 @@
+use crate::modules::edge::application::IEdgeManagedInferenceAclAccess;
 use crate::modules::edge::domain::repositories::IEdgeRepository;
 use crate::modules::edge::infrastructure::{
-    load_inference_credential_projections_for_routes, load_inference_route_projections_for_routes,
-    load_inference_worker_projections_for_routes, CompileGatewayRolloutRollback,
-    CompileManagedGatewayRolloutRollback, GatewayNodeDesiredStatePlanner,
-    GatewayRollbackMemberSnapshotContext, GatewayRolloutRollbackCompiler,
-    IMcpGatewaySnapshotRepository, ManagedGatewayRollbackMemberSnapshotContext,
-    PlanGatewayNodeDesiredState,
-};
-use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
-use crate::modules::inference::application::{
-    IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
+    CompileGatewayRolloutRollback, CompileManagedGatewayRolloutRollback,
+    GatewayNodeDesiredStatePlanner, GatewayRollbackMemberSnapshotContext,
+    GatewayRolloutRollbackCompiler, IMcpGatewaySnapshotRepository,
+    ManagedGatewayRollbackMemberSnapshotContext, PlanGatewayNodeDesiredState,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayRolloutId, NodeId, RepositoryError,
@@ -48,9 +43,7 @@ pub struct GatewayRolloutRollbackReconciler {
 struct ManagedGatewayRollback {
     snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
     desired_state: GatewayNodeDesiredStatePlanner,
-    inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-    inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-    inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+    inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
 }
 
 impl GatewayRolloutRollbackReconciler {
@@ -79,9 +72,7 @@ impl GatewayRolloutRollbackReconciler {
         repository: Arc<dyn IEdgeRepository>,
         snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
         desired_state: GatewayNodeDesiredStatePlanner,
-        inference_credentials: Arc<dyn IInferenceCredentialAclProjectionPort>,
-        inference_routes: Arc<dyn IInferenceRouteAclProjectionPort>,
-        inference_workers: Arc<dyn IInferenceWorkerAclProjectionPort>,
+        inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
         compiler: GatewayRolloutRollbackCompiler,
         interval: Duration,
         batch_size: usize,
@@ -100,9 +91,7 @@ impl GatewayRolloutRollbackReconciler {
             managed: Some(ManagedGatewayRollback {
                 snapshots,
                 desired_state,
-                inference_credentials,
-                inference_routes,
-                inference_workers,
+                inference_acl,
             }),
         })
     }
@@ -409,43 +398,20 @@ impl GatewayRolloutRollbackReconciler {
                 .iter()
                 .map(|input| input.route.clone())
                 .collect::<Vec<_>>();
-            let inference_credentials = load_inference_credential_projections_for_routes(
-                managed.inference_credentials.as_ref(),
-                &ordinary_routes,
-            )
-            .await
-            .map_err(|_| {
-                (
-                    Some(*node_id),
-                    "restore",
-                    "Identity inference credential projection failed",
-                )
-            })?;
-            let inference_routes = load_inference_route_projections_for_routes(
-                managed.inference_routes.as_ref(),
-                &ordinary_routes,
-            )
-            .await
-            .map_err(|_| {
-                (
-                    Some(*node_id),
-                    "restore",
-                    "Inference route ACL projection failed",
-                )
-            })?;
-            let inference_workers = load_inference_worker_projections_for_routes(
-                managed.inference_workers.as_ref(),
-                &ordinary_routes,
-                observed_at,
-            )
-            .await
-            .map_err(|_| {
-                (
-                    Some(*node_id),
-                    "restore",
-                    "Inference worker ACL projection failed",
-                )
-            })?;
+            let inference_acl_snapshot = managed
+                .inference_acl
+                .load_for_routes(&ordinary_routes, &[], observed_at)
+                .await
+                .map_err(|_| {
+                    (
+                        Some(*node_id),
+                        "restore",
+                        "managed inference ACL projection failed",
+                    )
+                })?;
+            let inference_credentials = inference_acl_snapshot.credentials;
+            let inference_routes = inference_acl_snapshot.routes;
+            let inference_workers = inference_acl_snapshot.workers;
             contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
                 desired_state,
                 reusable_certificate,

@@ -2179,16 +2179,6 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         ));
     let inference_routes: Arc<dyn crate::modules::inference::IInferenceRouteRepository> =
         Arc::new(crate::modules::inference::InMemoryInferenceRouteRepository::default());
-    let inference_route_acl_projections: Arc<
-        dyn crate::modules::inference::IInferenceRouteAclProjectionPort,
-    > = Arc::new(
-        crate::modules::inference::InferenceRouteAclProjectionAdapter::new(Arc::clone(
-            &inference_routes,
-        )),
-    );
-    let inference_worker_acl_projections: Arc<
-        dyn crate::modules::inference::IInferenceWorkerAclProjectionPort,
-    > = Arc::new(crate::modules::inference::EmptyInferenceWorkerAclProjectionPort);
     build_management_application_with_health(
         config(),
         ManagementApplicationDependencies {
@@ -2247,12 +2237,7 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             trust_domains: identity.clone(),
             workload_identity_policies: identity,
             inference_credentials,
-            inference_credential_acl_projections: Arc::new(
-                crate::modules::identity::EmptyInferenceCredentialAclProjectionPort,
-            ),
             inference_routes,
-            inference_route_acl_projections,
-            inference_worker_acl_projections,
             projects: projects.clone(),
             environments: projects,
             ontologies: Arc::new(InMemoryOntologyRepository::new()),
@@ -2339,6 +2324,13 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             route_commands,
             mcp_gateway_snapshots: None,
             gateway_node_desired_state_planner: None,
+            edge_managed_inference_acl: Arc::new(
+                crate::modules::edge::IdentityInferenceEdgeManagedAclAccessAdapter::new(
+                    Arc::new(crate::modules::identity::EmptyInferenceCredentialAclProjectionPort),
+                    Arc::new(crate::modules::inference::EmptyInferenceRouteAclProjectionPort),
+                    Arc::new(crate::modules::inference::EmptyInferenceWorkerAclProjectionPort),
+                ),
+            ),
             operations: operations.unwrap_or_else(|| Arc::new(InMemoryOperationRepository::new())),
             nodes: nodes.clone(),
             node_pools: nodes.clone(),
