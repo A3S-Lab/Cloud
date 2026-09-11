@@ -1,22 +1,22 @@
 //! First-principles fail-closed EdgeRouteBinding admission (I0.2b brick).
 
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, IEdgeRepository, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{DomainClaim, DomainNamePattern, GatewayScope};
 use crate::modules::edge::infrastructure::EdgeInferenceRouteBindingAdmissionAdapter;
-use crate::modules::edge::InMemoryEdgeRepository;
+use crate::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use crate::modules::inference::application::{
-    IInferenceEdgeRouteBindingAdmissionPort, IInferenceEnvironmentAccess,
-    IInferenceRouteAclProjectionPort, InferenceEdgeRouteBindingAdmissionRequest,
-    InferenceEnvironmentScope, PermitInferenceGrantCredentialAdmission, PublishInferenceRoute,
-    PublishInferenceRouteHandler, ReviseInferenceRoute, ReviseInferenceRouteHandler,
-    EDGE_ROUTE_BINDING_INVALID,
+    EDGE_ROUTE_BINDING_INVALID, IInferenceEdgeRouteBindingAdmissionPort,
+    IInferenceEnvironmentAccess, IInferenceRouteAclProjectionPort, InferenceAccess,
+    InferenceEdgeRouteBindingAdmissionRequest, InferenceEnvironmentScope,
+    PermitInferenceGrantCredentialAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
+    ReviseInferenceRoute, ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
-use crate::modules::inference::EmptyInferenceRouteAclProjectionPort;
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
@@ -271,6 +271,7 @@ async fn valid_binding_publishes_and_edge_invents_no_catalog() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![sample_grant()],
@@ -288,11 +289,13 @@ async fn valid_binding_publishes_and_edge_invents_no_catalog() {
     assert_eq!(route.binding().domain_claim_id, claim_id);
 
     let empty = EmptyInferenceRouteAclProjectionPort;
-    assert!(empty
-        .list_inference_route_acl_projections(&[])
-        .await
-        .unwrap()
-        .is_empty());
+    assert!(
+        empty
+            .list_inference_route_acl_projections(&[])
+            .await
+            .unwrap()
+            .is_empty()
+    );
 }
 
 #[tokio::test]
@@ -416,6 +419,7 @@ async fn publish_handler_rejects_unknown_claim_before_persist() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![sample_grant()],
@@ -635,6 +639,7 @@ async fn revise_also_enforces_edge_binding_admission() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![sample_grant()],
@@ -664,6 +669,7 @@ async fn revise_also_enforces_edge_binding_admission() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 router: "inference".into(),

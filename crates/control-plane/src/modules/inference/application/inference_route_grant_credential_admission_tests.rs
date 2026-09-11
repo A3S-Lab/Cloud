@@ -1,14 +1,15 @@
 //! First-principles fail-closed grant→credential admission (I0.2b brick).
 
+use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
 use crate::modules::identity::domain::entities::InferenceCredential;
 use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
 use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
-use crate::modules::identity::IdentityInferenceGrantCredentialAdmissionAdapter;
 use crate::modules::inference::application::{
-    IInferenceEnvironmentAccess, IInferenceGrantCredentialAdmissionPort, InferenceEnvironmentScope,
+    IInferenceEnvironmentAccess, IInferenceGrantCredentialAdmissionPort,
+    INFERENCE_GRANT_CREDENTIAL_INVALID, InferenceAccess, InferenceEnvironmentScope,
     InferenceGrantCredentialAdmissionRequest, PermitInferenceEdgeRouteBindingAdmission,
     PublishInferenceRoute, PublishInferenceRouteHandler, ReviseInferenceRoute,
-    ReviseInferenceRouteHandler, INFERENCE_GRANT_CREDENTIAL_INVALID,
+    ReviseInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
@@ -216,6 +217,7 @@ async fn matching_active_credential_admits_and_publishes() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant_for(&credential)],
@@ -244,6 +246,7 @@ async fn missing_credential_rejects_publish() {
                 organization_id: OrganizationId::new(),
                 project_id: ProjectId::new(),
                 environment_id: EnvironmentId::new(),
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![InferenceGrantAclProjection {
@@ -294,6 +297,7 @@ async fn wrong_environment_credential_rejects_publish() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant_for(&credential)],
@@ -339,6 +343,7 @@ async fn revoked_credential_rejects_publish() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant_for(&credential)],
@@ -379,6 +384,7 @@ async fn stale_generation_rejects_publish() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant],
@@ -417,6 +423,7 @@ async fn revise_also_enforces_grant_credential_admission() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant_for(&first)],
@@ -438,6 +445,7 @@ async fn revise_also_enforces_grant_credential_admission() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 router: "inference".into(),
@@ -489,6 +497,7 @@ async fn revise_rejects_stale_credential_generation() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 router: "inference".into(),
                 models: vec![sample_model()],
                 grants: vec![grant_for(&first)],
@@ -512,6 +521,7 @@ async fn revise_rejects_stale_credential_generation() {
                 organization_id,
                 project_id,
                 environment_id,
+                access: InferenceAccess::organization_wide(),
                 route_id: published.id,
                 expected_aggregate_version: published.aggregate_version(),
                 router: "inference".into(),

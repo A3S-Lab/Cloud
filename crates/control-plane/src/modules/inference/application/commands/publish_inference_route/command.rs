@@ -1,3 +1,4 @@
+use crate::modules::inference::application::InferenceAccess;
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::shared_kernel::application::ApplicationResult;
@@ -13,6 +14,7 @@ pub struct PublishInferenceRoute {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: InferenceAccess,
     pub router: String,
     pub models: Vec<InferenceModelAclProjection>,
     pub grants: Vec<InferenceGrantAclProjection>,

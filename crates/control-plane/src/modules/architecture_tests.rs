@@ -3980,6 +3980,9 @@ fn inference_route_and_usage_queries_isolate_identity_behind_one_context_owned_a
         "inference/application/queries/get_usage_request_fact.rs",
         "inference/application/queries/list_inference_routes/query.rs",
         "inference/application/queries/get_inference_route/query.rs",
+        "inference/application/commands/publish_inference_route/command.rs",
+        "inference/application/commands/revise_inference_route/command.rs",
+        "inference/application/commands/retire_inference_route/command.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
@@ -3999,6 +4002,9 @@ fn inference_route_and_usage_queries_isolate_identity_behind_one_context_owned_a
     for relative in [
         "inference/application/queries/list_inference_routes/handler.rs",
         "inference/application/queries/get_inference_route/handler.rs",
+        "inference/application/commands/publish_inference_route/handler.rs",
+        "inference/application/commands/revise_inference_route/handler.rs",
+        "inference/application/commands/retire_inference_route/handler.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));
@@ -4042,6 +4048,7 @@ fn inference_route_and_usage_queries_isolate_identity_behind_one_context_owned_a
     for relative in [
         "inference/presentation/usage_queries_controller.rs",
         "inference/presentation/inference_route_queries_controller.rs",
+        "inference/presentation/inference_route_commands_controller.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))
             .unwrap_or_else(|error| panic!("read {relative}: {error}"));

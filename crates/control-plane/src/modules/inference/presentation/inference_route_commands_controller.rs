@@ -1,5 +1,6 @@
+use crate::access_projection::inference_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::inference::application::{
     PublishInferenceRoute, RetireInferenceRoute, ReviseInferenceRoute,
 };
@@ -12,8 +13,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::{application_error_response, request_identity};
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -34,6 +35,9 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     let (router, models, grants, binding) =
                         body.into_parts().map_err(BootError::BadRequest)?;
+                    let access = inference_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(PublishInferenceRoute {
                             organization_id: OrganizationId::from_uuid(
@@ -45,6 +49,7 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             router,
                             models,
                             grants,
@@ -76,6 +81,9 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     let (expected_aggregate_version, router, models, grants, binding) =
                         body.into_parts().map_err(BootError::BadRequest)?;
+                    let access = inference_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ReviseInferenceRoute {
                             organization_id: OrganizationId::from_uuid(
@@ -87,6 +95,7 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             route_id: InferenceRouteId::from_uuid(
                                 request.param_as::<Uuid>("route_id")?,
                             ),
@@ -120,6 +129,9 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                 async move {
                     let body: RetireInferenceRouteRequest = request.json_with_content_type()?;
                     let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = inference_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(RetireInferenceRoute {
                             organization_id: OrganizationId::from_uuid(
@@ -131,6 +143,7 @@ pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<Contr
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
+                            access,
                             route_id: InferenceRouteId::from_uuid(
                                 request.param_as::<Uuid>("route_id")?,
                             ),

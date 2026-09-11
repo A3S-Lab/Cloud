@@ -48,6 +48,14 @@ impl CommandHandler<PublishInferenceRoute> for PublishInferenceRouteHandler {
         let edge_route_bindings = Arc::clone(&self.edge_route_bindings);
         let grant_credentials = Arc::clone(&self.grant_credentials);
         Box::pin(async move {
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found in organization".into(),
+                )));
+            }
             let scope = match InferenceEnvironmentScope::new(
                 command.organization_id,
                 command.project_id,
@@ -61,7 +69,7 @@ impl CommandHandler<PublishInferenceRoute> for PublishInferenceRouteHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }

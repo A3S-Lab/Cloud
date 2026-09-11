@@ -43,6 +43,14 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
                     "inference route expected_aggregate_version must be greater than 0".into(),
                 )));
             }
+            if !command
+                .access
+                .environment_is_visible(command.project_id, command.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "environment not found in organization".into(),
+                )));
+            }
 
             let scope = match InferenceEnvironmentScope::new(
                 command.organization_id,
@@ -57,7 +65,7 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -107,7 +115,7 @@ impl CommandHandler<RetireInferenceRoute> for RetireInferenceRouteHandler {
                 Ok(_) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "inference route not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };

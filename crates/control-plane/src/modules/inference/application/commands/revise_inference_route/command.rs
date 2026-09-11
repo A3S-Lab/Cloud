@@ -1,3 +1,4 @@
+use crate::modules::inference::application::InferenceAccess;
 use crate::modules::inference::domain::entities::InferenceRoute;
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::shared_kernel::application::ApplicationResult;
@@ -15,6 +16,7 @@ pub struct ReviseInferenceRoute {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: InferenceAccess,
     pub route_id: InferenceRouteId,
     pub expected_aggregate_version: u64,
     pub router: String,
