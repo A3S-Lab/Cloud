@@ -1,13 +1,19 @@
+use crate::access_projection::edge_access;
 use crate::modules::edge::application::{
     GetDomainClaim, ListDomainClaims, ListGatewayCertificates,
 };
 use crate::modules::edge::presentation::dto::{DomainClaimResponse, GatewayCertificateResponse};
-use crate::modules::identity::presentation::OrganizationTenantGuard;
+use crate::modules::identity::presentation::{
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
+};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
-use a3s_boot::{BootRequest, BootResponse, ControllerDefinition, QueryBus, Result};
+use a3s_boot::{
+    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -22,17 +28,20 @@ pub fn domain_claim_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                    let environment_id =
+                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListDomainClaims {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
+                            project_id,
+                            environment_id,
+                            access,
                         })
                         .await?
                     {
@@ -47,29 +56,36 @@ pub fn domain_claim_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                 }
             },
         )?
-        .get(
-            "/{organization_id}/domain-claims/{claim_id}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&get_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetDomainClaim {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            claim_id: DomainClaimId::from_uuid(
-                                request.param_as::<Uuid>("claim_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(claim) => BootResponse::json(&DomainClaimResponse::from(claim)),
-                        Err(error) => application_error_response(error, request_id),
+        .route(with_deferred_resource_scope(
+            RouteDefinition::get(
+                "/{organization_id}/domain-claims/{claim_id}",
+                move |request: BootRequest| {
+                    let bus = Arc::clone(&get_bus);
+                    async move {
+                        let request_id = request_id(&request)?;
+                        let access = edge_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
+                        match bus
+                            .execute(GetDomainClaim {
+                                organization_id: OrganizationId::from_uuid(
+                                    request.param_as::<Uuid>("organization_id")?,
+                                ),
+                                claim_id: DomainClaimId::from_uuid(
+                                    request.param_as::<Uuid>("claim_id")?,
+                                ),
+                                access,
+                            })
+                            .await?
+                        {
+                            Ok(claim) => BootResponse::json(&DomainClaimResponse::from(claim)),
+                            Err(error) => application_error_response(error, request_id),
+                        }
                     }
-                }
-            },
-        )?
+                },
+            )?,
+            DeferredResourceScope::Project,
+        )?)?
         .get(
             "/{organization_id}/gateway-certificates",
             move |request: BootRequest| {

@@ -1,8 +1,8 @@
-use crate::modules::edge::domain::Route;
 use crate::modules::edge::domain::repositories::IEdgeRepository;
+use crate::modules::edge::domain::{DomainClaim, Route};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DomainClaimId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, RouteId,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -83,9 +83,9 @@ impl EdgeAccess {
 
 /// Resolves indirect Edge identifiers through the owning repository before authorization.
 ///
-/// Identity owns grant semantics at the edge; Edge owns the canonical Route-to-environment
-/// relationship. Missing and denied identifiers therefore share one application-layer
-/// not-found contract without an Identity-owned route index.
+/// Identity owns grant semantics at the edge; Edge owns the canonical Route- and
+/// DomainClaim-to-environment relationships. Missing and denied identifiers therefore
+/// share one application-layer not-found contract without an Identity-owned index.
 #[derive(Clone)]
 pub(crate) struct EdgeResourceAccess {
     edge: Arc<dyn IEdgeRepository>,
@@ -112,6 +112,23 @@ impl EdgeResourceAccess {
         }
         Ok(route)
     }
+
+    pub async fn domain_claim(
+        &self,
+        organization_id: OrganizationId,
+        claim_id: DomainClaimId,
+        access: &EdgeAccess,
+    ) -> ApplicationResult<DomainClaim> {
+        let claim = self
+            .edge
+            .find_domain_claim(organization_id, claim_id)
+            .await
+            .map_err(map_domain_claim_repository_error)?;
+        if !access.environment_is_visible(claim.project_id, claim.environment_id) {
+            return Err(domain_claim_not_found());
+        }
+        Ok(claim)
+    }
 }
 
 fn map_route_repository_error(error: RepositoryError) -> ApplicationError {
@@ -121,8 +138,19 @@ fn map_route_repository_error(error: RepositoryError) -> ApplicationError {
     }
 }
 
+fn map_domain_claim_repository_error(error: RepositoryError) -> ApplicationError {
+    match error {
+        RepositoryError::NotFound => domain_claim_not_found(),
+        error => error.into(),
+    }
+}
+
 fn route_not_found() -> ApplicationError {
     ApplicationError::NotFound("route not found".into())
+}
+
+fn domain_claim_not_found() -> ApplicationError {
+    ApplicationError::NotFound("domain claim not found".into())
 }
 
 #[cfg(test)]

@@ -3988,6 +3988,95 @@ fn edge_route_queries_isolate_identity_behind_one_context_owned_access_projectio
 }
 
 #[test]
+fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("edge/application/resource_access.rs"))
+        .expect("read Edge resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pubasyncfndomain_claim(",
+        "domain_claim_not_found()",
+        "environment_is_visible(claim.project_id,claim.environment_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Edge lost DomainClaim succession through EdgeResourceAccess {required}"
+        );
+    }
+
+    for relative in [
+        "edge/application/queries/get_domain_claim.rs",
+        "edge/application/queries/list_domain_claims.rs",
+    ] {
+        let query = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production_query = production_source(&query);
+        assert!(
+            production_query.contains("pub access: EdgeAccess"),
+            "{relative} stopped carrying Edge-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production_query.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let list_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/list_domain_claims.rs"))
+            .expect("read ListDomainClaims query");
+    let compact_list = production_source(&list_handler)
+        .split_whitespace()
+        .collect::<String>();
+    let access_check = compact_list
+        .find(".access.environment_is_visible(")
+        .expect("ListDomainClaims checks Edge visibility");
+    let repository_read = compact_list
+        .find(".list_domain_claims(")
+        .expect("ListDomainClaims still lists through the Edge repository");
+    assert!(
+        access_check < repository_read,
+        "ListDomainClaims must fail closed on visibility before listing claims"
+    );
+
+    let get_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/get_domain_claim.rs"))
+            .expect("read GetDomainClaim query");
+    let compact_get = production_source(&get_handler)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_get.contains("EdgeResourceAccess::new(edge).domain_claim("),
+        "GetDomainClaim must resolve claims through EdgeResourceAccess"
+    );
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/domain_claim_queries_controller.rs"),
+    )
+    .expect("read domain claim queries controller");
+    let production = production_source(&controller);
+    assert_eq!(
+        production
+            .matches("edge_access(&resource_access_evaluator(")
+            .count(),
+        2,
+        "ListDomainClaims and GetDomainClaim must each project Identity into EdgeAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "Edge domain-claim queries must not pass ResourceAccessEvaluator into Application"
+    );
+    assert!(
+        production.contains("DeferredResourceScope::Project"),
+        "GetDomainClaim must defer coarse admission while Edge owns claim-to-environment resolution"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))
