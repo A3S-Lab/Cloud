@@ -37,6 +37,11 @@ impl CommandHandler<CreateProject> for CreateProjectHandler {
         let organizations = Arc::clone(&self.organizations);
         let projects = Arc::clone(&self.projects);
         Box::pin(async move {
+            if !command.access.organization_catalog_is_visible() {
+                return Ok(Err(ApplicationError::NotFound(
+                    "organization not found".into(),
+                )));
+            }
             if let Err(error) = organizations
                 .require_organization(command.organization_id)
                 .await
@@ -73,5 +78,64 @@ impl CommandHandler<CreateProject> for CreateProjectHandler {
                 replayed: result.replayed,
             }))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::projects::application::{ProjectAccess, ProjectAccessScope};
+    use crate::modules::projects::infrastructure::persistence::InMemoryProjectsRepository;
+    use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use uuid::Uuid;
+
+    struct TrackingOrganizationAccess {
+        called: AtomicBool,
+    }
+
+    #[async_trait]
+    impl IProjectOrganizationAccess for TrackingOrganizationAccess {
+        async fn require_organization(
+            &self,
+            _organization_id: OrganizationId,
+        ) -> ApplicationResult<()> {
+            self.called.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+    }
+
+    #[tokio::test]
+    async fn create_project_fails_closed_before_organization_lookup_without_catalog_visibility() {
+        let organizations = Arc::new(TrackingOrganizationAccess {
+            called: AtomicBool::new(false),
+        });
+        let projects = Arc::new(InMemoryProjectsRepository::new());
+        let handler = CreateProjectHandler::new(
+            Arc::clone(&organizations) as Arc<dyn IProjectOrganizationAccess>,
+            Arc::clone(&projects) as Arc<dyn IProjectRepository>,
+        );
+        let result = handler
+            .execute(
+                CreateProject {
+                    organization_id: OrganizationId::new(),
+                    access: ProjectAccess::restricted([ProjectAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    name: "denied-project".into(),
+                    idempotency_key: "deny-create".into(),
+                    request_id: Uuid::now_v7(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message)) if message == "organization not found"
+        ));
+        assert!(!organizations.called.load(Ordering::SeqCst));
     }
 }

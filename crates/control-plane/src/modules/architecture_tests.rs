@@ -3101,6 +3101,7 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
         "access.project_is_authorized(project_id)",
         "project_is_visible_in_collection",
         "environment_is_visible",
+        "organization_catalog_is_visible",
     ] {
         assert!(
             compact_access.contains(required),
@@ -3124,6 +3125,7 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
         "projects/application/queries/list_projects/query.rs",
         "projects/application/queries/list_environments/query.rs",
         "projects/application/queries/get_project_attribution/query.rs",
+        "projects/application/commands/create_project/command.rs",
         "projects/application/commands/create_environment/command.rs",
         "projects/application/commands/update_project_attribution/command.rs",
     ] {
@@ -3190,7 +3192,7 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
         production_mcp
             .matches("access: project_access(&resource_access)")
             .count()
-            >= 4,
+            >= 5,
         "Projects MCP must project every resource-authorized tool into ProjectAccess"
     );
     assert!(

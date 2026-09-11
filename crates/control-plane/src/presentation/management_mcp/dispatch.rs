@@ -995,7 +995,14 @@ pub async fn execute(
         }
         ManagementTool::ProjectsCreate => {
             let arguments = arguments::parse::<CreateProjectArguments>(arguments).ok()?;
-            projects::create_project(command_bus, organization_id, arguments, request_id).await
+            projects::create_project(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::ProjectsList => {
             let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;

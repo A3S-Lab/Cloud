@@ -1,3 +1,4 @@
+use crate::modules::projects::application::ProjectAccess;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::OrganizationId;
@@ -8,6 +9,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct CreateProject {
     pub organization_id: OrganizationId,
+    pub access: ProjectAccess,
     pub name: String,
     pub idempotency_key: String,
     pub request_id: Uuid,

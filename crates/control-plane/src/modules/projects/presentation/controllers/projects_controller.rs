@@ -32,10 +32,14 @@ pub fn projects_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition>
                     let body: CreateProjectRequest = request.json_with_content_type()?;
                     let organization_id =
                         OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                    let access = project_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     match bus
                         .execute(CreateProject {
                             organization_id,
+                            access,
                             name: body.name,
                             idempotency_key,
                             request_id,

@@ -66,11 +66,13 @@ pub async fn create_project(
     bus: Arc<CommandBus>,
     organization_id: OrganizationId,
     arguments: CreateProjectArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateProject {
             organization_id,
+            access: project_access(&resource_access),
             name: arguments.name,
             idempotency_key: arguments.idempotency_key,
             request_id,

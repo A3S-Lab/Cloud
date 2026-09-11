@@ -73,9 +73,7 @@ impl ProjectAccess {
         }
     }
 
-    pub(crate) fn restricted(
-        granted_scopes: impl IntoIterator<Item = ProjectAccessScope>,
-    ) -> Self {
+    pub(crate) fn restricted(granted_scopes: impl IntoIterator<Item = ProjectAccessScope>) -> Self {
         Self {
             organization_wide: false,
             granted_scopes: granted_scopes.into_iter().collect(),
@@ -88,6 +86,12 @@ impl ProjectAccess {
 
     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = ProjectAccessScope> + '_ {
         self.granted_scopes.iter().copied()
+    }
+
+    /// Organization-catalog mutation (create project) requires organization-wide
+    /// visibility. Restricted project/environment grants fail closed here.
+    pub(crate) const fn organization_catalog_is_visible(&self) -> bool {
+        self.organization_wide
     }
 
     /// Parent project appears in list/navigation when any project or environment
