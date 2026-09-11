@@ -1,4 +1,3 @@
-use crate::modules::assets::domain::McpServiceProfile;
 use crate::modules::shared_kernel::domain::{
     AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId, NodeCommandId, NodeId,
     OperationId, OrganizationId, ProjectId, RepositoryError, ResourceName, Sha256Digest,
@@ -6,8 +5,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::modules::workloads::domain::entities::{
     AgentReleaseRuntimeContract, AgentWorkloadRevisionBinding, Deployment, DeploymentStatus,
-    ExternalBuildReference, McpWorkloadRevisionBinding, RequestedServiceTemplate, ServiceTemplate,
-    Workload, WorkloadDesiredState, WorkloadRevision,
+    ExternalBuildReference, McpProfileAdmission, McpWorkloadRevisionBinding,
+    RequestedServiceTemplate, ServiceTemplate, Workload, WorkloadDesiredState, WorkloadRevision,
 };
 use a3s_orm::expression::Selection;
 use a3s_orm::{DecodeError, Expression, FromRow, FromValue, Row};
@@ -399,9 +398,10 @@ pub(super) fn revision(row: RevisionRow) -> Result<WorkloadRevision, RepositoryE
             Some(profile_acl),
         ) => {
             let profile =
-                McpServiceProfile::restore(&profile_acl, &profile_digest).map_err(|error| {
-                    corrupt(format!("MCP Workload Service profile is invalid: {error}"))
-                })?;
+                McpProfileAdmission::restore_from_stored_acl(&profile_acl, &profile_digest)
+                    .map_err(|error| {
+                        corrupt(format!("MCP Workload Service profile is invalid: {error}"))
+                    })?;
             let binding = McpWorkloadRevisionBinding::restore(
                 OrganizationId::from_uuid(organization_id),
                 AssetId::from_uuid(asset_id),

@@ -4,8 +4,7 @@ use crate::modules::artifacts::domain::test_support::{
     succeeded_hosted_agent_build, succeeded_hosted_build,
 };
 use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseVersion, McpServiceProfile,
-    McpServiceProfileBinding, McpServiceProfileSpec,
+    Asset, AssetKind, AssetRelease, AssetReleaseVersion, McpServiceProfile, McpServiceProfileSpec,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, DeploymentId, EnvironmentId, GitCommitSha,
@@ -13,10 +12,11 @@ use crate::modules::shared_kernel::domain::{
     WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
 };
 use crate::modules::workloads::domain::entities::{
-    AgentReleaseAdmission, AgentReleaseRuntimeContract, HttpHealthCheck, OciArtifact,
-    SecretBinding, SecretBindingTarget, ServicePort, ServiceProcess, ServiceResources,
-    ServiceTemplate, SkillWorkloadRevisionBinding, Workload, WorkloadPlacementGroupMemberPlan,
-    WorkloadPlacementGroupMemberRole, WorkloadRuntimeExecutionBinding,
+    AgentReleaseAdmission, AgentReleaseRuntimeContract, HttpHealthCheck, McpProfileAdmission,
+    McpReleaseAdmission, OciArtifact, SecretBinding, SecretBindingTarget, ServicePort,
+    ServiceProcess, ServiceResources, ServiceTemplate, SkillWorkloadRevisionBinding, Workload,
+    WorkloadPlacementGroupMemberPlan, WorkloadPlacementGroupMemberRole,
+    WorkloadRuntimeExecutionBinding,
 };
 use a3s_cloud_contracts::MCP_PROTOCOL_VERSION;
 use chrono::{Duration, Utc};
@@ -309,13 +309,7 @@ fn projects_an_opaque_semantics_profile_without_product_fields() {
         max_stream_seconds: 3_600,
     })
     .expect("profile");
-    let profile_binding = McpServiceProfileBinding {
-        organization_id,
-        asset_id: asset.id,
-        asset_release_id: release.id,
-        profile: profile.clone(),
-        created_at: created_at + Duration::seconds(2),
-    };
+    let profile_bound_at = created_at + Duration::seconds(2);
     let workload = Workload::create(
         WorkloadId::new(),
         organization_id,
@@ -324,48 +318,78 @@ fn projects_an_opaque_semantics_profile_without_product_fields() {
         ResourceName::parse("runtime-mcp-workload").expect("workload name"),
         created_at + Duration::seconds(3),
     );
+    let service = ServiceTemplate {
+        artifact: OciArtifact {
+            uri: format!("oci://registry.example/mcp-fixture@{artifact_digest}"),
+            digest: artifact_digest,
+            media_type: "application/vnd.oci.image.manifest.v1+json".into(),
+        },
+        process: ServiceProcess {
+            command: vec!["/app/service".into()],
+            args: vec!["serve".into()],
+            working_directory: Some("/app".into()),
+            environment: BTreeMap::new(),
+        },
+        secrets: Vec::new(),
+        resources: ServiceResources {
+            cpu_millis: 500,
+            memory_bytes: 256 * 1024 * 1024,
+            pids: 128,
+            ephemeral_storage_bytes: Some(1024 * 1024 * 1024),
+        },
+        ports: vec![ServicePort {
+            name: "mcp".into(),
+            container_port: 8080,
+        }],
+        health: Some(HttpHealthCheck {
+            port_name: "mcp".into(),
+            path: "/health".into(),
+            interval_ms: 10_000,
+            timeout_ms: 2_000,
+            healthy_threshold: 1,
+            unhealthy_threshold: 3,
+            stabilization_window_ms: 30_000,
+        }),
+    };
+    let admission = McpReleaseAdmission::new(
+        organization_id,
+        asset.id,
+        release.id,
+        release.published_at.expect("release publication time"),
+        profile_bound_at,
+        OciArtifact {
+            uri: service.artifact.uri.clone(),
+            digest: release
+                .artifact
+                .as_ref()
+                .expect("published MCP artifact")
+                .digest()
+                .to_string(),
+            media_type: release
+                .artifact
+                .as_ref()
+                .expect("published MCP artifact")
+                .media_type()
+                .into(),
+        },
+        McpProfileAdmission::new(
+            profile.digest().clone(),
+            profile.spec().runtime_port.clone(),
+            profile.spec().health_path.clone(),
+        )
+        .expect("MCP profile admission"),
+    )
+    .expect("MCP release admission");
     let mut revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,
         3,
-        ServiceTemplate {
-            artifact: OciArtifact {
-                uri: format!("oci://registry.example/mcp-fixture@{artifact_digest}"),
-                digest: artifact_digest,
-                media_type: "application/vnd.oci.image.manifest.v1+json".into(),
-            },
-            process: ServiceProcess {
-                command: vec!["/app/service".into()],
-                args: vec!["serve".into()],
-                working_directory: Some("/app".into()),
-                environment: BTreeMap::new(),
-            },
-            secrets: Vec::new(),
-            resources: ServiceResources {
-                cpu_millis: 500,
-                memory_bytes: 256 * 1024 * 1024,
-                pids: 128,
-                ephemeral_storage_bytes: Some(1024 * 1024 * 1024),
-            },
-            ports: vec![ServicePort {
-                name: "mcp".into(),
-                container_port: 8080,
-            }],
-            health: Some(HttpHealthCheck {
-                port_name: "mcp".into(),
-                path: "/health".into(),
-                interval_ms: 10_000,
-                timeout_ms: 2_000,
-                healthy_threshold: 1,
-                unhealthy_threshold: 3,
-                stabilization_window_ms: 30_000,
-            }),
-        },
+        service,
         created_at + Duration::seconds(3),
     )
     .expect("revision");
     revision
-        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .bind_mcp_release(&workload, &admission)
         .expect("bind MCP release");
 
     let spec = project_runtime_spec(&revision).expect("profile-bound Runtime spec");

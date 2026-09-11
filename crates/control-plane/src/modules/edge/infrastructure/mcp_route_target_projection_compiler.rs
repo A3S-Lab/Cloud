@@ -196,8 +196,8 @@ pub(super) mod tests {
         OrganizationId, ProjectId, ResourceName, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use crate::modules::workloads::domain::entities::{
-        HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact, ServicePort, ServiceProcess,
-        ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
+        HttpHealthCheck, McpProfileAdmission, McpWorkloadRevisionBinding, OciArtifact, ServicePort,
+        ServiceProcess, ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
     };
     use a3s_cloud_contracts::{McpGrantProjection, McpLimitsProjection, MCP_PROTOCOL_VERSION};
     use chrono::{DateTime, Duration, TimeZone, Utc};
@@ -295,7 +295,12 @@ pub(super) mod tests {
                     assets_profile.digest().clone(),
                 )
                 .expect("binding"),
-                &assets_profile,
+                &McpProfileAdmission::new(
+                    assets_profile.digest().clone(),
+                    assets_profile.spec().runtime_port.clone(),
+                    assets_profile.spec().health_path.clone(),
+                )
+                .expect("profile admission"),
             )
             .expect("restore binding");
         let profile = admit_mcp_service_profile_projection_binding(&McpServiceProfileBinding {

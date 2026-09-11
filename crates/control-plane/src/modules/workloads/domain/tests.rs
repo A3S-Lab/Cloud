@@ -8,7 +8,7 @@ use crate::modules::artifacts::domain::BuildRun;
 use crate::modules::artifacts::published::HostedBuildOutcome;
 use crate::modules::assets::domain::{
     Asset, AssetKind, AssetRelease, AssetReleaseArtifact, AssetReleaseVersion, McpServiceProfile,
-    McpServiceProfileBinding, McpServiceProfileSpec,
+    McpServiceProfileSpec,
 };
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, DeploymentId, EnvironmentId,
@@ -113,6 +113,38 @@ fn skill_release_admission(asset: &Asset, release: &AssetRelease) -> SkillReleas
         artifact.size_bytes(),
     )
     .expect("Skill release admission")
+}
+
+fn mcp_release_admission(
+    asset: &Asset,
+    release: &AssetRelease,
+    profile: &McpServiceProfile,
+    profile_bound_at: chrono::DateTime<Utc>,
+    template_artifact: &OciArtifact,
+) -> McpReleaseAdmission {
+    let release_artifact = release
+        .artifact
+        .as_ref()
+        .expect("published MCP service artifact");
+    McpReleaseAdmission::new(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        release.published_at.expect("release publication time"),
+        profile_bound_at,
+        OciArtifact {
+            uri: template_artifact.uri.clone(),
+            digest: release_artifact.digest().to_string(),
+            media_type: release_artifact.media_type().into(),
+        },
+        McpProfileAdmission::new(
+            profile.digest().clone(),
+            profile.spec().runtime_port.clone(),
+            profile.spec().health_path.clone(),
+        )
+        .expect("MCP profile admission"),
+    )
+    .expect("MCP release admission")
 }
 
 fn requested_template(uri: &str, expected_digest: Option<String>) -> RequestedServiceTemplate {
@@ -1557,13 +1589,7 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
         max_stream_seconds: 3_600,
     })
     .expect("profile");
-    let profile_binding = McpServiceProfileBinding {
-        organization_id,
-        asset_id: asset.id,
-        asset_release_id: release.id,
-        profile: profile.clone(),
-        created_at: created_at + Duration::seconds(2),
-    };
+    let profile_bound_at = created_at + Duration::seconds(2);
     let workload = Workload::create(
         WorkloadId::new(),
         organization_id,
@@ -1575,6 +1601,13 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     let mut service = template('e');
     service.ports[0].name = "mcp".into();
     service.health.as_mut().expect("health").port_name = "mcp".into();
+    let admission = mcp_release_admission(
+        &asset,
+        &release,
+        &profile,
+        profile_bound_at,
+        &service.artifact,
+    );
     let mut revision = WorkloadRevision::create(
         WorkloadRevisionId::new(),
         workload.id,
@@ -1585,10 +1618,10 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     .expect("revision");
 
     assert!(revision
-        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .bind_mcp_release(&workload, &admission)
         .expect("bind"));
     assert!(!revision
-        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .bind_mcp_release(&workload, &admission)
         .expect("idempotent bind"));
     let binding = revision.mcp_binding().expect("MCP binding");
     assert_eq!(binding.organization_id(), organization_id);
@@ -1613,7 +1646,7 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     )
     .expect("wrong artifact revision");
     assert!(wrong_artifact
-        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .bind_mcp_release(&workload, &admission)
         .is_err());
 
     let mut wrong_health = template('e');
@@ -1629,7 +1662,7 @@ fn mcp_revision_binds_one_exact_release_profile_and_preserves_it_on_rollback() {
     )
     .expect("wrong health revision");
     assert!(wrong_health
-        .bind_mcp_release(&workload, &asset, &release, &profile_binding)
+        .bind_mcp_release(&workload, &admission)
         .is_err());
 }
 

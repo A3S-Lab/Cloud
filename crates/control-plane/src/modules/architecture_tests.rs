@@ -3210,6 +3210,58 @@ fn workloads_domain_never_imports_artifacts_aggregates() {
 }
 
 #[test]
+fn workloads_domain_mcp_bindings_use_owned_admissions_not_assets_aggregates() {
+    let revision = std::fs::read_to_string(
+        module_root().join("workloads/domain/entities/workload_revision.rs"),
+    )
+    .expect("read Workloads revision entity");
+    let production = production_source(&revision);
+    for required in [
+        "pub struct McpProfileAdmission",
+        "pub struct McpReleaseAdmission",
+        "pub fn restore_from_stored_acl",
+        "admission: &McpReleaseAdmission",
+        "profile: &McpProfileAdmission",
+    ] {
+        assert!(
+            production.contains(required),
+            "Workloads Domain lost owned MCP admission surface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::assets",
+        "McpServiceProfile",
+        "McpServiceProfileBinding",
+        "McpServiceProfileSpec",
+    ] {
+        assert!(
+            !production.contains(forbidden),
+            "Workloads Domain MCP binding regained Assets aggregate authority {forbidden}"
+        );
+    }
+
+    let rows = std::fs::read_to_string(
+        module_root().join("workloads/infrastructure/persistence/postgres/rows.rs"),
+    )
+    .expect("read Workloads postgres rows");
+    let production_rows = production_source(&rows);
+    assert!(
+        production_rows.contains("McpProfileAdmission::restore_from_stored_acl("),
+        "Workloads postgres hydration stopped restoring owned MCP profile admissions"
+    );
+    for forbidden in [
+        "crate::modules::assets",
+        "McpServiceProfile::restore",
+        "McpServiceProfile::",
+    ] {
+        assert!(
+            !production_rows.contains(forbidden),
+            "Workloads postgres hydration regained Assets MCP profile authority {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn developer_workflows_domain_uses_only_local_models_shared_kernel_or_published_language() {
     let violations = bounded_context_internal_model_references("developer_workflows", "domain");
 

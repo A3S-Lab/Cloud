@@ -1,8 +1,4 @@
 use super::{SecretBinding, SecretBindingTarget, Workload};
-use crate::modules::assets::domain::{
-    Asset, AssetKind, AssetRelease, AssetReleaseArtifactKind, AssetReleaseState, McpServiceProfile,
-    McpServiceProfileBinding, SKILL_BUNDLE_MEDIA_TYPE,
-};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AssetId, AssetReleaseId, BuildRunId, EnvironmentId, OrganizationId,
     ProjectId, SecretId, Sha256Digest, SourceRevisionId, WorkloadId, WorkloadRevisionId,
@@ -12,10 +8,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+use a3s_acl::{canonical_digest, parse_acl, Document};
 use a3s_cloud_contracts::{
     agent_harness_compatibility_v1, agent_release_builder_uri, agent_release_manifest_archive,
     agent_release_source_uri, artifact_uri, AgentReleaseManifest, AgentReleasePersistentDataMode,
-    AgentReleaseSecretRequirement, AgentReleaseSecretTarget,
+    AgentReleaseSecretRequirement, AgentReleaseSecretTarget, SKILL_BUNDLE_MEDIA_TYPE,
 };
 
 const AGENT_RUNTIME_WORKING_DIRECTORY: &str = "/workspace";
@@ -25,6 +22,8 @@ const AGENT_HEALTH_TIMEOUT_MS: u64 = 500;
 const AGENT_HEALTHY_THRESHOLD: u16 = 1;
 const AGENT_UNHEALTHY_THRESHOLD: u16 = 3;
 const AGENT_HEALTH_STABILIZATION_WINDOW_MS: u64 = 1_000;
+const MCP_SERVICE_PROFILE_MAX_ACL_BYTES: usize = 64 * 1024;
+const MCP_SERVICE_PROFILE_BLOCK: &str = "mcp_service_profile";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -774,6 +773,188 @@ impl SkillReleaseAdmission {
     }
 }
 
+/// Workloads-owned MCP Service profile facts used by revision invariants.
+///
+/// Assets remains the profile ACL authority. Workloads restores only the
+/// digest and runtime/health surfaces needed to validate ordinary Service
+/// templates without importing Assets aggregates into Domain.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpProfileAdmission {
+    digest: Sha256Digest,
+    runtime_port: String,
+    health_path: String,
+}
+
+impl McpProfileAdmission {
+    pub fn new(
+        digest: Sha256Digest,
+        runtime_port: impl Into<String>,
+        health_path: impl Into<String>,
+    ) -> Result<Self, String> {
+        let admission = Self {
+            digest,
+            runtime_port: runtime_port.into(),
+            health_path: health_path.into(),
+        };
+        admission.validate()?;
+        Ok(admission)
+    }
+
+    pub fn restore_from_stored_acl(acl: &str, stored_digest: &str) -> Result<Self, String> {
+        if acl.is_empty() || acl.len() > MCP_SERVICE_PROFILE_MAX_ACL_BYTES {
+            return Err("MCP Service profile ACL size is invalid".into());
+        }
+        let document = parse_acl(acl)
+            .map_err(|error| format!("MCP Service profile ACL is invalid: {error}"))?;
+        let digest =
+            Sha256Digest::parse(canonical_digest(&document).map_err(|error| {
+                format!("MCP Service profile is not canonicalizable: {error}")
+            })?)?;
+        if digest.as_str() != stored_digest {
+            return Err("stored MCP Service profile ACL and digest do not match".into());
+        }
+        let block = exact_mcp_profile_block(&document)?;
+        Self::new(
+            digest,
+            required_mcp_profile_string(block, "runtime_port")?,
+            required_mcp_profile_string(block, "health_path")?,
+        )
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if !valid_identifier(&self.runtime_port, 63) {
+            return Err("MCP profile admission Runtime port is invalid".into());
+        }
+        if self.health_path.is_empty()
+            || !self.health_path.starts_with('/')
+            || self.health_path.contains("//")
+            || self
+                .health_path
+                .chars()
+                .any(|character| character.is_control() || character.is_whitespace())
+        {
+            return Err("MCP profile admission health path is invalid".into());
+        }
+        Ok(())
+    }
+
+    pub const fn digest(&self) -> &Sha256Digest {
+        &self.digest
+    }
+
+    pub fn runtime_port(&self) -> &str {
+        &self.runtime_port
+    }
+
+    pub fn health_path(&self) -> &str {
+        &self.health_path
+    }
+}
+
+/// Workloads-owned admission facts for binding one published MCP release.
+///
+/// Assets remains authoritative for Asset/release/profile lifecycle. Workloads
+/// receives only the exact binding facts needed by its revision invariants.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpReleaseAdmission {
+    organization_id: OrganizationId,
+    asset_id: AssetId,
+    asset_release_id: AssetReleaseId,
+    published_at: DateTime<Utc>,
+    profile_bound_at: DateTime<Utc>,
+    artifact: OciArtifact,
+    profile: McpProfileAdmission,
+}
+
+impl McpReleaseAdmission {
+    pub fn new(
+        organization_id: OrganizationId,
+        asset_id: AssetId,
+        asset_release_id: AssetReleaseId,
+        published_at: DateTime<Utc>,
+        profile_bound_at: DateTime<Utc>,
+        artifact: OciArtifact,
+        profile: McpProfileAdmission,
+    ) -> Result<Self, String> {
+        let admission = Self {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            published_at: canonical_timestamp(published_at),
+            profile_bound_at: canonical_timestamp(profile_bound_at),
+            artifact,
+            profile,
+        };
+        admission.validate()?;
+        Ok(admission)
+    }
+
+    pub fn validate(&self) -> Result<(), String> {
+        if self.organization_id.as_uuid().is_nil()
+            || self.asset_id.as_uuid().is_nil()
+            || self.asset_release_id.as_uuid().is_nil()
+            || self.published_at != canonical_timestamp(self.published_at)
+            || self.profile_bound_at != canonical_timestamp(self.profile_bound_at)
+        {
+            return Err("MCP release admission identity is invalid".into());
+        }
+        self.artifact.validate()?;
+        self.profile.validate()
+    }
+
+    pub const fn organization_id(&self) -> OrganizationId {
+        self.organization_id
+    }
+
+    pub const fn asset_id(&self) -> AssetId {
+        self.asset_id
+    }
+
+    pub const fn asset_release_id(&self) -> AssetReleaseId {
+        self.asset_release_id
+    }
+
+    pub const fn published_at(&self) -> DateTime<Utc> {
+        self.published_at
+    }
+
+    pub const fn profile_bound_at(&self) -> DateTime<Utc> {
+        self.profile_bound_at
+    }
+
+    pub const fn artifact(&self) -> &OciArtifact {
+        &self.artifact
+    }
+
+    pub const fn profile(&self) -> &McpProfileAdmission {
+        &self.profile
+    }
+}
+
+fn exact_mcp_profile_block(document: &Document) -> Result<&a3s_acl::Block, String> {
+    if document.blocks.len() != 1 {
+        return Err("MCP Service profile must contain exactly one top-level block".into());
+    }
+    let block = &document.blocks[0];
+    if block.name != MCP_SERVICE_PROFILE_BLOCK
+        || !block.labels.is_empty()
+        || !block.blocks.is_empty()
+    {
+        return Err("MCP Service profile block shape is invalid".into());
+    }
+    Ok(block)
+}
+
+fn required_mcp_profile_string(block: &a3s_acl::Block, name: &str) -> Result<String, String> {
+    block
+        .attributes
+        .get(name)
+        .ok_or_else(|| format!("MCP Service profile field {name:?} is required"))?
+        .as_str()
+        .map(str::to_owned)
+        .ok_or_else(|| format!("MCP Service profile field {name:?} must be a string"))
+}
+
 fn agent_release_process(manifest: &AgentReleaseManifest) -> ServiceProcess {
     ServiceProcess {
         command: vec![manifest.entrypoint().command().into()],
@@ -1314,24 +1495,13 @@ impl WorkloadRevision {
     pub fn bind_mcp_release(
         &mut self,
         workload: &Workload,
-        asset: &Asset,
-        release: &AssetRelease,
-        profile: &McpServiceProfileBinding,
+        admission: &McpReleaseAdmission,
     ) -> Result<bool, String> {
-        asset.validate()?;
-        release.validate_for(asset)?;
-        profile.validate()?;
+        admission.validate()?;
         if self.workload_id != workload.id
-            || workload.organization_id != asset.organization_id
-            || asset.kind != AssetKind::Mcp
-            || release.organization_id != workload.organization_id
-            || release.asset_id != asset.id
-            || release.state != AssetReleaseState::Published
-            || profile.organization_id != workload.organization_id
-            || profile.asset_id != asset.id
-            || profile.asset_release_id != release.id
-            || self.created_at < release.updated_at
-            || self.created_at < profile.created_at
+            || workload.organization_id != admission.organization_id
+            || self.created_at < admission.published_at
+            || self.created_at < admission.profile_bound_at
             || self.agent_binding.is_some()
             || self.external_build.is_some()
         {
@@ -1340,25 +1510,18 @@ impl WorkloadRevision {
                     .into(),
             );
         }
-        let release_artifact = release
-            .artifact
-            .as_ref()
-            .ok_or_else(|| "published MCP release omitted its OCI artifact".to_owned())?;
-        if release_artifact.kind() != AssetReleaseArtifactKind::OciService {
-            return Err("MCP Workload requires an OCI Service release".into());
-        }
         let template = self.resolved_template()?;
-        if template.artifact.digest != release_artifact.digest().as_str()
-            || template.artifact.media_type != release_artifact.media_type()
+        if template.artifact.digest != admission.artifact.digest
+            || template.artifact.media_type != admission.artifact.media_type
         {
             return Err("MCP Workload artifact does not match its exact AssetRelease".into());
         }
-        validate_mcp_template(template, &profile.profile)?;
+        validate_mcp_template(template, &admission.profile)?;
         let binding = McpWorkloadRevisionBinding::restore(
             workload.organization_id,
-            asset.id,
-            release.id,
-            profile.profile.digest().clone(),
+            admission.asset_id,
+            admission.asset_release_id,
+            admission.profile.digest().clone(),
         )?;
         match &self.mcp_binding {
             Some(existing) if existing == &binding => Ok(false),
@@ -1395,9 +1558,10 @@ impl WorkloadRevision {
     pub(crate) fn restore_mcp_binding(
         &mut self,
         binding: McpWorkloadRevisionBinding,
-        profile: &McpServiceProfile,
+        profile: &McpProfileAdmission,
     ) -> Result<(), String> {
         binding.validate_identity()?;
+        profile.validate()?;
         if binding.profile_digest != *profile.digest() {
             return Err("MCP Workload release binding and Service profile digest differ".into());
         }
@@ -1630,15 +1794,14 @@ impl WorkloadRevision {
 
 fn validate_mcp_template(
     template: &ServiceTemplate,
-    profile: &McpServiceProfile,
+    profile: &McpProfileAdmission,
 ) -> Result<(), String> {
     template.validate()?;
-    McpServiceProfile::restore(profile.canonical_acl(), profile.digest().as_str())?;
-    let profile = profile.spec();
+    profile.validate()?;
     if !template
         .ports
         .iter()
-        .any(|port| port.name == profile.runtime_port)
+        .any(|port| port.name == profile.runtime_port())
     {
         return Err("MCP Workload does not declare the profile Runtime port".into());
     }
@@ -1646,7 +1809,7 @@ fn validate_mcp_template(
         .health
         .as_ref()
         .ok_or_else(|| "MCP Workload requires the profile HTTP health check".to_owned())?;
-    if health.port_name != profile.runtime_port || health.path != profile.health_path {
+    if health.port_name != profile.runtime_port() || health.path != profile.health_path() {
         return Err(
             "MCP Workload health check does not match its immutable Service profile".into(),
         );
