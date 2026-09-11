@@ -115,7 +115,7 @@ progress**, **Planned**.
 | **WaaS** — Workflow as a Service | Ontology, immutable plans, WorkflowRun, HumanTask; Flow coordinates nodes | **In progress** (unavailable as a complete product) |
 | **FaaS** — Function as a Service | Immutable Function profile; invoke via Executions / Workloads / Connectors | **In progress / unavailable** (<code>FN0.1</code> contracts frozen) |
 | **Durable Cell** | Named, serialized, hibernatable shared state over ordinary Service | **In progress / unavailable** |
-| **Model inference** | Keys, route catalog, Edge ACL, usage ledger; Power serving on Box | **Planned** overall (<code>I0</code>); Cloud-side keys/routes/Edge/usage components exist; end-to-end serving blocked by <code>BX0</code> + <code>PW0</code> |
+| **Model inference** | Keys, route catalog, Edge ACL, usage ledger; Power serving on Box | **Planned** overall (<code>I0</code>); Track A control-plane slices in progress — keys, route catalog (publish/revise/retire with owned <code>InferenceAccess</code>), Edge ACL succession, usage ledger; end-to-end OpenAI data plane blocked by <code>BX0</code> + <code>PW0</code> |
 | **Static Web** | Immutable Web releases served by Gateway | **Planned** (<code>WEB0</code>; Gateway static-object target not implemented) |
 
 Platform foundations that already carry product work:
@@ -125,6 +125,7 @@ Platform foundations that already carry product work:
 | Control plane, PostgreSQL/ORM, Operations/Flow, Outbox, migrations, public API | **Verified** (<code>F0</code>) |
 | REST / TypeScript client / CLI / Management MCP parity | **Verified** core (<code>C0.1</code>–<code>C0.2m</code>) |
 | Workloads replicas + Gateway target projection | **Verified** (<code>H0.1</code>–<code>H0.2</code>) |
+| Architecture integrity (Wave 0) | **In progress** — REST/MCP entry projects Identity into owner <code>*Access</code>; Application handlers do not take <code>ResourceAccessEvaluator</code>. Recent: Projects create, Inference route publish/revise/retire, Edge create (domain claim / gateway scope / MCP credential), plus Workloads, Workflow, Executions, Assets, and related surfaces. Not a product availability claim. |
 | Box-only execution/build re-certification | **In progress** (<code>BX0</code>; release blocker) |
 | A3S Power as Box-hosted inference Service | **Planned** (<code>PW0</code>) |
 
@@ -249,7 +250,7 @@ versioned fact from the owner's committed Outbox.
 
 | Concern | Sole authority | Forbidden duplicate |
 | --- | --- | --- |
-| Tenant identity and authorization | Identity + Projects | Adapter-local roles, UI-only policy, cache-as-truth |
+| Tenant identity and authorization | Identity (evaluator) + owning context (<code>*Access</code> at REST/MCP entry) | <code>ResourceAccessEvaluator</code> inside Application handlers, adapter-local roles, UI-only policy, cache-as-truth |
 | Product meaning | Owning Agent, Workflow, Function, Cell, Inference, Application, or Asset context | Runtime/provider fields as product state |
 | Durable coordination | Operations + A3S Flow | Product retry tables or another workflow engine |
 | Placement and rollout | Workloads + Fleet | Agent-, MCP-, Cell-, model-, or Gateway-specific schedulers |
@@ -267,7 +268,7 @@ imports and duplicate mechanisms from spreading.
 
 ## Delivery status
 
-Gate-driven, not percentage-driven. Summary as of **2026-09-10** (exact
+Gate-driven, not percentage-driven. Summary as of **2026-09-11** (exact
 evidence and remaining exits live in [ROADMAP.md](ROADMAP.md)):
 
 | Area | Evidence state |
@@ -275,10 +276,11 @@ evidence and remaining exits live in [ROADMAP.md](ROADMAP.md)):
 | Foundation (<code>F0</code>): Identity, PostgreSQL/ORM, Flow/Operations, Outbox, API, migrations | **Verified** |
 | Control surfaces (<code>C0.1</code>–<code>C0.2m</code>) | **Verified** core; enterprise <code>C0.5</code> / broader <code>C0.3</code> slices still open |
 | Workloads / Fleet / Gateway projection (<code>H0.1</code>–<code>H0.2</code>) | **Verified**; multi-node HA / autoscaling (<code>H0.3</code>+) in progress |
+| Architecture integrity (Wave 0) | **In progress** — owner <code>*Access</code> at REST/MCP entry; recent: <code>CreateProject</code> / <code>CreateEnvironment</code> → <code>ProjectAccess</code>, Inference publish/revise/retire → <code>InferenceAccess</code>, Edge create domain claim / gateway scope / MCP credential → <code>EdgeAccess</code>; earlier Workloads, Workflow, Executions, Assets, Secrets, and query surfaces |
 | Box-only platform (<code>BX0</code>) | **In progress** (release blocker for Box-backed production claims) |
 | Agent lanes (<code>A0</code>/<code>A1</code>) | **In progress**; A0.4 and selected A1 gates verified—complete AaaS still gate-bound |
 | Workflow / Applications / Automations / Cells / Knowledge | **In progress / unavailable** as complete products |
-| Inference (<code>I0</code>) | **Planned** product; Cloud keys, route catalog, Edge ACL succession, and usage ledger components exist; Power workers and end-to-end OpenAI data plane wait on <code>BX0</code> + <code>PW0</code> |
+| Inference (<code>I0</code>) | **Planned** product; Track A control plane in progress (keys, route catalog + <code>InferenceAccess</code> mutations, Edge ACL succession, usage); Power workers and end-to-end data plane wait on <code>BX0</code> + <code>PW0</code> |
 | FaaS / Static Web / Runtime CI/CD / Power | **Planned** or early foundation |
 
 ## Deployment model

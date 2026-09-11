@@ -90,7 +90,7 @@ Runtime CI/CD 使用同一权威图：构建一次、验证摘要、晋升降级
 | **WaaS** — Workflow as a Service | 本体、不可变计划、WorkflowRun、HumanTask；Flow 协调节点 | **进行中**（完整产品不可用） |
 | **FaaS** — Function as a Service | 不可变 Function 配置；经 Executions / Workloads / Connectors 调用 | **进行中 / 不可用**（<code>FN0.1</code> 合约已冻结） |
 | **Durable Cell** | 命名、串行化、可休眠的共享状态，落在普通 Service 上 | **进行中 / 不可用** |
-| **模型推理** | Key、路由目录、Edge ACL、用量账本；Box 上的 Power 服务 | 总体 **已规划**（<code>I0</code>）；Cloud 侧 Key/路由/Edge/用量组件存在；端到端服务阻塞于 <code>BX0</code> + <code>PW0</code> |
+| **模型推理** | Key、路由目录、Edge ACL、用量账本；Box 上的 Power 服务 | 总体 **已规划**（<code>I0</code>）；Track A 控制面切片进行中——Key、路由目录（publish/revise/retire 经拥有的 <code>InferenceAccess</code>）、Edge ACL 演替、用量账本；端到端 OpenAI 数据面阻塞于 <code>BX0</code> + <code>PW0</code> |
 | **Static Web** | Gateway 服务的不可变 Web 发布 | **已规划**（<code>WEB0</code>；Gateway 静态对象目标未实现） |
 
 已承载产品工作的平台基础：
@@ -100,6 +100,7 @@ Runtime CI/CD 使用同一权威图：构建一次、验证摘要、晋升降级
 | 控制面、PostgreSQL/ORM、Operations/Flow、Outbox、迁移、公共 API | **已验证**（<code>F0</code>） |
 | REST / TypeScript 客户端 / CLI / Management MCP 对等 | **已验证**核心（<code>C0.1</code>–<code>C0.2m</code>） |
 | Workloads 副本 + Gateway target 投影 | **已验证**（<code>H0.1</code>–<code>H0.2</code>） |
+| 架构完整性（Wave 0） | **进行中** — REST/MCP 入口将 Identity 投影为拥有方 <code>*Access</code>；Application 处理器不再接收 <code>ResourceAccessEvaluator</code>。近期：Projects 创建、Inference 路由 publish/revise/retire、Edge 创建（domain claim / gateway scope / MCP credential），以及 Workloads、Workflow、Executions、Assets 等相关面。不是产品可用性声明。 |
 | 仅 Box 执行/构建再认证 | **进行中**（<code>BX0</code>；发布阻塞项） |
 | 作为 Box 托管推理 Service 的 A3S Power | **已规划**（<code>PW0</code>） |
 
@@ -211,7 +212,7 @@ Presentation 调用 Application；Application 协调其 Domain 与消费者拥�
 
 | 关注点 | 唯一权威 | 禁止的重复 |
 | --- | --- | --- |
-| 租户身份与授权 | Identity + Projects | 适配器本地角色、仅 UI 策略、缓存当真相 |
+| 租户身份与授权 | Identity（求值器）+ 拥有方上下文（REST/MCP 入口的 <code>*Access</code>） | Application 处理器内的 <code>ResourceAccessEvaluator</code>、适配器本地角色、仅 UI 策略、缓存当真相 |
 | 产品含义 | 拥有 Agent、Workflow、Function、Cell、Inference、Application 或 Asset 的上下文 | Runtime/提供商字段当产品状态 |
 | 持久协调 | Operations + A3S Flow | 产品重试表或另一 workflow 引擎 |
 | 放置与滚动 | Workloads + Fleet | Agent/MCP/Cell/模型/Gateway 专用调度器 |
@@ -225,17 +226,18 @@ Presentation 调用 Application；Application 协调其 Domain 与消费者拥�
 
 ## 交付状态
 
-以闸门驱动，而非百分比驱动。截至 **2026-09-10** 的摘要（确切证据与剩余退出见 [ROADMAP.md](ROADMAP.md)）：
+以闸门驱动，而非百分比驱动。截至 **2026-09-11** 的摘要（确切证据与剩余退出见 [ROADMAP.md](ROADMAP.md)）：
 
 | 区域 | 证据状态 |
 | --- | --- |
 | 基础（<code>F0</code>）：Identity、PostgreSQL/ORM、Flow/Operations、Outbox、API、迁移 | **已验证** |
 | 控制面（<code>C0.1</code>–<code>C0.2m</code>） | **已验证**核心；企业 <code>C0.5</code> / 更广 <code>C0.3</code> 切片仍开放 |
 | Workloads / Fleet / Gateway 投影（<code>H0.1</code>–<code>H0.2</code>） | **已验证**；多节点 HA / 弹性（<code>H0.3</code>+）进行中 |
+| 架构完整性（Wave 0） | **进行中** — REST/MCP 入口的拥有方 <code>*Access</code>；近期：<code>CreateProject</code> / <code>CreateEnvironment</code> → <code>ProjectAccess</code>，Inference publish/revise/retire → <code>InferenceAccess</code>，Edge 创建 domain claim / gateway scope / MCP credential → <code>EdgeAccess</code>；更早的 Workloads、Workflow、Executions、Assets、Secrets 与查询面 |
 | 仅 Box 平台（<code>BX0</code>） | **进行中**（Box 背书生产声明的发布阻塞项） |
 | Agent 泳道（<code>A0</code>/<code>A1</code>） | **进行中**；A0.4 与部分 A1 闸门已验证——完整 AaaS 仍受闸门约束 |
 | Workflow / Applications / Automations / Cells / Knowledge | 作为完整产品 **进行中 / 不可用** |
-| 推理（<code>I0</code>） | **已规划**产品；Cloud Key、路由目录、Edge ACL 演替与用量账本组件存在；Power workers 与端到端 OpenAI 数据面等待 <code>BX0</code> + <code>PW0</code> |
+| 推理（<code>I0</code>） | **已规划**产品；Track A 控制面进行中（Key、路由目录 + <code>InferenceAccess</code> 变更、Edge ACL 演替、用量）；Power workers 与端到端数据面等待 <code>BX0</code> + <code>PW0</code> |
 | FaaS / Static Web / Runtime CI/CD / Power | **已规划**或早期基础 |
 
 ## 部署模型
