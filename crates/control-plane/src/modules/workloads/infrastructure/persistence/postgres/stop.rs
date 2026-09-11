@@ -59,7 +59,7 @@ pub(super) async fn request(
                 store_outbox(transaction, &request.event).await?;
                 let response = WorkloadStopBundle {
                     workload: request.workload,
-                    operation,
+                    operation: request.operation,
                     replayed: false,
                 };
                 store_idempotency(transaction, &request.idempotency, &response).await?;

@@ -1009,7 +1009,7 @@ fn validate_bundle(
         || bundle.deployment.workload_id != request.workload_id
         || bundle.deployment.revision_id != request.workload_revision_id
         || bundle.deployment.operation_id != request.operation_id
-        || bundle.operation.id != request.operation_id
+        || bundle.operation.operation_id != request.operation_id
         || bundle.operation.organization_id != request.organization_id
         || bundle.operation.requested_at != bundle.deployment.requested_at
         || bundle.revision.external_build.is_some()
@@ -1052,7 +1052,7 @@ fn project_bundle(
         workload_id: bundle.workload.id,
         revision_id: revision.id,
         deployment_id: bundle.deployment.id,
-        operation_id: bundle.operation.id,
+        operation_id: bundle.operation.operation_id,
         generation: revision.generation,
         status: project_status(bundle.deployment.status),
         deployment_aggregate_version: bundle.deployment.aggregate_version,

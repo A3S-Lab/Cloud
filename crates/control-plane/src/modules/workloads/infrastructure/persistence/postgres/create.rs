@@ -72,7 +72,7 @@ pub(super) async fn deployment_in_transaction(
         workload,
         revision: request.revision,
         deployment: request.deployment,
-        operation,
+        operation: request.operation,
         replayed: false,
     };
     store_outbox(transaction, &request.event).await?;

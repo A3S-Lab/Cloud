@@ -1,3 +1,4 @@
+use crate::modules::workloads::infrastructure::compose_deployment_operation;
 use super::*;
 #[cfg(target_os = "linux")]
 use a3s_cloud_node_agent::build_box_runtime_provider;
@@ -95,7 +96,7 @@ async fn real_box_deployment_cancellation_removes_runtime_before_claim_release()
     let revision = bundle.revision.clone();
     let spec = project_runtime_spec(&revision)?;
     let created = workloads.create_deployment(bundle).await?;
-    let operation = created.operation;
+    let operation = compose_deployment_operation(&created.operation)?;
 
     let journal = FileCommandJournal::new(node_state.path(), node_id.as_uuid())?;
     let inventory_authority = Arc::new(FixedInventory(inventory));

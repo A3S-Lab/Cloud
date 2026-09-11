@@ -11030,6 +11030,20 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
             .join("\n")
     );
 
+    let repository = std::fs::read_to_string(
+        root.join("workloads/domain/repositories/workload_repository.rs"),
+    )
+    .expect("read Workloads repository types");
+    let production_repository = production_source(&repository);
+    assert!(
+        production_repository.contains("pub operation: WorkloadDeploymentOperationIntent"),
+        "DeploymentBundle must return owned WorkloadDeploymentOperationIntent"
+    );
+    assert!(
+        production_repository.contains("pub operation: WorkloadStopOperationIntent"),
+        "WorkloadStopBundle must return owned WorkloadStopOperationIntent"
+    );
+
     let writer_fence =
         std::fs::read_to_string(root.join("durable_cells/application/writer_fence.rs"))
             .expect("read Durable Cells writer-fence application");

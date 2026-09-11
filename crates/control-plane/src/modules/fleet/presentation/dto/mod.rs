@@ -7,5 +7,5 @@ pub use request::{
     ScheduleNodePoolMaintenanceRequest,
 };
 pub use response::{
-    EnrollmentTokenResponse, NodeLogRecordResponse, NodePoolResponse, NodeResponse,
+    EnrollmentTokenResponse, NodePoolResponse, NodeResponse,
 };

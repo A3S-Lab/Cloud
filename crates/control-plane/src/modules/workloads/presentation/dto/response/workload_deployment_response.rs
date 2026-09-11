@@ -88,7 +88,7 @@ impl WorkloadDeploymentResponse {
             workload_id: bundle.workload.id.as_uuid(),
             revision_id: bundle.revision.id.as_uuid(),
             deployment_id: bundle.deployment.id.as_uuid(),
-            operation_id: bundle.operation.id.as_uuid(),
+            operation_id: bundle.operation.operation_id.as_uuid(),
             generation: bundle.revision.generation,
             status: bundle.deployment.status.as_str().into(),
             artifact_source_uri: bundle.revision.request.artifact.uri,

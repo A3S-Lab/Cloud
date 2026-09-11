@@ -320,8 +320,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             return Ok(response);
         }
         validate_bundle(&request)?;
-        let operation =
-            compose_deployment_operation(&request.operation).map_err(RepositoryError::Conflict)?;
+        compose_deployment_operation(&request.operation).map_err(RepositoryError::Conflict)?;
         let desired_replicas = request.control.placement_policy.desired_replicas();
         if desired_replicas == 0 {
             return Err(RepositoryError::Conflict(
@@ -477,7 +476,7 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
             workload,
             revision: request.revision,
             deployment: request.deployment,
-            operation,
+            operation: request.operation,
             replayed: false,
         };
         state
@@ -618,15 +617,14 @@ impl IWorkloadRepository for InMemoryWorkloadRepository {
                 "workload stop bundle is inconsistent with stored state".into(),
             ));
         }
-        let operation =
-            compose_stop_operation(&request.operation).map_err(RepositoryError::Conflict)?;
+        compose_stop_operation(&request.operation).map_err(RepositoryError::Conflict)?;
         state
             .workloads
             .insert(request.workload.id, request.workload.clone());
         state.outbox.push(request.event);
         let response = WorkloadStopBundle {
             workload: request.workload,
-            operation,
+            operation: request.operation,
             replayed: false,
         };
         state

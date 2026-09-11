@@ -19,7 +19,7 @@ impl From<StopWorkloadResult> for WorkloadStopResponse {
         Self {
             organization_id: result.bundle.workload.organization_id.as_uuid(),
             workload_id: result.bundle.workload.id.as_uuid(),
-            operation_id: result.bundle.operation.id.as_uuid(),
+            operation_id: result.bundle.operation.operation_id.as_uuid(),
             desired_state: result.bundle.workload.desired_state.as_str().into(),
             requested_at: result.bundle.operation.requested_at,
             replayed: result.bundle.replayed,

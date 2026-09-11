@@ -52,14 +52,14 @@ pub struct DeploymentBundle {
     pub workload: Workload,
     pub revision: WorkloadRevision,
     pub deployment: Deployment,
-    pub operation: OperationRequest,
+    pub operation: WorkloadDeploymentOperationIntent,
     pub replayed: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkloadStopBundle {
     pub workload: Workload,
-    pub operation: OperationRequest,
+    pub operation: WorkloadStopOperationIntent,
     pub replayed: bool,
 }
 

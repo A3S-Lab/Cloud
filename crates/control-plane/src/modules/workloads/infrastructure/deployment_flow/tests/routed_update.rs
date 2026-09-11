@@ -1,3 +1,4 @@
+use crate::modules::workloads::infrastructure::compose_deployment_operation;
 use super::*;
 
 #[tokio::test]
@@ -231,7 +232,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     let rejected_revision = rejected.revision.clone();
     let rejected_deployment = rejected.deployment.clone();
     let created = workloads.create_deployment(rejected).await?;
-    let rejected_operation = created.operation;
+    let rejected_operation = compose_deployment_operation(&created.operation)?;
     engine
         .start_with_id(
             rejected_operation.id.to_string(),
@@ -345,7 +346,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     let accepted_revision = accepted.revision.clone();
     let accepted_deployment = accepted.deployment.clone();
     let created = workloads.create_deployment(accepted).await?;
-    let accepted_operation = created.operation;
+    let accepted_operation = compose_deployment_operation(&created.operation)?;
     engine
         .start_with_id(
             accepted_operation.id.to_string(),
@@ -589,7 +590,7 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
         first_revision.template_digest
     );
     let created = workloads.create_deployment(rollback).await?;
-    let rollback_operation = created.operation;
+    let rollback_operation = compose_deployment_operation(&created.operation)?;
     engine
         .start_with_id(
             rollback_operation.id.to_string(),

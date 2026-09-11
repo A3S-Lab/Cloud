@@ -384,7 +384,7 @@ async fn store_restart(
                 )
                 .value(
                     SecretRotationRestarts::operation_id(),
-                    response.operation.id.as_uuid(),
+                    response.operation.operation_id.as_uuid(),
                 )
                 .value(SecretRotationRestarts::created_at(), created_at),
         )
