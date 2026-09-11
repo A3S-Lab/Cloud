@@ -362,18 +362,20 @@ use crate::modules::workloads::{
     FleetWorkloadRuntimeObservationAccessAdapter, FleetWorkloadsNodePoolAccessAdapter,
     GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
     IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess, IWorkloadLogAccess,
-    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadRuntimeObservationAccess,
-    IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadSkillReleaseAdmissionPort,
-    IWorkloadSourceBuildAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
-    IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
-    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    IWorkloadMcpActiveRevisionProjectionQueryPort, IWorkloadRuntimeExecutionAdmissionPort,
+    IWorkloadRuntimeObservationAccess, IWorkloadSecretMaterializationAuthorizationQueryPort,
+    IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
+    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
+    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
+    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     OperationsWorkloadDeploymentOperationAccessAdapter, ProjectsWorkloadsEnvironmentAccessAdapter,
     ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
     SourcesArtifactsWorkloadSourceBuildAdmissionAdapter, StopWorkloadHandler,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeploymentHandler,
-    UpdateWorkloadDeploymentHandler, WorkloadRuntimeReconciler,
-    WorkloadSecretMaterializationAuthorizationQueryService, WorkloadsModule,
+    UpdateWorkloadDeploymentHandler, WorkloadMcpActiveRevisionProjectionQueryService,
+    WorkloadRuntimeReconciler, WorkloadSecretMaterializationAuthorizationQueryService,
+    WorkloadsModule,
 };
 use crate::modules::PlatformModule;
 use crate::presentation::{
@@ -998,8 +1000,12 @@ async fn build_api_worker_application(
     let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> = Arc::new(
         AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(&mcp_profiles)),
     );
+    let mcp_revision_projection: Arc<dyn IWorkloadMcpActiveRevisionProjectionQueryPort> =
+        Arc::new(WorkloadMcpActiveRevisionProjectionQueryService::new(
+            Arc::clone(&workloads),
+        ));
     let mcp_revision_access: Arc<dyn IEdgeMcpWorkloadRevisionProjectionAccess> = Arc::new(
-        WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::clone(&workloads)),
+        WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(mcp_revision_projection),
     );
     let mcp_projection_inputs = Arc::new(McpRouteProjectionInputReader::new(
         Arc::clone(&mcp_route_policy_repository),

@@ -4,6 +4,7 @@ pub mod commands;
 mod deployment_operation_access;
 mod environment_access;
 mod log_access;
+mod mcp_active_revision_projection;
 mod node_pool_access;
 mod owner_snapshot;
 pub mod queries;
@@ -63,6 +64,10 @@ pub use log_access::{
     IWorkloadLogAccess, WorkloadLogChunkMetadata, WorkloadLogCompactionRange, WorkloadLogGapReason,
     WorkloadLogProviderGapMetadata, WorkloadLogReadQuery, WorkloadLogReadResult, WorkloadLogRecord,
     WORKLOAD_MAX_LOG_PAGE_SIZE,
+};
+pub use mcp_active_revision_projection::{
+    IWorkloadMcpActiveRevisionProjectionQueryPort, WorkloadMcpActiveRevisionProjectionQuery,
+    WorkloadMcpActiveRevisionProjectionQueryService,
 };
 pub use node_pool_access::{IWorkloadsNodePoolAccess, WorkloadsNodePoolScope};
 pub use queries::{

@@ -190,18 +190,12 @@ pub(super) mod tests {
         McpRoutePolicySpec, RouteHostname, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
     use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
-    use crate::modules::edge::infrastructure::workloads_mcp_workload_revision_access::admit_mcp_workload_revision_projection_binding;
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId, NodeId,
-        OrganizationId, ProjectId, ResourceName, RouteId, WorkloadId, WorkloadRevisionId,
-    };
-    use crate::modules::workloads::domain::entities::{
-        HttpHealthCheck, McpWorkloadRevisionBinding, OciArtifact, ServicePort, ServiceProcess,
-        ServiceResources, ServiceTemplate, Workload, WorkloadRevision,
+        OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
     };
     use a3s_cloud_contracts::{MCP_PROTOCOL_VERSION, McpGrantProjection, McpLimitsProjection};
     use chrono::{DateTime, Duration, TimeZone, Utc};
-    use std::collections::BTreeMap;
 
     pub(in crate::modules::edge::infrastructure) struct Fixture {
         pub(in crate::modules::edge::infrastructure) profile:
@@ -245,60 +239,6 @@ pub(super) mod tests {
         let assets_profile = profile;
         let revision_id =
             WorkloadRevisionId::from_uuid(uuid("55555555-5555-4555-8555-555555555555"));
-        let digest = format!("sha256:{}", "a".repeat(64));
-        let mut revision = WorkloadRevision::create(
-            revision_id,
-            workload_id,
-            7,
-            ServiceTemplate {
-                artifact: OciArtifact {
-                    uri: format!("oci://registry.example/mcp@{digest}"),
-                    digest,
-                    media_type: "application/vnd.oci.image.manifest.v1+json".into(),
-                },
-                process: ServiceProcess {
-                    command: vec!["/app/mcp".into()],
-                    args: vec!["serve".into()],
-                    working_directory: Some("/app".into()),
-                    environment: BTreeMap::new(),
-                },
-                secrets: Vec::new(),
-                resources: ServiceResources {
-                    cpu_millis: 500,
-                    memory_bytes: 256 * 1024 * 1024,
-                    pids: 128,
-                    ephemeral_storage_bytes: Some(1024 * 1024 * 1024),
-                },
-                ports: vec![ServicePort {
-                    name: "mcp".into(),
-                    container_port: 8080,
-                }],
-                health: Some(HttpHealthCheck {
-                    port_name: "mcp".into(),
-                    path: "/health".into(),
-                    interval_ms: 10_000,
-                    timeout_ms: 2_000,
-                    healthy_threshold: 1,
-                    unhealthy_threshold: 3,
-                    stabilization_window_ms: 30_000,
-                }),
-            },
-            now(),
-        )
-        .expect("revision");
-        revision
-            .restore_mcp_binding(
-                McpWorkloadRevisionBinding::restore(
-                    organization_id,
-                    asset_id,
-                    asset_release_id,
-                    assets_profile.digest().clone(),
-                    assets_profile.spec().runtime_port.clone(),
-                    assets_profile.spec().health_path.clone(),
-                )
-                .expect("binding"),
-            )
-            .expect("restore binding");
         let profile = admit_mcp_service_profile_projection_binding(&McpServiceProfileBinding {
             organization_id,
             asset_id,
@@ -307,20 +247,22 @@ pub(super) mod tests {
             created_at: now(),
         })
         .expect("profile binding");
-        let mut workload = Workload::create(
+        let revision = EdgeMcpWorkloadRevisionProjectionBinding::new(
+            revision_id,
             workload_id,
-            organization_id,
-            ProjectId::from_uuid(uuid("77777777-7777-4777-8777-777777777777")),
-            EnvironmentId::from_uuid(uuid("88888888-8888-4888-8888-888888888888")),
-            ResourceName::parse("MCP runtime").expect("name"),
+            7,
             now(),
-        );
-        workload
-            .activate(revision_id, now())
-            .expect("activate revision");
-        let revision =
-            admit_mcp_workload_revision_projection_binding(&workload, &revision, &profile)
-                .expect("revision binding");
+            organization_id,
+            asset_id,
+            asset_release_id,
+            profile.digest().clone(),
+            profile.runtime_port(),
+            profile.runtime_port(),
+            profile.health_path(),
+            2,
+            now(),
+        )
+        .expect("revision binding");
         let admission = crate::modules::edge::domain::EdgeMcpServiceProfileAdmission::new(
             profile.digest().clone(),
             profile.endpoint_path(),

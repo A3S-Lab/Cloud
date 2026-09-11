@@ -10981,6 +10981,7 @@ fn edge_mcp_gateway_projection_owns_profile_binding_facts() {
         "IWorkloadRepository",
         "admit_mcp_service_profile_projection_binding(",
         "admit_mcp_workload_revision_projection_binding(",
+        "admit_active_mcp_workload_revision_projection(",
         "crate::modules::assets",
         "crate::modules::workloads",
     ] {
@@ -11126,14 +11127,54 @@ fn edge_mcp_gateway_projection_isolates_workload_revision_materialization() {
     for required in [
         "pub struct WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter",
         "impl IEdgeMcpWorkloadRevisionProjectionAccess",
-        "IWorkloadRepository",
-        "admit_mcp_workload_revision_projection_binding(",
+        "IWorkloadMcpActiveRevisionProjectionQueryPort",
+        "WorkloadMcpActiveRevisionProjectionQuery::new(",
+        "find_active_projection(",
     ] {
         assert!(
             production_adapter.contains(required),
             "Edge MCP revision projection adapter lost quarantine surface {required}"
         );
     }
+    for forbidden in [
+        "IWorkloadRepository",
+        "admit_mcp_workload_revision_projection_binding(",
+        "WorkloadDesiredState",
+        "entities::Workload",
+        "entities::WorkloadRevision",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Edge MCP revision projection adapter regained Workloads repository authority {forbidden}"
+        );
+    }
+
+    let owner_port = std::fs::read_to_string(
+        root.join("workloads/application/mcp_active_revision_projection.rs"),
+    )
+    .expect("read Workloads MCP active revision projection port");
+    let production_owner = production_source(&owner_port);
+    let compact_owner = production_owner.split_whitespace().collect::<String>();
+    for required in [
+        "pubtraitIWorkloadMcpActiveRevisionProjectionQueryPort:Send+Sync",
+        "asyncfnfind_active_projection(",
+        "pubstructWorkloadMcpActiveRevisionProjectionQuery",
+        "pubstructWorkloadMcpActiveRevisionProjectionQueryService",
+    ] {
+        assert!(
+            compact_owner.contains(required),
+            "Workloads MCP active revision projection port lost minimum surface {required}"
+        );
+    }
+
+    let published = std::fs::read_to_string(
+        root.join("workloads/published/active_mcp_revision_projection.rs"),
+    )
+    .expect("read Workloads published MCP revision projection");
+    assert!(
+        production_source(&published).contains("ActiveMcpWorkloadRevisionProjection"),
+        "Workloads published MCP revision projection fact missing"
+    );
 
     let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
         .expect("read root composition");
@@ -11144,6 +11185,10 @@ fn edge_mcp_gateway_projection_isolates_workload_revision_materialization() {
             .count(),
         1,
         "root composition must construct the revision projection ACA exactly once"
+    );
+    assert!(
+        production_app.contains("WorkloadMcpActiveRevisionProjectionQueryService::new("),
+        "root composition must construct the Workloads MCP revision owner query once"
     );
 }
 
