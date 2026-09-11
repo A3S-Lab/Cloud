@@ -4123,6 +4123,97 @@ fn edge_list_gateway_scopes_isolates_identity_behind_one_context_owned_access_pr
 }
 
 #[test]
+fn edge_mcp_credential_queries_isolate_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("edge/application/resource_access.rs"))
+        .expect("read Edge resource access boundary");
+    let compact_access = production_source(&access)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pub(crate)structEdgeMcpCredentialAccess",
+        "pubasyncfncredential(",
+        "mcp_credential_not_found()",
+        "environment_is_visible(credential.project_id,credential.environment_id)",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Edge lost MCP credential succession through EdgeMcpCredentialAccess {required}"
+        );
+    }
+
+    for relative in [
+        "edge/application/queries/get_mcp_credential.rs",
+        "edge/application/queries/list_mcp_credentials.rs",
+    ] {
+        let query = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production_query = production_source(&query);
+        assert!(
+            production_query.contains("pub access: EdgeAccess"),
+            "{relative} stopped carrying Edge-owned access"
+        );
+        for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+            assert!(
+                !production_query.contains(forbidden),
+                "{relative} regained Identity authority {forbidden}"
+            );
+        }
+    }
+
+    let list_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/list_mcp_credentials.rs"))
+            .expect("read ListMcpCredentials query");
+    let compact_list = production_source(&list_handler)
+        .split_whitespace()
+        .collect::<String>();
+    let access_check = compact_list
+        .find(".access.environment_is_visible(")
+        .expect("ListMcpCredentials checks Edge visibility");
+    let repository_read = compact_list
+        .find(".list_mcp_credentials(")
+        .expect("ListMcpCredentials still lists through the credential repository");
+    assert!(
+        access_check < repository_read,
+        "ListMcpCredentials must fail closed on visibility before listing credentials"
+    );
+
+    let get_handler =
+        std::fs::read_to_string(root.join("edge/application/queries/get_mcp_credential.rs"))
+            .expect("read GetMcpCredential query");
+    let compact_get = production_source(&get_handler)
+        .split_whitespace()
+        .collect::<String>();
+    assert!(
+        compact_get.contains("EdgeMcpCredentialAccess::new(credentials).credential("),
+        "GetMcpCredential must resolve credentials through EdgeMcpCredentialAccess"
+    );
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/mcp_credential_queries_controller.rs"),
+    )
+    .expect("read MCP credential queries controller");
+    let production = production_source(&controller);
+    assert_eq!(
+        production
+            .matches("edge_access(&resource_access_evaluator(")
+            .count(),
+        2,
+        "ListMcpCredentials and GetMcpCredential must each project Identity into EdgeAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "Edge MCP credential queries must not pass ResourceAccessEvaluator into Application"
+    );
+    assert!(
+        production.contains("DeferredResourceScope::Project"),
+        "GetMcpCredential must defer coarse admission while Edge owns credential-to-environment resolution"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

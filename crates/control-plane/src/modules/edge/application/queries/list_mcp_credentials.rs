@@ -1,5 +1,6 @@
-use crate::modules::edge::domain::repositories::IMcpCredentialLifecycleRepository;
+use crate::modules::edge::application::resource_access::EdgeAccess;
 use crate::modules::edge::domain::McpCredential;
+use crate::modules::edge::domain::repositories::IMcpCredentialLifecycleRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -10,6 +11,7 @@ pub struct ListMcpCredentials {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
+    pub access: EdgeAccess,
 }
 
 impl Query for ListMcpCredentials {
@@ -34,6 +36,14 @@ impl QueryHandler<ListMcpCredentials> for ListMcpCredentialsHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<McpCredential>>>> {
         let credentials = Arc::clone(&self.credentials);
         Box::pin(async move {
+            if !query
+                .access
+                .environment_is_visible(query.project_id, query.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "MCP credentials not found".into(),
+                )));
+            }
             Ok(credentials
                 .list_mcp_credentials(
                     query.organization_id,
@@ -43,5 +53,40 @@ impl QueryHandler<ListMcpCredentials> for ListMcpCredentialsHandler {
                 .await
                 .map_err(ApplicationError::from))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::edge::InMemoryEdgeRepository;
+    use crate::modules::edge::application::resource_access::EdgeAccessScope;
+    use a3s_boot::ModuleRef;
+
+    #[tokio::test]
+    async fn restricted_query_fails_closed_before_listing_an_ungranted_environment() {
+        let project_id = ProjectId::new();
+        let handler = ListMcpCredentialsHandler::new(Arc::new(InMemoryEdgeRepository::new()));
+        let result = handler
+            .execute(
+                ListMcpCredentials {
+                    organization_id: OrganizationId::new(),
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                    access: EdgeAccess::restricted([EdgeAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("execute list query");
+
+        assert_eq!(
+            result,
+            Err(ApplicationError::NotFound(
+                "MCP credentials not found".into()
+            ))
+        );
     }
 }

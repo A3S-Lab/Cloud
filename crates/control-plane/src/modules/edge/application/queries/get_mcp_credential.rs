@@ -1,6 +1,7 @@
-use crate::modules::edge::domain::repositories::IMcpCredentialLifecycleRepository;
+use crate::modules::edge::application::resource_access::{EdgeAccess, EdgeMcpCredentialAccess};
 use crate::modules::edge::domain::McpCredential;
-use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
+use crate::modules::edge::domain::repositories::IMcpCredentialLifecycleRepository;
+use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{McpCredentialId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
 use std::sync::Arc;
@@ -9,6 +10,7 @@ use std::sync::Arc;
 pub struct GetMcpCredential {
     pub organization_id: OrganizationId,
     pub credential_id: McpCredentialId,
+    pub access: EdgeAccess,
 }
 
 impl Query for GetMcpCredential {
@@ -33,16 +35,9 @@ impl QueryHandler<GetMcpCredential> for GetMcpCredentialHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<McpCredential>>> {
         let credentials = Arc::clone(&self.credentials);
         Box::pin(async move {
-            match credentials
-                .find_mcp_credential(query.organization_id, query.credential_id)
-                .await
-            {
-                Ok(Some(credential)) => Ok(Ok(credential)),
-                Ok(None) => Ok(Err(ApplicationError::NotFound(
-                    "MCP credential not found".into(),
-                ))),
-                Err(error) => Ok(Err(error.into())),
-            }
+            Ok(EdgeMcpCredentialAccess::new(credentials)
+                .credential(query.organization_id, query.credential_id, &query.access)
+                .await)
         })
     }
 }

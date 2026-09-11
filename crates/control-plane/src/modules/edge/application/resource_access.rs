@@ -1,8 +1,11 @@
-use crate::modules::edge::domain::repositories::IEdgeRepository;
-use crate::modules::edge::domain::{DomainClaim, Route};
+use crate::modules::edge::domain::repositories::{
+    IEdgeRepository, IMcpCredentialLifecycleRepository,
+};
+use crate::modules::edge::domain::{DomainClaim, McpCredential, Route};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DomainClaimId, EnvironmentId, OrganizationId, ProjectId, RepositoryError, RouteId,
+    DomainClaimId, EnvironmentId, McpCredentialId, OrganizationId, ProjectId, RepositoryError,
+    RouteId,
 };
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -151,6 +154,43 @@ fn route_not_found() -> ApplicationError {
 
 fn domain_claim_not_found() -> ApplicationError {
     ApplicationError::NotFound("domain claim not found".into())
+}
+
+/// Resolves MCP credential identifiers through the owning lifecycle repository before authorization.
+#[derive(Clone)]
+pub(crate) struct EdgeMcpCredentialAccess {
+    credentials: Arc<dyn IMcpCredentialLifecycleRepository>,
+}
+
+impl EdgeMcpCredentialAccess {
+    pub fn new(credentials: Arc<dyn IMcpCredentialLifecycleRepository>) -> Self {
+        Self { credentials }
+    }
+
+    pub async fn credential(
+        &self,
+        organization_id: OrganizationId,
+        credential_id: McpCredentialId,
+        access: &EdgeAccess,
+    ) -> ApplicationResult<McpCredential> {
+        let credential = match self
+            .credentials
+            .find_mcp_credential(organization_id, credential_id)
+            .await
+        {
+            Ok(Some(credential)) => credential,
+            Ok(None) => return Err(mcp_credential_not_found()),
+            Err(error) => return Err(error.into()),
+        };
+        if !access.environment_is_visible(credential.project_id, credential.environment_id) {
+            return Err(mcp_credential_not_found());
+        }
+        Ok(credential)
+    }
+}
+
+fn mcp_credential_not_found() -> ApplicationError {
+    ApplicationError::NotFound("MCP credential not found".into())
 }
 
 #[cfg(test)]
