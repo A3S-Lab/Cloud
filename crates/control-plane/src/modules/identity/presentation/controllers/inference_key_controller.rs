@@ -1,3 +1,4 @@
+use crate::access_projection::identity_access;
 use crate::modules::identity::application::commands::create_inference_key::CreateInferenceKey;
 use crate::modules::identity::application::commands::revoke_inference_key::RevokeInferenceKey;
 use crate::modules::identity::application::commands::rotate_inference_key::RotateInferenceKey;
@@ -10,16 +11,16 @@ use crate::modules::identity::presentation::dto::{
 };
 use crate::modules::identity::presentation::request_context::{mutation_identity, request_id};
 use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result, RouteDefinition,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus,
+    Result, RouteDefinition,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -158,8 +159,9 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = identity_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListInferenceKeys {
                             organization_id: OrganizationId::from_uuid(
@@ -171,7 +173,7 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                             environment_id: EnvironmentId::from_uuid(
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -193,8 +195,9 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                     let bus = Arc::clone(&bus);
                     async move {
                         let request_id = request_id(&request)?;
-                        let resource_access =
-                            resource_access_evaluator(&request.require_auth_principal()?)?;
+                        let access = identity_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?);
                         match bus
                             .execute(GetInferenceKey {
                                 organization_id: OrganizationId::from_uuid(
@@ -203,7 +206,7 @@ pub fn inference_key_queries_controller(bus: Arc<QueryBus>) -> Result<Controller
                                 credential_id: InferenceCredentialId::from_uuid(
                                     request.param_as::<Uuid>("credential_id")?,
                                 ),
-                                resource_access,
+                                access,
                             })
                             .await?
                         {

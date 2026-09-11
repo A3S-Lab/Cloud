@@ -1,7 +1,8 @@
-use crate::modules::identity::application::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
+use crate::modules::identity::application::{
+    IIdentityEnvironmentAccess, IdentityAccess, IdentityEnvironmentScope,
+};
 use crate::modules::identity::domain::entities::InferenceCredential;
 use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -12,7 +13,7 @@ pub struct ListInferenceKeys {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: IdentityAccess,
 }
 
 impl Query for ListInferenceKeys {
@@ -47,7 +48,7 @@ impl QueryHandler<ListInferenceKeys> for ListInferenceKeysHandler {
         let credentials = Arc::clone(&self.credentials);
         Box::pin(async move {
             if !query
-                .resource_access
+                .access
                 .environment_is_visible(query.project_id, query.environment_id)
             {
                 return Ok(Err(ApplicationError::NotFound(
@@ -67,7 +68,7 @@ impl QueryHandler<ListInferenceKeys> for ListInferenceKeysHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -86,8 +87,8 @@ impl QueryHandler<ListInferenceKeys> for ListInferenceKeysHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::identity::application::IdentityAccessScope;
     use crate::modules::identity::domain::entities::InferenceCredential;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::shared_kernel::domain::{InferenceCredentialId, RepositoryError};
     use a3s_boot::ModuleRef;
@@ -120,8 +121,8 @@ mod tests {
         }
     }
 
-    fn org_wide() -> ResourceAccessEvaluator {
-        ResourceAccessEvaluator::organization_wide()
+    fn org_wide() -> IdentityAccess {
+        IdentityAccess::organization_wide()
     }
 
     async fn seed(
@@ -163,7 +164,7 @@ mod tests {
                     organization_id,
                     project_id,
                     environment_id,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )
@@ -189,12 +190,10 @@ mod tests {
                     organization_id,
                     project_id,
                     environment_id,
-                    resource_access: ResourceAccessEvaluator::restricted(vec![
-                        ResourceGrantScope::Environment {
-                            project_id,
-                            environment_id: EnvironmentId::new(),
-                        },
-                    ]),
+                    access: IdentityAccess::restricted([IdentityAccessScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    }]),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )
@@ -219,7 +218,7 @@ mod tests {
                     organization_id,
                     project_id,
                     environment_id,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )

@@ -1,7 +1,8 @@
-use crate::modules::identity::application::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
+use crate::modules::identity::application::{
+    IIdentityEnvironmentAccess, IdentityAccess, IdentityEnvironmentScope,
+};
 use crate::modules::identity::domain::entities::InferenceCredential;
 use crate::modules::identity::domain::repositories::IInferenceCredentialRepository;
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{InferenceCredentialId, OrganizationId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -11,7 +12,7 @@ use std::sync::Arc;
 pub struct GetInferenceKey {
     pub organization_id: OrganizationId,
     pub credential_id: InferenceCredentialId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: IdentityAccess,
 }
 
 impl Query for GetInferenceKey {
@@ -51,7 +52,7 @@ impl QueryHandler<GetInferenceKey> for GetInferenceKeyHandler {
             {
                 Ok(Some(credential)) => {
                     if !query
-                        .resource_access
+                        .access
                         .environment_is_visible(credential.project_id, credential.environment_id)
                     {
                         return Ok(Err(ApplicationError::NotFound(
@@ -86,8 +87,8 @@ impl QueryHandler<GetInferenceKey> for GetInferenceKeyHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::identity::application::IdentityAccessScope;
     use crate::modules::identity::domain::entities::InferenceCredential;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::identity::infrastructure::persistence::InMemoryInferenceCredentialRepository;
     use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, RepositoryError};
     use a3s_boot::ModuleRef;
@@ -120,8 +121,8 @@ mod tests {
         }
     }
 
-    fn org_wide() -> ResourceAccessEvaluator {
-        ResourceAccessEvaluator::organization_wide()
+    fn org_wide() -> IdentityAccess {
+        IdentityAccess::organization_wide()
     }
 
     async fn seed(
@@ -162,7 +163,7 @@ mod tests {
                 GetInferenceKey {
                     organization_id,
                     credential_id: seeded.id,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )
@@ -186,12 +187,10 @@ mod tests {
                 GetInferenceKey {
                     organization_id,
                     credential_id: seeded.id,
-                    resource_access: ResourceAccessEvaluator::restricted(vec![
-                        ResourceGrantScope::Environment {
-                            project_id,
-                            environment_id: EnvironmentId::new(),
-                        },
-                    ]),
+                    access: IdentityAccess::restricted([IdentityAccessScope::Environment {
+                        project_id,
+                        environment_id: EnvironmentId::new(),
+                    }]),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )
@@ -210,7 +209,7 @@ mod tests {
                 GetInferenceKey {
                     organization_id: OrganizationId::new(),
                     credential_id: InferenceCredentialId::new(),
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )
@@ -234,7 +233,7 @@ mod tests {
                 GetInferenceKey {
                     organization_id,
                     credential_id: seeded.id,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(ModuleRef::new()),
             )

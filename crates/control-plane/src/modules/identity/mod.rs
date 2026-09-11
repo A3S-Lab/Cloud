@@ -10,11 +10,12 @@ pub use application::{
     IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
     IInferenceCredentialAclProjectionPort, IRecipientContactVerificationDispatcher,
     IWorkloadRuntimeEvidenceCandidatePort, IWorkloadRuntimeExecutionAuthorizationQueryPort,
-    IdentityEnvironmentScope, IdentityNodeScope, IdentityProjectScope,
-    InferenceCredentialDeliveryReceiptSweeper, InferenceCredentialDeliveryResult,
-    InferenceCredentialEnvironmentScope, InferenceCredentialMutationResult,
-    RecipientContactVerificationDeliveryDispatcher, RecipientContactVerificationDispatchResult,
-    RecordWorkloadRuntimeEvidence, WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
+    IdentityAccess, IdentityAccessScope, IdentityEnvironmentScope, IdentityNodeScope,
+    IdentityProjectScope, InferenceCredentialDeliveryReceiptSweeper,
+    InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
+    InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
+    RecipientContactVerificationDispatchResult, RecordWorkloadRuntimeEvidence,
+    WorkloadRuntimeEvidenceRecorder, WorkloadRuntimeEvidenceRequest,
     WorkloadRuntimeExecutionAuthorizationQuery, WorkloadRuntimeExecutionAuthorizationQueryService,
 };
 
@@ -149,21 +150,21 @@ pub use domain::services::{
     OidcCodeVerificationRequest, OidcProviderError, ResourceAuthorizationDecision,
     ResourceAuthorizationDecisionRequest, VerifiedOidcIdentity,
 };
+pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::persistence::{
     InMemoryIdentityRepository, InMemoryInferenceCredentialRepository, PostgresIdentityRepository,
 };
-pub use infrastructure::OpenIdConnectProviderService;
 pub use infrastructure::{
     A3sEventRecipientContactVerificationConsumer, FleetIdentityNodeAccessAdapter,
     IdentityInferenceGrantCredentialAdmissionAdapter, InferenceCredentialAclProjectionAdapter,
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
     IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
     ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
+    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
     SecretsIdentityInferenceCredentialEncryptionAdapter,
     SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,
     SmtpRecipientContactVerificationDeliveryService, SmtpRecipientContactVerificationTlsPolicy,
     SpiffeHttpsWebWorkloadIdentityProviderOptions, SpiffeHttpsWebWorkloadIdentityProviderService,
-    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
-pub(crate) use presentation::{authenticated_credential_actor, AuthenticatedCredentialActor};
+pub(crate) use presentation::{AuthenticatedCredentialActor, authenticated_credential_actor};
 pub use presentation::{IdentityModule, OrganizationTenantGuard};

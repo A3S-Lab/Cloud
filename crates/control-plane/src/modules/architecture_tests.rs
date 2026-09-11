@@ -3607,6 +3607,93 @@ fn inference_route_and_usage_queries_isolate_identity_behind_one_context_owned_a
 }
 
 #[test]
+fn identity_inference_key_queries_isolate_evaluator_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let access = std::fs::read_to_string(root.join("identity/application/resource_access.rs"))
+        .expect("read Identity resource access boundary");
+    let production_access = production_source(&access);
+    let compact_access = production_access.split_whitespace().collect::<String>();
+    for required in [
+        "pubenumIdentityAccessScope",
+        "pubstructIdentityAccess",
+        "environment_is_visible",
+    ] {
+        assert!(
+            compact_access.contains(required),
+            "Identity lost its context-owned resource access boundary {required}"
+        );
+    }
+    for forbidden in [
+        "ResourceAccessEvaluator",
+        "ResourceGrantScope",
+        "MembershipRole",
+        "ApiTokenScope",
+    ] {
+        assert!(
+            !production_access.contains(forbidden),
+            "Identity CQRS access copied evaluator authority surface {forbidden}"
+        );
+    }
+
+    for relative in [
+        "identity/application/queries/list_inference_keys.rs",
+        "identity/application/queries/get_inference_key.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("pub access: IdentityAccess"),
+            "{relative} stopped carrying Identity-owned access"
+        );
+        assert!(
+            !production.contains("ResourceAccessEvaluator"),
+            "{relative} regained ResourceAccessEvaluator in Application CQRS"
+        );
+        let compact = production.split_whitespace().collect::<String>();
+        assert!(
+            compact.contains("access.environment_is_visible("),
+            "{relative} stopped authorizing through IdentityAccess"
+        );
+    }
+
+    let access_projection = std::fs::read_to_string(
+        root.parent()
+            .expect("src directory")
+            .join("access_projection.rs"),
+    )
+    .expect("read root access projection");
+    let compact_projection = access_projection.split_whitespace().collect::<String>();
+    for required in [
+        "pub(crate)fnidentity_access(",
+        "IdentityAccess::organization_wide()",
+        "IdentityAccess::restricted(",
+        "ResourceGrantScope::Node{..}=>None",
+    ] {
+        assert!(
+            compact_projection.contains(required),
+            "root anti-corruption layer lost Identity access mapping {required}"
+        );
+    }
+
+    let controller = std::fs::read_to_string(
+        root.join("identity/presentation/controllers/inference_key_controller.rs"),
+    )
+    .expect("read inference key controller");
+    let production = production_source(&controller);
+    assert!(
+        production.contains("identity_access(&resource_access_evaluator("),
+        "inference key queries must project the evaluator into IdentityAccess"
+    );
+    assert!(
+        !production.contains("resource_access: resource_access_evaluator")
+            && !production.contains("resource_access,"),
+        "inference key queries must not pass ResourceAccessEvaluator into Application"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

@@ -14,6 +14,7 @@ mod project_access;
 pub mod queries;
 mod recipient_contact_result;
 mod recipient_contact_verification_delivery;
+mod resource_access;
 mod resource_access_claim;
 mod resource_grant_result;
 mod workload_runtime_evidence;
@@ -28,8 +29,8 @@ pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMember
 pub use empty_inference_credential_acl_projection::EmptyInferenceCredentialAclProjectionPort;
 pub use environment_access::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
 pub use inference_credential_delivery::{
-    InferenceCredentialDeliveryResult, InferenceCredentialMutationResult,
-    INFERENCE_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS,
+    INFERENCE_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS, InferenceCredentialDeliveryResult,
+    InferenceCredentialMutationResult,
 };
 pub use inference_credential_delivery_receipt_sweeper::InferenceCredentialDeliveryReceiptSweeper;
 pub use inference_credential_encryption::IIdentityInferenceCredentialEncryption;
@@ -55,6 +56,7 @@ pub use recipient_contact_verification_delivery::{
     IRecipientContactVerificationDispatcher, RecipientContactVerificationDeliveryDispatcher,
     RecipientContactVerificationDispatchResult,
 };
+pub use resource_access::{IdentityAccess, IdentityAccessScope};
 pub use resource_access_claim::RESOURCE_GRANT_SCOPES_CLAIM;
 pub use resource_grant_result::ResourceGrantMutationResult;
 pub use workload_runtime_evidence::{
