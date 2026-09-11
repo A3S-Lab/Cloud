@@ -11,3 +11,6 @@ mod postgres_typed_orm_tests;
 pub use in_memory::InMemoryWorkloadRepository;
 pub use in_memory_resource_claims::InMemoryResourceClaimRepository;
 pub use postgres::{PostgresResourceClaimRepository, PostgresWorkloadRepository};
+pub(crate) use postgres::{
+    lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
+};

@@ -41,6 +41,9 @@ pub use persistence::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, PostgresResourceClaimRepository,
     PostgresWorkloadRepository,
 };
+pub(crate) use persistence::{
+    lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
+};
 pub use project_environment_access::ProjectsWorkloadsEnvironmentAccessAdapter;
 pub use reconciliation::{
     IWorkloadRuntimeControl, WorkloadReconciliationFailure, WorkloadReconciliationReport,

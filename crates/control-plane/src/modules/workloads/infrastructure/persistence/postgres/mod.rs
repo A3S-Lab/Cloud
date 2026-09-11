@@ -1,5 +1,6 @@
 mod create;
 mod deployment_group_bindings;
+mod mcp_authority_lock_participant;
 mod placement_group_scheduling;
 mod placement_groups;
 mod queries;
@@ -18,6 +19,10 @@ mod secret_rotation_restarts;
 mod stop;
 mod transitions;
 mod writer_fences;
+
+pub(crate) use mcp_authority_lock_participant::{
+    lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
+};
 
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OrganizationId,

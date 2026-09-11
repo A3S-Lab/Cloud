@@ -81,8 +81,9 @@ all boundaries are interface-only:
    presentation; provider-workload validation now consumes neutral Storage
    projections.
 4. Multiple modules independently map the same physical tables. The source
-   scan found duplicate mappings for operation_requests, workloads, nodes,
-   and workflow_runs. The workflow_runs duplication is
+   scan found duplicate mappings for workflow_runs. The `operation_requests`,
+   `workloads`, and `nodes` duplicates have been collapsed onto owner
+   transaction participants / sole ORM owners. The workflow_runs duplication is
    internal to Workflow but still creates two schema authorities. Forms still
    contains raw SQL for its own release records; HumanTask submission evidence
    now has one Workflow-owned mapper only.
@@ -653,8 +654,8 @@ reservation query and Published-Language-only projector imports.
    mappings.
 2. Replace Workloads foreign repositories with admission/observation ports.
 3. Feed Edge through owner snapshots or committed projection facts.
-4. Remove duplicate nodes, workloads, and workflow_runs
-   table mappings.
+4. Remove duplicate workflow_runs table mappings (nodes and workloads
+   duplicates are already collapsed onto Fleet / Workloads owners).
 
 ### Wave 4: AI product boundaries
 

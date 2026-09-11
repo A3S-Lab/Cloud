@@ -2,7 +2,7 @@ use super::postgres::{RouteRow, RouteSelection};
 use super::postgres_rollout_routes;
 use super::postgres_schema::{
     DomainClaims, GatewayRouteProjections, GatewayRouteScopes, GatewayScopeMembers, GatewayScopes,
-    McpCredentials, McpGatewaySnapshotPublicationScopes, McpRoutePolicies, Routes, Workloads,
+    McpCredentials, McpGatewaySnapshotPublicationScopes, McpRoutePolicies, Routes,
 };
 use crate::infrastructure::{
     execute, fetch_all, fetch_optional, require_one_row, PostgresPersistenceError,
@@ -14,6 +14,9 @@ use crate::modules::edge::infrastructure::{
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, RepositoryError, WorkloadId,
     WorkloadRevisionId,
+};
+use crate::modules::workloads::infrastructure::{
+    lock_running_workload_authority_for_update, McpWorkloadAuthorityExpectation,
 };
 use a3s_orm::expression::{exists, not};
 use a3s_orm::{
@@ -473,41 +476,18 @@ pub(super) async fn lock_workloads(
         (aggregate_version, active_revision_id, organization_id, project_id, environment_id),
     ) in expected
     {
-        let row = fetch_optional::<(Uuid, Uuid, Uuid, String, Option<Uuid>, u64), _>(
+        lock_running_workload_authority_for_update(
             transaction,
-            select_from::<Workloads>()
-                .select((
-                    Workloads::organization_id(),
-                    Workloads::project_id(),
-                    Workloads::environment_id(),
-                    Workloads::desired_state(),
-                    Workloads::active_revision_id(),
-                    Workloads::aggregate_version(),
-                ))
-                .filter(Workloads::id().eq(workload_id.as_uuid()))
-                .for_update(),
-        )
-        .await?
-        .ok_or_else(|| {
-            RepositoryError::Conflict(
-                "MCP snapshot Workload disappeared before Gateway staging".into(),
-            )
-        })?;
-        if row
-            != (
-                organization_id.as_uuid(),
-                project_id.as_uuid(),
-                environment_id.as_uuid(),
-                "running".to_owned(),
-                Some(active_revision_id.as_uuid()),
+            workload_id,
+            &McpWorkloadAuthorityExpectation {
+                organization_id,
+                project_id,
+                environment_id,
+                active_revision_id,
                 aggregate_version,
-            )
-        {
-            return Err(RepositoryError::Conflict(
-                "MCP snapshot Workload authority changed before Gateway staging".into(),
-            )
-            .into());
-        }
+            },
+        )
+        .await?;
     }
     Ok(())
 }
