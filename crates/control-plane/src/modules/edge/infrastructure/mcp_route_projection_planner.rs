@@ -1,5 +1,5 @@
-use crate::modules::assets::domain::McpServiceProfileBinding;
 use crate::modules::edge::domain::services::IRouteTargetReader;
+use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
 use crate::modules::edge::domain::{GatewayScope, McpRoutePolicy, RoutePortName};
 use crate::modules::edge::infrastructure::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
@@ -13,7 +13,7 @@ use std::sync::Arc;
 #[derive(Debug, Clone)]
 pub struct PlanMcpRouteProjection {
     pub policy: McpRoutePolicy,
-    pub profile_binding: McpServiceProfileBinding,
+    pub profile_binding: EdgeMcpServiceProfileProjectionBinding,
     pub revision: WorkloadRevision,
     pub scope: GatewayScope,
     /// Physical Gateway that will receive the node-local projection.
@@ -45,7 +45,7 @@ impl McpRouteProjectionPlanner {
         let policy_spec = request.policy.spec();
         let profile_binding = &request.profile_binding;
 
-        let port_name = RoutePortName::parse(&profile_binding.profile.spec().runtime_port)
+        let port_name = RoutePortName::parse(profile_binding.runtime_port())
             .map_err(RepositoryError::Conflict)?;
         let target_set = self
             .targets
@@ -75,7 +75,7 @@ impl McpRouteProjectionPlanner {
         self.compiler
             .compile(
                 &request.policy,
-                &profile_binding.profile,
+                profile_binding,
                 &request.revision,
                 router,
                 candidates,
@@ -107,9 +107,9 @@ impl McpRouteProjectionPlanner {
             || request.scope.organization_id != policy_spec.organization_id
             || request.scope.project_id != policy_spec.project_id
             || request.scope.environment_id != policy_spec.environment_id
-            || profile_binding.organization_id != policy_spec.organization_id
-            || profile_binding.asset_id != policy_spec.asset_id
-            || profile_binding.asset_release_id != policy_spec.asset_release_id
+            || profile_binding.organization_id() != policy_spec.organization_id
+            || profile_binding.asset_id() != policy_spec.asset_id
+            || profile_binding.asset_release_id() != policy_spec.asset_release_id
             || request.revision.workload_id != policy_spec.workload_id
         {
             return Err(RepositoryError::Conflict(
@@ -118,7 +118,7 @@ impl McpRouteProjectionPlanner {
         }
         if observed_at < request.policy.updated_at()
             || observed_at < request.revision.created_at
-            || observed_at < profile_binding.created_at
+            || observed_at < profile_binding.created_at()
             || observed_at >= policy_spec.expires_at
         {
             return Err(RepositoryError::Conflict(
@@ -251,15 +251,8 @@ mod tests {
 
     fn profile_binding(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
-    ) -> McpServiceProfileBinding {
-        let policy = fixture.policy.spec();
-        McpServiceProfileBinding {
-            organization_id: policy.organization_id,
-            asset_id: policy.asset_id,
-            asset_release_id: policy.asset_release_id,
-            profile: fixture.profile.clone(),
-            created_at: now(),
-        }
+    ) -> crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding {
+        fixture.profile.clone()
     }
 
     #[tokio::test]

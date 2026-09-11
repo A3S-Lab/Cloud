@@ -1,5 +1,5 @@
-use crate::modules::assets::domain::McpServiceProfile;
 use crate::modules::edge::domain::services::ResolvedRouteTarget;
+use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
 use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::workloads::domain::entities::WorkloadRevision;
 use a3s_cloud_contracts::{McpRoutePolicyProjection, McpTargetProjection};
@@ -57,7 +57,7 @@ impl McpRouteTargetProjectionCompiler {
     pub fn compile(
         &self,
         policy: &McpRoutePolicy,
-        profile: &McpServiceProfile,
+        profile: &EdgeMcpServiceProfileProjectionBinding,
         revision: &WorkloadRevision,
         router: impl Into<String>,
         mut candidates: Vec<McpRouteTargetCandidate>,
@@ -142,15 +142,15 @@ fn validate_router(router: &str) -> Result<(), String> {
 
 fn validate_bound_template(
     revision: &WorkloadRevision,
-    profile: &McpServiceProfile,
+    profile: &EdgeMcpServiceProfileProjectionBinding,
 ) -> Result<(), String> {
-    McpServiceProfile::restore(profile.canonical_acl(), profile.digest().as_str())?;
+    profile.validate()?;
     let template = revision.resolved_template()?;
     template.validate()?;
     if !template
         .ports
         .iter()
-        .any(|port| port.name == profile.spec().runtime_port)
+        .any(|port| port.name == profile.runtime_port())
     {
         return Err("MCP Workload does not declare the bound profile Runtime port".into());
     }
@@ -158,8 +158,7 @@ fn validate_bound_template(
         .health
         .as_ref()
         .ok_or_else(|| "MCP Workload requires the bound profile HTTP health check".to_owned())?;
-    if health.port_name != profile.spec().runtime_port || health.path != profile.spec().health_path
-    {
+    if health.port_name != profile.runtime_port() || health.path != profile.health_path() {
         return Err("MCP Workload health check differs from the bound Service profile".into());
     }
     Ok(())
@@ -167,7 +166,7 @@ fn validate_bound_template(
 
 fn validate_candidates(
     revision: &WorkloadRevision,
-    profile: &McpServiceProfile,
+    profile: &EdgeMcpServiceProfileProjectionBinding,
     candidates: &[McpRouteTargetCandidate],
 ) -> Result<(), String> {
     let mut nodes = HashSet::new();
@@ -184,7 +183,7 @@ fn validate_candidates(
             || target.workload_revision_id != revision.id
             || target.has_canonical_runtime_identity(revision.workload_id)
                 && target.runtime_generation != revision.generation
-            || target.port_name.as_str() != profile.spec().runtime_port
+            || target.port_name.as_str() != profile.runtime_port()
         {
             return Err(
                 "MCP route target differs from its exact Workload revision or Runtime evidence"
@@ -224,12 +223,15 @@ fn deterministic_target_id(route_id: Uuid, node_id: Uuid, unit_id: &str, generat
 #[cfg(test)]
 pub(super) mod tests {
     use super::*;
-    use crate::modules::assets::domain::{McpServiceProfile, McpServiceProfileSpec};
+    use crate::modules::assets::domain::{
+        McpServiceProfile, McpServiceProfileBinding, McpServiceProfileSpec,
+    };
     use crate::modules::edge::domain::services::ResolvedRouteTarget;
+    use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
     use crate::modules::edge::domain::{
         McpRoutePolicySpec, RouteHostname, RoutePortName, RouteTarget, UpstreamEndpoint,
     };
-    use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
+    use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
     use crate::modules::shared_kernel::domain::{
         AssetId, AssetReleaseId, DomainClaimId, EnvironmentId, GatewayScopeId, NodeId,
         OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
@@ -243,7 +245,8 @@ pub(super) mod tests {
     use std::collections::BTreeMap;
 
     pub(in crate::modules::edge::infrastructure) struct Fixture {
-        pub(in crate::modules::edge::infrastructure) profile: McpServiceProfile,
+        pub(in crate::modules::edge::infrastructure) profile:
+            EdgeMcpServiceProfileProjectionBinding,
         pub(in crate::modules::edge::infrastructure) policy: McpRoutePolicy,
         pub(in crate::modules::edge::infrastructure) revision: WorkloadRevision,
     }
@@ -272,13 +275,14 @@ pub(super) mod tests {
             max_response_bytes: 8_388_608,
             max_stream_seconds: 3_600,
         })
-        .expect("profile");
+        .expect("assets profile");
         let organization_id =
             OrganizationId::from_uuid(uuid("11111111-1111-4111-8111-111111111111"));
         let workload_id = WorkloadId::from_uuid(uuid("22222222-2222-4222-8222-222222222222"));
         let asset_id = AssetId::from_uuid(uuid("33333333-3333-4333-8333-333333333333"));
         let asset_release_id =
             AssetReleaseId::from_uuid(uuid("44444444-4444-4444-8444-444444444444"));
+        let assets_profile = profile;
         let revision_id =
             WorkloadRevisionId::from_uuid(uuid("55555555-5555-4555-8555-555555555555"));
         let digest = format!("sha256:{}", "a".repeat(64));
@@ -328,13 +332,28 @@ pub(super) mod tests {
                     organization_id,
                     asset_id,
                     asset_release_id,
-                    profile.digest().clone(),
+                    assets_profile.digest().clone(),
                 )
                 .expect("binding"),
-                &profile,
+                &assets_profile,
             )
             .expect("restore binding");
-        let admission = admit_mcp_service_profile(&profile).expect("profile admission");
+        let profile = admit_mcp_service_profile_projection_binding(&McpServiceProfileBinding {
+            organization_id,
+            asset_id,
+            asset_release_id,
+            profile: assets_profile,
+            created_at: now(),
+        })
+        .expect("profile binding");
+        let admission = crate::modules::edge::domain::EdgeMcpServiceProfileAdmission::new(
+            profile.digest().clone(),
+            profile.endpoint_path(),
+            profile.max_request_bytes(),
+            profile.max_response_bytes(),
+            3_600,
+        )
+        .expect("profile admission");
         let policy = McpRoutePolicy::create(
             McpRoutePolicySpec {
                 route_id: RouteId::from_uuid(uuid("66666666-6666-4666-8666-666666666666")),
@@ -683,11 +702,26 @@ pub(super) mod tests {
         let fixture = fixture();
         let candidate = McpRouteTargetCandidate::new(target(&fixture, NodeId::new(), 49152), 0, 1)
             .expect("target");
-        let mut different_spec = fixture.profile.spec().clone();
-        different_spec
-            .expected_capabilities
-            .push("resources".into());
-        let different = McpServiceProfile::from_spec(different_spec).expect("different profile");
+        let different = EdgeMcpServiceProfileProjectionBinding::new(
+            fixture.profile.organization_id(),
+            fixture.profile.asset_id(),
+            fixture.profile.asset_release_id(),
+            crate::modules::shared_kernel::domain::Sha256Digest::parse(&format!(
+                "sha256:{}",
+                "b".repeat(64)
+            ))
+            .expect("digest"),
+            vec![MCP_PROTOCOL_VERSION.into()],
+            fixture.profile.endpoint_path(),
+            fixture.profile.runtime_port(),
+            fixture.profile.health_path(),
+            true,
+            true,
+            fixture.profile.max_request_bytes(),
+            fixture.profile.max_response_bytes(),
+            now(),
+        )
+        .expect("different profile");
         assert!(McpRouteTargetProjectionCompiler
             .compile(
                 &fixture.policy,

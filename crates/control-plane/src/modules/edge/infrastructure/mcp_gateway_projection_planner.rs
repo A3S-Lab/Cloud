@@ -246,7 +246,7 @@ impl McpGatewayProjectionPlanner {
         let policy_expires_at = spec.expires_at;
         let grants = spec.grants.clone();
         let gateway_node_id = request.gateway_node_id;
-        let profile = request.profile_binding.profile.gateway_projection();
+        let profile = request.profile_binding.gateway_projection();
 
         let credential_ids = grants
             .iter()
@@ -348,7 +348,6 @@ impl McpGatewayProjectionPlanner {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::assets::domain::McpServiceProfileBinding;
     use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
     use crate::modules::edge::domain::services::{IRouteTargetReader, ResolvedRouteTarget};
     use crate::modules::edge::domain::{GatewayScope, McpCredential, RoutePortName};
@@ -401,15 +400,8 @@ mod tests {
 
     fn profile_binding(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
-    ) -> McpServiceProfileBinding {
-        let policy = fixture.policy.spec();
-        McpServiceProfileBinding {
-            organization_id: policy.organization_id,
-            asset_id: policy.asset_id,
-            asset_release_id: policy.asset_release_id,
-            profile: fixture.profile.clone(),
-            created_at: now(),
-        }
+    ) -> crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding {
+        fixture.profile.clone()
     }
 
     fn credential(

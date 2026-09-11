@@ -17,8 +17,9 @@ pub use entities::{
 };
 pub(crate) use value_objects::GatewaySnapshotRuntimeSettings;
 pub use value_objects::{
-    DomainNamePattern, EdgeMcpServiceProfileAdmission, GatewayRolloutPolicy, RouteHostname,
-    RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint, MAX_GATEWAY_SCOPE_MEMBERS,
+    DomainNamePattern, EdgeMcpServiceProfileAdmission, EdgeMcpServiceProfileProjectionBinding,
+    GatewayRolloutPolicy, RouteHostname, RoutePath, RoutePortName, RouteTarget, UpstreamEndpoint,
+    MAX_GATEWAY_SCOPE_MEMBERS,
 };
 
 #[cfg(test)]

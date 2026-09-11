@@ -1,5 +1,4 @@
 use super::*;
-use crate::modules::assets::domain::McpServiceProfileBinding;
 use crate::modules::edge::domain::repositories::IMcpCredentialRepository;
 use crate::modules::edge::domain::services::{
     IRouteTargetReader, ResolvedMcpRouteProjectionInput, ResolvedRouteTarget,
@@ -8,7 +7,6 @@ use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayPublication, GatewayScopeState, McpCredential,
     McpRoutePolicy, Route, RouteHostname, RoutePath, RoutePortName, RouteState,
 };
-use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile;
 use crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::{
     fixture, now, target,
 };
@@ -102,13 +100,7 @@ fn input(
     ResolvedMcpRouteProjectionInput {
         policy: fixture.policy.clone(),
         domain_claim,
-        profile_binding: McpServiceProfileBinding {
-            organization_id: spec.organization_id,
-            asset_id: spec.asset_id,
-            asset_release_id: spec.asset_release_id,
-            profile: fixture.profile.clone(),
-            created_at: now(),
-        },
+        profile_binding: fixture.profile.clone(),
         revision: fixture.revision.clone(),
         workload_aggregate_version: 2,
     }
@@ -377,8 +369,14 @@ async fn revoked_credential_removes_only_its_route_from_the_complete_snapshot() 
     second_spec.hostname = RouteHostname::parse("second-mcp.example.com").expect("second hostname");
     let second_credential_id = McpCredentialId::new();
     second_spec.grants[0].credential_id = second_credential_id.as_uuid();
-    let second_admission = admit_mcp_service_profile(&second_input.profile_binding.profile)
-        .expect("second profile admission");
+    let second_admission = crate::modules::edge::domain::EdgeMcpServiceProfileAdmission::new(
+        second_input.profile_binding.digest().clone(),
+        second_input.profile_binding.endpoint_path(),
+        second_input.profile_binding.max_request_bytes(),
+        second_input.profile_binding.max_response_bytes(),
+        3_600,
+    )
+    .expect("second profile admission");
     second_input.policy = McpRoutePolicy::create(second_spec.clone(), &second_admission, now())
         .expect("second policy");
     let mut second_claim = DomainClaim::create(
@@ -750,8 +748,14 @@ async fn rejects_duplicate_ingress_ownership_before_resolving_runtime() {
     let mut second = first.clone();
     let mut second_spec = second.policy.spec().clone();
     second_spec.route_id = RouteId::new();
-    let second_admission = admit_mcp_service_profile(&second.profile_binding.profile)
-        .expect("second profile admission");
+    let second_admission = crate::modules::edge::domain::EdgeMcpServiceProfileAdmission::new(
+        second.profile_binding.digest().clone(),
+        second.profile_binding.endpoint_path(),
+        second.profile_binding.max_request_bytes(),
+        second.profile_binding.max_response_bytes(),
+        3_600,
+    )
+    .expect("second profile admission");
     second.policy =
         McpRoutePolicy::create(second_spec, &second_admission, now()).expect("second policy");
     let result = planner(

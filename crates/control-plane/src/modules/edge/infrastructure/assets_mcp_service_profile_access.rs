@@ -1,6 +1,10 @@
-use crate::modules::assets::domain::{IMcpServiceProfileRepository, McpServiceProfile};
+use crate::modules::assets::domain::{
+    IMcpServiceProfileRepository, McpServiceProfile, McpServiceProfileBinding,
+};
 use crate::modules::edge::application::{EdgeMcpServiceProfileScope, IEdgeMcpServiceProfileAccess};
-use crate::modules::edge::domain::EdgeMcpServiceProfileAdmission;
+use crate::modules::edge::domain::{
+    EdgeMcpServiceProfileAdmission, EdgeMcpServiceProfileProjectionBinding,
+};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -46,6 +50,29 @@ pub(crate) fn admit_mcp_service_profile(
         profile.spec().max_request_bytes,
         profile.spec().max_response_bytes,
         profile.spec().max_stream_seconds,
+    )
+}
+
+pub(crate) fn admit_mcp_service_profile_projection_binding(
+    binding: &McpServiceProfileBinding,
+) -> Result<EdgeMcpServiceProfileProjectionBinding, String> {
+    binding.validate()?;
+    let profile = &binding.profile;
+    let spec = profile.spec();
+    EdgeMcpServiceProfileProjectionBinding::new(
+        binding.organization_id,
+        binding.asset_id,
+        binding.asset_release_id,
+        profile.digest().clone(),
+        spec.protocol_versions.clone(),
+        spec.endpoint_path.clone(),
+        spec.runtime_port.clone(),
+        spec.health_path.clone(),
+        spec.request_sse,
+        spec.subscriptions,
+        spec.max_request_bytes,
+        spec.max_response_bytes,
+        binding.created_at,
     )
 }
 

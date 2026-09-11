@@ -1,4 +1,4 @@
-use crate::modules::assets::domain::McpServiceProfileBinding;
+use crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding;
 use crate::modules::edge::domain::{DomainClaim, GatewayScope, McpRoutePolicy};
 use crate::modules::shared_kernel::domain::RepositoryError;
 use crate::modules::workloads::domain::entities::WorkloadRevision;
@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 pub struct ResolvedMcpRouteProjectionInput {
     pub policy: McpRoutePolicy,
     pub domain_claim: DomainClaim,
-    pub profile_binding: McpServiceProfileBinding,
+    pub profile_binding: EdgeMcpServiceProfileProjectionBinding,
     pub revision: WorkloadRevision,
     /// Optimistic version of the Workload whose active revision was read.
     pub workload_aggregate_version: u64,

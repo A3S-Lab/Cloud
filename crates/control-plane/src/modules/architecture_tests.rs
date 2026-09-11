@@ -10723,7 +10723,9 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
         "profiles:Arc<dynIMcpServiceProfileRepository>",
         ".find_mcp_service_profile(",
         "fnadmit_mcp_service_profile(",
+        "fnadmit_mcp_service_profile_projection_binding(",
         "EdgeMcpServiceProfileAdmission",
+        "EdgeMcpServiceProfileProjectionBinding",
     ] {
         assert!(
             compact_adapter.contains(required),
@@ -10745,6 +10747,93 @@ fn edge_mcp_route_policies_isolate_assets_behind_one_mcp_profile_port() {
             .count(),
         1,
         "root composition must construct the Edge MCP profile adapter exactly once"
+    );
+}
+
+#[test]
+fn edge_mcp_gateway_projection_owns_profile_binding_facts() {
+    let root = module_root();
+
+    let domain_input = std::fs::read_to_string(
+        root.join("edge/domain/services/mcp_route_projection_input_reader.rs"),
+    )
+    .expect("read MCP route projection input Domain");
+    let production_domain = production_source(&domain_input);
+    assert!(
+        production_domain.contains("EdgeMcpServiceProfileProjectionBinding"),
+        "MCP projection Domain lost owned profile binding"
+    );
+    for forbidden in [
+        "crate::modules::assets",
+        "McpServiceProfileBinding",
+        "assets::domain::McpServiceProfile",
+    ] {
+        assert!(
+            !production_domain.contains(forbidden),
+            "MCP projection Domain leaked Assets profile type {forbidden}"
+        );
+    }
+
+    let owned = std::fs::read_to_string(
+        root.join("edge/domain/value_objects/mcp_service_profile_projection_binding.rs"),
+    )
+    .expect("read owned MCP projection binding");
+    let compact_owned = production_source(&owned)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeMcpServiceProfileProjectionBinding",
+        "fngateway_projection(&self)->McpServiceProfileProjection",
+        "fnruntime_port(&self)->&str",
+        "fnhealth_path(&self)->&str",
+    ] {
+        assert!(
+            compact_owned.contains(required),
+            "owned MCP projection binding lost minimum surface {required}"
+        );
+    }
+    for forbidden in ["crate::modules::assets", "canonical_acl"] {
+        assert!(
+            !production_source(&owned).contains(forbidden),
+            "owned MCP projection binding leaked Assets authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/mcp_route_projection_planner.rs",
+        "edge/infrastructure/mcp_route_target_projection_compiler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("EdgeMcpServiceProfileProjectionBinding"),
+            "{relative} lost owned MCP projection binding"
+        );
+        for forbidden in [
+            "assets::domain::McpServiceProfileBinding",
+            "use crate::modules::assets::domain::McpServiceProfile;",
+            "use crate::modules::assets::domain::McpServiceProfileBinding;",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Assets profile import {forbidden}"
+            );
+        }
+    }
+
+    let reader = std::fs::read_to_string(
+        root.join("edge/infrastructure/mcp_route_projection_input_reader.rs"),
+    )
+    .expect("read MCP projection input reader");
+    let production_reader = production_source(&reader);
+    assert!(
+        production_reader.contains("admit_mcp_service_profile_projection_binding("),
+        "MCP projection input reader stopped mapping through the Assets ACA"
+    );
+    assert!(
+        !production_reader.contains("McpServiceProfileBinding {"),
+        "MCP projection input reader still constructs Assets bindings in production"
     );
 }
 

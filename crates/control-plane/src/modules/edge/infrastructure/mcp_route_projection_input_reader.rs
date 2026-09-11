@@ -1,12 +1,15 @@
 use crate::modules::assets::domain::repositories::IMcpServiceProfileRepository;
-use crate::modules::assets::domain::McpServiceProfileBinding;
 use crate::modules::edge::domain::repositories::{
     IEdgeRepository, IMcpRoutePolicyRepository, MAX_ACTIVE_MCP_ROUTES_PER_GATEWAY,
 };
 use crate::modules::edge::domain::services::{
     IMcpRouteProjectionInputReader, ResolvedMcpRouteProjectionInput,
 };
-use crate::modules::edge::domain::{DomainClaim, DomainClaimState, GatewayScope, McpRoutePolicy};
+use crate::modules::edge::domain::{
+    DomainClaim, DomainClaimState, EdgeMcpServiceProfileProjectionBinding, GatewayScope,
+    McpRoutePolicy,
+};
+use crate::modules::edge::infrastructure::assets_mcp_service_profile_access::admit_mcp_service_profile_projection_binding;
 use crate::modules::shared_kernel::domain::{canonical_timestamp, RepositoryError};
 use crate::modules::workloads::domain::entities::{
     Workload, WorkloadDesiredState, WorkloadRevision,
@@ -59,15 +62,22 @@ impl McpRouteProjectionInputReader {
                     "active MCP route policy lost its referenced DomainClaim",
                 )
             })?;
-        let profile_binding = self
-            .profiles
-            .find_mcp_service_profile(spec.organization_id, spec.asset_id, spec.asset_release_id)
-            .await?
-            .ok_or_else(|| {
-                RepositoryError::Storage(
-                    "active MCP route policy lost its immutable Service profile".into(),
+        let profile_binding = admit_mcp_service_profile_projection_binding(
+            &self
+                .profiles
+                .find_mcp_service_profile(
+                    spec.organization_id,
+                    spec.asset_id,
+                    spec.asset_release_id,
                 )
-            })?;
+                .await?
+                .ok_or_else(|| {
+                    RepositoryError::Storage(
+                        "active MCP route policy lost its immutable Service profile".into(),
+                    )
+                })?,
+        )
+        .map_err(RepositoryError::Conflict)?;
         let workload = self
             .workloads
             .find_workload(spec.organization_id, spec.workload_id)
@@ -153,7 +163,7 @@ fn validate_materialized_input(
     scope: &GatewayScope,
     policy: &McpRoutePolicy,
     domain_claim: &DomainClaim,
-    profile_binding: &McpServiceProfileBinding,
+    profile_binding: &EdgeMcpServiceProfileProjectionBinding,
     workload: &Workload,
     revision: &WorkloadRevision,
     observed_at: DateTime<Utc>,
@@ -175,7 +185,7 @@ fn validate_materialized_input(
     }
     if policy.updated_at() > observed_at
         || domain_claim.updated_at > observed_at
-        || profile_binding.created_at > observed_at
+        || profile_binding.created_at() > observed_at
         || workload.updated_at > observed_at
         || revision.created_at > observed_at
     {
@@ -214,10 +224,10 @@ fn validate_materialized_input(
     let binding = revision.mcp_binding().ok_or_else(|| {
         RepositoryError::Conflict("active MCP route Workload revision is not release-bound".into())
     })?;
-    if profile_binding.organization_id != spec.organization_id
-        || profile_binding.asset_id != spec.asset_id
-        || profile_binding.asset_release_id != spec.asset_release_id
-        || profile_binding.profile.digest() != &spec.profile_digest
+    if profile_binding.organization_id() != spec.organization_id
+        || profile_binding.asset_id() != spec.asset_id
+        || profile_binding.asset_release_id() != spec.asset_release_id
+        || profile_binding.digest() != &spec.profile_digest
         || binding.organization_id() != spec.organization_id
         || binding.asset_id() != spec.asset_id
         || binding.asset_release_id() != spec.asset_release_id
@@ -267,15 +277,8 @@ mod tests {
 
     fn profile_binding(
         fixture: &crate::modules::edge::infrastructure::mcp_route_target_projection_compiler::tests::Fixture,
-    ) -> McpServiceProfileBinding {
-        let spec = fixture.policy.spec();
-        McpServiceProfileBinding {
-            organization_id: spec.organization_id,
-            asset_id: spec.asset_id,
-            asset_release_id: spec.asset_release_id,
-            profile: fixture.profile.clone(),
-            created_at: now(),
-        }
+    ) -> crate::modules::edge::domain::EdgeMcpServiceProfileProjectionBinding {
+        fixture.profile.clone()
     }
 
     fn domain_claim(
