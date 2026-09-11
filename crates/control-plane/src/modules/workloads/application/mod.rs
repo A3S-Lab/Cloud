@@ -1,6 +1,7 @@
 mod agent_release_admission;
 mod bound_runtime_claim;
 pub mod commands;
+mod deployment_operation_access;
 mod environment_access;
 mod node_pool_access;
 mod owner_snapshot;
@@ -51,6 +52,9 @@ pub use commands::update_agent_workload_deployment::{
 };
 pub use commands::update_workload_deployment::{
     UpdateWorkloadDeployment, UpdateWorkloadDeploymentHandler, UpdateWorkloadDeploymentResult,
+};
+pub use deployment_operation_access::{
+    IWorkloadDeploymentOperationAccess, WorkloadDeploymentOperationProjection,
 };
 pub use environment_access::{IWorkloadsEnvironmentAccess, WorkloadsEnvironmentScope};
 pub use node_pool_access::{IWorkloadsNodePoolAccess, WorkloadsNodePoolScope};

@@ -1,6 +1,6 @@
-use crate::modules::operations::domain::entities::OperationProjection;
 use crate::modules::workloads::application::{
-    DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult,
+    DeploymentQueryResult, WorkloadDeploymentOperationProjection, WorkloadQueryResult,
+    WorkloadReplicaQueryResult,
 };
 use crate::modules::workloads::domain::entities::{
     PlacementTopology, SkillWorkloadRevisionBinding, WorkloadControl, WorkloadRevision,
@@ -421,10 +421,10 @@ impl From<DeploymentQueryResult> for DeploymentResponse {
     }
 }
 
-impl From<OperationProjection> for DeploymentOperationResponse {
-    fn from(operation: OperationProjection) -> Self {
+impl From<WorkloadDeploymentOperationProjection> for DeploymentOperationResponse {
+    fn from(operation: WorkloadDeploymentOperationProjection) -> Self {
         Self {
-            status: operation.status.as_str().into(),
+            status: operation.status,
             last_sequence: operation.last_sequence,
             error: operation.error,
             updated_at: operation.updated_at,

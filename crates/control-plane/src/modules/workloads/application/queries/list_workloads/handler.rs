@@ -1,10 +1,10 @@
 use super::ListWorkloads;
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
-use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::workloads::application::queries::{
     reader::WorkloadQueryReader, WorkloadQueryResult,
 };
+use crate::modules::workloads::application::IWorkloadDeploymentOperationAccess;
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use a3s_boot::{CqrsContext, QueryHandler};
 use std::sync::Arc;
@@ -17,7 +17,7 @@ pub struct ListWorkloadsHandler {
 impl ListWorkloadsHandler {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
         node_control: Arc<dyn INodeControlRepository>,
     ) -> Self {
         Self {

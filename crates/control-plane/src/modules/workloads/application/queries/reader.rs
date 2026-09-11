@@ -1,7 +1,7 @@
 use super::{DeploymentQueryResult, WorkloadQueryResult, WorkloadReplicaQueryResult};
 use crate::modules::fleet::domain::repositories::INodeControlRepository;
-use crate::modules::operations::domain::repositories::IOperationRepository;
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError};
+use crate::modules::workloads::application::IWorkloadDeploymentOperationAccess;
 use crate::modules::workloads::domain::entities::{Deployment, Workload, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use std::collections::BTreeMap;
@@ -10,14 +10,14 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub(super) struct WorkloadQueryReader {
     workloads: Arc<dyn IWorkloadRepository>,
-    operations: Arc<dyn IOperationRepository>,
+    operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
     node_control: Arc<dyn INodeControlRepository>,
 }
 
 impl WorkloadQueryReader {
     pub fn new(
         workloads: Arc<dyn IWorkloadRepository>,
-        operations: Arc<dyn IOperationRepository>,
+        operations: Arc<dyn IWorkloadDeploymentOperationAccess>,
         node_control: Arc<dyn INodeControlRepository>,
     ) -> Self {
         Self {

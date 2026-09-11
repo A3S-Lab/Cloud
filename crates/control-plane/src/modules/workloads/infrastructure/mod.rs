@@ -4,6 +4,7 @@ mod fleet_node_pool_access;
 mod identity_runtime_execution_admission;
 mod node_drain_reconciliation;
 mod oci_registry;
+mod operations_deployment_operation_access;
 mod persistence;
 mod project_environment_access;
 mod reconciliation;
@@ -31,6 +32,7 @@ pub use node_drain_reconciliation::{
     NodeDrainEvacuationFailure, NodeDrainEvacuationReconciler, NodeDrainEvacuationReport,
 };
 pub use oci_registry::OciRegistryArtifactResolver;
+pub use operations_deployment_operation_access::OperationsWorkloadDeploymentOperationAccessAdapter;
 pub use persistence::{
     InMemoryResourceClaimRepository, InMemoryWorkloadRepository, PostgresResourceClaimRepository,
     PostgresWorkloadRepository,

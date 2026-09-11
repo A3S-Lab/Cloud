@@ -8986,6 +8986,122 @@ fn workloads_create_deployments_isolate_fleet_behind_one_node_pool_port() {
 }
 
 #[test]
+fn workloads_deployment_queries_isolate_operations_behind_one_owner_port() {
+    let root = module_root();
+
+    let port =
+        std::fs::read_to_string(root.join("workloads/application/deployment_operation_access.rs"))
+            .expect("read Workloads deployment Operation access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadDeploymentOperationProjection",
+        "pubtraitIWorkloadDeploymentOperationAccess:Send+Sync",
+        "find_projection(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads lost its narrow Operations enrichment boundary {required}"
+        );
+    }
+    for forbidden in ["crate::modules::operations", "IOperationRepository"] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Workloads deployment Operation port leaked Operations authority {forbidden}"
+        );
+    }
+    assert!(
+        !contains_bare_token(production_source(&port).as_str(), "OperationProjection"),
+        "Workloads deployment Operation port leaked Operations authority OperationProjection"
+    );
+
+    let reader = std::fs::read_to_string(root.join("workloads/application/queries/reader.rs"))
+        .expect("read Workloads query reader");
+    let production_reader = production_source(&reader);
+    assert!(
+        production_reader.contains("IWorkloadDeploymentOperationAccess"),
+        "Workload query reader lost IWorkloadDeploymentOperationAccess wiring"
+    );
+    for forbidden in ["IOperationRepository", "crate::modules::operations"] {
+        assert!(
+            !production_reader.contains(forbidden),
+            "Workload query reader regained Operations repository {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workloads/application/queries/get_deployment/handler.rs",
+        "workloads/application/queries/get_workload/handler.rs",
+        "workloads/application/queries/list_workloads/handler.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative)).expect("read query handler");
+        let production = production_source(&source);
+        assert!(
+            production.contains("IWorkloadDeploymentOperationAccess"),
+            "{relative} lost IWorkloadDeploymentOperationAccess wiring"
+        );
+        for forbidden in ["IOperationRepository", "crate::modules::operations"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Operations repository {forbidden}"
+            );
+        }
+    }
+
+    let result = std::fs::read_to_string(root.join("workloads/application/queries/result.rs"))
+        .expect("read Workloads query results");
+    let production_result = production_source(&result);
+    assert!(
+        production_result.contains("WorkloadDeploymentOperationProjection"),
+        "DeploymentQueryResult stopped using WorkloadDeploymentOperationProjection"
+    );
+    assert!(
+        !contains_bare_token(production_result.as_str(), "OperationProjection"),
+        "DeploymentQueryResult regained foreign OperationProjection"
+    );
+
+    let response = std::fs::read_to_string(
+        root.join("workloads/presentation/dto/response/workload_response.rs"),
+    )
+    .expect("read Workloads response DTO");
+    let production_response = production_source(&response);
+    assert!(
+        production_response.contains("WorkloadDeploymentOperationProjection"),
+        "Workload response DTO lost owned Operation projection mapping"
+    );
+    assert!(
+        !production_response.contains("crate::modules::operations"),
+        "Workload response DTO regained Operations imports"
+    );
+
+    let adapter = std::fs::read_to_string(
+        root.join("workloads/infrastructure/operations_deployment_operation_access.rs"),
+    )
+    .expect("read Workloads Operations enrichment adapter");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "impl IWorkloadDeploymentOperationAccess",
+        "IOperationRepository",
+        "WorkloadDeploymentOperationProjection",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Workloads Operations enrichment adapter lost {required}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read production composition");
+    assert_eq!(
+        app.matches("OperationsWorkloadDeploymentOperationAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads Operations enrichment adapter exactly once"
+    );
+}
+
+#[test]
 fn workloads_secret_bindings_isolate_secrets_behind_one_owner_port() {
     let root = module_root();
 

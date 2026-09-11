@@ -357,13 +357,13 @@ use crate::modules::workloads::{
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
     DeploymentFlowRuntime, FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler,
     GetWorkloadHandler, GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort,
-    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
-    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
-    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
-    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
-    ProjectsWorkloadsEnvironmentAccessAdapter, ReplicaDeploymentMaterializer,
-    ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
+    IWorkloadDeploymentOperationAccess, IWorkloadRuntimeExecutionAdmissionPort,
+    IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadSkillReleaseAdmissionPort,
+    IWorkloadSourceBuildAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
+    IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
+    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    OperationsWorkloadDeploymentOperationAccessAdapter, ProjectsWorkloadsEnvironmentAccessAdapter,
+    ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
     SourcesArtifactsWorkloadSourceBuildAdmissionAdapter, StopWorkloadHandler,
     UnbindSkillWorkloadDeploymentHandler, UpdateAgentWorkloadDeploymentHandler,
@@ -2829,9 +2829,11 @@ fn build_management_application_with_health(
     let get_workloads = Arc::clone(&workloads);
     let get_deployment_workloads = Arc::clone(&workloads);
     let get_log_workloads = Arc::clone(&workloads);
-    let workload_list_operations = Arc::clone(&operations);
-    let workload_get_operations = Arc::clone(&operations);
-    let deployment_get_operations = Arc::clone(&operations);
+    let workload_list_operations: Arc<dyn IWorkloadDeploymentOperationAccess> = Arc::new(
+        OperationsWorkloadDeploymentOperationAccessAdapter::new(Arc::clone(&operations)),
+    );
+    let workload_get_operations = Arc::clone(&workload_list_operations);
+    let deployment_get_operations = Arc::clone(&workload_list_operations);
     let list_api_tokens = Arc::clone(&api_tokens);
     let get_api_tokens = Arc::clone(&api_tokens);
     let begin_oidc_organizations = Arc::clone(&organizations);
