@@ -6,6 +6,7 @@ mod log_compaction;
 mod log_reader;
 mod log_retention;
 mod node_artifact_authorizer;
+mod organization_access;
 pub mod queries;
 pub(crate) mod resource_access;
 mod runtime_node_evidence;
@@ -36,6 +37,7 @@ pub use log_reader::{
 };
 pub use log_retention::LogRetentionWorker;
 pub use node_artifact_authorizer::NodeArtifactAuthorizer;
+pub use organization_access::IFleetOrganizationAccess;
 pub use queries::{
     GetNode, GetNodeHandler, GetNodePool, GetNodePoolHandler, ListNodePools, ListNodePoolsHandler,
     ListNodes, ListNodesHandler, NodeQueryResult,

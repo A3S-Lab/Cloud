@@ -13,7 +13,7 @@ pub use application::{
     EnrollNodeResult, FleetGatewayCommandDispatch, FleetGatewayObservationOutcome,
     FleetGatewaySnapshotCommandService, FleetGatewaySnapshotInstallRequest,
     FleetGatewaySnapshotObserveRequest, GetNode, GetNodeHandler, GetNodePool, GetNodePoolHandler,
-    IFleetGatewaySnapshotCommandPort, IGatewayAcknowledgementProjector,
+    IFleetGatewaySnapshotCommandPort, IFleetOrganizationAccess, IGatewayAcknowledgementProjector,
     IRuntimeNodeEvidenceQueryPort, IssueEnrollmentToken, IssueEnrollmentTokenHandler,
     IssueEnrollmentTokenResult, LeaseNodeCommands, LeaseNodeCommandsHandler, ListNodePools,
     ListNodePoolsHandler, ListNodes, ListNodesHandler, LogCompactionWorker, LogRetentionWorker,
@@ -27,9 +27,9 @@ pub use application::{
     RuntimeNodeEvidenceQuery, RuntimeNodeEvidenceQueryService,
 };
 pub use infrastructure::{
-    LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore,
-    NodeAvailabilityReconciler, PostgresNodeRepository, VaultCertificateAuthority,
-    VaultKeyEncryptionService,
+    IdentityFleetOrganizationAccessAdapter, LocalCertificateAuthority, LocalKeyEncryptionService,
+    LogChunkObjectStore, NodeAvailabilityReconciler, PostgresNodeRepository,
+    VaultCertificateAuthority, VaultKeyEncryptionService,
 };
 pub(crate) use infrastructure::{
     lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,

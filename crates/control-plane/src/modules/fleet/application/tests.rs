@@ -16,7 +16,9 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::domain::services::{ILogChunkStore, RetrievedLogChunk};
 use crate::modules::fleet::domain::value_objects::{NodeCapabilities, NodeState};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
-use crate::modules::fleet::infrastructure::{LocalCertificateAuthority, LogChunkObjectStore};
+use crate::modules::fleet::infrastructure::{
+    IdentityFleetOrganizationAccessAdapter, LocalCertificateAuthority, LogChunkObjectStore,
+};
 use crate::modules::identity::domain::entities::Organization;
 use crate::modules::identity::infrastructure::persistence::InMemoryIdentityRepository;
 use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
@@ -121,7 +123,10 @@ async fn enrollment_rotation_state_and_offline_projection_form_a_replay_safe_flo
         request_id: Uuid::now_v7(),
         requested_at: now,
     };
-    let issue_handler = IssueEnrollmentTokenHandler::new(identity.clone(), nodes.clone());
+    let issue_handler = IssueEnrollmentTokenHandler::new(
+        Arc::new(IdentityFleetOrganizationAccessAdapter::new(identity.clone())),
+        nodes.clone(),
+    );
     let issued = issue_handler
         .execute(issue.clone(), context())
         .await

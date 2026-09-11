@@ -1,22 +1,22 @@
 use super::{IssueEnrollmentToken, IssueEnrollmentTokenResult};
+use crate::modules::fleet::application::IFleetOrganizationAccess;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
 use crate::modules::fleet::domain::events::EnrollmentTokenIssued;
 use crate::modules::fleet::domain::repositories::INodeRepository;
 use crate::modules::fleet::domain::value_objects::EnrollmentTokenCredential;
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnrollmentTokenId, IdempotencyRequest};
 use a3s_boot::{BootError, CommandHandler, CqrsContext};
 use std::sync::Arc;
 
 pub struct IssueEnrollmentTokenHandler {
-    organizations: Arc<dyn IOrganizationRepository>,
+    organizations: Arc<dyn IFleetOrganizationAccess>,
     nodes: Arc<dyn INodeRepository>,
 }
 
 impl IssueEnrollmentTokenHandler {
     pub fn new(
-        organizations: Arc<dyn IOrganizationRepository>,
+        organizations: Arc<dyn IFleetOrganizationAccess>,
         nodes: Arc<dyn INodeRepository>,
     ) -> Self {
         Self {
@@ -36,14 +36,11 @@ impl CommandHandler<IssueEnrollmentToken> for IssueEnrollmentTokenHandler {
         let organizations = Arc::clone(&self.organizations);
         let nodes = Arc::clone(&self.nodes);
         Box::pin(async move {
-            match organizations.find(command.organization_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "organization not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+            if let Err(error) = organizations
+                .require_organization(command.organization_id)
+                .await
+            {
+                return Ok(Err(error));
             }
             let credential = match EnrollmentTokenCredential::from_secret(&command.token_secret) {
                 Ok(value) => value,

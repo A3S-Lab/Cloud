@@ -5,6 +5,7 @@ mod local_key_encryption;
 mod log_chunk_object;
 mod log_chunk_object_store;
 mod node_availability_reconciler;
+mod organization_access;
 pub mod persistence;
 #[cfg(test)]
 mod security_provider_tests;
@@ -15,6 +16,7 @@ pub use local_certificate_authority::LocalCertificateAuthority;
 pub use local_key_encryption::LocalKeyEncryptionService;
 pub use log_chunk_object_store::LogChunkObjectStore;
 pub use node_availability_reconciler::NodeAvailabilityReconciler;
+pub use organization_access::IdentityFleetOrganizationAccessAdapter;
 pub use persistence::PostgresNodeRepository;
 pub(crate) use persistence::{
     lock_node_organization_for_update, node_pool_placement_is_eligible, require_current_inventory,

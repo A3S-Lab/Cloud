@@ -2674,6 +2674,86 @@ fn assets_access_and_owner_scope_have_one_bounded_authority() {
 }
 
 #[test]
+fn fleet_issue_enrollment_token_isolates_identity_behind_one_organization_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(root.join("fleet/application/organization_access.rs"))
+        .expect("read Fleet Organization access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIFleetOrganizationAccess:Send+Sync",
+        "require_organization(&self,organization_id:OrganizationId)->ApplicationResult<()>;",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Fleet owner boundary lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "IOrganizationRepository",
+        "entities::Organization",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Fleet owner port imported Identity authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        root.join("fleet/application/commands/issue_enrollment_token/handler.rs"),
+    )
+    .expect("read IssueEnrollmentTokenHandler");
+    let production_handler = production_source(&handler);
+    let compact_handler = production_handler.split_whitespace().collect::<String>();
+    assert!(
+        compact_handler.contains("organizations:Arc<dynIFleetOrganizationAccess>")
+            && compact_handler.contains(".require_organization(command.organization_id)"),
+        "IssueEnrollmentTokenHandler lost Fleet-owned organization port"
+    );
+    for forbidden in ["IOrganizationRepository", "crate::modules::identity"] {
+        assert!(
+            !production_handler.contains(forbidden),
+            "IssueEnrollmentTokenHandler regained Identity repository authority {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(root.join("fleet/infrastructure/organization_access.rs"))
+            .expect("read Fleet Organization access adapter");
+    let compact_adapter = production_source(&adapter)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructIdentityFleetOrganizationAccessAdapter",
+        "implIFleetOrganizationAccessforIdentityFleetOrganizationAccessAdapter",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Fleet lost its sole Identity Organization adapter {required}"
+        );
+    }
+
+    let mut identity_import_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let source = production_source(source);
+        if context(relative) == Some("fleet")
+            && source.contains("crate::modules::identity")
+            && source.contains("IOrganizationRepository")
+        {
+            identity_import_sites.insert(display(relative));
+        }
+    });
+    assert_eq!(
+        identity_import_sites,
+        BTreeSet::from(["fleet/infrastructure/organization_access.rs".to_owned()]),
+        "all Fleet-to-Identity organization access must be confined to the sole consumer-side adapter"
+    );
+}
+
+#[test]
 fn projects_create_project_isolates_identity_behind_one_organization_port() {
     let root = module_root();
 

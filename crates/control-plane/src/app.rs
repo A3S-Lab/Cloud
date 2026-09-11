@@ -181,7 +181,8 @@ use crate::modules::fleet::domain::services::{ICertificateAuthority, ILogChunkSt
 use crate::modules::fleet::{
     AcknowledgeNodeCommandHandler, ChangeNodeStateHandler, EnqueueNodeCommandHandler,
     EnrollNodeHandler, FleetGatewaySnapshotCommandService, FleetModule, GetNodeHandler,
-    GetNodePoolHandler, IFleetGatewaySnapshotCommandPort, IGatewayAcknowledgementProjector,
+    GetNodePoolHandler, IFleetGatewaySnapshotCommandPort, IFleetOrganizationAccess,
+    IGatewayAcknowledgementProjector, IdentityFleetOrganizationAccessAdapter,
     IssueEnrollmentTokenHandler, LeaseNodeCommandsHandler, ListNodePoolsHandler, ListNodesHandler,
     LocalCertificateAuthority, LocalKeyEncryptionService, LogChunkObjectStore, LogCompactionWorker,
     LogRetentionWorker, ManageNodePoolHandler, NodeAvailabilityReconciler, NodeControlApi,
@@ -2752,6 +2753,9 @@ fn build_management_application_with_health(
     let project_organizations: Arc<dyn IProjectOrganizationAccess> = Arc::new(
         IdentityProjectsOrganizationAccessAdapter::new(Arc::clone(&organizations)),
     );
+    let fleet_organizations: Arc<dyn IFleetOrganizationAccess> = Arc::new(
+        IdentityFleetOrganizationAccessAdapter::new(Arc::clone(&organizations)),
+    );
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
     let environment_projects = Arc::clone(&projects);
@@ -3874,7 +3878,7 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::edge::PublishRoute, _>(publish_route_handler)
                 .command_handler::<crate::modules::fleet::IssueEnrollmentToken, _>(
                     IssueEnrollmentTokenHandler::new(
-                        Arc::clone(&query_organizations),
+                        Arc::clone(&fleet_organizations),
                         Arc::clone(&nodes),
                     ),
                 )
