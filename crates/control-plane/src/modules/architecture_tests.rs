@@ -11130,6 +11130,94 @@ fn edge_mcp_gateway_projection_isolates_healthy_route_target_reading() {
 }
 
 #[test]
+fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_port() {
+    let root = module_root();
+
+    let port =
+        std::fs::read_to_string(root.join("edge/application/runtime_observation_access.rs"))
+            .expect("read Edge Runtime observation access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeRuntimeObservationProjection",
+        "pubtraitIEdgeRuntimeObservationAccess:Send+Sync",
+        "latest_runtime_observation(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge lost its narrow Fleet observation boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Edge Runtime observation port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    let updater =
+        std::fs::read_to_string(root.join("edge/infrastructure/deployment_route_updater.rs"))
+            .expect("read Edge deployment route updater");
+    let production_updater = production_source(&updater);
+    for forbidden in ["INodeControlRepository", "crate::modules::fleet"] {
+        assert!(
+            !production_updater.contains(forbidden),
+            "EdgeDeploymentRouteUpdater regained foreign observation authority {forbidden}"
+        );
+    }
+    let compact_updater = production_updater.split_whitespace().collect::<String>();
+    assert!(
+        compact_updater.contains("Arc<dynIEdgeRuntimeObservationAccess>")
+            && compact_updater.contains(".latest_runtime_observation("),
+        "EdgeDeploymentRouteUpdater stopped reading observations through the Edge-owned port"
+    );
+
+    let adapter = std::fs::read_to_string(
+        root.join("edge/infrastructure/fleet_runtime_observation_access.rs"),
+    )
+    .expect("read Fleet Edge Runtime observation ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetEdgeRuntimeObservationAccessAdapter",
+        "INodeControlRepository",
+        "impl IEdgeRuntimeObservationAccess for FleetEdgeRuntimeObservationAccessAdapter",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Edge Runtime observation ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Edge Runtime observation ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetEdgeRuntimeObservationAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Edge Runtime observation ACA exactly once"
+    );
+}
+
+#[test]
 fn edge_mcp_credentials_isolate_secrets_encryption_behind_one_owner_port() {
     let root = module_root();
 

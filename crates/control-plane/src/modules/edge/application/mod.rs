@@ -9,6 +9,7 @@ mod mcp_workload_revision_projection_access;
 mod node_access;
 pub mod queries;
 mod resource_access;
+mod runtime_observation_access;
 
 pub use environment_access::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
 pub use mcp_credential_delivery::{
@@ -23,6 +24,7 @@ pub use mcp_workload_revision_projection_access::{
     EdgeMcpWorkloadRevisionProjectionScope, IEdgeMcpWorkloadRevisionProjectionAccess,
 };
 pub use node_access::{EdgeNodeScope, IEdgeNodeAccess};
+pub use runtime_observation_access::{EdgeRuntimeObservationProjection, IEdgeRuntimeObservationAccess};
 
 pub use commands::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,

@@ -1,5 +1,5 @@
-use crate::modules::workloads::infrastructure::compose_deployment_operation;
 use super::*;
+use crate::modules::workloads::infrastructure::compose_deployment_operation;
 
 #[tokio::test]
 async fn route_cutover_rejects_an_observation_from_another_runtime_command(
@@ -73,11 +73,16 @@ async fn route_cutover_rejects_an_observation_from_another_runtime_command(
 
     let route_port: Arc<dyn IEdgeRepository> = routes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> = Arc::new(
+        crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
+            &control_port,
+        )),
+    );
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
     let updater = EdgeDeploymentRouteUpdater::new(
         route_port,
-        control_port,
+        observations,
         gateway_commands,
         compiler,
         Duration::seconds(5),
@@ -128,11 +133,16 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
     let compiler = gateway_compiler()?;
     let route_port: Arc<dyn IEdgeRepository> = routes.clone();
     let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> = Arc::new(
+        crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
+            &control_port,
+        )),
+    );
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&control_port)));
     let route_updates = Arc::new(EdgeDeploymentRouteUpdater::new(
         route_port,
-        Arc::clone(&control_port),
+        observations,
         gateway_commands,
         compiler.clone(),
         Duration::seconds(5),

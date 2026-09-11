@@ -1,3 +1,4 @@
+use crate::modules::edge::application::IEdgeRuntimeObservationAccess;
 use crate::modules::edge::domain::events::GatewayRouteCutoverStaged;
 use crate::modules::edge::domain::repositories::{
     GatewayRouteCutoverResult, IEdgeRepository, StageGatewayRouteCutover,
@@ -14,7 +15,6 @@ use crate::modules::edge::infrastructure::{
     GatewaySnapshotMetadata, GatewaySnapshotPublicationOwner, IMcpGatewaySnapshotRepository,
     PlanGatewayNodeDesiredState, StageManagedGatewayRouteCutover,
 };
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::identity::application::IInferenceCredentialAclProjectionPort;
 use crate::modules::inference::application::{
     IInferenceRouteAclProjectionPort, IInferenceWorkerAclProjectionPort,
@@ -38,7 +38,7 @@ use super::runtime_http_upstream::gateway_http_upstream;
 
 pub struct EdgeDeploymentRouteUpdater {
     routes: Arc<dyn IEdgeRepository>,
-    observations: Arc<dyn INodeControlRepository>,
+    observations: Arc<dyn IEdgeRuntimeObservationAccess>,
     commands: Arc<dyn IGatewayCommandQueue>,
     compiler: GatewaySnapshotCompiler,
     command_ttl: Duration,
@@ -56,7 +56,7 @@ struct ManagedGatewayRouteCutover {
 impl EdgeDeploymentRouteUpdater {
     pub fn new(
         routes: Arc<dyn IEdgeRepository>,
-        observations: Arc<dyn INodeControlRepository>,
+        observations: Arc<dyn IEdgeRuntimeObservationAccess>,
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         command_ttl: Duration,
@@ -78,7 +78,7 @@ impl EdgeDeploymentRouteUpdater {
     pub fn new_managed(
         routes: Arc<dyn IEdgeRepository>,
         snapshots: Arc<dyn IMcpGatewaySnapshotRepository>,
-        observations: Arc<dyn INodeControlRepository>,
+        observations: Arc<dyn IEdgeRuntimeObservationAccess>,
         commands: Arc<dyn IGatewayCommandQueue>,
         compiler: GatewaySnapshotCompiler,
         desired_state: GatewayNodeDesiredStatePlanner,

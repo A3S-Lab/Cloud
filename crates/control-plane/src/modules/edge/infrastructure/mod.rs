@@ -2,6 +2,7 @@ mod assets_mcp_service_profile_access;
 mod deployment_route_updater;
 mod domain_ownership_verifier;
 mod fleet_node_access;
+mod fleet_runtime_observation_access;
 mod gateway_acknowledgement_projector;
 mod gateway_certificate_reconciler;
 mod gateway_command_queue;
@@ -154,6 +155,7 @@ pub use mcp_route_projection_planner::{McpRouteProjectionPlanner, PlanMcpRoutePr
 pub use mcp_route_target_projection_compiler::{
     McpRouteTargetCandidate, McpRouteTargetProjectionCompiler,
 };
+pub use fleet_runtime_observation_access::FleetEdgeRuntimeObservationAccessAdapter;
 pub use project_environment_access::ProjectsEdgeEnvironmentAccessAdapter;
 #[cfg(all(test, target_os = "linux"))]
 pub(crate) use runtime_http_upstream::gateway_http_upstream;
