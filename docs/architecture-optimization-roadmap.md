@@ -1,6 +1,6 @@
 # A3S Cloud Architecture Optimization and Execution Roadmap
 
-**Status as of 2026-09-10.**
+**Status as of 2026-09-11.**
 
 This document is the **execution view** of Cloud architecture optimization. It
 does not replace stable ownership in [architecture.md](architecture.md), public
@@ -177,6 +177,10 @@ Allowed while `EmptyInferenceWorkerAclProjectionPort` remains wired:
 - Usage batch ingest, showback, retention (prompt-free facts)
 - Path-scope / missing-environment fail-closed behavior
 - First-principles tests that prove fail-closed honesty
+- Owner `*Access` projection at REST/MCP entry for catalog and mutation paths
+  (Projects `CreateProject` / `CreateEnvironment`, Inference route
+  publish/revise/retire, Edge create domain claim / gateway scope / MCP
+  credential, plus earlier Workloads, Workflow, Executions, Assets surfaces)
 
 **Hard rule:** snapshots that omit `workers` are correct until Power
 observation delivery. Do not invent worker observations in Cloud.
