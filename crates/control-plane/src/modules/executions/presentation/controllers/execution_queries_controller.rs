@@ -7,8 +7,8 @@ use crate::modules::executions::presentation::dto::{
     ExecutionResponse, ExecutionTemplateRevisionResponse,
 };
 use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId, OrganizationId,
@@ -121,6 +121,9 @@ pub fn execution_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             limit,
+                            access: execution_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                         })
                         .await?
                     {

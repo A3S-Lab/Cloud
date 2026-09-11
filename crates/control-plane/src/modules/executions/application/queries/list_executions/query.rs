@@ -1,3 +1,4 @@
+use crate::modules::executions::application::resource_access::ExecutionAccess;
 use crate::modules::executions::domain::Execution;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
@@ -9,6 +10,7 @@ pub struct ListExecutions {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub limit: usize,
+    pub access: ExecutionAccess,
 }
 
 impl Query for ListExecutions {
