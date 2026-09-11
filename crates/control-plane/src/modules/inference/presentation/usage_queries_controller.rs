@@ -1,5 +1,6 @@
+use crate::access_projection::inference_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::inference::application::{GetUsageRequestFact, ListDailyUsageRollups};
 use crate::modules::inference::presentation::dto::{
     DailyUsageRollupResponse, UsageRequestFactResponse,
@@ -7,7 +8,7 @@ use crate::modules::inference::presentation::dto::{
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::{application_error_response, request_id};
 use a3s_boot::{
-    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
 };
 use chrono::NaiveDate;
 use serde::Deserialize;
@@ -31,8 +32,7 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = inference_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     let parameters: DailyRollupsQuery = request.query()?;
                     match bus
                         .execute(ListDailyUsageRollups {
@@ -47,7 +47,7 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                             ),
                             from_day: parameters.from_day,
                             to_day: parameters.to_day,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -68,8 +68,7 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id_header = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = inference_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     match bus
                         .execute(GetUsageRequestFact {
                             organization_id: OrganizationId::from_uuid(
@@ -82,7 +81,7 @@ pub fn usage_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             request_id: request.param_as::<Uuid>("request_id")?,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {

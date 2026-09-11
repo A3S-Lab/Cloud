@@ -17,6 +17,7 @@ use crate::modules::fleet::{FleetAccess, FleetAccessScope};
 use crate::modules::forms::{FormAccess, FormAccessScope};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
 use crate::modules::notifications::{NotificationAccess, NotificationAccessScope};
 use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::projects::{ProjectAccess, ProjectAccessScope};
@@ -314,6 +315,29 @@ pub(crate) fn connector_access(resource_access: &ResourceAccessEvaluator) -> Con
     )
 }
 
+pub(crate) fn inference_access(resource_access: &ResourceAccessEvaluator) -> InferenceAccess {
+    if resource_access.is_organization_wide() {
+        return InferenceAccess::organization_wide();
+    }
+    InferenceAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(InferenceAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(InferenceAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
+}
+
 pub(crate) fn execution_access(resource_access: &ResourceAccessEvaluator) -> ExecutionAccess {
     if resource_access.is_organization_wide() {
         return ExecutionAccess::organization_wide();
@@ -381,8 +405,8 @@ mod tests {
     use super::{
         agent_access, application_access, artifact_access, asset_access, connector_access,
         developer_workflow_access, durable_cell_access, execution_access, fleet_access,
-        form_access, notification_access, operation_access, project_access, search_visibility,
-        secret_access, user_file_access, workflow_access, workload_access,
+        form_access, inference_access, notification_access, operation_access, project_access,
+        search_visibility, secret_access, user_file_access, workflow_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -867,6 +891,38 @@ mod tests {
         assert!(!environment_only.environment_is_visible(project_id, EnvironmentId::new()));
         assert!(
             connector_access(&ResourceAccessEvaluator::organization_wide()).is_organization_wide()
+        );
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_inference_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_id = EnvironmentId::new();
+        let access = inference_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.environment_is_visible(project_id, environment_id));
+        assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
+        assert_eq!(access.granted_scopes().count(), 2);
+
+        let environment_only = inference_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Environment {
+                project_id,
+                environment_id,
+            },
+        ]));
+        assert!(environment_only.environment_is_visible(project_id, environment_id));
+        assert!(!environment_only.environment_is_visible(project_id, EnvironmentId::new()));
+        assert!(
+            inference_access(&ResourceAccessEvaluator::organization_wide()).is_organization_wide()
         );
     }
 }

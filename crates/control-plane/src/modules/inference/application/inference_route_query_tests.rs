@@ -1,16 +1,15 @@
 //! First-principles authorized Inference route list/get queries (I0.2b brick).
 
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::inference::application::{
-    GetInferenceRoute, GetInferenceRouteHandler, IInferenceEnvironmentAccess,
-    InferenceEnvironmentScope, ListInferenceRoutes, ListInferenceRoutesHandler,
-    PermitInferenceEdgeRouteBindingAdmission, PermitInferenceGrantCredentialAdmission,
-    PublishInferenceRoute, PublishInferenceRouteHandler, RetireInferenceRoute,
-    RetireInferenceRouteHandler, DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
+    DEFAULT_INFERENCE_ROUTE_LIST_LIMIT, GetInferenceRoute, GetInferenceRouteHandler,
+    IInferenceEnvironmentAccess, InferenceEnvironmentScope, ListInferenceRoutes,
+    ListInferenceRoutesHandler, PermitInferenceEdgeRouteBindingAdmission,
+    PermitInferenceGrantCredentialAdmission, PublishInferenceRoute, PublishInferenceRouteHandler,
+    RetireInferenceRoute, RetireInferenceRouteHandler,
 };
 use crate::modules::inference::domain::value_objects::EdgeRouteBindingRef;
 use crate::modules::inference::infrastructure::InMemoryInferenceRouteRepository;
+use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
@@ -83,8 +82,8 @@ fn context() -> CqrsContext {
     CqrsContext::new(ModuleRef::new())
 }
 
-fn org_wide() -> ResourceAccessEvaluator {
-    ResourceAccessEvaluator::organization_wide()
+fn org_wide() -> InferenceAccess {
+    InferenceAccess::organization_wide()
 }
 
 fn sample_model() -> InferenceModelAclProjection {
@@ -198,7 +197,7 @@ async fn publish_then_list_and_get_return_route_without_secrets() {
                 environment_id,
                 cursor: None,
                 limit: DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -217,7 +216,7 @@ async fn publish_then_list_and_get_return_route_without_secrets() {
                 project_id,
                 environment_id,
                 route_id: published.id,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -282,7 +281,7 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
                 environment_id,
                 cursor: None,
                 limit: DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -298,7 +297,7 @@ async fn retire_excludes_from_list_but_get_still_returns_retired_head() {
                 project_id,
                 environment_id,
                 route_id: published.id,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -330,7 +329,7 @@ async fn ungranted_environment_fails_closed_as_not_found() {
     )
     .await;
 
-    let denied = ResourceAccessEvaluator::restricted(vec![ResourceGrantScope::Environment {
+    let denied = InferenceAccess::restricted([InferenceAccessScope::Environment {
         project_id,
         environment_id: EnvironmentId::from_uuid(Uuid::from_u128(999)),
     }]);
@@ -343,7 +342,7 @@ async fn ungranted_environment_fails_closed_as_not_found() {
                 environment_id,
                 cursor: None,
                 limit: DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
-                resource_access: denied.clone(),
+                access: denied.clone(),
             },
             context(),
         )
@@ -359,7 +358,7 @@ async fn ungranted_environment_fails_closed_as_not_found() {
                 project_id,
                 environment_id,
                 route_id: published.id,
-                resource_access: denied,
+                access: denied,
             },
             context(),
         )
@@ -394,7 +393,7 @@ async fn get_rejects_wrong_environment_path_as_not_found() {
                 project_id,
                 environment_id: other_environment_id,
                 route_id: published.id,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -472,7 +471,7 @@ async fn get_rejects_missing_environment_as_not_found() {
                 project_id,
                 environment_id,
                 route_id: published.id,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -538,7 +537,7 @@ async fn list_rejects_missing_environment_as_not_found() {
                 environment_id: EnvironmentId::new(),
                 cursor: None,
                 limit: DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -573,7 +572,7 @@ async fn list_pages_by_route_id_cursor() {
                 environment_id,
                 cursor: None,
                 limit: 1,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )
@@ -592,7 +591,7 @@ async fn list_pages_by_route_id_cursor() {
                 environment_id,
                 cursor: Some(cursor),
                 limit: 1,
-                resource_access: org_wide(),
+                access: org_wide(),
             },
             context(),
         )

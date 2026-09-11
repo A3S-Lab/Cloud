@@ -1,5 +1,5 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::entities::InferenceRoute;
+use crate::modules::inference::InferenceAccess;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::Query;
@@ -21,7 +21,7 @@ pub struct ListInferenceRoutes {
     pub environment_id: EnvironmentId,
     pub cursor: Option<String>,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: InferenceAccess,
 }
 
 impl Query for ListInferenceRoutes {

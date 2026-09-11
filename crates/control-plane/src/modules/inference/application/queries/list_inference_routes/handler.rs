@@ -36,7 +36,7 @@ impl QueryHandler<ListInferenceRoutes> for ListInferenceRoutesHandler {
         let routes = Arc::clone(&self.routes);
         Box::pin(async move {
             if !query
-                .resource_access
+                .access
                 .environment_is_visible(query.project_id, query.environment_id)
             {
                 return Ok(Err(ApplicationError::NotFound(
@@ -56,7 +56,7 @@ impl QueryHandler<ListInferenceRoutes> for ListInferenceRoutesHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }

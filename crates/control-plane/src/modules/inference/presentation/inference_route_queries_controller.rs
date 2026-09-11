@@ -1,7 +1,8 @@
+use crate::access_projection::inference_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::inference::application::{
-    GetInferenceRoute, ListInferenceRoutes, DEFAULT_INFERENCE_ROUTE_LIST_LIMIT,
+    DEFAULT_INFERENCE_ROUTE_LIST_LIMIT, GetInferenceRoute, ListInferenceRoutes,
     MAXIMUM_INFERENCE_ROUTE_LIST_LIMIT,
 };
 use crate::modules::inference::presentation::dto::{
@@ -12,7 +13,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::{application_error_response, request_id};
 use a3s_boot::{
-    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
 };
 use serde::Deserialize;
 use std::sync::Arc;
@@ -35,8 +36,7 @@ pub fn inference_route_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                 let bus = Arc::clone(&list_bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = inference_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     let parameters: ListInferenceRoutesQuery = request.query()?;
                     let limit = parameters
                         .limit
@@ -60,7 +60,7 @@ pub fn inference_route_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                             ),
                             cursor: parameters.cursor,
                             limit,
-                            resource_access,
+                            access,
                         })
                         .await?
                     {
@@ -76,8 +76,7 @@ pub fn inference_route_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                 let bus = Arc::clone(&bus);
                 async move {
                     let request_id = request_id(&request)?;
-                    let resource_access =
-                        resource_access_evaluator(&request.require_auth_principal()?)?;
+                    let access = inference_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
                     match bus
                         .execute(GetInferenceRoute {
                             organization_id: OrganizationId::from_uuid(
@@ -92,7 +91,7 @@ pub fn inference_route_queries_controller(bus: Arc<QueryBus>) -> Result<Controll
                             route_id: InferenceRouteId::from_uuid(
                                 request.param_as::<Uuid>("route_id")?,
                             ),
-                            resource_access,
+                            access,
                         })
                         .await?
                     {

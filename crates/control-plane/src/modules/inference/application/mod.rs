@@ -6,25 +6,27 @@ mod environment_access;
 mod grant_credential_admission;
 mod inference_usage_retention_worker;
 pub mod queries;
+mod resource_access;
 mod route_acl_projection;
 mod worker_acl_projection;
 
 pub use commands::*;
 pub use edge_route_binding_admission::{
-    IInferenceEdgeRouteBindingAdmissionPort, InferenceEdgeRouteBindingAdmissionRequest,
-    PermitInferenceEdgeRouteBindingAdmission, EDGE_ROUTE_BINDING_INVALID,
+    EDGE_ROUTE_BINDING_INVALID, IInferenceEdgeRouteBindingAdmissionPort,
+    InferenceEdgeRouteBindingAdmissionRequest, PermitInferenceEdgeRouteBindingAdmission,
 };
 pub use empty_inference_route_acl_projection::EmptyInferenceRouteAclProjectionPort;
 pub use empty_inference_worker_acl_projection::{
-    postgres_inference_worker_acl_projections, EmptyInferenceWorkerAclProjectionPort,
+    EmptyInferenceWorkerAclProjectionPort, postgres_inference_worker_acl_projections,
 };
 pub use environment_access::{IInferenceEnvironmentAccess, InferenceEnvironmentScope};
 pub use grant_credential_admission::{
-    IInferenceGrantCredentialAdmissionPort, InferenceGrantCredentialAdmissionRequest,
-    PermitInferenceGrantCredentialAdmission, INFERENCE_GRANT_CREDENTIAL_INVALID,
+    IInferenceGrantCredentialAdmissionPort, INFERENCE_GRANT_CREDENTIAL_INVALID,
+    InferenceGrantCredentialAdmissionRequest, PermitInferenceGrantCredentialAdmission,
 };
 pub use inference_usage_retention_worker::InferenceUsageRetentionWorker;
 pub use queries::*;
+pub use resource_access::{InferenceAccess, InferenceAccessScope};
 pub use route_acl_projection::{IInferenceRouteAclProjectionPort, InferenceRouteEnvironmentScope};
 pub use worker_acl_projection::IInferenceWorkerAclProjectionPort;
 

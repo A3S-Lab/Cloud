@@ -1,5 +1,5 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::domain::entities::InferenceRoute;
+use crate::modules::inference::InferenceAccess;
 use crate::modules::shared_kernel::application::ApplicationResult;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InferenceRouteId, OrganizationId, ProjectId,
@@ -12,7 +12,7 @@ pub struct GetInferenceRoute {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub route_id: InferenceRouteId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: InferenceAccess,
 }
 
 impl Query for GetInferenceRoute {

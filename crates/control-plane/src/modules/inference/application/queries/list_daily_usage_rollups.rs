@@ -1,8 +1,8 @@
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::inference::application::{
     IInferenceEnvironmentAccess, InferenceEnvironmentScope,
 };
 use crate::modules::inference::domain::{IInferenceUsageRepository, InferenceUsageDailyRollup};
+use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use a3s_boot::{CqrsContext, Query, QueryHandler};
@@ -16,7 +16,7 @@ pub struct ListDailyUsageRollups {
     pub environment_id: EnvironmentId,
     pub from_day: NaiveDate,
     pub to_day: NaiveDate,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: InferenceAccess,
 }
 
 impl Query for ListDailyUsageRollups {
@@ -53,7 +53,7 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
         let usage = Arc::clone(&self.usage);
         Box::pin(async move {
             if !query
-                .resource_access
+                .access
                 .environment_is_visible(query.project_id, query.environment_id)
             {
                 return Ok(Err(ApplicationError::NotFound(
@@ -73,7 +73,7 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
                 Ok(false) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "environment not found in organization and project".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -98,9 +98,8 @@ impl QueryHandler<ListDailyUsageRollups> for ListDailyUsageRollupsHandler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
-    use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::inference::InMemoryInferenceUsageRepository;
+    use crate::modules::inference::domain::AcceptInferenceUsageBatchWrite;
     use crate::modules::shared_kernel::domain::{NodeId, RepositoryError};
     use a3s_cloud_contracts::{
         InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
@@ -138,8 +137,8 @@ mod tests {
         }
     }
 
-    fn org_wide() -> ResourceAccessEvaluator {
-        ResourceAccessEvaluator::organization_wide()
+    fn org_wide() -> InferenceAccess {
+        InferenceAccess::organization_wide()
     }
 
     fn lifecycle(kind: InferenceUsageLifecycleKindV1, at: &str, terminal: bool) -> Vec<u8> {
@@ -251,7 +250,7 @@ mod tests {
                     environment_id,
                     from_day: day,
                     to_day: day,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
@@ -269,12 +268,10 @@ mod tests {
                     environment_id,
                     from_day: day,
                     to_day: day,
-                    resource_access: ResourceAccessEvaluator::restricted(vec![
-                        ResourceGrantScope::Environment {
-                            project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
-                            environment_id: EnvironmentId::from_uuid(Uuid::from_u128(999)),
-                        },
-                    ]),
+                    access: InferenceAccess::restricted([InferenceAccessScope::Environment {
+                        project_id: ProjectId::from_uuid(Uuid::from_u128(50)),
+                        environment_id: EnvironmentId::from_uuid(Uuid::from_u128(999)),
+                    }]),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
@@ -299,7 +296,7 @@ mod tests {
                     environment_id: EnvironmentId::from_uuid(Uuid::from_u128(101)),
                     from_day: from,
                     to_day: to,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
@@ -403,7 +400,7 @@ mod tests {
                     environment_id,
                     from_day: day,
                     to_day: day,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
@@ -430,7 +427,7 @@ mod tests {
                     environment_id: EnvironmentId::from_uuid(Uuid::from_u128(101)),
                     from_day: day,
                     to_day: day,
-                    resource_access: org_wide(),
+                    access: org_wide(),
                 },
                 CqrsContext::new(a3s_boot::ModuleRef::new()),
             )
