@@ -1,5 +1,5 @@
 use super::{CreateProject, CreateProjectResult};
-use crate::modules::identity::domain::repositories::IOrganizationRepository;
+use crate::modules::projects::application::IProjectOrganizationAccess;
 use crate::modules::projects::domain::entities::Project;
 use crate::modules::projects::domain::events::ProjectCreated;
 use crate::modules::projects::domain::repositories::IProjectRepository;
@@ -11,13 +11,13 @@ use chrono::Utc;
 use std::sync::Arc;
 
 pub struct CreateProjectHandler {
-    organizations: Arc<dyn IOrganizationRepository>,
+    organizations: Arc<dyn IProjectOrganizationAccess>,
     projects: Arc<dyn IProjectRepository>,
 }
 
 impl CreateProjectHandler {
     pub fn new(
-        organizations: Arc<dyn IOrganizationRepository>,
+        organizations: Arc<dyn IProjectOrganizationAccess>,
         projects: Arc<dyn IProjectRepository>,
     ) -> Self {
         Self {
@@ -37,14 +37,11 @@ impl CommandHandler<CreateProject> for CreateProjectHandler {
         let organizations = Arc::clone(&self.organizations);
         let projects = Arc::clone(&self.projects);
         Box::pin(async move {
-            match organizations.find(command.organization_id).await {
-                Ok(Some(_)) => {}
-                Ok(None) => {
-                    return Ok(Err(ApplicationError::NotFound(
-                        "organization not found".into(),
-                    )))
-                }
-                Err(error) => return Ok(Err(error.into())),
+            if let Err(error) = organizations
+                .require_organization(command.organization_id)
+                .await
+            {
+                return Ok(Err(error));
             }
             let name = match ProjectName::parse(command.name) {
                 Ok(name) => name,

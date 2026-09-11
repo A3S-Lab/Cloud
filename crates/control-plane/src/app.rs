@@ -290,6 +290,7 @@ use crate::modules::plugins::{
 use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::{
     CreateEnvironmentHandler, CreateProjectHandler, GetProjectAttributionHandler,
+    IProjectOrganizationAccess, IdentityProjectsOrganizationAccessAdapter,
     ListEnvironmentsHandler, ListProjectsHandler, ProjectsModule, UpdateProjectAttributionHandler,
 };
 use crate::modules::search::{ISearchRepository, SearchModule, SearchResourcesHandler};
@@ -2738,7 +2739,9 @@ fn build_management_application_with_health(
         oci_artifacts,
         deploy_durable_cell_handler.clone(),
     );
-    let project_organizations = Arc::clone(&organizations);
+    let project_organizations: Arc<dyn IProjectOrganizationAccess> = Arc::new(
+        IdentityProjectsOrganizationAccessAdapter::new(Arc::clone(&organizations)),
+    );
     let create_projects = Arc::clone(&projects);
     let update_project_attributions = Arc::clone(&projects);
     let environment_projects = Arc::clone(&projects);

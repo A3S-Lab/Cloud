@@ -2672,6 +2672,129 @@ fn assets_access_and_owner_scope_have_one_bounded_authority() {
 }
 
 #[test]
+fn projects_create_project_isolates_identity_behind_one_organization_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(root.join("projects/application/organization_access.rs"))
+        .expect("read Projects Organization access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubtraitIProjectOrganizationAccess:Send+Sync",
+        "require_organization(&self,organization_id:OrganizationId)->ApplicationResult<()>;",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Projects owner boundary lost minimum interface {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::identity",
+        "IOrganizationRepository",
+        "entities::Organization",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Projects owner port imported Identity authority {forbidden}"
+        );
+    }
+
+    let handler = std::fs::read_to_string(
+        root.join("projects/application/commands/create_project/handler.rs"),
+    )
+    .expect("read CreateProjectHandler");
+    let production_handler = production_source(&handler);
+    let compact_handler = production_handler.split_whitespace().collect::<String>();
+    assert!(
+        compact_handler.contains("organizations:Arc<dynIProjectOrganizationAccess>")
+            && compact_handler.contains(".require_organization(command.organization_id)"),
+        "CreateProjectHandler lost Projects-owned organization port"
+    );
+    for forbidden in ["IOrganizationRepository", "crate::modules::identity"] {
+        assert!(
+            !production_handler.contains(forbidden),
+            "CreateProjectHandler regained Identity repository authority {forbidden}"
+        );
+    }
+
+    let adapter =
+        std::fs::read_to_string(root.join("projects/infrastructure/organization_access.rs"))
+            .expect("read Projects Organization access ACA");
+    let production_adapter = production_source(&adapter);
+    let compact_adapter = production_adapter.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructIdentityProjectsOrganizationAccessAdapter",
+        "implIProjectOrganizationAccessforIdentityProjectsOrganizationAccessAdapter",
+        "organizations:Arc<dynIOrganizationRepository>",
+        "organization.id==organization_id&&organization.aggregate_version>0",
+    ] {
+        assert!(
+            compact_adapter.contains(required),
+            "Projects Organization ACA lost quarantine surface {required}"
+        );
+    }
+    assert_eq!(
+        production_adapter.matches(".find(").count(),
+        1,
+        "Projects Organization evidence must have one read mechanism"
+    );
+    for forbidden in [
+        ".create(",
+        ".list_visible(",
+        "CommandHandler",
+        "QueryHandler",
+        "IOutboxRepository",
+        "Postgres",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Projects Organization ACA introduced lifecycle authority {forbidden}"
+        );
+    }
+
+    let mut identity_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) != Some("projects") {
+            return;
+        }
+        let path = relative.to_string_lossy();
+        if !(path.contains("organization_access")
+            || path.contains("commands/create_project"))
+        {
+            return;
+        }
+        if matches!(layer(relative), Some("application" | "domain"))
+            && (source.contains("crate::modules::identity")
+                || source.contains("IOrganizationRepository"))
+        {
+            identity_sites.insert(display(relative));
+        }
+    });
+    assert!(
+        identity_sites.is_empty(),
+        "Projects create_project/organization_access must not import Identity repositories:\n{}",
+        identity_sites.into_iter().collect::<Vec<_>>().join("\n")
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("IdentityProjectsOrganizationAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Projects Organization ACA exactly once"
+    );
+    assert!(
+        production_app.contains("CreateProjectHandler::new(project_organizations, create_projects)"),
+        "root composition stopped wiring CreateProject through the organization port"
+    );
+}
+
+#[test]
 fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_parallel_mechanism() {
     let root = module_root();
     let repository = std::fs::read_to_string(root.join("files/domain/repository.rs"))

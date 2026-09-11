@@ -17,5 +17,7 @@ pub use application::queries::get_project_attribution::{
 };
 pub use application::queries::list_environments::{ListEnvironments, ListEnvironmentsHandler};
 pub use application::queries::list_projects::{ListProjects, ListProjectsHandler};
+pub use application::IProjectOrganizationAccess;
 pub use infrastructure::persistence::{InMemoryProjectsRepository, PostgresProjectsRepository};
+pub use infrastructure::IdentityProjectsOrganizationAccessAdapter;
 pub use presentation::ProjectsModule;
