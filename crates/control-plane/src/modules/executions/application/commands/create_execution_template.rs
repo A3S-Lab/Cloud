@@ -1,4 +1,6 @@
-use crate::modules::executions::application::{ExecutionsProjectScope, IExecutionsProjectAccess};
+use crate::modules::executions::application::{
+    ExecutionAccess, ExecutionsProjectScope, IExecutionsProjectAccess,
+};
 use crate::modules::executions::domain::events::ExecutionTemplatePublished;
 use crate::modules::executions::domain::{
     CreateExecutionTemplateRevision, ExecutionTemplateDefinition, ExecutionTemplateRevision,
@@ -19,6 +21,7 @@ use uuid::Uuid;
 pub struct CreateExecutionTemplateCommand {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub access: ExecutionAccess,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
     pub idempotency_key: String,
@@ -65,6 +68,9 @@ impl CommandHandler<CreateExecutionTemplateCommand> for CreateExecutionTemplateH
         let projects = Arc::clone(&self.projects);
         let templates = Arc::clone(&self.templates);
         Box::pin(async move {
+            if !command.access.project_is_visible(command.project_id) {
+                return Ok(Err(ApplicationError::NotFound("project not found".into())));
+            }
             let project_scope =
                 match ExecutionsProjectScope::new(command.organization_id, command.project_id) {
                     Ok(scope) => scope,
@@ -73,7 +79,7 @@ impl CommandHandler<CreateExecutionTemplateCommand> for CreateExecutionTemplateH
             match projects.project_exists(project_scope).await {
                 Ok(true) => {}
                 Ok(false) => {
-                    return Ok(Err(ApplicationError::NotFound("project not found".into())))
+                    return Ok(Err(ApplicationError::NotFound("project not found".into())));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -104,7 +110,7 @@ impl CommandHandler<CreateExecutionTemplateCommand> for CreateExecutionTemplateH
                     return Ok(Ok(CreateExecutionTemplateResult {
                         revision: replay.value,
                         replayed: true,
-                    }))
+                    }));
                 }
                 Ok(None) => {}
                 Err(error) => return Ok(Err(error.into())),
@@ -140,5 +146,58 @@ impl CommandHandler<CreateExecutionTemplateCommand> for CreateExecutionTemplateH
                 Err(error) => Ok(Err(error.into())),
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::executions::application::resource_access::{
+        ExecutionAccess, ExecutionAccessScope,
+    };
+    use crate::modules::executions::infrastructure::InMemoryExecutionTemplateRepository;
+    use a3s_boot::ModuleRef;
+    use async_trait::async_trait;
+
+    struct AllowAllProjects;
+
+    #[async_trait]
+    impl IExecutionsProjectAccess for AllowAllProjects {
+        async fn project_exists(
+            &self,
+            _scope: ExecutionsProjectScope,
+        ) -> Result<bool, crate::modules::shared_kernel::domain::RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[tokio::test]
+    async fn restricted_command_fails_closed_before_creating_in_an_ungranted_project() {
+        let handler = CreateExecutionTemplateHandler::new(
+            Arc::new(AllowAllProjects),
+            Arc::new(InMemoryExecutionTemplateRepository::new()),
+        );
+        let result = handler
+            .execute(
+                CreateExecutionTemplateCommand {
+                    organization_id: OrganizationId::new(),
+                    project_id: ProjectId::new(),
+                    access: ExecutionAccess::restricted([ExecutionAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                    definition_acl: "agent {}".into(),
+                    actor_principal_id: PrincipalId::new(),
+                    idempotency_key: "k1".into(),
+                    request_id: Uuid::new_v4(),
+                    requested_at: Utc::now(),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message)) if message == "project not found"
+        ));
     }
 }

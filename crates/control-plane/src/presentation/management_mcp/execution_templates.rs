@@ -50,12 +50,14 @@ pub async fn create(
     organization_id: OrganizationId,
     actor_principal_id: PrincipalId,
     arguments: CreateExecutionTemplateArguments,
+    resource_access: ResourceAccessEvaluator,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(CreateExecutionTemplateCommand {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access: execution_access(&resource_access),
             definition_acl: arguments.definition_acl,
             actor_principal_id,
             idempotency_key: arguments.idempotency_key,

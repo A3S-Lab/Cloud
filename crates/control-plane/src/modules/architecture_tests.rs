@@ -9216,6 +9216,7 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
         "executions/application/queries/get_execution/query.rs",
         "executions/application/queries/list_executions/query.rs",
         "executions/application/queries/execution_templates.rs",
+        "executions/application/commands/create_execution_template.rs",
         "executions/application/commands/cancel_execution/command.rs",
     ] {
         let source = std::fs::read_to_string(root.join(relative))

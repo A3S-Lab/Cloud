@@ -9,16 +9,16 @@ use crate::modules::executions::presentation::dto::{
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, CommandBus, ControllerDefinition, Result, RouteDefinition,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
+    RouteDefinition,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -45,6 +45,9 @@ pub fn execution_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                             project_id: ProjectId::from_uuid(
                                 request.param_as::<Uuid>("project_id")?,
                             ),
+                            access: execution_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                             definition_acl: body.definition_acl,
                             actor_principal_id: actor_principal_id(&request)?,
                             idempotency_key,
