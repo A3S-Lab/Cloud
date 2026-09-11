@@ -1,9 +1,9 @@
+pub(crate) mod operation_request_participant;
 mod schema;
 
 use self::schema::{OperationProjections, OperationRequests};
 use crate::infrastructure::{
-    execute, fetch_optional, is_foreign_key_violation, is_unique_violation, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, execute, fetch_optional, is_foreign_key_violation, transaction_error,
 };
 use crate::modules::operations::domain::entities::{
     OperationProjection, OperationRecord, OperationRequest, OperationStatus,
@@ -13,10 +13,10 @@ use crate::modules::operations::domain::repositories::{
 };
 use crate::modules::operations::domain::value_objects::{OperationSubject, WorkflowIdentity};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, IdempotentWrite, OperationId, OrganizationId, RepositoryError,
+    IdempotentWrite, OperationId, OrganizationId, RepositoryError, canonical_timestamp,
 };
 use a3s_orm::{
-    insert_into, select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor,
+    Database, OrderDirection, PostgresDialect, PostgresExecutor, insert_into, select_from,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -78,42 +78,11 @@ impl IOperationRepository for PostgresOperationRepository {
                             replayed: true,
                         });
                     }
-                    let inserted = execute(
-                        transaction,
-                        insert_into::<OperationRequests>()
-                            .value(OperationRequests::operation_id(), request.id.as_uuid())
-                            .value(
-                                OperationRequests::organization_id(),
-                                request.organization_id.as_uuid(),
-                            )
-                            .value(OperationRequests::subject_kind(), request.subject.kind())
-                            .value(OperationRequests::subject_id(), request.subject.id())
-                            .value(OperationRequests::workflow_name(), request.workflow.name())
-                            .value(
-                                OperationRequests::workflow_version(),
-                                request.workflow.version(),
-                            )
-                            .value(OperationRequests::input(), request.input.clone())
-                            .value(OperationRequests::requested_at(), request.requested_at),
-                    )
-                    .await;
-                    match inserted {
-                        Ok(1) => Ok(IdempotentWrite {
-                            value: request,
-                            replayed: false,
-                        }),
-                        Ok(rows) => Err(PostgresPersistenceError::Invariant(format!(
-                            "enqueueing operation affected {rows} rows"
-                        ))),
-                        Err(error) if is_foreign_key_violation(&error) => {
-                            Err(RepositoryError::NotFound.into())
-                        }
-                        Err(error) if is_unique_violation(&error) => Err(
-                            RepositoryError::Conflict("operation ID is already in use".into())
-                                .into(),
-                        ),
-                        Err(error) => Err(error),
-                    }
+                    operation_request_participant::insert(transaction, &request).await?;
+                    Ok(IdempotentWrite {
+                        value: request,
+                        replayed: false,
+                    })
                 })
             })
             .await
@@ -345,11 +314,7 @@ async fn find_request_in_transaction(
     transaction: &a3s_orm::PostgresTransaction,
     operation_id: OperationId,
 ) -> Result<Option<OperationRequest>, PostgresPersistenceError> {
-    fetch_optional::<OperationRequestRow, _>(transaction, request_query(operation_id))
-        .await?
-        .map(decode_request)
-        .transpose()
-        .map_err(Into::into)
+    operation_request_participant::find(transaction, operation_id).await
 }
 
 async fn find_projection_in_transaction(
@@ -390,8 +355,8 @@ fn operation_request_select() -> a3s_orm::query::SelectQuery<OperationRequests, 
     ))
 }
 
-fn operation_projection_select(
-) -> a3s_orm::query::SelectQuery<OperationProjections, OperationProjectionRow> {
+fn operation_projection_select()
+-> a3s_orm::query::SelectQuery<OperationProjections, OperationProjectionRow> {
     select_from::<OperationProjections>().select((
         OperationProjections::operation_id(),
         OperationProjections::status(),

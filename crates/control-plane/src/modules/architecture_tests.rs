@@ -78,7 +78,6 @@ nodes @ edge/infrastructure/persistence/postgres_schema.rs#Nodes
 nodes @ fleet/infrastructure/persistence/postgres/schema.rs#Nodes
 operation_requests @ operations/infrastructure/persistence/postgres/schema.rs#OperationRequests
 operation_requests @ workflow/infrastructure/persistence/workflow_run_postgres/schema.rs#OperationRequests
-operation_requests @ workloads/infrastructure/persistence/postgres/schema.rs#OperationRequests
 workloads @ edge/infrastructure/persistence/postgres_schema.rs#Workloads
 workloads @ workloads/infrastructure/persistence/postgres/schema.rs#Workloads
 workflow_runs @ workflow/infrastructure/persistence/human_task_postgres/schema.rs#WorkflowRuns
@@ -11996,6 +11995,69 @@ fn workloads_compose_operations_from_owned_intents_at_infrastructure_boundary() 
         assert!(
             compact_composer.contains(required),
             "Workloads operation composer lost boundary behavior {required}"
+        );
+    }
+
+    let mut persistence_violations = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("workloads/infrastructure/persistence/postgres/") {
+            return;
+        }
+        for forbidden in [
+            "=> \"operation_requests\"",
+            "struct OperationRequests",
+            "mod operation_requests",
+            "operation_requests::",
+        ] {
+            if source.contains(forbidden) {
+                persistence_violations.insert(format!(
+                    "{path} regained Operations table authority {forbidden}"
+                ));
+            }
+        }
+    });
+    assert!(
+        persistence_violations.is_empty(),
+        "Workloads postgres regained a local operation_requests mapping:\n{}",
+        persistence_violations
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+
+    let mut participant_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        let path = display(relative);
+        if !path.starts_with("workloads/infrastructure/persistence/postgres/") {
+            return;
+        }
+        if source.contains("insert_operation_request_in_transaction")
+            || source.contains("find_operation_request_in_transaction")
+        {
+            participant_sites.insert(path);
+        }
+    });
+    assert!(
+        !participant_sites.is_empty(),
+        "Workloads postgres stopped using the Operations transaction participant"
+    );
+
+    let participant =
+        std::fs::read_to_string(root.join(
+            "operations/infrastructure/persistence/postgres/operation_request_participant.rs",
+        ))
+        .expect("read Operations request participant");
+    let production_participant = production_source(&participant);
+    for required in [
+        "pub(crate) async fn insert(",
+        "pub(crate) async fn find(",
+        "insert_into::<OperationRequests>()",
+        "select_from::<OperationRequests>()",
+    ] {
+        assert!(
+            production_participant.contains(required),
+            "Operations request participant lost surface {required}"
         );
     }
 }

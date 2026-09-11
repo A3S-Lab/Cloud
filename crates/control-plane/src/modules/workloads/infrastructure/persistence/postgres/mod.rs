@@ -1,6 +1,5 @@
 mod create;
 mod deployment_group_bindings;
-mod operation_requests;
 mod placement_group_scheduling;
 mod placement_groups;
 mod queries;

@@ -1,9 +1,12 @@
 use super::schema::WorkloadReplicas;
-use super::{operation_requests, queries, replicas, writer_fences};
-use crate::infrastructure::{store_outbox, transaction_error, PostgresPersistenceError};
+use super::{queries, replicas, writer_fences};
+use crate::infrastructure::{PostgresPersistenceError, store_outbox, transaction_error};
+use crate::modules::operations::infrastructure::persistence::{
+    find_operation_request_in_transaction, insert_operation_request_in_transaction,
+};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, IdempotentWrite, OrganizationId, RepositoryError, WorkloadId,
-    WorkloadReplicaId, WorkloadReplicaMemberId,
+    IdempotentWrite, OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId,
+    WorkloadReplicaMemberId, canonical_timestamp,
 };
 use crate::modules::workloads::domain::entities::{WorkloadReplica, WorkloadReplicaLifecycle};
 use crate::modules::workloads::domain::events::{WorkloadReplicaEvacuated, WorkloadReplicaRetired};
@@ -13,7 +16,7 @@ use crate::modules::workloads::domain::repositories::{
 };
 use crate::modules::workloads::infrastructure::compose_writer_fence_operation;
 use a3s_orm::{
-    select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction,
+    Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, select_from,
 };
 use uuid::Uuid;
 
@@ -192,7 +195,7 @@ async fn record_fence_in_transaction(
         if existing_writer_fence.is_some() {
             let composed = compose_writer_fence_operation(&commit.operation)
                 .map_err(RepositoryError::Conflict)?;
-            let existing_operation = operation_requests::find(
+            let existing_operation = find_operation_request_in_transaction(
                 transaction,
                 commit.receipt.spec().continuation_operation_id,
             )
@@ -220,7 +223,7 @@ async fn record_fence_in_transaction(
         if let Some(commit) = &writer_fence {
             let composed = compose_writer_fence_operation(&commit.operation)
                 .map_err(RepositoryError::Conflict)?;
-            operation_requests::insert(transaction, &composed).await?;
+            insert_operation_request_in_transaction(transaction, &composed).await?;
             writer_fences::insert(transaction, &commit.receipt).await?;
         }
     }

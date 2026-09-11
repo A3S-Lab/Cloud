@@ -2,10 +2,9 @@ use super::schema::{
     DeploymentReplicaBindings, WorkloadControls, WorkloadPlacementGroups, WorkloadReplicas,
     Workloads,
 };
-use super::{
-    create, deployment_group_bindings, operation_requests, placement_groups, queries, replicas,
-};
-use crate::infrastructure::{store_outbox, transaction_error, PostgresPersistenceError};
+use super::{create, deployment_group_bindings, placement_groups, queries, replicas};
+use crate::infrastructure::{PostgresPersistenceError, store_outbox, transaction_error};
+use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{
     OrganizationId, RepositoryError, WorkloadId, WorkloadReplicaId, WorkloadReplicaMemberId,
     WorkloadRevisionId,
@@ -17,13 +16,13 @@ use crate::modules::workloads::domain::repositories::{
     ReplicaDeploymentCandidate, ReplicaDeploymentMaterialization,
 };
 use crate::modules::workloads::infrastructure::replica_deployment_materialization::{
-    build_group_deployment_write, build_replica_deployment_write, created_materialization,
-    materialization_from_existing, validate_existing_group_materialization_context,
-    validate_existing_materialization, PlacementGroupDeploymentContext,
+    PlacementGroupDeploymentContext, build_group_deployment_write, build_replica_deployment_write,
+    created_materialization, materialization_from_existing,
+    validate_existing_group_materialization_context, validate_existing_materialization,
 };
 use a3s_orm::{
-    exists, not, select_from, Database, OrderDirection, PostgresDialect, PostgresExecutor,
-    PostgresTransaction,
+    Database, OrderDirection, PostgresDialect, PostgresExecutor, PostgresTransaction, exists, not,
+    select_from,
 };
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
@@ -275,7 +274,7 @@ async fn materialize_in_transaction(
             .map_err(invariant)?
         }
     };
-    operation_requests::insert(
+    insert_operation_request_in_transaction(
         transaction,
         &crate::modules::workloads::infrastructure::compose_replica_deployment_operation(
             &write.operation,
@@ -425,15 +424,19 @@ mod tests {
             .compile(&PostgresDialect)
             .expect("replica deployment candidate query");
         assert!(query.sql.contains("not (exists"));
-        assert!(query
-            .sql
-            .contains("\"replica_generation\" = \"workload_replicas\".\"generation\""));
+        assert!(
+            query
+                .sql
+                .contains("\"replica_generation\" = \"workload_replicas\".\"generation\"")
+        );
         assert!(query.sql.contains(
             "\"placement_policy_digest\" = \"workload_controls\".\"placement_policy_digest\""
         ));
-        assert!(query
-            .sql
-            .contains("\"revision_generation\" = \"workload_replicas\".\"revision_generation\""));
+        assert!(
+            query.sql.contains(
+                "\"revision_generation\" = \"workload_replicas\".\"revision_generation\""
+            )
+        );
         assert!(query.sql.contains("\"lifecycle\" ="));
         assert!(query.sql.contains(" limit $"));
         assert!(query.parameters.len() >= 3);

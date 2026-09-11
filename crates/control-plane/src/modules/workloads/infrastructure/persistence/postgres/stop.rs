@@ -1,8 +1,9 @@
-use super::{operation_requests, queries, replicas, transitions};
+use super::{queries, replicas, transitions};
 use crate::infrastructure::{
-    idempotency_replay, store_idempotency, store_outbox, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, idempotency_replay, store_idempotency, store_outbox,
+    transaction_error,
 };
+use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{OrganizationId, RepositoryError, WorkloadId};
 use crate::modules::workloads::domain::entities::{Workload, WorkloadDesiredState};
 use crate::modules::workloads::domain::repositories::{
@@ -55,7 +56,7 @@ pub(super) async fn request(
                     )
                     .await?;
                 }
-                operation_requests::insert(transaction, &operation).await?;
+                insert_operation_request_in_transaction(transaction, &operation).await?;
                 store_outbox(transaction, &request.event).await?;
                 let response = WorkloadStopBundle {
                     workload: request.workload,

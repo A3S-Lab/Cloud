@@ -1,10 +1,11 @@
 use super::schema::{Deployments, WorkloadRevisionSkillBindings, WorkloadRevisions, Workloads};
-use super::{operation_requests, queries, replicas};
+use super::{queries, replicas};
 use crate::infrastructure::{
     PostgresPersistenceError, execute, fetch_optional, idempotency_replay,
     is_foreign_key_violation, is_unique_violation, require_one_row, store_idempotency,
     store_outbox, transaction_error,
 };
+use crate::modules::operations::infrastructure::persistence::insert_operation_request_in_transaction;
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, RepositoryError};
 use crate::modules::workloads::domain::entities::{DeploymentStatus, PlacementTopology, Workload};
 use crate::modules::workloads::domain::repositories::{CreateDeploymentBundle, DeploymentBundle};
@@ -58,7 +59,7 @@ pub(super) async fn deployment_in_transaction(
     require_no_nonterminal_deployment(transaction, &workload).await?;
     require_next_generation(transaction, &request).await?;
     insert_revision(transaction, &request).await?;
-    operation_requests::insert(transaction, &operation).await?;
+    insert_operation_request_in_transaction(transaction, &operation).await?;
     insert_deployment(transaction, &request.deployment).await?;
     replicas::record_generation(
         transaction,
