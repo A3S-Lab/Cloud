@@ -92,11 +92,15 @@ pub fn domain_claim_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                 let bus = Arc::clone(&certificate_bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let access = edge_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
                     match bus
                         .execute(ListGatewayCertificates {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
+                            access,
                         })
                         .await?
                     {

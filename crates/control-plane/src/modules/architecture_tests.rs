@@ -4062,8 +4062,8 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
         production
             .matches("edge_access(&resource_access_evaluator(")
             .count(),
-        2,
-        "ListDomainClaims and GetDomainClaim must each project Identity into EdgeAccess"
+        3,
+        "ListDomainClaims, GetDomainClaim, and ListGatewayCertificates must each project Identity into EdgeAccess"
     );
     assert!(
         !production.contains("resource_access: resource_access_evaluator")
@@ -4073,6 +4073,49 @@ fn edge_domain_claim_queries_isolate_identity_behind_one_context_owned_access_pr
     assert!(
         production.contains("DeferredResourceScope::Project"),
         "GetDomainClaim must defer coarse admission while Edge owns claim-to-environment resolution"
+    );
+}
+
+#[test]
+fn edge_list_gateway_certificates_isolates_identity_behind_one_context_owned_access_projection() {
+    let root = module_root();
+
+    let query = std::fs::read_to_string(
+        root.join("edge/application/queries/list_gateway_certificates.rs"),
+    )
+    .expect("read ListGatewayCertificates query");
+    let production_query = production_source(&query);
+    assert!(
+        production_query.contains("pub access: EdgeAccess"),
+        "ListGatewayCertificates stopped carrying Edge-owned access"
+    );
+    for forbidden in ["ResourceAccessEvaluator", "crate::modules::identity"] {
+        assert!(
+            !production_query.contains(forbidden),
+            "ListGatewayCertificates regained Identity authority {forbidden}"
+        );
+    }
+    let compact = production_query.split_whitespace().collect::<String>();
+    let access_check = compact
+        .find(".access.is_organization_wide()")
+        .expect("ListGatewayCertificates checks organization-wide Edge access");
+    let repository_read = compact
+        .find(".list_gateway_certificates(")
+        .expect("ListGatewayCertificates still lists through the Edge repository");
+    assert!(
+        access_check < repository_read,
+        "ListGatewayCertificates must fail closed before listing organization inventory"
+    );
+
+    let controller = std::fs::read_to_string(
+        root.join("edge/presentation/controllers/domain_claim_queries_controller.rs"),
+    )
+    .expect("read domain claim queries controller");
+    let production = production_source(&controller);
+    assert!(
+        production.contains("ListGatewayCertificates")
+            && production.contains("edge_access(&resource_access_evaluator("),
+        "ListGatewayCertificates must project Identity into EdgeAccess at REST entry"
     );
 }
 
