@@ -136,6 +136,7 @@ async fn cqrs_form_lifecycle_compiles_publishes_replays_and_queries_one_authorit
             ListFormDrafts {
                 organization_id,
                 project_id,
+                access: FormAccess::organization_wide(),
             },
             context(),
         )
@@ -214,11 +215,13 @@ async fn publish_rejects_form_core_diagnostics_without_persisting_a_release() {
             .expect("publish command")
             .expect_err("invalid Form publication must fail");
     assert!(matches!(error, ApplicationError::Invalid(_)));
-    assert!(forms
-        .list_releases(organization_id, created.draft.id)
-        .await
-        .expect("list releases")
-        .is_empty());
+    assert!(
+        forms
+            .list_releases(organization_id, created.draft.id)
+            .await
+            .expect("list releases")
+            .is_empty()
+    );
     assert_eq!(
         forms
             .find_draft(organization_id, created.draft.id)

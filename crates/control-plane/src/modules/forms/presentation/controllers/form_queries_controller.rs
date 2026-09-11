@@ -23,6 +23,7 @@ pub fn form_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinitio
                 let bus = Arc::clone(&list_drafts_bus);
                 async move {
                     let request_id = request_id(&request)?;
+                    let access = form_access(&request)?;
                     match bus
                         .execute(ListFormDrafts {
                             organization_id: OrganizationId::from_uuid(
@@ -31,6 +32,7 @@ pub fn form_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinitio
                             project_id: ProjectId::from_uuid(
                                 request.param_as::<Uuid>("project_id")?,
                             ),
+                            access,
                         })
                         .await?
                     {

@@ -4,14 +4,14 @@ use crate::modules::forms::presentation::{
     FormReleaseResponse,
 };
 use crate::modules::forms::{
-    CreateFormDraft, FormAccess, GetFormDraft, GetFormRelease, ListFormDrafts, ListFormReleases,
-    PublishFormRelease, ReviseFormDraft, CLOUD_FORM_DOCUMENT_MAX_BYTES,
+    CLOUD_FORM_DOCUMENT_MAX_BYTES, CreateFormDraft, FormAccess, GetFormDraft, GetFormRelease,
+    ListFormDrafts, ListFormReleases, PublishFormRelease, ReviseFormDraft,
 };
 use crate::modules::shared_kernel::domain::{
     FormId, FormReleaseId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{BootError, CommandBus, QueryBus, Result};
-use a3s_form_core::{canonicalize_value, CanonicalValue};
+use a3s_form_core::{CanonicalValue, canonicalize_value};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
@@ -172,12 +172,14 @@ pub async fn list_drafts(
     bus: Arc<QueryBus>,
     organization_id: OrganizationId,
     arguments: ListFormDraftsArguments,
+    access: FormAccess,
     request_id: Uuid,
 ) -> Result<Value> {
     match bus
         .execute(ListFormDrafts {
             organization_id,
             project_id: ProjectId::from_uuid(arguments.project_id),
+            access,
         })
         .await?
     {

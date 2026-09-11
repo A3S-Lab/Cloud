@@ -1035,7 +1035,14 @@ pub async fn execute(
         }
         ManagementTool::FormsList => {
             let arguments = arguments::parse::<ListFormDraftsArguments>(arguments).ok()?;
-            forms::list_drafts(query_bus, organization_id, arguments, request_id).await
+            forms::list_drafts(
+                query_bus,
+                organization_id,
+                arguments,
+                form_access(&resource_access),
+                request_id,
+            )
+            .await
         }
         ManagementTool::FormsGet => {
             let arguments = arguments::parse::<FormDraftArguments>(arguments).ok()?;

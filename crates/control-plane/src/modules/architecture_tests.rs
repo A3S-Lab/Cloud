@@ -9152,6 +9152,7 @@ fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_
     for relative in [
         "agents/application/queries/get_agent_execution/mod.rs",
         "agents/application/queries/get_agent_conversation/mod.rs",
+        "agents/application/queries/list_agent_conversations/mod.rs",
         "agents/application/commands/start_agent_execution/command.rs",
         "agents/application/commands/cancel_agent_execution/command.rs",
         "agents/application/commands/decide_agent_approval_checkpoint/command.rs",
@@ -9432,8 +9433,8 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
         "Forms must isolate Projects behind one infrastructure adapter"
     );
     assert_eq!(
-        access_fields, 5,
-        "both indirect Form commands and all three indirect queries must carry Forms-owned access"
+        access_fields, 6,
+        "Form commands/queries that authorize resources must carry Forms-owned access"
     );
     assert_eq!(
         resolver_constructors, 5,
@@ -9589,8 +9590,8 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
     .expect("read Forms Management MCP adapter");
     assert_eq!(
         management_mcp.matches("access: FormAccess").count(),
-        5,
-        "every indirect Form MCP entry must receive the consumer-owned projection"
+        6,
+        "every Form MCP entry that authorizes resources must receive the consumer-owned projection"
     );
     for forbidden in [
         "crate::modules::identity",
@@ -9611,8 +9612,8 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
     .expect("read Management MCP dispatch");
     assert_eq!(
         dispatch.matches("form_access(&resource_access)").count(),
-        5,
-        "Management MCP must project Identity once at every indirect Form entry"
+        6,
+        "Management MCP must project Identity once at every authorized Form entry"
     );
 
     let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))

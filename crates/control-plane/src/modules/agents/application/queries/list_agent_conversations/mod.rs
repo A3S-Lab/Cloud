@@ -1,3 +1,4 @@
+use crate::modules::agents::application::resource_access::AgentAccess;
 use crate::modules::agents::domain::{AgentConversation, IAgentRepository};
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
@@ -10,6 +11,7 @@ pub struct ListAgentConversations {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub limit: usize,
+    pub access: AgentAccess,
 }
 
 impl Query for ListAgentConversations {
@@ -40,6 +42,14 @@ impl QueryHandler<ListAgentConversations> for ListAgentConversationsHandler {
                     "Agent conversation limit must be between 1 and 200".into(),
                 )));
             }
+            if !query
+                .access
+                .environment_is_visible(query.project_id, query.environment_id)
+            {
+                return Ok(Err(ApplicationError::NotFound(
+                    "agent conversations not found".into(),
+                )));
+            }
             Ok(agents
                 .list_conversations(
                     query.organization_id,
@@ -50,5 +60,39 @@ impl QueryHandler<ListAgentConversations> for ListAgentConversationsHandler {
                 .await
                 .map_err(ApplicationError::from))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::modules::agents::application::resource_access::{AgentAccess, AgentAccessScope};
+    use crate::modules::agents::infrastructure::InMemoryAgentRepository;
+    use a3s_boot::ModuleRef;
+
+    #[tokio::test]
+    async fn restricted_query_fails_closed_before_listing_an_ungranted_environment() {
+        let project_id = ProjectId::new();
+        let handler = ListAgentConversationsHandler::new(Arc::new(InMemoryAgentRepository::new()));
+        let result = handler
+            .execute(
+                ListAgentConversations {
+                    organization_id: OrganizationId::new(),
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                    limit: 50,
+                    access: AgentAccess::restricted([AgentAccessScope::Project {
+                        project_id: ProjectId::new(),
+                    }]),
+                },
+                CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .expect("handler");
+        assert!(matches!(
+            result,
+            Err(ApplicationError::NotFound(message))
+                if message == "agent conversations not found"
+        ));
     }
 }

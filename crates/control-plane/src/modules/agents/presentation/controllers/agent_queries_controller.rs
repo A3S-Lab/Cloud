@@ -13,17 +13,17 @@ use crate::modules::agents::presentation::dto::{
     AgentExecutionEventPageResponse, AgentExecutionResponse, AgentExecutionTrajectoryPageResponse,
 };
 use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
+    with_deferred_resource_scope,
 };
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
     EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::presentation::{
-    application_error_response, decode_sequence_cursor, default_live_sequence_limit,
-    resolve_sequence_cursor, sequence_stream_error, stream_sequence_pages,
-    MAX_LIVE_SEQUENCE_RECORDS,
+    MAX_LIVE_SEQUENCE_RECORDS, application_error_response, decode_sequence_cursor,
+    default_live_sequence_limit, resolve_sequence_cursor, sequence_stream_error,
+    stream_sequence_pages,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
@@ -69,6 +69,9 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                                 request.param_as::<Uuid>("environment_id")?,
                             ),
                             limit,
+                            access: agent_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
                         })
                         .await?
                     {
