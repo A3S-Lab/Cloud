@@ -462,7 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn sweeps_expired_delivery_receipts_in_bounded_expiry_order() {
-        use crate::modules::secrets::domain::EncryptedSecretValue;
+        use crate::modules::identity::domain::value_objects::IdentityEncryptedCredentialValue;
 
         let repository = InMemoryInferenceCredentialRepository::default();
         let organization_id = OrganizationId::new();
@@ -499,7 +499,7 @@ mod tests {
                 credential.organization_id,
                 credential.id,
                 credential.generation(),
-                EncryptedSecretValue::new("test-key", "encrypted-value").unwrap(),
+                IdentityEncryptedCredentialValue::new("test-key", "encrypted-value").unwrap(),
                 expires_at,
                 credential.updated_at(),
             )

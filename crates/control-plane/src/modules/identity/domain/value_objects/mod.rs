@@ -2,6 +2,7 @@ mod api_token_credential;
 mod api_token_name;
 mod api_token_scope;
 mod external_identity;
+mod identity_encrypted_credential_value;
 mod membership_role;
 mod organization_name;
 mod platform_role_policy_contract;
@@ -16,6 +17,7 @@ pub use api_token_credential::{ApiTokenDigest, ApiTokenSecret, BootstrapCredenti
 pub use api_token_name::ApiTokenName;
 pub use api_token_scope::ApiTokenScope;
 pub use external_identity::{ExternalIdentitySubject, OidcIssuer, OidcProviderKey};
+pub use identity_encrypted_credential_value::IdentityEncryptedCredentialValue;
 pub use membership_role::MembershipRole;
 pub use organization_name::OrganizationName;
 pub use platform_role_policy_contract::{

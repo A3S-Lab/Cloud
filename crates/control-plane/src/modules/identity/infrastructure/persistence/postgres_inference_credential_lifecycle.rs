@@ -4,8 +4,8 @@ use super::postgres_inference_credentials::{
 };
 use super::postgres_inference_credentials_schema::InferenceCredentialDeliveryReceipts;
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation, require_one_row,
-    store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    require_one_row, store_audit, store_idempotency, store_outbox, transaction_error, AuditWrite,
     PostgresPersistenceError,
 };
 use crate::modules::identity::domain::entities::{
@@ -13,10 +13,10 @@ use crate::modules::identity::domain::entities::{
 };
 use crate::modules::identity::domain::repositories::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
-    InferenceCredentialWrite, InferenceCredentialWriteReference, RotateInferenceCredentialWrite,
-    RevokeInferenceCredentialWrite,
+    InferenceCredentialWrite, InferenceCredentialWriteReference, RevokeInferenceCredentialWrite,
+    RotateInferenceCredentialWrite,
 };
-use crate::modules::secrets::domain::EncryptedSecretValue;
+use crate::modules::identity::domain::value_objects::IdentityEncryptedCredentialValue;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotencyRequest, OrganizationId, RepositoryError,
 };
@@ -362,7 +362,7 @@ async fn fetch_receipt(
     )
     .await?;
     row.map(|(generation, key_id, ciphertext, expires_at, created_at)| {
-        let encrypted = EncryptedSecretValue::new(key_id, ciphertext)
+        let encrypted = IdentityEncryptedCredentialValue::new(key_id, ciphertext)
             .map_err(|error| stored_receipt(&error))?;
         let receipt = InferenceCredentialDeliveryReceipt::new(
             credential.organization_id,

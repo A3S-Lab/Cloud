@@ -11458,6 +11458,62 @@ fn identity_inference_credentials_isolate_secrets_encryption_behind_one_owner_po
         1,
         "root composition must construct the Identity inference credential encryption adapter exactly once"
     );
+
+    let owned = std::fs::read_to_string(
+        root.join("identity/domain/value_objects/identity_encrypted_credential_value.rs"),
+    )
+    .expect("read Identity encrypted credential value");
+    let production_owned = production_source(&owned);
+    let compact_owned = production_owned.split_whitespace().collect::<String>();
+    for required in [
+        "pubstructIdentityEncryptedCredentialValue",
+        "pubfnkey_id(&self)->&str",
+        "pubfnciphertext(&self)->&str",
+        "pubfnvalidate(&self)->Result<(),String>",
+    ] {
+        assert!(
+            compact_owned.contains(required),
+            "Identity lost owned encrypted credential surface {required}"
+        );
+    }
+    for forbidden in ["crate::modules::secrets", "EncryptedSecretValue"] {
+        assert!(
+            !production_owned.contains(forbidden),
+            "owned Identity encrypted credential value leaked Secrets authority {forbidden}"
+        );
+    }
+
+    let receipt = std::fs::read_to_string(
+        root.join("identity/domain/entities/inference_credential_delivery_receipt.rs"),
+    )
+    .expect("read inference credential delivery receipt");
+    let production_receipt = production_source(&receipt);
+    assert!(
+        production_receipt.contains("IdentityEncryptedCredentialValue"),
+        "inference credential delivery receipt lost Identity-owned encrypted value"
+    );
+    for forbidden in ["crate::modules::secrets", "EncryptedSecretValue"] {
+        assert!(
+            !production_receipt.contains(forbidden),
+            "inference credential delivery receipt regained Secrets authority {forbidden}"
+        );
+    }
+
+    visit_production_sources(|relative, source| {
+        if !relative.starts_with("identity/domain/") {
+            return;
+        }
+        assert!(
+            !source.contains("crate::modules::secrets"),
+            "{} imported Secrets into Identity Domain",
+            display(relative)
+        );
+        assert!(
+            !source.contains("EncryptedSecretValue"),
+            "{} retained Secrets EncryptedSecretValue in Identity Domain",
+            display(relative)
+        );
+    });
 }
 
 #[test]

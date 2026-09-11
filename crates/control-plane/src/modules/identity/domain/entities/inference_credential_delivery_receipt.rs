@@ -1,7 +1,7 @@
 //! Short-lived encrypted recovery material for one inference credential generation.
 
 use crate::modules::identity::domain::entities::InferenceCredential;
-use crate::modules::secrets::domain::EncryptedSecretValue;
+use crate::modules::identity::domain::value_objects::IdentityEncryptedCredentialValue;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, InferenceCredentialId, OrganizationId,
 };
@@ -13,7 +13,7 @@ pub struct InferenceCredentialDeliveryReceipt {
     pub organization_id: OrganizationId,
     pub credential_id: InferenceCredentialId,
     pub generation: u64,
-    pub encrypted_value: EncryptedSecretValue,
+    pub encrypted_value: IdentityEncryptedCredentialValue,
     pub expires_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
@@ -23,7 +23,7 @@ impl InferenceCredentialDeliveryReceipt {
         organization_id: OrganizationId,
         credential_id: InferenceCredentialId,
         generation: u64,
-        encrypted_value: EncryptedSecretValue,
+        encrypted_value: IdentityEncryptedCredentialValue,
         expires_at: DateTime<Utc>,
         created_at: DateTime<Utc>,
     ) -> Result<Self, String> {
