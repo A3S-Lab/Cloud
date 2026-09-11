@@ -1,20 +1,19 @@
 use super::*;
+use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::artifacts::domain::test_support::{
     succeeded_external_build_with_output, typed_build_output,
 };
 use crate::modules::artifacts::domain::{BuildArtifact, BuildRun};
-use crate::modules::artifacts::InMemoryBuildRunRepository;
 use crate::modules::durable_cells::domain::{
-    DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec,
-    DurableCellApplicationDesiredState, DurableCellClassSpec, DurableCellRollbackPolicy,
-    DurableCellStateSchema, DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE, DurableCellApplicationDefinition,
+    DurableCellApplicationDefinitionSpec, DurableCellApplicationDesiredState, DurableCellClassSpec,
+    DurableCellRollbackPolicy, DurableCellStateSchema,
 };
 use crate::modules::durable_cells::infrastructure::{
     ArtifactsDurableCellBuildArtifactAdapter, InMemoryDurableCellApplicationRepository,
     ProjectsDurableCellsEnvironmentAccessAdapter, WorkloadsDurableCellWorkloadAdapter,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
+use crate::modules::durable_cells::{DurableCellAccess, DurableCellAccessScope};
 use crate::modules::projects::domain::entities::Environment;
 use crate::modules::projects::domain::events::EnvironmentCreated;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
@@ -140,7 +139,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         name: "Tenant counters".into(),
         definition_acl: definition(initial_build_run_id, 'a', 1),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "create-tenant-counters".into(),
         request_id: Uuid::now_v7(),
     };
@@ -154,7 +153,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     let denied_replay = create_handler
         .execute(
             CreateDurableCellApplication {
-                resource_access: denied_access(project_id),
+                access: denied_access(project_id),
                 ..create.clone()
             },
             context(),
@@ -207,7 +206,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 name: "Unfinished build".into(),
                 definition_acl: definition(queued_build_run_id, 'd', 1),
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "unfinished-build".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -229,7 +228,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 name: "Mismatched bundle".into(),
                 definition_acl: definition(initial_build_run_id, '9', 1),
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "mismatched-bundle".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -265,7 +264,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                     name: name.into(),
                     definition_acl: definition(build_run_id, marker, 1),
                     actor_principal_id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: DurableCellAccess::organization_wide(),
                     idempotency_key: idempotency_key.into(),
                     request_id: Uuid::now_v7(),
                 },
@@ -286,7 +285,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         expected_version: 1,
         definition_acl: definition(successor_build_run_id, 'b', 2),
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "revise-tenant-counters".into(),
         request_id: Uuid::now_v7(),
     };
@@ -315,7 +314,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
         application_id: created.record.application.id,
         expected_version: 2,
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "stop-tenant-counters".into(),
         request_id: Uuid::now_v7(),
     };
@@ -333,7 +332,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
     let denied_stop_replay = stop_handler
         .execute(
             StopDurableCellApplication {
-                resource_access: denied_access(project_id),
+                access: denied_access(project_id),
                 ..stop.clone()
             },
             context(),
@@ -370,7 +369,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 application_id: created.record.application.id,
                 expected_version: 3,
                 actor_principal_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "start-tenant-counters".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -400,7 +399,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 project_id,
                 environment_id,
                 application_id: created.record.application.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
             },
             context(),
         )
@@ -416,7 +415,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 project_id,
                 environment_id,
                 application_id: created.record.application.id,
-                resource_access: denied_access(project_id),
+                access: denied_access(project_id),
             },
             context(),
         )
@@ -431,7 +430,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 project_id,
                 environment_id,
                 limit: DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
             },
             context(),
         )
@@ -447,7 +446,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 project_id,
                 environment_id,
                 limit: MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT + 1,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
             },
             context(),
         )
@@ -463,7 +462,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 environment_id,
                 application_id: created.record.application.id,
                 limit: 50,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
             },
             context(),
         )
@@ -486,7 +485,7 @@ async fn cqrs_authorizes_before_replay_and_preserves_exact_state_history() {
                 environment_id,
                 application_id: created.record.application.id,
                 revision_id: created.record.revision.id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
             },
             context(),
         )
@@ -581,8 +580,8 @@ fn digest(marker: char) -> Sha256Digest {
     Sha256Digest::parse(format!("sha256:{}", marker.to_string().repeat(64))).expect("digest")
 }
 
-fn denied_access(project_id: ProjectId) -> ResourceAccessEvaluator {
-    ResourceAccessEvaluator::restricted([ResourceGrantScope::Environment {
+fn denied_access(project_id: ProjectId) -> DurableCellAccess {
+    DurableCellAccess::restricted([DurableCellAccessScope::Environment {
         project_id,
         environment_id: EnvironmentId::new(),
     }])

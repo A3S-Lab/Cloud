@@ -6,7 +6,7 @@ use super::route_publication_port::{
 use crate::modules::durable_cells::domain::{
     DurableCellDeployment, DurableCellServiceProfile, IDurableCellDeploymentRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
+use crate::modules::durable_cells::DurableCellAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
@@ -33,7 +33,7 @@ pub struct PublishDurableCellApplicationRoute {
     pub domain_claim_id: DomainClaimId,
     pub hostname: String,
     pub path_prefix: String,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
     pub requested_at: DateTime<Utc>,
@@ -83,7 +83,7 @@ impl CommandHandler<PublishDurableCellApplicationRoute>
             if let Err(error) = environment(
                 command.project_id,
                 command.environment_id,
-                &command.resource_access,
+                &command.access,
             ) {
                 return Ok(Err(error));
             }
@@ -194,6 +194,7 @@ mod tests {
         DurableCellProjectionIdentity, DurableCellProviderBinding, DurableCellRollbackPolicy,
         DurableCellServiceProfileSpec, DurableCellStateSchema, DurableCellStorageBinding,
     };
+    use crate::modules::durable_cells::{DurableCellAccess, DurableCellAccessScope};
     use crate::modules::durable_cells::infrastructure::{
         EdgeDurableCellRoutePublicationAdapter, InMemoryDurableCellDeploymentRepository,
     };
@@ -212,7 +213,6 @@ mod tests {
         GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
     };
     use crate::modules::edge::{InMemoryEdgeRepository, PublishRouteHandler};
-    use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::shared_kernel::domain::{
         BuildRunId, IdempotencyRequest, NodeId, PrincipalId, ResourceName, Sha256Digest,
     };
@@ -393,7 +393,7 @@ mod tests {
                 domain_claim_id,
                 hostname: "cells.example.com".into(),
                 path_prefix: "/".into(),
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "publish-counter-cells".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: now,
@@ -477,8 +477,8 @@ mod tests {
         let denied = handler
             .execute(
                 PublishDurableCellApplicationRoute {
-                    resource_access: ResourceAccessEvaluator::restricted([
-                        ResourceGrantScope::Environment {
+                    access: DurableCellAccess::restricted([
+                        DurableCellAccessScope::Environment {
                             project_id: fixture.command.project_id,
                             environment_id: EnvironmentId::new(),
                         },

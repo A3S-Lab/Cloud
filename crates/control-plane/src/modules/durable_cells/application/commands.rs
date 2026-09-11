@@ -6,6 +6,7 @@ use super::{
     DurableCellApplicationMutationResult, DurableCellsEnvironmentScope,
     IDurableCellsEnvironmentAccess,
 };
+use crate::modules::durable_cells::DurableCellAccess;
 use crate::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, DurableCellApplication, DurableCellApplicationChanged,
     DurableCellApplicationDefinition, DurableCellApplicationDesiredState,
@@ -13,7 +14,6 @@ use crate::modules::durable_cells::domain::{
     IDurableCellApplicationRepository, RequestDurableCellApplicationStateWrite,
     ReviseDurableCellApplicationWrite,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
@@ -33,7 +33,7 @@ pub struct CreateDurableCellApplication {
     pub name: String,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -75,11 +75,9 @@ impl CommandHandler<CreateDurableCellApplication> for CreateDurableCellApplicati
         let applications = Arc::clone(&self.applications);
         let builds = Arc::clone(&self.builds);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             let name = match ResourceName::parse(command.name) {
@@ -143,7 +141,7 @@ impl CommandHandler<CreateDurableCellApplication> for CreateDurableCellApplicati
             match environments.environment_exists(environment_scope).await {
                 Ok(true) => {}
                 Ok(false) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(environment_not_found()))
+                    return Ok(Err(environment_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -211,7 +209,7 @@ pub struct ReviseDurableCellApplication {
     pub expected_version: u64,
     pub definition_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -249,11 +247,9 @@ impl CommandHandler<ReviseDurableCellApplication> for ReviseDurableCellApplicati
         let applications = Arc::clone(&self.applications);
         let builds = Arc::clone(&self.builds);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             if command.expected_version == 0 {
@@ -323,7 +319,7 @@ impl CommandHandler<ReviseDurableCellApplication> for ReviseDurableCellApplicati
             {
                 Ok(Some(value)) => value,
                 Ok(None) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(application_not_found()))
+                    return Ok(Err(application_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -396,7 +392,7 @@ pub struct StartDurableCellApplication {
     pub application_id: DurableCellApplicationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -441,7 +437,7 @@ impl CommandHandler<StartDurableCellApplication> for StartDurableCellApplication
                 application_id: command.application_id,
                 expected_version: command.expected_version,
                 actor_principal_id: command.actor_principal_id,
-                resource_access: command.resource_access,
+                access: command.access,
                 idempotency_key: command.idempotency_key,
                 request_id: command.request_id,
             },
@@ -458,7 +454,7 @@ pub struct StopDurableCellApplication {
     pub application_id: DurableCellApplicationId,
     pub expected_version: u64,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -503,7 +499,7 @@ impl CommandHandler<StopDurableCellApplication> for StopDurableCellApplicationHa
                 application_id: command.application_id,
                 expected_version: command.expected_version,
                 actor_principal_id: command.actor_principal_id,
-                resource_access: command.resource_access,
+                access: command.access,
                 idempotency_key: command.idempotency_key,
                 request_id: command.request_id,
             },
@@ -519,7 +515,7 @@ struct DurableCellStateCommand {
     application_id: DurableCellApplicationId,
     expected_version: u64,
     actor_principal_id: PrincipalId,
-    resource_access: ResourceAccessEvaluator,
+    access: DurableCellAccess,
     idempotency_key: String,
     request_id: Uuid,
 }
@@ -534,11 +530,8 @@ fn execute_state(
     a3s_boot::Result<ApplicationResult<DurableCellApplicationMutationResult>>,
 > {
     Box::pin(async move {
-        if let Err(error) = environment(
-            command.project_id,
-            command.environment_id,
-            &command.resource_access,
-        ) {
+        if let Err(error) = environment(command.project_id, command.environment_id, &command.access)
+        {
             return Ok(Err(error));
         }
         if command.expected_version == 0 {

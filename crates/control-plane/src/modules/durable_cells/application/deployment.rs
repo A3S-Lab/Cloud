@@ -16,6 +16,7 @@ use super::workload_port::{
     DurableCellWorkloadRevisionGenerationRequest, DurableCellWorkloadTemplate,
     DurableCellWorkloadTemplateProjection, IDurableCellWorkloadPort,
 };
+use crate::modules::durable_cells::DurableCellAccess;
 use crate::modules::durable_cells::domain::{
     CreateDurableCellDeploymentWrite, DurableCellApplicationDesiredState,
     DurableCellApplicationRecord, DurableCellDeployment, DurableCellDeploymentRequest,
@@ -23,7 +24,6 @@ use crate::modules::durable_cells::domain::{
     DurableCellStorageBinding, DurableCellStorageBindingInput, IDurableCellApplicationRepository,
     IDurableCellDeploymentRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, IdempotencyRequest,
@@ -51,7 +51,7 @@ pub struct DeployDurableCellApplication {
     pub retention_policy: DurableCellStorageRetentionPolicyRequest,
     pub node_pool_id: Option<NodePoolId>,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -113,11 +113,9 @@ impl CommandHandler<DeployDurableCellApplication> for DeployDurableCellApplicati
         let secret_bindings = Arc::clone(&self.secret_bindings);
         let node_pool_port = Arc::clone(&self.node_pool_port);
         Box::pin(async move {
-            if let Err(error) = environment(
-                command.project_id,
-                command.environment_id,
-                &command.resource_access,
-            ) {
+            if let Err(error) =
+                environment(command.project_id, command.environment_id, &command.access)
+            {
                 return Ok(Err(error));
             }
             let prepared = match PreparedDeployment::new(&command) {
@@ -362,9 +360,7 @@ impl PreparedDeployment {
         IdempotencyRequest::new(
             format!(
                 "organizations/{}/durable-cell-applications/{}/revisions/{}/managed-workload-deployment",
-                self.organization_id,
-                self.application_id,
-                self.application_revision_id,
+                self.organization_id, self.application_id, self.application_revision_id,
             ),
             key,
             &self.canonical_request,

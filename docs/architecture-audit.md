@@ -224,6 +224,9 @@ Current strengths:
 
 - application identity, immutable revisions, service profile, schema
   compatibility, storage binding, and deployment correlation are explicit;
+- CQRS queries/commands, ACL deployment admission, and route publication carry
+  Durable Cells-owned `DurableCellAccess` projected at REST/MCP entry (Node
+  grants discarded; project grants cover environments);
 - individual Cell state, lease, epoch, alarm, and residency are not copied into
   Cloud PostgreSQL;
 - Workloads, Fleet, Runtime Service, Box, Edge/Gateway, Secrets, Operations,

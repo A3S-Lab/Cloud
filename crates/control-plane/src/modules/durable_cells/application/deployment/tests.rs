@@ -22,14 +22,14 @@ use crate::modules::durable_cells::infrastructure::{
     OperationsDurableCellOperationAdapter, SecretsDurableCellBindingAdapter,
     WorkloadsDurableCellWorkloadAdapter,
 };
+use crate::modules::durable_cells::{DurableCellAccess, DurableCellAccessScope};
 use crate::modules::durable_cells::{
-    project_durable_cell_runtime_spec, DurableCellStorageProviderProfileProjection,
-    DurableCellStorageRetentionPolicySpec, DurableCellWorkloadRuntimeProjectionRequest,
-    IDurableCellOperationPort,
+    DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicySpec,
+    DurableCellWorkloadRuntimeProjectionRequest, IDurableCellOperationPort,
+    project_durable_cell_runtime_spec,
 };
 use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::infrastructure::persistence::InMemoryNodeRepository;
-use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::secrets::application::exact_secret_version_access;
 use crate::modules::secrets::domain::{
@@ -37,11 +37,11 @@ use crate::modules::secrets::domain::{
 };
 use crate::modules::secrets::infrastructure::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId,
-    ResourceName, SecretId, SecretVersionReference, Sha256Digest,
+    BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId, ResourceName, SecretId,
+    SecretVersionReference, Sha256Digest, canonical_timestamp,
 };
 use crate::modules::workloads::infrastructure::{
-    compose_writer_fence_operation, InMemoryWorkloadRepository,
+    InMemoryWorkloadRepository, compose_writer_fence_operation,
 };
 use crate::modules::workloads::{
     HttpHealthCheck, IWorkloadReplicaRetirementRepository, IWorkloadRepository,
@@ -190,7 +190,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         retention_policy: retention_policy_request,
         node_pool_id: None,
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "deploy-counters".into(),
         request_id: Uuid::now_v7(),
     };
@@ -226,16 +226,18 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     missing_storage_process.workload_template = opaque_service_template(missing_storage_template);
     let missing_process_prepared =
         PreparedDeployment::new(&missing_storage_process).expect("neutral preparation");
-    assert!(admit_external_bindings(
-        workload_port.as_ref(),
-        storage_port.as_ref(),
-        secret_binding_port.as_ref(),
-        node_pool_port.as_ref(),
-        &missing_process_prepared,
-        &missing_storage_process,
-    )
-    .await
-    .is_err());
+    assert!(
+        admit_external_bindings(
+            workload_port.as_ref(),
+            storage_port.as_ref(),
+            secret_binding_port.as_ref(),
+            node_pool_port.as_ref(),
+            &missing_process_prepared,
+            &missing_storage_process,
+        )
+        .await
+        .is_err()
+    );
     missing_storage_process.storage_provider_profile_acl = None;
     PreparedDeployment::new(&missing_storage_process)
         .expect("legacy deployment remains outside the pinned celld/S0 adapter");
@@ -499,9 +501,11 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         failed_payload.availability_impact,
         Some(WorkloadDeploymentAvailabilityImpact::Unavailable)
     );
-    assert!(!serde_json::to_string(&rollout_outbox)
-        .expect("rollout Outbox JSON")
-        .contains("complete the first fixture generation"));
+    assert!(
+        !serde_json::to_string(&rollout_outbox)
+            .expect("rollout Outbox JSON")
+            .contains("complete the first fixture generation")
+    );
     let advanced_control = workloads
         .find_workload_control(organization_id, projection.workload_id)
         .await
@@ -609,7 +613,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         application_id: record.application.id,
         expected_version: current_application.aggregate_version,
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: stop_key.into(),
         request_id: stop_request_id,
     };
@@ -657,10 +661,12 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     assert_eq!(retirements.len(), 1);
     let retirement = retirements.remove(0);
     assert_eq!(retirement.member.node_id, Some(provider_node_id));
-    assert!(retirement
-        .deployment
-        .as_ref()
-        .is_some_and(|deployment| deployment.command_id.is_some()));
+    assert!(
+        retirement
+            .deployment
+            .as_ref()
+            .is_some_and(|deployment| deployment.command_id.is_some())
+    );
     let replica_binding = retirement
         .replica_binding
         .as_ref()
@@ -820,7 +826,7 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
         application_id: record.application.id,
         expected_version: stopped_application.aggregate_version,
         actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "restart-deployed-counters".into(),
         request_id: Uuid::now_v7(),
     };
@@ -867,12 +873,10 @@ async fn persisted_intents_recover_through_the_existing_managed_workload_lifecyc
     let denied = handler
         .execute(
             DeployDurableCellApplication {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: DurableCellAccess::restricted([DurableCellAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..command
             },
             CqrsContext::new(ModuleRef::new()),

@@ -1,9 +1,9 @@
 use super::resource_access::{application_not_found, environment, revision_not_found};
+use crate::modules::durable_cells::DurableCellAccess;
 use crate::modules::durable_cells::domain::{
     DurableCellApplication, DurableCellApplicationRecord, DurableCellApplicationRevision,
     IDurableCellApplicationRepository,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, OrganizationId,
@@ -21,7 +21,7 @@ pub struct GetDurableCellApplication {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub application_id: DurableCellApplicationId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
 }
 
 impl Query for GetDurableCellApplication {
@@ -49,11 +49,7 @@ impl QueryHandler<GetDurableCellApplication> for GetDurableCellApplicationHandle
     > {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(load_record(
@@ -74,7 +70,7 @@ pub struct ListDurableCellApplications {
     pub project_id: ProjectId,
     pub environment_id: EnvironmentId,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
 }
 
 impl Query for ListDurableCellApplications {
@@ -105,11 +101,7 @@ impl QueryHandler<ListDurableCellApplications> for ListDurableCellApplicationsHa
             if let Err(error) = validate_list_limit(query.limit) {
                 return Ok(Err(error));
             }
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(applications
@@ -132,7 +124,7 @@ pub struct GetDurableCellApplicationRevision {
     pub environment_id: EnvironmentId,
     pub application_id: DurableCellApplicationId,
     pub revision_id: DurableCellApplicationRevisionId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
 }
 
 impl Query for GetDurableCellApplicationRevision {
@@ -160,11 +152,7 @@ impl QueryHandler<GetDurableCellApplicationRevision> for GetDurableCellApplicati
     > {
         let applications = Arc::clone(&self.applications);
         Box::pin(async move {
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             Ok(
@@ -194,7 +182,7 @@ pub struct ListDurableCellApplicationRevisions {
     pub environment_id: EnvironmentId,
     pub application_id: DurableCellApplicationId,
     pub limit: usize,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
 }
 
 impl Query for ListDurableCellApplicationRevisions {
@@ -227,11 +215,7 @@ impl QueryHandler<ListDurableCellApplicationRevisions>
             if let Err(error) = validate_list_limit(query.limit) {
                 return Ok(Err(error));
             }
-            if let Err(error) = environment(
-                query.project_id,
-                query.environment_id,
-                &query.resource_access,
-            ) {
+            if let Err(error) = environment(query.project_id, query.environment_id, &query.access) {
                 return Ok(Err(error));
             }
             match applications
@@ -245,7 +229,7 @@ impl QueryHandler<ListDurableCellApplicationRevisions>
             {
                 Ok(Some(_)) => {}
                 Ok(None) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(application_not_found()))
+                    return Ok(Err(application_not_found()));
                 }
                 Err(error) => return Ok(Err(error.into())),
             }
@@ -301,7 +285,7 @@ async fn load_record(
         Ok(None) | Err(RepositoryError::NotFound) => {
             return Err(ApplicationError::Internal(
                 "Durable Cell application current revision is missing".into(),
-            ))
+            ));
         }
         Err(error) => return Err(error.into()),
     };

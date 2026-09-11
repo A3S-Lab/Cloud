@@ -56,13 +56,14 @@ pub(crate) use provider_workload::{
     validate_pinned_celld_service_template_payload_projection,
 };
 pub use queries::{
-    GetDurableCellApplication, GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
+    DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, GetDurableCellApplication,
+    GetDurableCellApplicationHandler, GetDurableCellApplicationRevision,
     GetDurableCellApplicationRevisionHandler, ListDurableCellApplicationRevisions,
     ListDurableCellApplicationRevisionsHandler, ListDurableCellApplications,
-    ListDurableCellApplicationsHandler, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
-    MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+    ListDurableCellApplicationsHandler, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
 pub(crate) use resource_access::environment as require_environment_access;
+pub use resource_access::{DurableCellAccess, DurableCellAccessScope};
 pub use result::DurableCellApplicationMutationResult;
 pub use route_publication::{
     DurableCellRoutePublicationResult, PublishDurableCellApplicationRoute,
@@ -73,10 +74,10 @@ pub use route_publication_port::{
     DurableCellRoutePublicationRequest, IDurableCellRoutePublicationPort,
 };
 pub use runtime_profile::{
-    admit_durable_cell_operator_observation, admit_durable_cell_runtime_apply,
-    admit_durable_cell_runtime_remove, admit_durable_cell_runtime_stop,
-    project_durable_cell_operator_binding, project_durable_cell_runtime_spec,
-    DurableCellRuntimeEndpoints,
+    DurableCellRuntimeEndpoints, admit_durable_cell_operator_observation,
+    admit_durable_cell_runtime_apply, admit_durable_cell_runtime_remove,
+    admit_durable_cell_runtime_stop, project_durable_cell_operator_binding,
+    project_durable_cell_runtime_spec,
 };
 pub use secret_binding_port::{
     DurableCellSecretBindingAdmissionRequest, IDurableCellSecretBindingPort,

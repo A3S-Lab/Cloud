@@ -1,4 +1,5 @@
 use super::tool_result;
+use crate::access_projection::durable_cell_access;
 use crate::modules::durable_cells::{
     CreateDurableCellApplication, DeployDurableCellApplicationFromAcl, GetDurableCellApplication,
     GetDurableCellApplicationRevision, ListDurableCellApplicationRevisions,
@@ -147,7 +148,7 @@ pub async fn create_application(
             name: arguments.name,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -179,7 +180,7 @@ pub async fn revise_application(
             expected_version: arguments.expected_version,
             definition_acl: arguments.definition_acl,
             actor_principal_id,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -214,7 +215,7 @@ pub async fn set_application_state(
             application_id,
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -227,7 +228,7 @@ pub async fn set_application_state(
             application_id,
             expected_version: arguments.expected_version,
             actor_principal_id,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -256,7 +257,7 @@ pub async fn list_applications(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             limit: arguments.limit,
-            resource_access,
+            access: durable_cell_access(&resource_access),
         })
         .await?
     {
@@ -285,7 +286,7 @@ pub async fn get_application(
             project_id: ProjectId::from_uuid(arguments.project_id),
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             application_id: DurableCellApplicationId::from_uuid(arguments.application_id),
-            resource_access,
+            access: durable_cell_access(&resource_access),
         })
         .await?
     {
@@ -312,7 +313,7 @@ pub async fn list_revisions(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             application_id: DurableCellApplicationId::from_uuid(arguments.application_id),
             limit: arguments.limit,
-            resource_access,
+            access: durable_cell_access(&resource_access),
         })
         .await?
     {
@@ -342,7 +343,7 @@ pub async fn get_revision(
             environment_id: EnvironmentId::from_uuid(arguments.environment_id),
             application_id: DurableCellApplicationId::from_uuid(arguments.application_id),
             revision_id: DurableCellApplicationRevisionId::from_uuid(arguments.revision_id),
-            resource_access,
+            access: durable_cell_access(&resource_access),
         })
         .await?
     {
@@ -377,7 +378,7 @@ pub async fn deploy_application(
             provider_workload_acl: arguments.provider_workload_acl,
             storage_binding_acl: arguments.storage_binding_acl,
             actor_principal_id,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
         })
@@ -413,7 +414,7 @@ pub async fn publish_route(
             domain_claim_id: DomainClaimId::from_uuid(arguments.domain_claim_id),
             hostname: arguments.hostname,
             path_prefix: arguments.path_prefix,
-            resource_access,
+            access: durable_cell_access(&resource_access),
             idempotency_key: arguments.idempotency_key,
             request_id,
             requested_at: Utc::now(),

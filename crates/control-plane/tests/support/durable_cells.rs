@@ -1,22 +1,21 @@
 use super::*;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
-use a3s_cloud_contracts::{artifact_uri, DURABLE_CELL_BUNDLE_MEDIA_TYPE};
+use a3s_cloud_contracts::{DURABLE_CELL_BUNDLE_MEDIA_TYPE, artifact_uri};
 use a3s_cloud_control_plane::modules::artifacts::{
     BuildArtifact, BuildRun, IBuildRunRepository, OciDescriptor, OciPublicationTarget,
     PostgresBuildRunRepository, PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use a3s_cloud_control_plane::modules::data::ObjectNamespaceProviderProfile;
 use a3s_cloud_control_plane::modules::durable_cells::application::{
-    compose_pinned_celld_service_process, CreateDurableCellApplication,
-    CreateDurableCellApplicationHandler, DeployDurableCellApplication,
-    DeployDurableCellApplicationHandler, DurableCellStorageCredentialRequest,
-    DurableCellStorageProviderProfileProjection, DurableCellStorageRetentionPolicyRequest,
-    DurableCellStorageRetentionPolicySpec, DurableCellWorkloadTemplate, GetDurableCellApplication,
-    GetDurableCellApplicationHandler, ListDurableCellApplicationRevisions,
-    ListDurableCellApplicationRevisionsHandler, ReviseDurableCellApplication,
-    ReviseDurableCellApplicationHandler, StartDurableCellApplication,
+    CreateDurableCellApplication, CreateDurableCellApplicationHandler,
+    DeployDurableCellApplication, DeployDurableCellApplicationHandler,
+    DurableCellStorageCredentialRequest, DurableCellStorageProviderProfileProjection,
+    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
+    DurableCellWorkloadTemplate, GetDurableCellApplication, GetDurableCellApplicationHandler,
+    ListDurableCellApplicationRevisions, ListDurableCellApplicationRevisionsHandler,
+    ReviseDurableCellApplication, ReviseDurableCellApplicationHandler, StartDurableCellApplication,
     StartDurableCellApplicationHandler, StopDurableCellApplication,
-    StopDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler, compose_pinned_celld_service_process,
 };
 use a3s_cloud_control_plane::modules::durable_cells::domain::{
     CreateDurableCellApplicationWrite, CreateDurableCellDeploymentWrite, DurableCellApplication,
@@ -35,10 +34,9 @@ use a3s_cloud_control_plane::modules::durable_cells::{
     PostgresDurableCellDeploymentRepository, SecretsDurableCellBindingAdapter,
     WorkloadsDurableCellWorkloadAdapter,
 };
-use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
+use a3s_cloud_control_plane::modules::durable_cells::{DurableCellAccess, DurableCellAccessScope};
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
-use a3s_cloud_control_plane::modules::identity::domain::value_objects::ResourceGrantScope;
+use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::exact_secret_version_access;
 use a3s_cloud_control_plane::modules::secrets::{
@@ -268,15 +266,13 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     let revise = ReviseDurableCellApplicationWrite {
         record: revised_record.clone(),
         expected_version: 2,
-        event: DurableCellApplicationChanged::revised(
-            &revised,
-            &successor,
-            revise_request_id,
-        )?,
+        event: DurableCellApplicationChanged::revised(&revised, &successor, revise_request_id)?,
         actor_principal_id: actor,
         request_id: revise_request_id,
         idempotency: IdempotencyRequest::new(
-            format!("organizations/{organization_id}/durable-cell-applications/{application_id}/revisions"),
+            format!(
+                "organizations/{organization_id}/durable-cell-applications/{application_id}/revisions"
+            ),
             "durable-cell-revise",
             successor.definition.canonical_acl().as_bytes(),
         )?,
@@ -293,15 +289,17 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             .await?,
         Some(revised.clone())
     );
-    assert!(repository
-        .find(
-            organization_id,
-            project_id,
-            EnvironmentId::new(),
-            application_id,
-        )
-        .await?
-        .is_none());
+    assert!(
+        repository
+            .find(
+                organization_id,
+                project_id,
+                EnvironmentId::new(),
+                application_id,
+            )
+            .await?
+            .is_none()
+    );
     assert_eq!(
         repository
             .list_revisions(
@@ -364,10 +362,12 @@ pub(super) async fn exercise_durable_cell_application_persistence(
         b"exact Durable Cell deployment correlation",
     )?;
     let deployment_repository = PostgresDurableCellDeploymentRepository::new(executor.clone());
-    assert!(deployment_repository
-        .replay(&deployment_idempotency)
-        .await?
-        .is_none());
+    assert!(
+        deployment_repository
+            .replay(&deployment_idempotency)
+            .await?
+            .is_none()
+    );
     let deployment_write = CreateDurableCellDeploymentWrite {
         deployment: deployment.clone(),
         idempotency: deployment_idempotency.clone(),
@@ -399,16 +399,18 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             .await?,
         Some(deployment.clone())
     );
-    assert!(deployment_repository
-        .find(
-            organization_id,
-            project_id,
-            EnvironmentId::new(),
-            application_id,
-            successor.id,
-        )
-        .await?
-        .is_none());
+    assert!(
+        deployment_repository
+            .find(
+                organization_id,
+                project_id,
+                EnvironmentId::new(),
+                application_id,
+                successor.id,
+            )
+            .await?
+            .is_none()
+    );
     assert_eq!(
         deployment_repository
             .create(CreateDurableCellDeploymentWrite {
@@ -529,7 +531,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
             .canonical_acl()
             .to_owned(),
         actor_principal_id: actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "durable-cell-cqrs-create".into(),
         request_id: Uuid::now_v7(),
     };
@@ -540,12 +542,10 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     let denied_replay = create_handler
         .execute(
             CreateDurableCellApplication {
-                resource_access: ResourceAccessEvaluator::restricted([
-                    ResourceGrantScope::Environment {
-                        project_id,
-                        environment_id: EnvironmentId::new(),
-                    },
-                ]),
+                access: DurableCellAccess::restricted([DurableCellAccessScope::Environment {
+                    project_id,
+                    environment_id: EnvironmentId::new(),
+                }]),
                 ..create_command.clone()
             },
             cqrs_context(),
@@ -573,7 +573,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                     .canonical_acl()
                     .to_owned(),
                 actor_principal_id: actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "durable-cell-cqrs-revise".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -591,7 +591,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                 application_id: cqrs_created.record.application.id,
                 expected_version: 2,
                 actor_principal_id: actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "durable-cell-cqrs-stop".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -613,7 +613,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                 application_id: cqrs_created.record.application.id,
                 expected_version: 3,
                 actor_principal_id: actor,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: DurableCellAccess::organization_wide(),
                 idempotency_key: "durable-cell-cqrs-start".into(),
                 request_id: Uuid::now_v7(),
             },
@@ -629,7 +629,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                     project_id,
                     environment_id,
                     application_id: cqrs_created.record.application.id,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: DurableCellAccess::organization_wide(),
                 },
                 cqrs_context(),
             )
@@ -645,7 +645,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
                     environment_id,
                     application_id: cqrs_created.record.application.id,
                     limit: 10,
-                    resource_access: ResourceAccessEvaluator::organization_wide(),
+                    access: DurableCellAccess::organization_wide(),
                 },
                 cqrs_context(),
             )
@@ -997,7 +997,7 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
         application_id,
         expected_version: stored_application.aggregate_version,
         actor_principal_id: tenant.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: stop_key.into(),
         request_id: stop_request_id,
     };
@@ -1033,10 +1033,12 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     assert_eq!(retirements.len(), 1);
     let retirement = retirements.remove(0);
     assert!(retirement.member.node_id.is_none());
-    assert!(retirement
-        .deployment
-        .as_ref()
-        .is_some_and(|deployment| deployment.command_id.is_none()));
+    assert!(
+        retirement
+            .deployment
+            .as_ref()
+            .is_some_and(|deployment| deployment.command_id.is_none())
+    );
     let retired = lifecycle_workloads
         .complete_replica_retirement(ReplicaRetirementCompletion {
             organization_id: tenant.organization_id,
@@ -1060,7 +1062,7 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
         application_id,
         expected_version: stopped_application.aggregate_version,
         actor_principal_id: tenant.actor,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "durable-cell-c6-restart".into(),
         request_id: Uuid::now_v7(),
     };
@@ -1127,8 +1129,8 @@ pub(super) async fn exercise_durable_cell_projection_process_death(
     Ok(())
 }
 
-pub(super) async fn run_durable_cell_projection_crash_probe(
-) -> Result<(), Box<dyn std::error::Error>> {
+pub(super) async fn run_durable_cell_projection_crash_probe()
+-> Result<(), Box<dyn std::error::Error>> {
     if required_projection_probe_environment(PROJECTION_CRASH_PARENT_ENV)? != "1" {
         return Err("Durable Cell projection crash probe requires its private marker".into());
     }
@@ -1232,7 +1234,7 @@ fn projection_deployment_command(
         retention_policy,
         node_pool_id: None,
         actor_principal_id: input.actor_principal_id,
-        resource_access: ResourceAccessEvaluator::organization_wide(),
+        access: DurableCellAccess::organization_wide(),
         idempotency_key: "durable-cell-c6-projection-recovery".into(),
         request_id: input.request_id,
     })
@@ -1568,8 +1570,8 @@ fn require_projection_process_kill(status: ExitStatus) -> Result<(), Box<dyn std
     Ok(())
 }
 
-fn projection_crash_input_from_environment(
-) -> Result<ProjectionCrashInput, Box<dyn std::error::Error>> {
+fn projection_crash_input_from_environment()
+-> Result<ProjectionCrashInput, Box<dyn std::error::Error>> {
     Ok(ProjectionCrashInput {
         organization_id: OrganizationId::from_uuid(required_projection_probe_uuid(
             PROJECTION_CRASH_ORGANIZATION_ENV,

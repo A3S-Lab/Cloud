@@ -1,4 +1,5 @@
 use crate::modules::data::ObjectNamespaceProviderProfile;
+use crate::modules::durable_cells::DurableCellAccess;
 use crate::modules::durable_cells::application::require_environment_access;
 use crate::modules::durable_cells::domain::{
     DurableCellDeploymentBinding, DurableCellProjectionIdentity, DurableCellServiceProfile,
@@ -9,13 +10,12 @@ use crate::modules::durable_cells::{
     DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
     DurableCellWorkloadTemplate,
 };
-use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, NodePoolId,
     OrganizationId, PrincipalId, ProjectId, Sha256Digest,
 };
-use crate::modules::workloads::presentation::{parse_workload_manifest, WorkloadManifest};
+use crate::modules::workloads::presentation::{WorkloadManifest, parse_workload_manifest};
 use crate::modules::workloads::{
     IOciArtifactResolver, OciArtifactResolutionError, OciRegistryCredentialReference,
     RequestedServiceTemplate, SecretBindingTarget,
@@ -39,7 +39,7 @@ pub struct DeployDurableCellApplicationFromAcl {
     pub provider_workload_acl: String,
     pub storage_binding_acl: String,
     pub actor_principal_id: PrincipalId,
-    pub resource_access: ResourceAccessEvaluator,
+    pub access: DurableCellAccess,
     pub idempotency_key: String,
     pub request_id: Uuid,
 }
@@ -82,7 +82,7 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
             if let Err(error) = require_environment_access(
                 command.project_id,
                 command.environment_id,
-                &command.resource_access,
+                &command.access,
             ) {
                 return Ok(Err(error));
             }
@@ -111,7 +111,7 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                 match parse_workload_manifest(command.provider_workload_acl.as_bytes()) {
                     Ok(value) => value,
                     Err(BootError::BadRequest(message)) => {
-                        return Ok(Err(ApplicationError::Invalid(message)))
+                        return Ok(Err(ApplicationError::Invalid(message)));
                     }
                     Err(error) => return Err(error),
                 };
@@ -231,7 +231,7 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                         retention_policy,
                         node_pool_id: manifest.node_pool_id.map(NodePoolId::from_uuid),
                         actor_principal_id: command.actor_principal_id,
-                        resource_access: command.resource_access,
+                        access: command.access,
                         idempotency_key: command.idempotency_key,
                         request_id: command.request_id,
                     },

@@ -8,23 +8,24 @@ use super::dto::{
     SetDurableCellApplicationStateRequest,
 };
 use super::request::{actor_principal_id, request_id, request_identity};
+use crate::access_projection::durable_cell_access;
 use crate::modules::durable_cells::{
-    CreateDurableCellApplication, GetDurableCellApplication, GetDurableCellApplicationRevision,
+    CreateDurableCellApplication, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+    GetDurableCellApplication, GetDurableCellApplicationRevision,
     ListDurableCellApplicationRevisions, ListDurableCellApplications,
-    PublishDurableCellApplicationRoute, ReviseDurableCellApplication, StartDurableCellApplication,
-    StopDurableCellApplication, DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT,
-    MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
+    MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT, PublishDurableCellApplicationRoute,
+    ReviseDurableCellApplication, StartDurableCellApplication, StopDurableCellApplication,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
+use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
     GatewayScopeId, OrganizationId, ProjectId,
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    QueryBus, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -55,9 +56,9 @@ pub fn durable_cell_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                             name: body.name,
                             definition_acl: body.definition_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -90,9 +91,9 @@ pub fn durable_cell_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                             expected_version: body.expected_version,
                             definition_acl: body.definition_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -150,9 +151,9 @@ pub fn durable_cell_commands_controller(bus: Arc<CommandBus>) -> Result<Controll
                             provider_workload_acl: body.provider_workload_acl,
                             storage_binding_acl: body.storage_binding_acl,
                             actor_principal_id: actor_principal_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                         })
@@ -196,9 +197,9 @@ pub fn durable_cell_route_commands_controller(
                             domain_claim_id: DomainClaimId::from_uuid(body.domain_claim_id),
                             hostname: body.hostname,
                             path_prefix: body.path_prefix,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                             idempotency_key,
                             request_id,
                             requested_at: Utc::now(),
@@ -243,9 +244,9 @@ pub fn durable_cell_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             project_id,
                             environment_id,
                             limit: list_limit(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -273,9 +274,9 @@ pub fn durable_cell_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             project_id,
                             environment_id,
                             application_id: application_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -301,9 +302,9 @@ pub fn durable_cell_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             environment_id,
                             application_id: application_id(&request)?,
                             limit: list_limit(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -332,9 +333,9 @@ pub fn durable_cell_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerD
                             environment_id,
                             application_id: application_id(&request)?,
                             revision_id: revision_id(&request)?,
-                            resource_access: resource_access_evaluator(
+                            access: durable_cell_access(&resource_access_evaluator(
                                 &request.require_auth_principal()?,
-                            )?,
+                            )?),
                         })
                         .await?
                     {
@@ -358,7 +359,9 @@ async fn execute_state(
     let (organization_id, project_id, environment_id) = scope(&request)?;
     let application_id = application_id(&request)?;
     let actor_principal_id = actor_principal_id(&request)?;
-    let resource_access = resource_access_evaluator(&request.require_auth_principal()?)?;
+    let access = durable_cell_access(&resource_access_evaluator(
+        &request.require_auth_principal()?,
+    )?);
     let result = if start {
         bus.execute(StartDurableCellApplication {
             organization_id,
@@ -367,7 +370,7 @@ async fn execute_state(
             application_id,
             expected_version: body.expected_version,
             actor_principal_id,
-            resource_access,
+            access,
             idempotency_key,
             request_id,
         })
@@ -380,7 +383,7 @@ async fn execute_state(
             application_id,
             expected_version: body.expected_version,
             actor_principal_id,
-            resource_access,
+            access,
             idempotency_key,
             request_id,
         })
