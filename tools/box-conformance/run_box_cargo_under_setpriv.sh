@@ -142,18 +142,39 @@ for ((i = 0; i < ${#cargo_args[@]}; i++)); do
   esac
 done
 
-test_bin=""
+# Prefer rustc test harnesses. Package bins can share the a3s_*_control_plane-*
+# stem in deps/ and print CLI usage instead of accepting --ignored/--exact.
+is_rust_test_harness() {
+  local bin=$1
+  # rustc harness understands --list; application CLIs do not.
+  "${bin}" --list >/dev/null 2>&1
+}
+
+candidates=()
 if [[ -n "${prefer}" ]]; then
   for candidate in "${new_bins[@]}"; do
     base="$(basename "${candidate}")"
     if [[ "${base}" == "${prefer}-"* ]]; then
-      test_bin="${candidate}"
-      break
+      candidates+=("${candidate}")
     fi
   done
 fi
+if [[ "${#candidates[@]}" -eq 0 ]]; then
+  candidates=("${new_bins[@]}")
+fi
+
+test_bin=""
+for candidate in "${candidates[@]}"; do
+  if is_rust_test_harness "${candidate}"; then
+    test_bin="${candidate}"
+    break
+  fi
+done
 if [[ -z "${test_bin}" ]]; then
-  test_bin="${new_bins[0]}"
+  echo "no rustc test harness matched under ${deps_dir} (prefer=${prefer:-<none>})" >&2
+  printf 'candidates:\n' >&2
+  printf '  %s\n' "${candidates[@]}" >&2
+  exit 1
 fi
 
 echo "Running Sandbox-identity Cloud harness: ${test_bin}" >&2
