@@ -304,7 +304,10 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
             nodes.clone(),
             Arc::new(UnroutedDeploymentRouteUpdater),
         ),
-        Duration::seconds(5),
+        // Keep node Online for the same window as REAL_BOX_COMMAND_LEASE_SECONDS.
+        // A 5s liveness window cannot survive Flow connect + schedule polling in
+        // this synchronous fixture (CI Skill gate: ResourcePrepare never leased).
+        Duration::seconds(REAL_BOX_COMMAND_LEASE_SECONDS),
         DeploymentFlowConfig::from_milliseconds(
             120_000, 120_000, 25, 120_000, 120_000, 25, 120_000,
         )?,
@@ -318,6 +321,9 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         .with_artifacts(artifact_manager)
         .with_resource_inventory(Arc::new(FixedInventory(inventory)));
 
+    // Live Agents heartbeat continuously. Refresh once after Flow connect so
+    // schedule sees an Online Ready node before the first ResourcePrepare lease.
+    refresh_node_heartbeat(nodes.as_ref(), organization_id, node_id, agent_instance_id).await?;
     let prepare = next_flow_command(
         &coordinator,
         nodes.as_ref(),
@@ -792,6 +798,16 @@ async fn record_inventory(
         .record_resource_inventory(inventory.clone(), canonical_timestamp(Utc::now()))
         .await?;
     Ok(inventory)
+}
+
+
+pub(super) async fn refresh_node_heartbeat(
+    nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+) -> TestResult {
+    teardown::refresh_node_heartbeat(nodes, organization_id, node_id, agent_instance_id).await
 }
 
 fn flow_coordinator(

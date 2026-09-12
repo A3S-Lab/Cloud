@@ -226,3 +226,30 @@ pub(super) fn dedicated_box_home() -> TestResult<PathBuf> {
     }
     Ok(configured)
 }
+
+pub(super) async fn refresh_node_heartbeat(
+    nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+) -> TestResult {
+    let node = nodes.find(organization_id, node_id).await?;
+    if node.agent_instance_id != agent_instance_id {
+        return Err(invalid("real Box fixture changed the enrolled Agent identity").into());
+    }
+    let floor = node
+        .last_observed_at
+        .checked_add_signed(Duration::milliseconds(1))
+        .ok_or_else(|| invalid("real Box heartbeat timestamp overflowed"))?;
+    nodes
+        .record_heartbeat(NodeHeartbeatUpdate {
+            node_id,
+            agent_instance_id,
+            agent_version: node.agent_version,
+            capabilities: node.capabilities,
+            observed_at: canonical_timestamp(Utc::now().max(floor)),
+        })
+        .await?;
+    Ok(())
+}
+

@@ -719,7 +719,7 @@ jobs:
             >"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt")" -eq 1
           run_box_cargo test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane \
+              -p a3s-cloud-control-plane --lib \
               modules::edge::infrastructure::runtime_http_upstream::tests::real_box_health_replays_and_compiles_to_live_gateway_origin \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/cloud-service-health.log"
@@ -734,7 +734,7 @@ jobs:
             >"$EVIDENCE_DIR/runtime-health-consumer-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/runtime-health-consumer-certification.txt")" -eq 1
           run_box_cargo test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane \
+              -p a3s-cloud-control-plane --lib \
               modules::workloads::infrastructure::deployment_flow::tests::box_cancellation::real_box_deployment_cancellation_removes_runtime_before_claim_release \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/cloud-cleanup-interruption.log"
