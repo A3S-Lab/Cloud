@@ -27,8 +27,8 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(194);
-  expect(READ_ONLY_TOOLS).toHaveLength(110);
+  expect(ADMIN_TOOLS).toHaveLength(198);
+  expect(READ_ONLY_TOOLS).toHaveLength(112);
   for (const tool of [
     'a3s_cloud_platform_role_policy_current_get',
     'a3s_cloud_platform_role_policy_revisions_get',
@@ -142,6 +142,10 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
     'a3s_cloud_knowledge_pipelines_list',
     'a3s_cloud_knowledge_pipelines_get',
     'a3s_cloud_knowledge_pipelines_publish',
+    'a3s_cloud_knowledge_documents_create',
+    'a3s_cloud_knowledge_documents_get',
+    'a3s_cloud_knowledge_chunks_create',
+    'a3s_cloud_knowledge_chunks_get',
   ] as const) {
     expect(ADMIN_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
   }
@@ -150,6 +154,8 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
     'a3s_cloud_knowledge_bases_get',
     'a3s_cloud_knowledge_pipelines_list',
     'a3s_cloud_knowledge_pipelines_get',
+    'a3s_cloud_knowledge_documents_get',
+    'a3s_cloud_knowledge_chunks_get',
   ] as const) {
     expect(READ_ONLY_TOOLS.filter((candidate) => candidate === tool)).toEqual([tool]);
   }
@@ -157,6 +163,8 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_knowledge_bases_append');
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_knowledge_pipelines_create');
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_knowledge_pipelines_publish');
+  expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_knowledge_documents_create');
+  expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_knowledge_chunks_create');
   expect(ADMIN_TOOLS.filter((tool) => tool === 'a3s_cloud_audit_records_export')).toEqual([
     'a3s_cloud_audit_records_export',
   ]);

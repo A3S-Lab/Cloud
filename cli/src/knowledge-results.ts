@@ -1,6 +1,10 @@
 import type {
   KnowledgeBase,
   KnowledgeBaseMutationResult,
+  KnowledgeChunk,
+  KnowledgeChunkMutationResult,
+  KnowledgeDocument,
+  KnowledgeDocumentMutationResult,
   KnowledgePipeline,
   KnowledgePipelineMutationResult,
 } from '@a3s/cloud-client';
@@ -58,6 +62,52 @@ export function knowledgePipelineMutationResult(result: KnowledgePipelineMutatio
     table: renderTable(
       [row],
       [...KNOWLEDGE_PIPELINE_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+const KNOWLEDGE_DOCUMENT_COLUMNS: readonly TableColumn<KnowledgeDocument>[] = [
+  { header: 'ID', value: (row) => row.documentId },
+  { header: 'TITLE', value: (row) => row.title },
+  { header: 'BASE', value: (row) => row.knowledgeBaseId },
+  { header: 'REVISION', value: (row) => row.knowledgeBaseRevisionId },
+  { header: 'DIGEST', value: (row) => row.documentDigest },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+const KNOWLEDGE_CHUNK_COLUMNS: readonly TableColumn<KnowledgeChunk>[] = [
+  { header: 'ID', value: (row) => row.chunkId },
+  { header: 'DOCUMENT', value: (row) => row.documentId },
+  { header: 'ORDINAL', value: (row) => row.ordinal },
+  { header: 'DIGEST', value: (row) => row.chunkDigest },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+export function knowledgeDocumentResult(row: KnowledgeDocument): CommandResult {
+  return { json: row, table: renderTable([row], KNOWLEDGE_DOCUMENT_COLUMNS) };
+}
+
+export function knowledgeDocumentMutationResult(result: KnowledgeDocumentMutationResult): CommandResult {
+  const row = { ...result.knowledgeDocument, replayed: result.replayed };
+  return {
+    json: result,
+    table: renderTable(
+      [row],
+      [...KNOWLEDGE_DOCUMENT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+export function knowledgeChunkResult(row: KnowledgeChunk): CommandResult {
+  return { json: row, table: renderTable([row], KNOWLEDGE_CHUNK_COLUMNS) };
+}
+
+export function knowledgeChunkMutationResult(result: KnowledgeChunkMutationResult): CommandResult {
+  const row = { ...result.knowledgeChunk, replayed: result.replayed };
+  return {
+    json: result,
+    table: renderTable(
+      [row],
+      [...KNOWLEDGE_CHUNK_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
 }

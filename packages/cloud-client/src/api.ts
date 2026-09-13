@@ -198,9 +198,15 @@ import {
   encodeKnowledgePipelineListOptions,
   type AppendKnowledgeBaseInput,
   type CreateKnowledgeBaseInput,
+  type CreateKnowledgeChunkInput,
+  type CreateKnowledgeDocumentInput,
   type CreateKnowledgePipelineInput,
   type KnowledgeBase,
   type KnowledgeBaseMutationResult,
+  type KnowledgeChunk,
+  type KnowledgeChunkMutationResult,
+  type KnowledgeDocument,
+  type KnowledgeDocumentMutationResult,
   type KnowledgeListOptions,
   type KnowledgePipeline,
   type KnowledgePipelineMutationResult,
@@ -530,6 +536,30 @@ function knowledgePipelineCollectionPath(organizationId: string, projectId: stri
   return (
     `/organizations/${encodeURIComponent(organizationId)}` +
     `/projects/${encodeURIComponent(projectId)}/knowledge-pipelines`
+  );
+}
+
+function knowledgeDocumentCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-documents`
+  );
+}
+
+function knowledgeDocumentChunkCollectionPath(
+  organizationId: string,
+  projectId: string,
+  documentId: string
+): string {
+  return (
+    `${knowledgeDocumentCollectionPath(organizationId, projectId)}/${encodeURIComponent(documentId)}/chunks`
+  );
+}
+
+function knowledgeChunkItemPath(organizationId: string, projectId: string, chunkId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-chunks/${encodeURIComponent(chunkId)}`
   );
 }
 
@@ -4306,6 +4336,61 @@ export class CloudApi {
       signal
     );
   }
+
+  createKnowledgeDocument(
+    organizationId: string,
+    projectId: string,
+    input: CreateKnowledgeDocumentInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeDocumentMutationResult> {
+    validateKnowledgeContractAcl(input?.documentAcl, 'KnowledgeDocument ACL');
+    return this.postJson(
+      knowledgeDocumentCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { documentAcl: input.documentAcl },
+      signal
+    );
+  }
+
+  getKnowledgeDocument(
+    organizationId: string,
+    projectId: string,
+    documentId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeDocument> {
+    return this.get(
+      `${knowledgeDocumentCollectionPath(organizationId, projectId)}/${encodeURIComponent(documentId)}`,
+      signal
+    );
+  }
+
+  createKnowledgeChunk(
+    organizationId: string,
+    projectId: string,
+    documentId: string,
+    input: CreateKnowledgeChunkInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeChunkMutationResult> {
+    validateKnowledgeContractAcl(input?.chunkAcl, 'KnowledgeChunk ACL');
+    return this.postJson(
+      knowledgeDocumentChunkCollectionPath(organizationId, projectId, documentId),
+      idempotencyKey,
+      { chunkAcl: input.chunkAcl },
+      signal
+    );
+  }
+
+  getKnowledgeChunk(
+    organizationId: string,
+    projectId: string,
+    chunkId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeChunk> {
+    return this.get(knowledgeChunkItemPath(organizationId, projectId, chunkId), signal);
+  }
+
   reserveUserFile(
     organizationId: string,
     projectId: string,

@@ -57,9 +57,10 @@ use super::identity::{
     RevokeRecipientContactArguments, RevokeResourceGrantArguments,
 };
 use super::knowledge::{
-    AppendKnowledgeBaseArguments, CreateKnowledgeBaseArguments, CreateKnowledgePipelineArguments,
-    KnowledgeBaseArguments, KnowledgePipelineArguments, ListKnowledgeBasesArguments,
-    ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
+    AppendKnowledgeBaseArguments, CreateKnowledgeBaseArguments, CreateKnowledgeChunkArguments,
+    CreateKnowledgeDocumentArguments, CreateKnowledgePipelineArguments, KnowledgeBaseArguments,
+    KnowledgeChunkArguments, KnowledgeDocumentArguments, KnowledgePipelineArguments,
+    ListKnowledgeBasesArguments, ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
 };
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
@@ -1610,6 +1611,52 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeDocumentsCreate => {
+            let arguments = arguments::parse::<CreateKnowledgeDocumentArguments>(arguments).ok()?;
+            knowledge::create_document(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeDocumentsGet => {
+            let arguments = arguments::parse::<KnowledgeDocumentArguments>(arguments).ok()?;
+            knowledge::get_document(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeChunksCreate => {
+            let arguments = arguments::parse::<CreateKnowledgeChunkArguments>(arguments).ok()?;
+            knowledge::create_chunk(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeChunksGet => {
+            let arguments = arguments::parse::<KnowledgeChunkArguments>(arguments).ok()?;
+            knowledge::get_chunk(
+                query_bus,
+                organization_id,
                 arguments,
                 resource_access,
                 request_id,

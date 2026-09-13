@@ -1,10 +1,13 @@
 use super::{arguments, tool_result};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::knowledge::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgePipelineCommand,
-    GetKnowledgeBase, GetKnowledgePipeline, KnowledgeBaseMutationResponse, KnowledgeBaseResponse,
-    KnowledgePipelineMutationResponse, KnowledgePipelineResponse, ListKnowledgeBases,
-    ListKnowledgePipelines, PublishKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
+    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand, GetKnowledgeBase,
+    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, KnowledgeBaseMutationResponse,
+    KnowledgeBaseResponse, KnowledgeChunkMutationResponse, KnowledgeChunkResponse,
+    KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse, KnowledgePipelineMutationResponse,
+    KnowledgePipelineResponse, ListKnowledgeBases, ListKnowledgePipelines,
+    PublishKnowledgePipelineCommand,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use crate::presentation::knowledge_access;
@@ -304,6 +307,142 @@ pub async fn publish_pipeline(
             KnowledgePipelineMutationResponse::from(result),
             request_id,
         ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateKnowledgeDocumentArguments {
+    project_id: Uuid,
+    document_acl: String,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeDocumentArguments {
+    project_id: Uuid,
+    document_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateKnowledgeChunkArguments {
+    project_id: Uuid,
+    document_id: Uuid,
+    chunk_acl: String,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeChunkArguments {
+    project_id: Uuid,
+    chunk_id: Uuid,
+}
+
+pub async fn create_document(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateKnowledgeDocumentArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateKnowledgeDocumentCommand {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            document_acl: arguments.document_acl,
+            actor_principal_id,
+            access: knowledge_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            KnowledgeDocumentMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_document(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: KnowledgeDocumentArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetKnowledgeDocument {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            document_id: arguments.document_id,
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(record) => {
+            tool_result::success(200, KnowledgeDocumentResponse::from(record), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_chunk(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateKnowledgeChunkArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateKnowledgeChunkCommand {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            document_id: arguments.document_id,
+            chunk_acl: arguments.chunk_acl,
+            actor_principal_id,
+            access: knowledge_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            KnowledgeChunkMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_chunk(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: KnowledgeChunkArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetKnowledgeChunk {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            chunk_id: arguments.chunk_id,
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(record) => tool_result::success(200, KnowledgeChunkResponse::from(record), request_id),
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

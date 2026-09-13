@@ -71,8 +71,10 @@ pub use infrastructure::{
     PostgresKnowledgeDocumentRepository, PostgresKnowledgePipelineRepository,
 };
 pub(crate) use presentation::{
-    KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeModule,
-    KnowledgePipelineMutationResponse, KnowledgePipelineResponse, KNOWLEDGE_BASE_COLLECTION_ROUTE,
+    KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeChunkMutationResponse,
+    KnowledgeChunkResponse, KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse,
+    KnowledgeModule, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
+    KNOWLEDGE_BASE_COLLECTION_ROUTE,
     KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CHUNK_ITEM_ROUTE,
     KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
     KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
