@@ -1,5 +1,6 @@
+use super::writes::{CreateKnowledgeChunkWrite, CreateKnowledgeDocumentWrite};
 use super::{KnowledgeChunkV1, KnowledgeDocumentV1};
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -46,6 +47,16 @@ pub trait IKnowledgeDocumentRepository: Send + Sync {
         knowledge_base_id: Uuid,
         limit: usize,
     ) -> Result<Vec<KnowledgeDocumentRecord>, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeDocumentRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeDocumentWrite,
+    ) -> Result<IdempotentWrite<KnowledgeDocumentRecord>, RepositoryError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +97,16 @@ pub trait IKnowledgeChunkRepository: Send + Sync {
         document_id: Uuid,
         limit: usize,
     ) -> Result<Vec<KnowledgeChunkRecord>, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeChunkRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeChunkWrite,
+    ) -> Result<IdempotentWrite<KnowledgeChunkRecord>, RepositoryError>;
 }
 
 fn validate_timestamp(value: DateTime<Utc>) -> Result<(), String> {

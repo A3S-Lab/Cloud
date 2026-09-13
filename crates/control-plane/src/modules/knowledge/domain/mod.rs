@@ -42,8 +42,12 @@ pub use types::{
     KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1, KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
 };
 pub use writes::{
-    AppendKnowledgeBaseWrite, CreateKnowledgeBaseWrite, CreateKnowledgePipelineWrite,
-    KnowledgeBaseLifecycleChanged, KnowledgeBaseWriteReference, KnowledgePipelineLifecycleChanged,
-    KnowledgePipelineWriteReference, PublishKnowledgePipelineWrite,
-    KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA,
+    AppendKnowledgeBaseWrite, CreateKnowledgeBaseWrite, CreateKnowledgeChunkWrite,
+    CreateKnowledgeDocumentWrite, CreateKnowledgePipelineWrite, KnowledgeBaseLifecycleChanged,
+    KnowledgeBaseWriteReference, KnowledgeChunkLifecycleChanged, KnowledgeChunkWriteReference,
+    KnowledgeDocumentLifecycleChanged, KnowledgeDocumentWriteReference,
+    KnowledgePipelineLifecycleChanged, KnowledgePipelineWriteReference,
+    PublishKnowledgePipelineWrite, KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA,
+    KNOWLEDGE_CHUNK_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_DOCUMENT_LIFECYCLE_EVENT_SCHEMA,
+    KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA,
 };

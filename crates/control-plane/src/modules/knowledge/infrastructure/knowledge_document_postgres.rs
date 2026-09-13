@@ -1,13 +1,17 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
-    require_one_row, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
+    transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::knowledge::domain::{
-    CreateKnowledgeChunk, CreateKnowledgeDocument, IKnowledgeChunkRepository,
-    IKnowledgeDocumentRepository, KnowledgeChunkRecord, KnowledgeChunkV1, KnowledgeDocumentRecord,
-    KnowledgeDocumentV1,
+    CreateKnowledgeChunk, CreateKnowledgeChunkWrite, CreateKnowledgeDocument,
+    CreateKnowledgeDocumentWrite, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
+    KnowledgeChunkRecord, KnowledgeChunkV1, KnowledgeChunkWriteReference, KnowledgeDocumentRecord,
+    KnowledgeDocumentV1, KnowledgeDocumentWriteReference,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, IdempotentWrite, PrincipalId, RepositoryError,
+};
 use a3s_orm::{
     sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
 };
@@ -96,6 +100,87 @@ impl IKnowledgeDocumentRepository for PostgresKnowledgeDocumentRepository {
             .await
             .map_err(transaction_error)
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeDocumentRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) = idempotency_replay::<KnowledgeDocumentWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_document(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.document_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeDocumentWrite,
+    ) -> Result<IdempotentWrite<KnowledgeDocumentRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgeDocumentWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_document(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.document_id,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeDocument idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_document(transaction, &write.record).await?;
+                    persist_knowledge_document_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.document.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
 }
 
 /// Durable KnowledgeChunk catalog.
@@ -169,6 +254,87 @@ impl IKnowledgeChunkRepository for PostgresKnowledgeChunkRepository {
                     )
                     .await?;
                     rows.into_iter().map(decode_chunk).collect()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeChunkRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) = idempotency_replay::<KnowledgeChunkWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_chunk(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.chunk_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeChunkWrite,
+    ) -> Result<IdempotentWrite<KnowledgeChunkRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgeChunkWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_chunk(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.chunk_id,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeChunk idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_chunk(transaction, &write.record).await?;
+                    persist_knowledge_chunk_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.chunk.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
                 })
             })
             .await
@@ -282,6 +448,90 @@ async fn load_chunk(
     )
     .await?;
     row.map(decode_chunk).transpose()
+}
+
+async fn persist_knowledge_document_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgeDocumentRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.document.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.document_id.as_uuid(),
+            occurred_at: record.created_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "knowledgeBaseId": spec.knowledge_base_id,
+                "documentId": spec.document_id,
+                "documentDigest": record.document.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgeDocumentWriteReference::from(record),
+    )
+    .await
+}
+
+async fn persist_knowledge_chunk_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgeChunkRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.chunk.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.chunk_id.as_uuid(),
+            occurred_at: record.created_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "documentId": spec.document_id,
+                "chunkId": spec.chunk_id,
+                "chunkDigest": record.chunk.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgeChunkWriteReference::from(record),
+    )
+    .await
 }
 
 fn decode_document(
