@@ -1,5 +1,6 @@
 use super::knowledge_operation::{
-    is_base_collection_path, is_document_collection_path, is_knowledge_path,
+    is_base_collection_path, is_document_chunk_collection_path,
+    is_document_collection_path, is_document_item_path, is_knowledge_path,
     is_pipeline_collection_path,
 };
 
@@ -27,11 +28,17 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "KnowledgeDocumentMutation" => Some(
             "KnowledgeDocument mutation result with explicit idempotent-replay state and the authoritative document projection.",
         ),
+        "KnowledgeDocumentList" => Some(
+            "Bounded list of authorized KnowledgeDocument projections for one KnowledgeBase.",
+        ),
         "KnowledgeChunk" => Some(
             "Authoritative KnowledgeChunk projection binding the canonical chunk ACL, ordinal, and digests.",
         ),
         "KnowledgeChunkMutation" => Some(
             "KnowledgeChunk mutation result with explicit idempotent-replay state and the authoritative chunk projection.",
+        ),
+        "KnowledgeChunkList" => Some(
+            "Bounded list of authorized KnowledgeChunk projections for one KnowledgeDocument.",
         ),
         _ => None,
     }
@@ -56,7 +63,9 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "post" if path.ends_with("/chunks") && path.contains("/knowledge-documents/") => {
             Some("Create a knowledge chunk")
         }
-        "get" if path.contains("/knowledge-documents/") => Some("Get a knowledge document"),
+        "get" if is_document_collection_path(path) => Some("List knowledge documents"),
+        "get" if is_document_item_path(path) => Some("Get a knowledge document"),
+        "get" if is_document_chunk_collection_path(path) => Some("List knowledge chunks"),
         "get" if path.contains("/knowledge-chunks/") => Some("Get a knowledge chunk"),
         _ => None,
     }
@@ -97,9 +106,15 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         "post" if path.ends_with("/chunks") && path.contains("/knowledge-documents/") => Some(
             "Creates one KnowledgeChunk from a canonical A3S ACL contract under the URL document identity. Audit, Outbox, and idempotency commit atomically through the authorized document lifecycle boundary.",
         ),
-        "get" if path.contains("/knowledge-documents/") => {
+        "get" if is_document_collection_path(path) => Some(
+            "Lists a bounded set of KnowledgeDocument projections for one authorized KnowledgeBase after project authorization.",
+        ),
+        "get" if is_document_item_path(path) => {
             Some("Reads one authorized KnowledgeDocument projection by immutable identity.")
         }
+        "get" if is_document_chunk_collection_path(path) => Some(
+            "Lists a bounded set of KnowledgeChunk projections for one authorized KnowledgeDocument after project authorization.",
+        ),
         "get" if path.contains("/knowledge-chunks/") => {
             Some("Reads one authorized KnowledgeChunk projection by immutable identity.")
         }
@@ -130,10 +145,16 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         "get" if is_pipeline_collection_path(path) => {
             Some("A bounded list of authorized KnowledgePipeline head projections.")
         }
+        "get" if is_document_collection_path(path) => {
+            Some("A bounded list of authorized KnowledgeDocument projections.")
+        }
+        "get" if is_document_chunk_collection_path(path) => {
+            Some("A bounded list of authorized KnowledgeChunk projections.")
+        }
         "get" if path.contains("/knowledge-chunks/") => {
             Some("The authoritative KnowledgeChunk projection.")
         }
-        "get" if path.contains("/knowledge-documents/") => {
+        "get" if is_document_item_path(path) => {
             Some("The authoritative KnowledgeDocument projection.")
         }
         "get" if path.contains("/knowledge-pipelines/") => {

@@ -15,6 +15,11 @@ use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub const DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT: usize = 200;
+pub const DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT: usize = 200;
+
 #[derive(Debug, Clone)]
 pub struct CreateKnowledgeDocumentCommand {
     pub organization_id: OrganizationId,
@@ -43,6 +48,24 @@ pub struct GetKnowledgeDocument {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
     pub document_id: Uuid,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgeDocuments {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub knowledge_base_id: Uuid,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgeChunks {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub document_id: Uuid,
+    pub limit: Option<usize>,
     pub access: KnowledgeAccess,
 }
 
@@ -230,6 +253,67 @@ impl KnowledgeDocumentLifecycleService {
         }
         Ok(record)
     }
+    pub async fn list_documents(
+        &self,
+        query: ListKnowledgeDocuments,
+    ) -> ApplicationResult<Vec<KnowledgeDocumentRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query.limit.unwrap_or(DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgeDocument list limit must be between 1 and {MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT}"
+            )));
+        }
+        let records = self
+            .documents
+            .list_for_knowledge_base(
+                query.organization_id.as_uuid(),
+                query.knowledge_base_id,
+                limit,
+            )
+            .await?;
+        for record in &records {
+            if record.document.spec().project_id != query.project_id {
+                return Err(knowledge_not_found());
+            }
+        }
+        Ok(records)
+    }
+
+    pub async fn list_chunks(
+        &self,
+        query: ListKnowledgeChunks,
+    ) -> ApplicationResult<Vec<KnowledgeChunkRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query.limit.unwrap_or(DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgeChunk list limit must be between 1 and {MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT}"
+            )));
+        }
+        let document = self
+            .documents
+            .find(query.organization_id.as_uuid(), query.document_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if document.document.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        let records = self
+            .chunks
+            .list_for_document(
+                query.organization_id.as_uuid(),
+                query.document_id,
+                limit,
+            )
+            .await?;
+        for record in &records {
+            if record.chunk.spec().project_id != query.project_id {
+                return Err(knowledge_not_found());
+            }
+        }
+        Ok(records)
+    }
 }
 
 fn create_document_replay_matches(
@@ -373,4 +457,100 @@ mod tests {
             .await;
         assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
     }
+    #[tokio::test]
+    async fn authorized_document_list_is_bounded_and_project_scoped() {
+        let documents = Arc::new(InMemoryKnowledgeDocumentRepository::new());
+        let chunks = Arc::new(InMemoryKnowledgeChunkRepository::new());
+        let service = KnowledgeDocumentLifecycleService::new(documents, chunks);
+        let document = KnowledgeDocumentV1::parse_acl(DOCUMENT).expect("document");
+        let command = CreateKnowledgeDocumentCommand {
+            organization_id: document.spec().organization_id,
+            project_id: document.spec().project_id,
+            document_acl: DOCUMENT.to_owned(),
+            actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
+            access: KnowledgeAccess::restricted_projects([document.spec().project_id]),
+            idempotency_key: "create-doc-list".into(),
+            request_id: Uuid::from_u128(0x90),
+        };
+        service.create_document(command).await.expect("create");
+        let listed = service
+            .list_documents(ListKnowledgeDocuments {
+                organization_id: document.spec().organization_id,
+                project_id: document.spec().project_id,
+                knowledge_base_id: document.spec().knowledge_base_id.as_uuid(),
+                limit: Some(8),
+                access: KnowledgeAccess::restricted_projects([document.spec().project_id]),
+            })
+            .await
+            .expect("list");
+        assert_eq!(listed.len(), 1);
+
+        let denied = service
+            .list_documents(ListKnowledgeDocuments {
+                organization_id: document.spec().organization_id,
+                project_id: document.spec().project_id,
+                knowledge_base_id: document.spec().knowledge_base_id.as_uuid(),
+                limit: Some(8),
+                access: KnowledgeAccess::restricted_projects([ProjectId::new()]),
+            })
+            .await;
+        assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn authorized_chunk_list_is_bounded_and_project_scoped() {
+        let documents = Arc::new(InMemoryKnowledgeDocumentRepository::new());
+        let chunks = Arc::new(InMemoryKnowledgeChunkRepository::new());
+        let service = KnowledgeDocumentLifecycleService::new(documents, chunks);
+        let chunk = KnowledgeChunkV1::parse_acl(CHUNK).expect("chunk");
+        let document = KnowledgeDocumentV1::parse_acl(DOCUMENT).expect("document");
+        service
+            .create_document(CreateKnowledgeDocumentCommand {
+                organization_id: document.spec().organization_id,
+                project_id: document.spec().project_id,
+                document_acl: DOCUMENT.to_owned(),
+                actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
+                access: KnowledgeAccess::restricted_projects([document.spec().project_id]),
+                idempotency_key: "create-doc-for-chunk-list".into(),
+                request_id: Uuid::from_u128(0x91),
+            })
+            .await
+            .expect("create document");
+        service
+            .create_chunk(CreateKnowledgeChunkCommand {
+                organization_id: chunk.spec().organization_id,
+                project_id: chunk.spec().project_id,
+                document_id: chunk.spec().document_id.as_uuid(),
+                chunk_acl: CHUNK.to_owned(),
+                actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
+                access: KnowledgeAccess::restricted_projects([chunk.spec().project_id]),
+                idempotency_key: "create-chunk-list".into(),
+                request_id: Uuid::from_u128(0x92),
+            })
+            .await
+            .expect("create chunk");
+        let listed = service
+            .list_chunks(ListKnowledgeChunks {
+                organization_id: chunk.spec().organization_id,
+                project_id: chunk.spec().project_id,
+                document_id: chunk.spec().document_id.as_uuid(),
+                limit: Some(8),
+                access: KnowledgeAccess::restricted_projects([chunk.spec().project_id]),
+            })
+            .await
+            .expect("list");
+        assert_eq!(listed.len(), 1);
+
+        let denied = service
+            .list_chunks(ListKnowledgeChunks {
+                organization_id: chunk.spec().organization_id,
+                project_id: chunk.spec().project_id,
+                document_id: chunk.spec().document_id.as_uuid(),
+                limit: Some(8),
+                access: KnowledgeAccess::restricted_projects([ProjectId::new()]),
+            })
+            .await;
+        assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
+    }
+
 }

@@ -212,6 +212,36 @@ async fn knowledge_document_and_chunk_rest_create_get_replay_and_deny_unauthoriz
         .await?;
     assert_eq!(denied_get.status(), 403);
 
+
+    let knowledge_base_id = created["data"]["knowledgeDocument"]["knowledgeBaseId"]
+        .as_str()
+        .ok_or_else(|| BootError::Internal("KnowledgeDocument has no knowledgeBaseId".into()))?;
+
+    let listed_documents = app
+        .call(get_as(
+            format!("{granted_documents}?knowledgeBaseId={knowledge_base_id}&limit=8"),
+            RESTRICTED_KNOWLEDGE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed_documents.status(), 200);
+    let listed_documents = response_json(&listed_documents)?;
+    assert_eq!(listed_documents["data"].as_array().map(|items| items.len()), Some(1));
+
+    let listed_chunks = app
+        .call(get_as(
+            format!("{granted_chunks}?limit=8"),
+            RESTRICTED_KNOWLEDGE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed_chunks.status(), 200);
+    let listed_chunks = response_json(&listed_chunks)?;
+    assert_eq!(listed_chunks["data"].as_array().map(|items| items.len()), Some(1));
+
+    let missing_base = app
+        .call(get_as(&granted_documents, RESTRICTED_KNOWLEDGE_TOKEN))
+        .await?;
+    assert_eq!(missing_base.status(), 400);
+
     let denied_chunk_get = app
         .call(get_as(
             format!(

@@ -6,8 +6,8 @@ use crate::modules::knowledge::{
     GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, KnowledgeBaseMutationResponse,
     KnowledgeBaseResponse, KnowledgeChunkMutationResponse, KnowledgeChunkResponse,
     KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse, KnowledgePipelineMutationResponse,
-    KnowledgePipelineResponse, ListKnowledgeBases, ListKnowledgePipelines,
-    PublishKnowledgePipelineCommand,
+    KnowledgePipelineResponse, ListKnowledgeBases, ListKnowledgeChunks,
+    ListKnowledgeDocuments, ListKnowledgePipelines, PublishKnowledgePipelineCommand,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use crate::presentation::knowledge_access;
@@ -446,3 +446,86 @@ pub async fn get_chunk(
         Err(error) => tool_result::application_error(error, request_id),
     }
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListKnowledgeDocumentsArguments {
+    project_id: Uuid,
+    knowledge_base_id: Uuid,
+    #[serde(
+        default = "arguments::default_list_limit",
+        deserialize_with = "arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListKnowledgeChunksArguments {
+    project_id: Uuid,
+    document_id: Uuid,
+    #[serde(
+        default = "arguments::default_list_limit",
+        deserialize_with = "arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+pub async fn list_documents(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListKnowledgeDocumentsArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListKnowledgeDocuments {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            knowledge_base_id: arguments.knowledge_base_id,
+            limit: Some(arguments.limit),
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(records) => tool_result::success(
+            200,
+            records
+                .into_iter()
+                .map(KnowledgeDocumentResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_chunks(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListKnowledgeChunksArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListKnowledgeChunks {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            document_id: arguments.document_id,
+            limit: Some(arguments.limit),
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(records) => tool_result::success(
+            200,
+            records
+                .into_iter()
+                .map(KnowledgeChunkResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+

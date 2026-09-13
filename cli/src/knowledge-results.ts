@@ -82,6 +82,10 @@ const KNOWLEDGE_CHUNK_COLUMNS: readonly TableColumn<KnowledgeChunk>[] = [
   { header: 'CREATED AT', value: (row) => row.createdAt },
 ];
 
+export function knowledgeDocumentsResult(rows: KnowledgeDocument[]): CommandResult {
+  return { json: rows, table: renderTable(rows, KNOWLEDGE_DOCUMENT_COLUMNS) };
+}
+
 export function knowledgeDocumentResult(row: KnowledgeDocument): CommandResult {
   return { json: row, table: renderTable([row], KNOWLEDGE_DOCUMENT_COLUMNS) };
 }
@@ -95,6 +99,10 @@ export function knowledgeDocumentMutationResult(result: KnowledgeDocumentMutatio
       [...KNOWLEDGE_DOCUMENT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
+}
+
+export function knowledgeChunksResult(rows: KnowledgeChunk[]): CommandResult {
+  return { json: rows, table: renderTable(rows, KNOWLEDGE_CHUNK_COLUMNS) };
 }
 
 export function knowledgeChunkResult(row: KnowledgeChunk): CommandResult {

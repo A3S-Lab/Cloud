@@ -15,7 +15,10 @@ pub use commands::{
 pub use document_catalog::{KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService};
 pub use document_lifecycle::{
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand, GetKnowledgeChunk,
-    GetKnowledgeDocument, KnowledgeDocumentLifecycleService,
+    GetKnowledgeDocument, KnowledgeDocumentLifecycleService, ListKnowledgeChunks,
+    ListKnowledgeDocuments, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
 };
 pub use lifecycle::{
     AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgePipelineCommand,
@@ -27,6 +30,7 @@ pub use lifecycle::{
 };
 pub use queries::{
     GetKnowledgeBaseHandler, GetKnowledgeChunkHandler, GetKnowledgeDocumentHandler,
-    GetKnowledgePipelineHandler, ListKnowledgeBasesHandler, ListKnowledgePipelinesHandler,
+    GetKnowledgePipelineHandler, ListKnowledgeBasesHandler, ListKnowledgeChunksHandler,
+    ListKnowledgeDocumentsHandler, ListKnowledgePipelinesHandler,
 };
 pub use resource_access::KnowledgeAccess;

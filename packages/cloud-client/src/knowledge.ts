@@ -5,6 +5,10 @@ export const DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT = 50;
 export const MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT = 200;
 export const DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT = 50;
 export const MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT = 200;
+export const DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT = 50;
+export const MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT = 200;
+export const DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT = 50;
+export const MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT = 200;
 
 const CONTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
@@ -162,4 +166,39 @@ export interface CreateKnowledgeDocumentInput {
 
 export interface CreateKnowledgeChunkInput {
   chunkAcl: string;
+}
+
+export interface KnowledgeDocumentListOptions {
+  knowledgeBaseId: string;
+  limit?: number;
+}
+
+export interface KnowledgeChunkListOptions {
+  limit?: number;
+}
+
+export function encodeKnowledgeDocumentListOptions(
+  options: KnowledgeDocumentListOptions
+): string {
+  if (typeof options.knowledgeBaseId !== 'string' || options.knowledgeBaseId.length === 0) {
+    throw new TypeError('KnowledgeDocument list requires knowledgeBaseId');
+  }
+  const limitPart = encodeKnowledgeListOptions(
+    options,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    'KnowledgeDocument'
+  ).slice(1);
+  return `?knowledgeBaseId=${encodeURIComponent(options.knowledgeBaseId)}&${limitPart}`;
+}
+
+export function encodeKnowledgeChunkListOptions(
+  options: KnowledgeChunkListOptions = {}
+): string {
+  return encodeKnowledgeListOptions(
+    options,
+    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    'KnowledgeChunk'
+  );
 }
