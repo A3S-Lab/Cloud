@@ -1,5 +1,7 @@
 use crate::modules::files::application::UserFileMutationResult;
-use crate::modules::files::domain::{UserFile, UserFileQuota, USER_FILE_ADMISSION_CONTRACT_SCHEMA};
+use crate::modules::files::domain::{
+    UserFile, UserFileQuota, UserFileScanDecision, USER_FILE_ADMISSION_CONTRACT_SCHEMA,
+};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -14,6 +16,33 @@ pub struct ReserveUserFileRequest {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TombstoneUserFileRequest {
     pub expected_version: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RecordUserFileScanRequest {
+    pub expected_version: u64,
+    pub evidence_digest: String,
+    pub decision: UserFileScanDecisionRequest,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
+pub enum UserFileScanDecisionRequest {
+    Admitted,
+    #[serde(rename_all = "camelCase")]
+    Rejected {
+        reason_code: String,
+    },
+}
+
+impl From<UserFileScanDecisionRequest> for UserFileScanDecision {
+    fn from(value: UserFileScanDecisionRequest) -> Self {
+        match value {
+            UserFileScanDecisionRequest::Admitted => Self::Admitted,
+            UserFileScanDecisionRequest::Rejected { reason_code } => Self::Rejected { reason_code },
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]

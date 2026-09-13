@@ -204,6 +204,56 @@ describe('a3s-cloud UserFile commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+
+  it('records metadata-only scan decisions through the exact scan route', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const digest = `sha256:${'b'.repeat(64)}`;
+    const exitCode = await runCli(
+      [
+        'user-files',
+        'scan',
+        USER_FILE_ID,
+        '--decision=admitted',
+        `--evidence-digest=${digest}`,
+        '--expected-version=2',
+        '--idempotency-key=cli:files:scan',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({
+            file: { ...userFile(), state: 'admitted', scanEvidenceDigest: digest },
+            replayed: false,
+          });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(String(calls[0]?.[0])).toBe(`${userFileBase()}/${USER_FILE_ID}/scan`);
+    expect(String(calls[0]?.[0])).not.toContain('upload');
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          expectedVersion: 2,
+          evidenceDigest: digest,
+          decision: { kind: 'admitted' },
+        }),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'cli:files:scan',
+        }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
   it('gets admitted content bytes through the exact /content route into --file', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();

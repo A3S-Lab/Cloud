@@ -7,6 +7,8 @@ import {
   USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
   validateExpectedUserFileVersion,
   validateUserFileAdmissionAcl,
+  validateUserFileEvidenceDigest,
+  validateUserFileScanDecision,
 } from './files';
 
 function jsonResponse(data: unknown, status = 200): Response {
@@ -41,6 +43,17 @@ describe('UserFile client surface', () => {
     await api.listUserFiles('organization / one', 'project / one');
     await api.getUserFile('organization / one', 'project / one', 'file / one');
     await api.tombstoneUserFile('organization / one', 'project / one', 'file / one', 1, 'files:tombstone');
+    await api.recordUserFileScan(
+      'organization / one',
+      'project / one',
+      'file / one',
+      {
+        expectedVersion: 2,
+        evidenceDigest: `sha256:${'a'.repeat(64)}`,
+        decision: { kind: 'admitted' },
+      },
+      'files:scan'
+    );
     await api.putUserFileContent(
       'organization / one',
       'project / one',
@@ -65,6 +78,7 @@ describe('UserFile client surface', () => {
       `/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files?limit=${DEFAULT_USER_FILE_LIST_LIMIT}`,
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/tombstone',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/scan',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/user-file-quota',
@@ -85,6 +99,17 @@ describe('UserFile client surface', () => {
     );
     expect(calls[4]?.[1]).toEqual(
       expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'files:scan' }),
+        body: JSON.stringify({
+          expectedVersion: 2,
+          evidenceDigest: `sha256:${'a'.repeat(64)}`,
+          decision: { kind: 'admitted' },
+        }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({
           'Content-Type': 'application/octet-stream',
@@ -94,7 +119,7 @@ describe('UserFile client surface', () => {
         body: expect.any(Uint8Array),
       })
     );
-    expect(calls[5]?.[1]).toEqual(
+    expect(calls[6]?.[1]).toEqual(
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({ Accept: '*/*' }),
@@ -112,6 +137,9 @@ describe('UserFile client surface', () => {
     expect(() => encodeUserFileListOptions({ limit: 0 })).toThrow(RangeError);
     expect(() => encodeUserFileListOptions({ limit: MAXIMUM_USER_FILE_LIST_LIMIT + 1 })).toThrow(RangeError);
     expect(() => validateExpectedUserFileVersion(0)).toThrow(RangeError);
+    expect(() => validateUserFileEvidenceDigest('sha256:not-hex')).toThrow(TypeError);
+    expect(() => validateUserFileScanDecision({ kind: 'rejected' })).toThrow(TypeError);
+    expect(() => validateUserFileScanDecision({ kind: 'admitted', extra: true })).toThrow(TypeError);
     expect(() => validateExpectedUserFileVersion(Number.MAX_SAFE_INTEGER + 1)).toThrow(RangeError);
     expect(() => validateUserFileAdmissionAcl('')).toThrow(TypeError);
     expect(() => validateUserFileAdmissionAcl('user_file {\rinvalid = true\n}\n')).toThrow(TypeError);
@@ -131,6 +159,15 @@ describe('UserFile client surface', () => {
 
     expect(() =>
       api.reserveUserFile('organization', 'project', { admissionAcl: '' }, 'files:reserve')
+    ).toThrow(TypeError);
+    expect(() =>
+      api.recordUserFileScan(
+        'organization',
+        'project',
+        'file',
+        { expectedVersion: 1, evidenceDigest: 'bad', decision: { kind: 'admitted' } },
+        'files:scan'
+      )
     ).toThrow(TypeError);
     expect(() => api.tombstoneUserFile('organization', 'project', 'file', 0, 'files:tombstone')).toThrow(
       RangeError

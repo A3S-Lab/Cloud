@@ -3309,8 +3309,8 @@ fn fleet_list_and_pool_paths_isolate_identity_behind_one_context_owned_access_pr
 }
 
 #[test]
-fn applications_queries_commands_and_delivery_isolate_identity_behind_one_context_owned_access_projection()
- {
+fn applications_queries_commands_and_delivery_isolate_identity_behind_one_context_owned_access_projection(
+) {
     let root = module_root();
 
     let access = std::fs::read_to_string(root.join("applications/application/resource_access.rs"))
@@ -3714,8 +3714,8 @@ fn notifications_owns_outbound_recipient_contact_access_through_one_identity_ada
 }
 
 #[test]
-fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_context_owned_access_projection()
- {
+fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_context_owned_access_projection(
+) {
     let root = module_root();
 
     let access = std::fs::read_to_string(root.join("durable_cells/application/resource_access.rs"))
@@ -3820,8 +3820,8 @@ fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_cont
 }
 
 #[test]
-fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context_owned_access_projection()
- {
+fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context_owned_access_projection(
+) {
     let root = module_root();
 
     let access = std::fs::read_to_string(root.join("connectors/application/resource_access.rs"))
@@ -4906,7 +4906,7 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         production_source(&management_mcp)
             .matches("access: user_file_access(&resource_access)")
             .count(),
-        5,
+        6,
         "Files Management MCP must translate every request through the one root ACL"
     );
 
@@ -4985,10 +4985,8 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
             "Files persistence conformance must compose the one production adapter {adapter}"
         );
     }
-    assert!(
-        conformance
-            .contains("pub fn user_file_organization_access_for_conformance() -> UserFileAccess")
-    );
+    assert!(conformance
+        .contains("pub fn user_file_organization_access_for_conformance() -> UserFileAccess"));
     let conformance_test = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/support/user_files.rs"),
     )
@@ -5045,10 +5043,8 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         1,
         "the non-default Files conformance assembly must stay confined to its retained gate"
     );
-    assert!(
-        user_file_gate
-            .contains("postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced")
-    );
+    assert!(user_file_gate
+        .contains("postgres_user_files_are_quota_atomic_replay_safe_and_lifecycle_fenced"));
 
     let migration = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../migrations/170_user_files.sql"),
@@ -6606,10 +6602,8 @@ fn workload_runtime_evidence_history_is_one_typed_identity_authority() {
             .count(),
         1
     );
-    assert!(
-        in_memory
-            .contains("impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository")
-    );
+    assert!(in_memory
+        .contains("impl IWorkloadRuntimeEvidenceRepository for InMemoryIdentityRepository"));
 
     for required in [
         "create table workload_runtime_evidence_history",
@@ -8159,10 +8153,8 @@ fn platform_rbac_persistence_reuses_one_identity_and_shared_fact_authority() {
     assert!(provider_gate.contains("concurrent platform RBAC bootstrap"));
     assert!(provider_gate.contains("concurrent owner revocation"));
     assert!(provider_gate.contains("concurrent policy CAS"));
-    assert!(
-        provider_gate
-            .contains("business mutation and exact credential revocation were not serialized")
-    );
+    assert!(provider_gate
+        .contains("business mutation and exact credential revocation were not serialized"));
     assert!(provider_gate.contains(
         "authorization decision and protected business fact must commit or roll back together"
     ));
@@ -8468,11 +8460,8 @@ fn tenant_support_approval_persistence_reuses_identity_and_shared_fact_authoriti
             "tenant support provider gate lost proof {required}"
         );
     }
-    assert!(
-        workflow.contains(
-            "postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"
-        )
-    );
+    assert!(workflow
+        .contains("postgres_tenant_support_grants_require_actual_multi_replica_approval_evidence"));
 }
 
 #[test]
@@ -8614,10 +8603,8 @@ fn privileged_authorization_uses_one_atomic_identity_decision_and_shared_audit_a
             "privileged authorization provider gate lost concurrency proof {required}"
         );
     }
-    assert!(
-        workflow
-            .contains("postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe")
-    );
+    assert!(workflow
+        .contains("postgres_privileged_authorization_decisions_are_atomic_and_revocation_safe"));
 }
 
 #[test]
@@ -12392,10 +12379,8 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     let compact_identity_postgres = production_source(&identity_postgres)
         .split_whitespace()
         .collect::<String>();
-    assert!(
-        compact_identity_postgres
-            .contains("implIActiveHumanMembershipQueryPortforPostgresIdentityRepository")
-    );
+    assert!(compact_identity_postgres
+        .contains("implIActiveHumanMembershipQueryPortforPostgresIdentityRepository"));
     for required in [
         "identity_principals",
         "organization_memberships",
@@ -12413,9 +12398,7 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     )
     .expect("read Plugins registry commands controller");
     let production_commands = production_source(&commands_controller);
-    assert!(
-        production_commands.contains("organization_tenant_plugin_write_controller(controller)")
-    );
+    assert!(production_commands.contains("organization_tenant_plugin_write_controller(controller)"));
     assert!(production_commands.contains("EnrollPluginRegistry"));
 
     let controller = std::fs::read_to_string(
@@ -12423,9 +12406,7 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     )
     .expect("read Plugins query controller");
     let production_controller = production_source(&controller);
-    assert!(
-        production_controller.contains("organization_tenant_cloud_read_controller(controller)")
-    );
+    assert!(production_controller.contains("organization_tenant_cloud_read_controller(controller)"));
     for forbidden in [
         "crate::modules::identity",
         "OrganizationTenantGuard",
@@ -12892,10 +12873,8 @@ fn search_visibility_and_composition_stay_behind_the_owner_boundary() {
         std::fs::read_to_string(root.join("search/infrastructure/persistence/postgres.rs"))
             .expect("read Search PostgreSQL adapter");
     assert!(postgres.contains("pub(in crate::modules::search) struct PostgresSearchRepository"));
-    assert!(
-        postgres
-            .contains("pub(in crate::modules::search) const fn new(executor: PostgresExecutor)")
-    );
+    assert!(postgres
+        .contains("pub(in crate::modules::search) const fn new(executor: PostgresExecutor)"));
 
     let mut identity_dependencies = BTreeSet::new();
     visit_production_sources(|relative, source| {
@@ -13070,10 +13049,8 @@ fn security_composition_stays_behind_owner_and_root_presentation_boundaries() {
     assert!(postgres.contains(
         "pub(in crate::modules::security) struct PostgresGatewayRoutePolicyTimelineRepository"
     ));
-    assert!(
-        postgres
-            .contains("pub(in crate::modules::security) const fn new(executor: PostgresExecutor)")
-    );
+    assert!(postgres
+        .contains("pub(in crate::modules::security) const fn new(executor: PostgresExecutor)"));
 
     let controller = std::fs::read_to_string(root.join("security/presentation/controller.rs"))
         .expect("read Security HTTP adapter");
@@ -15708,11 +15685,9 @@ fn workflow_owns_human_task_submission_through_one_forms_adapter_and_mapper() {
 
     let forms_domain = module_root().join("forms/domain");
     assert!(!forms_domain.join("entities/form_submission.rs").exists());
-    assert!(
-        !forms_domain
-            .join("repositories/form_submission_repository.rs")
-            .exists()
-    );
+    assert!(!forms_domain
+        .join("repositories/form_submission_repository.rs")
+        .exists());
     let decision_record = std::fs::read_to_string(
         module_root().join("workflow/domain/repositories/human_task_repository.rs"),
     )

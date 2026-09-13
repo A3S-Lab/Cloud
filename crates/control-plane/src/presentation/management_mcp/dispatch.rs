@@ -42,7 +42,8 @@ use super::execution_templates::{
     ListExecutionTemplatesArguments,
 };
 use super::files::{
-    ListUserFilesArguments, ReserveUserFileArguments, TombstoneUserFileArguments, UserFileArguments,
+    ListUserFilesArguments, ReserveUserFileArguments, ScanUserFileArguments,
+    TombstoneUserFileArguments, UserFileArguments,
 };
 use super::forms::{
     CreateFormDraftArguments, FormDraftArguments, FormReleaseArguments, ListFormDraftsArguments,
@@ -1652,6 +1653,18 @@ pub async fn execute(
         ManagementTool::UserFilesTombstone => {
             let arguments = arguments::parse::<TombstoneUserFileArguments>(arguments).ok()?;
             files::tombstone(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFilesScan => {
+            let arguments = arguments::parse::<ScanUserFileArguments>(arguments).ok()?;
+            files::scan(
                 command_bus,
                 organization_id,
                 actor_principal_id,

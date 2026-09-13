@@ -75,11 +75,12 @@ The maintained management surface is exact:
 | Get one projection | `GET /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}` | `getUserFile` | `user-files get` | `a3s_cloud_user_files_get` | `cloud:read` |
 | Put reserved content bytes | `PUT /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `putUserFileContent` | `user-files put-content` | — | `file:write` |
 | Get admitted content bytes | `GET /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `getUserFileContent` | `user-files get-content` | — | `cloud:read` |
+| Record scan decision | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/scan` | `recordUserFileScan` | `user-files scan` | `a3s_cloud_user_files_scan` | `file:write` |
 | Tombstone and release quota | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/tombstone` | `tombstoneUserFile` | `user-files tombstone` | `a3s_cloud_user_files_tombstone` | `file:write` |
 | Read organization quota | `GET /organizations/{organizationId}/user-file-quota` | `getUserFileQuota` | `user-file-quota get` | `a3s_cloud_user_file_quota_get` | `cloud:read` |
 
-REST/OpenAPI `1.90.0` and Management MCP dispatch the same metadata commands and
-queries and reuse the same DTO projections. Authorized REST `PUT`/`GET .../content`
+REST/OpenAPI `1.91.0` and Management MCP dispatch the same metadata commands and
+queries and reuse the same DTO projections, including metadata-only scan decisions. Authorized REST `PUT`/`GET .../content`
 streams bytes through the Files object port; only an admitted aggregate exposes
 bytes on GET. Management MCP remains metadata-only and never accepts or returns
 file bytes.
