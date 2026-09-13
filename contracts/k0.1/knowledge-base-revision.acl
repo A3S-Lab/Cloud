@@ -1,0 +1,13 @@
+knowledge_base_revision {
+  chunk_structure = "general"
+  generation = 1
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  name = "Product FAQ"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  provenance_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  retention_until = "2027-08-21T00:00:00.000000Z"
+  revision_id = "018f0000-0000-7000-8000-000000000302"
+  schema = "cloud.knowledge-base-revision.v1"
+  tags = ["faq", "public"]
+}

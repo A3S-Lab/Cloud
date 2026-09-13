@@ -1,0 +1,12 @@
+knowledge_index_revision {
+  embedding_dimension = 1536
+  embedding_model_revision_digest = "sha256:1111111111111111111111111111111111111111111111111111111111111111"
+  index_revision_id = "018f0000-0000-7000-8000-000000000305"
+  input_modalities = ["text"]
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  retrieval_modalities = ["text"]
+  schema = "cloud.knowledge-index-revision.v1"
+  strategy = "hybrid"
+}

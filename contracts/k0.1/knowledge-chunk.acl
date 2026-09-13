@@ -1,0 +1,14 @@
+knowledge_chunk {
+  chunk_id = "018f0000-0000-7000-8000-000000000304"
+  content_digest = "sha256:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+  document_id = "018f0000-0000-7000-8000-000000000303"
+  object_ref = "organizations/org/projects/proj/knowledge/chunks/0"
+  ordinal = 0
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  parent_chunk_id = ""
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  provenance_digest = "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  schema = "cloud.knowledge-chunk.v1"
+  structure = "general"
+  tags = ["section-1"]
+}

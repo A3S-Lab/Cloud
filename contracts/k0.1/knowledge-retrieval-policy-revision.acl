@@ -1,0 +1,13 @@
+knowledge_retrieval_policy_revision {
+  citation_mode = "required"
+  filter_mode = "exact"
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  policy_revision_id = "018f0000-0000-7000-8000-000000000306"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  rerank_mode = "disabled"
+  schema = "cloud.knowledge-retrieval-policy-revision.v1"
+  score_mode = "standard"
+  search_mode = "hybrid"
+  top_k = 8
+}
