@@ -38,6 +38,8 @@ export interface ParsedArguments {
   workflowRunTimeoutSeconds?: string;
   workflowRunWaitSeconds?: string;
   reason?: string;
+  decision?: string;
+  evidenceDigest?: string;
   auditActorPrincipalId?: string;
   auditAction?: string;
   auditAggregateId?: string;
@@ -106,6 +108,8 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--run-timeout-seconds': 'workflowRunTimeoutSeconds',
   '--wait-seconds': 'workflowRunWaitSeconds',
   '--reason': 'reason',
+  '--decision': 'decision',
+  '--evidence-digest': 'evidenceDigest',
   '--actor-principal': 'auditActorPrincipalId',
   '--action': 'auditAction',
   '--aggregate': 'auditAggregateId',

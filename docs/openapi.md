@@ -17,9 +17,10 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.90.0`.
+The current semantic contract version is `1.91.0`.
 
-Contract `1.90.0` extends the Files-owned UserFile surface with authorized
+Contract `1.91.0` extends the Files-owned UserFile surface with authorized
+metadata-only scan decisions (`POST .../scan`) after content PUT/GET. Contract `1.90.0` added
 content PUT and admitted-only content GET. A project-authorized caller can reserve one canonical
 `cloud.user-file.v1` A3S ACL, `PUT` exact reserved bytes to
 `/user-files/{user_file_id}/content` as `application/octet-stream` with

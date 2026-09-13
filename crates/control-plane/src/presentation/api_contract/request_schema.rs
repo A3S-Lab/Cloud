@@ -1,7 +1,9 @@
 use super::developer_workflow_operation::request_schema as developer_workflow_request_schema;
 use super::privileged_management_operation::request_schema as privileged_management_request_schema;
 use super::source_components::build_recipe_request_schema;
-use crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES;
+use crate::modules::files::{
+    USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES, USER_FILE_REJECTION_REASON_MAX_BYTES,
+};
 use crate::modules::knowledge::KNOWLEDGE_CONTRACT_MAX_ACL_BYTES;
 use a3s_cloud_contracts::NodeEnrollmentRequest;
 use a3s_runtime::contract::RuntimeCapabilities;
@@ -104,6 +106,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/user-files" => {
             user_file_reservation_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/scan" => {
+            user_file_scan_schema()
+        }
         "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone" => {
             expected_version_schema("expectedVersion")
         }
@@ -192,6 +197,44 @@ fn user_file_reservation_schema() -> Value {
                 "maxLength": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
                 "x-a3s-max-canonical-bytes": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
                 "description": "Canonical A3S ACL UserFile admission contract."
+            }
+        }),
+    )
+}
+
+fn user_file_scan_schema() -> Value {
+    object(
+        &["expectedVersion", "evidenceDigest", "decision"],
+        json!({
+            "expectedVersion": positive_integer_schema(),
+            "evidenceDigest": digest_schema(),
+            "decision": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["kind"],
+                        "properties": {
+                            "kind": { "type": "string", "enum": ["admitted"] }
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["kind", "reasonCode"],
+                        "properties": {
+                            "kind": { "type": "string", "enum": ["rejected"] },
+                            "reasonCode": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": USER_FILE_REJECTION_REASON_MAX_BYTES,
+                                "pattern": "^[a-z0-9._-]+$",
+                                "description": "Bounded lowercase rejection reason code."
+                            }
+                        }
+                    }
+                ],
+                "description": "Metadata-only scan decision. This is not a live scanner provider configuration."
             }
         }),
     )

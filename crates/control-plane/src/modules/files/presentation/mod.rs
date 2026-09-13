@@ -11,11 +11,13 @@ pub const USER_FILE_CONTENT_ROUTE: &str =
     "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/content";
 pub const USER_FILE_TOMBSTONE_ROUTE: &str =
     "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone";
+pub const USER_FILE_SCAN_ROUTE: &str =
+    "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/scan";
 pub const USER_FILE_QUOTA_ROUTE: &str = "/{organization_id}/user-file-quota";
 
 pub use controller::{user_file_commands_controller, user_file_queries_controller};
 pub use dto::{
-    ReserveUserFileRequest, TombstoneUserFileRequest, UserFileMutationResponse,
-    UserFileQuotaResponse, UserFileResponse,
+    RecordUserFileScanRequest, ReserveUserFileRequest, TombstoneUserFileRequest,
+    UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
 };
 pub use files_module::FilesModule;

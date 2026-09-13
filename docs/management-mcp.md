@@ -918,16 +918,23 @@ grant decision.
 `a3s_cloud_user_files_tombstone` requires `projectId`, `userFileId`, a positive
 `expectedVersion`, and `idempotencyKey`. It requires `file:write`, is marked
 destructive, and atomically releases any reserved quota with the lifecycle,
-audit, Outbox, and idempotency write. `a3s_cloud_user_file_quota_get` accepts no
-arguments, requires `cloud:read`, and is read-only. Because quota is an
-Organization-wide ledger, that tool is concealed from restricted Memberships
+audit, Outbox, and idempotency write. `a3s_cloud_user_files_scan` requires
+`projectId`, `userFileId`, a positive `expectedVersion`, canonical
+`evidenceDigest`, a metadata-only `decision` (`admitted` or `rejected` with
+`reasonCode`), and `idempotencyKey`. It requires `file:write`, is not
+destructive, and dispatches the same scan command as REST. It never accepts
+file bytes or scanner provider configuration. `a3s_cloud_user_file_quota_get`
+accepts no arguments, requires `cloud:read`, and is read-only. Because quota is
+an Organization-wide ledger, that tool is concealed from restricted Memberships
 rather than exposing a partial allocation.
 
-All five tools dispatch one Files command/query authority. Their schemas carry
-only canonical ACL, identities, bounds, and optimistic concurrency. They never
-accept file bytes, provider/bucket details, scanner configuration, multipart
-state, or a cleanup command. REST may transfer bytes through `PUT`/`GET .../content`;
-Management MCP stays metadata-only and never accepts or returns file bytes. Live scan/cleanup execution remains unavailable.
+All six tools dispatch one Files command/query authority. Their schemas carry
+only canonical ACL, identities, bounds, evidence digests, scan decisions, and
+optimistic concurrency. They never accept file bytes, provider/bucket details,
+scanner configuration, multipart state, or a cleanup command. REST may transfer
+bytes through `PUT`/`GET .../content`; Management MCP stays metadata-only and
+never accepts or returns file bytes. Live scanner execution and cleanup workers
+remain unavailable.
 
 ## GitHub source discovery
 

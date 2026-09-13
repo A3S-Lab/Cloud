@@ -98,6 +98,44 @@ export async function executeUserFileCommand(
         )
       );
     }
+    case 'user-files scan': {
+      requireArity(arguments_.positionals, 3, 'user-files scan <user-file-id>');
+      rejectAgentProviderKindOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      rejectFileOption(arguments_);
+      if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+        throw usageError('cursor and stream options are valid only for log commands');
+      }
+      const expectedVersion = requireExpectedVersion(arguments_, 'UserFile');
+      const idempotencyKey = requireIdempotencyKey(arguments_);
+      const evidenceDigest = arguments_.evidenceDigest;
+      if (evidenceDigest === undefined || evidenceDigest.length === 0) {
+        throw usageError('--evidence-digest is required for user-files scan');
+      }
+      const decisionKind = arguments_.decision;
+      if (decisionKind !== 'admitted' && decisionKind !== 'rejected') {
+        throw usageError('--decision must be admitted or rejected');
+      }
+      const decision =
+        decisionKind === 'admitted'
+          ? { kind: 'admitted' as const }
+          : (() => {
+              const reasonCode = arguments_.reason;
+              if (reasonCode === undefined || reasonCode.length === 0) {
+                throw usageError('--reason is required when --decision=rejected');
+              }
+              return { kind: 'rejected' as const, reasonCode };
+            })();
+      return userFileMutationResult(
+        await cloudApi().recordUserFileScan(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'UserFile ID'),
+          { expectedVersion, evidenceDigest, decision },
+          idempotencyKey
+        )
+      );
+    }
     case 'user-files put-content': {
       requireArity(arguments_.positionals, 3, 'user-files put-content <user-file-id>');
       rejectAgentProviderKindOption(arguments_);

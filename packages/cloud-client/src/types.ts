@@ -375,7 +375,9 @@ export type {
 } from './node';
 export type { SearchResourceKind, SearchResult } from './search';
 export type {
+  RecordUserFileScanInput,
   ReserveUserFileInput,
+  UserFileScanDecision,
   UserFile,
   UserFileListOptions,
   UserFileMutationResult,

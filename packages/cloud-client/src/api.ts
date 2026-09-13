@@ -181,6 +181,7 @@ import {
 } from './security';
 import {
   encodeUserFileListOptions,
+  type RecordUserFileScanInput,
   type ReserveUserFileInput,
   type UserFile,
   type UserFileListOptions,
@@ -189,6 +190,8 @@ import {
   USER_FILE_MAX_BYTES,
   validateExpectedUserFileVersion,
   validateUserFileAdmissionAcl,
+  validateUserFileEvidenceDigest,
+  validateUserFileScanDecision,
 } from './files';
 import {
   encodeKnowledgeBaseListOptions,
@@ -4356,6 +4359,29 @@ export class CloudApi {
       `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/tombstone`,
       idempotencyKey,
       { expectedVersion },
+      signal
+    );
+  }
+
+  recordUserFileScan(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    input: RecordUserFileScanInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<UserFileMutationResult> {
+    validateExpectedUserFileVersion(input?.expectedVersion);
+    validateUserFileEvidenceDigest(input?.evidenceDigest);
+    validateUserFileScanDecision(input?.decision);
+    return this.postJson(
+      `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/scan`,
+      idempotencyKey,
+      {
+        expectedVersion: input.expectedVersion,
+        evidenceDigest: input.evidenceDigest,
+        decision: input.decision,
+      },
       signal
     );
   }

@@ -16,8 +16,8 @@ use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
     DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
-    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
-    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
     PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
@@ -30,10 +30,10 @@ use crate::modules::durable_cells::{
 use crate::modules::executions::EXECUTION_TEMPLATE_MAX_ACL_BYTES;
 use crate::modules::files::{
     DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
-    USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+    USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES, USER_FILE_REJECTION_REASON_MAX_BYTES,
 };
-use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::repositories::{
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
@@ -71,7 +71,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
 pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
@@ -256,6 +256,7 @@ pub const USER_FILES_RESERVE: &str = "a3s_cloud_user_files_reserve";
 pub const USER_FILES_LIST: &str = "a3s_cloud_user_files_list";
 pub const USER_FILES_GET: &str = "a3s_cloud_user_files_get";
 pub const USER_FILES_TOMBSTONE: &str = "a3s_cloud_user_files_tombstone";
+pub const USER_FILES_SCAN: &str = "a3s_cloud_user_files_scan";
 pub const USER_FILE_QUOTA_GET: &str = "a3s_cloud_user_file_quota_get";
 pub const KNOWLEDGE_BASES_CREATE: &str = "a3s_cloud_knowledge_bases_create";
 pub const KNOWLEDGE_BASES_LIST: &str = "a3s_cloud_knowledge_bases_list";
@@ -409,6 +410,7 @@ pub enum ManagementTool {
     UserFilesList,
     UserFilesGet,
     UserFilesTombstone,
+    UserFilesScan,
     UserFileQuotaGet,
     KnowledgeBasesCreate,
     KnowledgeBasesList,
@@ -494,7 +496,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 192] = [
+    const ALL: [Self; 193] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -620,6 +622,7 @@ impl ManagementTool {
         Self::UserFilesList,
         Self::UserFilesGet,
         Self::UserFilesTombstone,
+        Self::UserFilesScan,
         Self::UserFileQuotaGet,
         Self::KnowledgeBasesCreate,
         Self::KnowledgeBasesList,
@@ -841,6 +844,7 @@ impl ManagementTool {
             Self::UserFilesList => USER_FILES_LIST,
             Self::UserFilesGet => USER_FILES_GET,
             Self::UserFilesTombstone => USER_FILES_TOMBSTONE,
+            Self::UserFilesScan => USER_FILES_SCAN,
             Self::UserFileQuotaGet => USER_FILE_QUOTA_GET,
             Self::KnowledgeBasesCreate => KNOWLEDGE_BASES_CREATE,
             Self::KnowledgeBasesList => KNOWLEDGE_BASES_LIST,
@@ -991,7 +995,9 @@ impl ManagementTool {
             Self::GithubInstallationRepositoriesList | Self::GithubRepositoryReferencesList => {
                 Some(ApiTokenScope::SOURCE_WRITE)
             }
-            Self::UserFilesReserve | Self::UserFilesTombstone => Some(ApiTokenScope::FILE_WRITE),
+            Self::UserFilesReserve | Self::UserFilesTombstone | Self::UserFilesScan => {
+                Some(ApiTokenScope::FILE_WRITE)
+            }
             Self::KnowledgeBasesCreate
             | Self::KnowledgeBasesAppend
             | Self::KnowledgePipelinesCreate
@@ -1194,6 +1200,7 @@ impl ManagementTool {
             | Self::UserFilesList
             | Self::UserFilesGet
             | Self::UserFilesTombstone
+            | Self::UserFilesScan
             | Self::KnowledgeBasesCreate
             | Self::KnowledgeBasesList
             | Self::KnowledgeBasesGet
@@ -2145,6 +2152,12 @@ impl ManagementTool {
                 "Tombstone user file",
                 "Tombstone one tenant-authorized UserFile with optimistic concurrency, quota release, one lifecycle cleanup intent, and explicit idempotency.",
                 tombstone_user_file_schema(),
+                false,
+            ),
+            Self::UserFilesScan => (
+                "Record user file scan decision",
+                "Record one metadata-only UserFile scan decision with an evidence digest and optimistic concurrency. Accepts only admitted or rejected decisions; never accepts file bytes or scanner provider configuration.",
+                scan_user_file_schema(),
                 false,
             ),
             Self::UserFileQuotaGet => (
@@ -4982,6 +4995,51 @@ fn tombstone_user_file_schema() -> Value {
     })
 }
 
+fn scan_user_file_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "userFileId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "evidenceDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "description": "Canonical sha256 evidence digest for the scan decision."
+            },
+            "decision": {
+                "oneOf": [
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["kind"],
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["admitted"]}
+                        }
+                    },
+                    {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": ["kind", "reasonCode"],
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["rejected"]},
+                            "reasonCode": {
+                                "type": "string",
+                                "minLength": 1,
+                                "maxLength": USER_FILE_REJECTION_REASON_MAX_BYTES,
+                                "pattern": "^[a-z0-9._-]+$"
+                            }
+                        }
+                    }
+                ]
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "userFileId", "expectedVersion", "evidenceDigest", "decision", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
 fn github_source_discovery_page_properties() -> Map<String, Value> {
     Map::from_iter([
         (
@@ -5120,19 +5178,17 @@ mod tests {
             policy_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
         );
-        assert!(
-            policy_acceptance["inputSchema"]["properties"]
-                .get("organizationId")
-                .is_none()
-        );
+        assert!(policy_acceptance["inputSchema"]["properties"]
+            .get("organizationId")
+            .is_none());
         let support_proposal = ManagementTool::TenantSupportGrantsPropose.definition();
         assert_eq!(
             support_proposal["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
         );
         assert_eq!(
-            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]["expectedContractDigest"]
-                ["pattern"],
+            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]
+                ["expectedContractDigest"]["pattern"],
             "^sha256:[0-9a-f]{64}$"
         );
         let trust_acceptance = ManagementTool::TrustDomainRevisionsAccept.definition();
@@ -5148,7 +5204,8 @@ mod tests {
         let workload_acceptance =
             ManagementTool::WorkloadIdentityPolicyRevisionsAccept.definition();
         assert_eq!(
-            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
+            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]
+                ["x-a3s-max-utf8-bytes"],
             WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
         );
         for tool in [
@@ -5435,6 +5492,7 @@ mod tests {
         for tool in [
             ManagementTool::UserFilesReserve,
             ManagementTool::UserFilesTombstone,
+            ManagementTool::UserFilesScan,
         ] {
             assert_eq!(tool.required_scope(), Some(ApiTokenScope::FILE_WRITE));
             assert_eq!(
@@ -5505,7 +5563,28 @@ mod tests {
             ManagementTool::UserFilesTombstone.name(),
             USER_FILES_TOMBSTONE
         );
+        assert_eq!(ManagementTool::UserFilesScan.name(), USER_FILES_SCAN);
         assert_eq!(ManagementTool::UserFileQuotaGet.name(), USER_FILE_QUOTA_GET);
+
+        let scan = ManagementTool::UserFilesScan.definition();
+        let scan_properties = &scan["inputSchema"]["properties"];
+        for forbidden in [
+            "bytes",
+            "provider",
+            "bucket",
+            "credential",
+            "scanner",
+            "content",
+        ] {
+            assert!(
+                scan_properties.get(forbidden).is_none(),
+                "Files scan schema exposed duplicate authority {forbidden}"
+            );
+        }
+        assert_eq!(
+            scan["annotations"]["destructiveHint"].as_bool(),
+            Some(false)
+        );
     }
 
     #[test]

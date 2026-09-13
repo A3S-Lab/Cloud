@@ -444,14 +444,184 @@ async fn user_file_rest_puts_content_through_local_object_store() -> Result<()> 
 }
 
 #[tokio::test]
-async fn user_file_rest_gets_admitted_content_through_local_object_store() -> Result<()> {
-    use crate::modules::files::{
-        RecordUserFileScan, UserFileAccess, UserFileApplicationService, UserFileScanDecision,
-        UserFileState, UserFileTransition,
-    };
-    use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
+async fn user_file_rest_records_scan_decisions_and_keeps_upload_route_closed() -> Result<()> {
     use futures_util::StreamExt;
-    use uuid::Uuid;
+
+    let directory = tempfile::tempdir().map_err(|error| BootError::Internal(error.to_string()))?;
+    let objects = Arc::new(
+        SharedUserFileObjectStore::local(directory.path())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let files = Arc::new(InMemoryUserFileRepository::default());
+    let app = build_test_application_with_user_files(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        files.clone(),
+        Arc::clone(&objects) as Arc<_>,
+    )?;
+    let organization = bootstrap_organization(&app, "files-scan", "Files scan").await?;
+    let project = create_project(&app, &organization, "files-scan-project", "Files").await?;
+    let content = b"scan-decision-bytes";
+    let (admission_acl, user_file_id, _size_bytes) =
+        admission_acl_for_content(&organization, &project, content)?;
+    let collection = format!("/api/v1/organizations/{organization}/projects/{project}/user-files");
+    let content_path = format!("{collection}/{user_file_id}/content");
+    let scan_path = format!("{collection}/{user_file_id}/scan");
+    let evidence_digest = Sha256Digest::from_bytes(b"scan-decision-evidence");
+
+    assert_eq!(
+        app.call(post_json(
+            &collection,
+            "files-scan-reserve",
+            json!({"admissionAcl": admission_acl}),
+        ))
+        .await?
+        .status(),
+        201
+    );
+    assert_eq!(
+        app.call(put_user_file_content(
+            content_path.clone(),
+            "files-scan-put",
+            1,
+            content,
+        ))
+        .await?
+        .status(),
+        200
+    );
+
+    let read_only = app
+        .call(post_json(
+            format!("/api/v1/organizations/{organization}/api-tokens"),
+            "files-scan-read-token",
+            json!({
+                "name": "Files scan reader",
+                "token": "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+                "scopes": [ApiTokenScope::CLOUD_READ],
+                "expiresAt": null
+            }),
+        ))
+        .await?;
+    assert_eq!(read_only.status(), 201);
+    let unauthorized = app
+        .call(post_json_as(
+            &scan_path,
+            "files-scan-unauthorized",
+            json!({
+                "expectedVersion": 2,
+                "evidenceDigest": evidence_digest.as_str(),
+                "decision": { "kind": "admitted" }
+            }),
+            "a3s_eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        ))
+        .await?;
+    assert_eq!(unauthorized.status(), 403);
+
+    let admitted = app
+        .call(post_json(
+            &scan_path,
+            "files-scan-admit",
+            json!({
+                "expectedVersion": 2,
+                "evidenceDigest": evidence_digest.as_str(),
+                "decision": { "kind": "admitted" }
+            }),
+        ))
+        .await?;
+    assert_eq!(admitted.status(), 200);
+    let admitted_body = response_json(&admitted)?;
+    assert_eq!(admitted_body["data"]["file"]["state"], "admitted");
+    assert_eq!(
+        admitted_body["data"]["file"]["scanEvidenceDigest"],
+        evidence_digest.as_str()
+    );
+
+    let downloaded = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
+    assert_eq!(downloaded.status(), 200);
+    let mut stream = downloaded
+        .into_body_stream()
+        .ok_or_else(|| BootError::Internal("expected streamed UserFile content body".into()))?;
+    let mut recovered = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        recovered.extend_from_slice(&chunk?);
+    }
+    assert_eq!(recovered, content);
+
+    let reject_content = b"scan-reject-bytes";
+    let (reject_acl, reject_file_id, _) =
+        admission_acl_for_content(&organization, &project, reject_content)?;
+    assert_eq!(
+        app.call(post_json(
+            &collection,
+            "files-scan-reject-reserve",
+            json!({"admissionAcl": reject_acl}),
+        ))
+        .await?
+        .status(),
+        201
+    );
+    assert_eq!(
+        app.call(put_user_file_content(
+            format!("{collection}/{reject_file_id}/content"),
+            "files-scan-reject-put",
+            1,
+            reject_content,
+        ))
+        .await?
+        .status(),
+        200
+    );
+    let reject_evidence = Sha256Digest::from_bytes(b"scan-reject-evidence");
+    let rejected = app
+        .call(post_json(
+            format!("{collection}/{reject_file_id}/scan"),
+            "files-scan-reject",
+            json!({
+                "expectedVersion": 2,
+                "evidenceDigest": reject_evidence.as_str(),
+                "decision": { "kind": "rejected", "reasonCode": "malware_signature" }
+            }),
+        ))
+        .await?;
+    assert_eq!(
+        rejected.status(),
+        200,
+        "reject scan failed: {:?}",
+        response_json(&rejected).unwrap_or_default()
+    );
+    let rejected_body = response_json(&rejected)?;
+    assert_eq!(rejected_body["data"]["file"]["state"], "rejected");
+    assert_eq!(
+        rejected_body["data"]["file"]["rejectionReasonCode"],
+        "malware_signature"
+    );
+    assert_eq!(
+        app.call(get_as(
+            format!("{collection}/{reject_file_id}/content"),
+            ADMIN_TOKEN
+        ))
+        .await?
+        .status(),
+        404
+    );
+
+    assert_eq!(
+        app.call(post_json(
+            format!("{collection}/{user_file_id}/upload"),
+            "files-no-buffered-upload-after-scan",
+            json!({"bytes": "forbidden"}),
+        ))
+        .await?
+        .status(),
+        404
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn user_file_rest_gets_admitted_content_through_local_object_store() -> Result<()> {
+    use futures_util::StreamExt;
 
     let directory = tempfile::tempdir().map_err(|error| BootError::Internal(error.to_string()))?;
     let objects = Arc::new(
@@ -502,33 +672,23 @@ async fn user_file_rest_gets_admitted_content_through_local_object_store() -> Re
     let after_upload = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
     assert_eq!(after_upload.status(), 404);
 
-    let service = UserFileApplicationService::new(files.clone(), objects);
-    let organization_id = OrganizationId::from_uuid(
-        Uuid::parse_str(&organization).map_err(|error| BootError::Internal(error.to_string()))?,
+    let evidence_digest = Sha256Digest::from_bytes(b"download-scan-evidence");
+    let admitted = app
+        .call(post_json(
+            format!("{collection}/{user_file_id}/scan"),
+            "files-download-scan",
+            json!({
+                "expectedVersion": 2,
+                "evidenceDigest": evidence_digest.as_str(),
+                "decision": { "kind": "admitted" }
+            }),
+        ))
+        .await?;
+    assert_eq!(admitted.status(), 200);
+    assert_eq!(
+        response_json(&admitted)?["data"]["file"]["state"],
+        "admitted"
     );
-    let project_id = ProjectId::from_uuid(
-        Uuid::parse_str(&project).map_err(|error| BootError::Internal(error.to_string()))?,
-    );
-    let admitted = service
-        .record_scan(RecordUserFileScan {
-            transition: UserFileTransition {
-                organization_id,
-                project_id,
-                user_file_id,
-                expected_version: 2,
-                actor_principal_id: PrincipalId::new(),
-                access: UserFileAccess::organization_wide(),
-                idempotency_key: "files-download-scan".into(),
-                request_id: Uuid::now_v7(),
-            },
-            evidence_digest: Sha256Digest::from_bytes(b"download-scan-evidence")
-                .as_str()
-                .into(),
-            decision: UserFileScanDecision::Admitted,
-        })
-        .await
-        .map_err(|error| BootError::Internal(error.to_string()))?;
-    assert_eq!(admitted.file.state, UserFileState::Admitted);
 
     let downloaded = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
     assert_eq!(downloaded.status(), 200);
