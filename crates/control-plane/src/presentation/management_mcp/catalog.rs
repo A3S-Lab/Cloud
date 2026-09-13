@@ -16,8 +16,8 @@ use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
     DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
-    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
-    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
     PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
@@ -32,8 +32,8 @@ use crate::modules::files::{
     DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
     USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
 };
-use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::identity::domain::repositories::{
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
@@ -42,6 +42,11 @@ use crate::modules::identity::domain::value_objects::{
     TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES, WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
 };
 use crate::modules::identity::presentation::resource_access_evaluator;
+use crate::modules::knowledge::{
+    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    KNOWLEDGE_CONTRACT_MAX_ACL_BYTES, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+};
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
@@ -66,7 +71,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
 pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
@@ -252,6 +257,14 @@ pub const USER_FILES_LIST: &str = "a3s_cloud_user_files_list";
 pub const USER_FILES_GET: &str = "a3s_cloud_user_files_get";
 pub const USER_FILES_TOMBSTONE: &str = "a3s_cloud_user_files_tombstone";
 pub const USER_FILE_QUOTA_GET: &str = "a3s_cloud_user_file_quota_get";
+pub const KNOWLEDGE_BASES_CREATE: &str = "a3s_cloud_knowledge_bases_create";
+pub const KNOWLEDGE_BASES_LIST: &str = "a3s_cloud_knowledge_bases_list";
+pub const KNOWLEDGE_BASES_GET: &str = "a3s_cloud_knowledge_bases_get";
+pub const KNOWLEDGE_BASES_APPEND: &str = "a3s_cloud_knowledge_bases_append";
+pub const KNOWLEDGE_PIPELINES_CREATE: &str = "a3s_cloud_knowledge_pipelines_create";
+pub const KNOWLEDGE_PIPELINES_LIST: &str = "a3s_cloud_knowledge_pipelines_list";
+pub const KNOWLEDGE_PIPELINES_GET: &str = "a3s_cloud_knowledge_pipelines_get";
+pub const KNOWLEDGE_PIPELINES_PUBLISH: &str = "a3s_cloud_knowledge_pipelines_publish";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
 pub const PLUGIN_ASSIGNMENTS_GET: &str = "a3s_cloud_plugin_assignments_get";
@@ -397,6 +410,14 @@ pub enum ManagementTool {
     UserFilesGet,
     UserFilesTombstone,
     UserFileQuotaGet,
+    KnowledgeBasesCreate,
+    KnowledgeBasesList,
+    KnowledgeBasesGet,
+    KnowledgeBasesAppend,
+    KnowledgePipelinesCreate,
+    KnowledgePipelinesList,
+    KnowledgePipelinesGet,
+    KnowledgePipelinesPublish,
     PluginRegistriesList,
     PluginRegistriesGet,
     PluginAssignmentsList,
@@ -473,7 +494,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 184] = [
+    const ALL: [Self; 192] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -600,6 +621,14 @@ impl ManagementTool {
         Self::UserFilesGet,
         Self::UserFilesTombstone,
         Self::UserFileQuotaGet,
+        Self::KnowledgeBasesCreate,
+        Self::KnowledgeBasesList,
+        Self::KnowledgeBasesGet,
+        Self::KnowledgeBasesAppend,
+        Self::KnowledgePipelinesCreate,
+        Self::KnowledgePipelinesList,
+        Self::KnowledgePipelinesGet,
+        Self::KnowledgePipelinesPublish,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
         Self::PluginAssignmentsList,
@@ -813,6 +842,14 @@ impl ManagementTool {
             Self::UserFilesGet => USER_FILES_GET,
             Self::UserFilesTombstone => USER_FILES_TOMBSTONE,
             Self::UserFileQuotaGet => USER_FILE_QUOTA_GET,
+            Self::KnowledgeBasesCreate => KNOWLEDGE_BASES_CREATE,
+            Self::KnowledgeBasesList => KNOWLEDGE_BASES_LIST,
+            Self::KnowledgeBasesGet => KNOWLEDGE_BASES_GET,
+            Self::KnowledgeBasesAppend => KNOWLEDGE_BASES_APPEND,
+            Self::KnowledgePipelinesCreate => KNOWLEDGE_PIPELINES_CREATE,
+            Self::KnowledgePipelinesList => KNOWLEDGE_PIPELINES_LIST,
+            Self::KnowledgePipelinesGet => KNOWLEDGE_PIPELINES_GET,
+            Self::KnowledgePipelinesPublish => KNOWLEDGE_PIPELINES_PUBLISH,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
             Self::PluginAssignmentsList => PLUGIN_ASSIGNMENTS_LIST,
@@ -955,6 +992,10 @@ impl ManagementTool {
                 Some(ApiTokenScope::SOURCE_WRITE)
             }
             Self::UserFilesReserve | Self::UserFilesTombstone => Some(ApiTokenScope::FILE_WRITE),
+            Self::KnowledgeBasesCreate
+            | Self::KnowledgeBasesAppend
+            | Self::KnowledgePipelinesCreate
+            | Self::KnowledgePipelinesPublish => Some(ApiTokenScope::KNOWLEDGE_WRITE),
             Self::PluginAssignmentsSet | Self::PluginPlanProjectionsConfirm => {
                 Some(ApiTokenScope::PLUGIN_WRITE)
             }
@@ -1009,7 +1050,11 @@ impl ManagementTool {
             | Self::PullRequestPreviewsGet
             | Self::UserFilesList
             | Self::UserFilesGet
-            | Self::UserFileQuotaGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::UserFileQuotaGet
+            | Self::KnowledgeBasesList
+            | Self::KnowledgeBasesGet
+            | Self::KnowledgePipelinesList
+            | Self::KnowledgePipelinesGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -1148,7 +1193,15 @@ impl ManagementTool {
             | Self::UserFilesReserve
             | Self::UserFilesList
             | Self::UserFilesGet
-            | Self::UserFilesTombstone => Some(ManagementResourceBinding::ProjectArgument),
+            | Self::UserFilesTombstone
+            | Self::KnowledgeBasesCreate
+            | Self::KnowledgeBasesList
+            | Self::KnowledgeBasesGet
+            | Self::KnowledgeBasesAppend
+            | Self::KnowledgePipelinesCreate
+            | Self::KnowledgePipelinesList
+            | Self::KnowledgePipelinesGet
+            | Self::KnowledgePipelinesPublish => Some(ManagementResourceBinding::ProjectArgument),
             Self::ConnectorProfilesCreate
             | Self::ConnectorProfilesRevise
             | Self::ConnectorProfilesList
@@ -2021,6 +2074,54 @@ impl ManagementTool {
                 "List one bounded branch or tag page for an exact canonical Sources-policy-admitted repository without exposing its transient token.",
                 github_repository_references_schema(),
                 true,
+            ),
+            Self::KnowledgeBasesCreate => (
+                "Create knowledge base",
+                "Create one project-scoped KnowledgeBase from canonical A3S ACL with explicit idempotency.",
+                create_knowledge_base_schema(),
+                false,
+            ),
+            Self::KnowledgeBasesList => (
+                "List knowledge bases",
+                "List bounded KnowledgeBase catalog projections in one tenant-authorized project.",
+                list_knowledge_bases_schema(),
+                true,
+            ),
+            Self::KnowledgeBasesGet => (
+                "Get knowledge base",
+                "Get one tenant-authorized KnowledgeBase catalog projection.",
+                knowledge_base_schema(),
+                true,
+            ),
+            Self::KnowledgeBasesAppend => (
+                "Append knowledge base revision",
+                "Append one immutable KnowledgeBase revision with digest concurrency and explicit idempotency.",
+                append_knowledge_base_schema(),
+                false,
+            ),
+            Self::KnowledgePipelinesCreate => (
+                "Create knowledge pipeline",
+                "Create one project-scoped KnowledgePipeline from canonical A3S ACL with explicit idempotency.",
+                create_knowledge_pipeline_schema(),
+                false,
+            ),
+            Self::KnowledgePipelinesList => (
+                "List knowledge pipelines",
+                "List bounded KnowledgePipeline catalog projections in one tenant-authorized project.",
+                list_knowledge_pipelines_schema(),
+                true,
+            ),
+            Self::KnowledgePipelinesGet => (
+                "Get knowledge pipeline",
+                "Get one tenant-authorized KnowledgePipeline catalog projection.",
+                knowledge_pipeline_schema(),
+                true,
+            ),
+            Self::KnowledgePipelinesPublish => (
+                "Publish knowledge pipeline release",
+                "Publish one immutable KnowledgePipeline release with digest concurrency and explicit idempotency.",
+                publish_knowledge_pipeline_schema(),
+                false,
             ),
             Self::UserFilesReserve => (
                 "Reserve user file",
@@ -4663,6 +4764,162 @@ fn github_repository_references_schema() -> Value {
     })
 }
 
+fn create_knowledge_base_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "revisionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeBase revision contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "revisionAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn list_knowledge_bases_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+                "default": DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT
+            }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn knowledge_base_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "knowledgeBaseId"],
+        "additionalProperties": false
+    })
+}
+
+fn append_knowledge_base_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseId": {"type": "string", "format": "uuid"},
+            "expectedRevisionDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "revisionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeBase revision contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "knowledgeBaseId",
+            "expectedRevisionDigest",
+            "revisionAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn create_knowledge_pipeline_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgePipeline release contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "releaseAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn list_knowledge_pipelines_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+                "default": DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT
+            }
+        },
+        "required": ["projectId"],
+        "additionalProperties": false
+    })
+}
+
+fn knowledge_pipeline_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "pipelineId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "pipelineId"],
+        "additionalProperties": false
+    })
+}
+
+fn publish_knowledge_pipeline_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "pipelineId": {"type": "string", "format": "uuid"},
+            "expectedReleaseDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgePipeline release contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": [
+            "projectId",
+            "pipelineId",
+            "expectedReleaseDigest",
+            "releaseAcl",
+            "idempotencyKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
 fn reserve_user_file_schema() -> Value {
     json!({
         "type": "object",
@@ -4768,6 +5025,8 @@ mod tests {
             .with_scope(ApiTokenScope::CONNECTOR_WRITE)
             .with_scope(ApiTokenScope::APPLICATION_WRITE)
             .with_scope(ApiTokenScope::PLUGIN_WRITE)
+            .with_scope(ApiTokenScope::FILE_WRITE)
+            .with_scope(ApiTokenScope::KNOWLEDGE_WRITE)
             .with_scope(ApiTokenScope::CLOUD_READ)
             .with_claim("organization_role", "restricted")
             .expect("role")
@@ -4861,17 +5120,19 @@ mod tests {
             policy_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
         );
-        assert!(policy_acceptance["inputSchema"]["properties"]
-            .get("organizationId")
-            .is_none());
+        assert!(
+            policy_acceptance["inputSchema"]["properties"]
+                .get("organizationId")
+                .is_none()
+        );
         let support_proposal = ManagementTool::TenantSupportGrantsPropose.definition();
         assert_eq!(
             support_proposal["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
         );
         assert_eq!(
-            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]
-                ["expectedContractDigest"]["pattern"],
+            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]["expectedContractDigest"]
+                ["pattern"],
             "^sha256:[0-9a-f]{64}$"
         );
         let trust_acceptance = ManagementTool::TrustDomainRevisionsAccept.definition();
@@ -4887,8 +5148,7 @@ mod tests {
         let workload_acceptance =
             ManagementTool::WorkloadIdentityPolicyRevisionsAccept.definition();
         assert_eq!(
-            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]
-                ["x-a3s-max-utf8-bytes"],
+            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
         );
         for tool in [
@@ -5081,6 +5341,92 @@ mod tests {
         assert_eq!(
             ManagementTool::GithubRepositoryReferencesList.name(),
             GITHUB_REPOSITORY_REFERENCES_LIST
+        );
+    }
+
+    #[test]
+    fn knowledge_catalog_is_acl_only_project_bound_and_scope_explicit() {
+        for tool in [
+            ManagementTool::KnowledgeBasesCreate,
+            ManagementTool::KnowledgeBasesAppend,
+            ManagementTool::KnowledgePipelinesCreate,
+            ManagementTool::KnowledgePipelinesPublish,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::KNOWLEDGE_WRITE));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::ProjectArgument)
+            );
+            assert_eq!(tool.definition()["annotations"]["readOnlyHint"], false);
+            assert_eq!(tool.definition()["annotations"]["idempotentHint"], true);
+        }
+        for tool in [
+            ManagementTool::KnowledgeBasesList,
+            ManagementTool::KnowledgeBasesGet,
+            ManagementTool::KnowledgePipelinesList,
+            ManagementTool::KnowledgePipelinesGet,
+        ] {
+            assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
+            assert_eq!(
+                tool.resource_binding(),
+                Some(ManagementResourceBinding::ProjectArgument)
+            );
+            assert_eq!(tool.definition()["annotations"]["readOnlyHint"], true);
+        }
+        let create = ManagementTool::KnowledgeBasesCreate.definition();
+        assert_eq!(
+            create["inputSchema"]["properties"]["revisionAcl"]["maxLength"],
+            KNOWLEDGE_CONTRACT_MAX_ACL_BYTES
+        );
+        assert_eq!(
+            create["inputSchema"]["properties"]["revisionAcl"]["x-a3s-max-canonical-bytes"],
+            KNOWLEDGE_CONTRACT_MAX_ACL_BYTES
+        );
+        let append = ManagementTool::KnowledgeBasesAppend.definition();
+        assert_eq!(
+            append["inputSchema"]["properties"]["expectedRevisionDigest"]["pattern"],
+            "^sha256:[0-9a-f]{64}$"
+        );
+        let list = ManagementTool::KnowledgeBasesList.definition();
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["default"],
+            DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT as u64
+        );
+        assert_eq!(
+            list["inputSchema"]["properties"]["limit"]["maximum"],
+            MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT as u64
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeBasesCreate.name(),
+            KNOWLEDGE_BASES_CREATE
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeBasesList.name(),
+            KNOWLEDGE_BASES_LIST
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeBasesGet.name(),
+            KNOWLEDGE_BASES_GET
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeBasesAppend.name(),
+            KNOWLEDGE_BASES_APPEND
+        );
+        assert_eq!(
+            ManagementTool::KnowledgePipelinesCreate.name(),
+            KNOWLEDGE_PIPELINES_CREATE
+        );
+        assert_eq!(
+            ManagementTool::KnowledgePipelinesList.name(),
+            KNOWLEDGE_PIPELINES_LIST
+        );
+        assert_eq!(
+            ManagementTool::KnowledgePipelinesGet.name(),
+            KNOWLEDGE_PIPELINES_GET
+        );
+        assert_eq!(
+            ManagementTool::KnowledgePipelinesPublish.name(),
+            KNOWLEDGE_PIPELINES_PUBLISH
         );
     }
 

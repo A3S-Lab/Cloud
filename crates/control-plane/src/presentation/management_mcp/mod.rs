@@ -13,6 +13,7 @@ mod files;
 mod forms;
 mod handler;
 mod identity;
+mod knowledge;
 mod module;
 mod nodes;
 mod notifications;

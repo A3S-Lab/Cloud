@@ -55,6 +55,11 @@ use super::identity::{
     RecipientContactArguments, ResourceGrantArguments, RevokeMembershipArguments,
     RevokeRecipientContactArguments, RevokeResourceGrantArguments,
 };
+use super::knowledge::{
+    AppendKnowledgeBaseArguments, CreateKnowledgeBaseArguments, CreateKnowledgePipelineArguments,
+    KnowledgeBaseArguments, KnowledgePipelineArguments, ListKnowledgeBasesArguments,
+    ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
+};
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
     MarkNotificationReadArguments, NotificationAlertPolicyArguments,
@@ -105,8 +110,9 @@ use super::workloads::{
 };
 use super::{
     applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
-    execution_templates, files, forms, identity, nodes, notifications, ontology, operations,
-    plugins, privileged_management, projects, search, security, sources, workflow, workloads,
+    execution_templates, files, forms, identity, knowledge, nodes, notifications, ontology,
+    operations, plugins, privileged_management, projects, search, security, sources, workflow,
+    workloads,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{ApiTokenId, OrganizationId, PrincipalId};
@@ -1514,6 +1520,100 @@ pub async fn execute(
                 arguments::parse::<GithubRepositoryReferencesArguments>(arguments).ok()?;
             sources::list_repository_references(query_bus, organization_id, arguments, request_id)
                 .await
+        }
+
+        ManagementTool::KnowledgeBasesCreate => {
+            let arguments = arguments::parse::<CreateKnowledgeBaseArguments>(arguments).ok()?;
+            knowledge::create_base(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeBasesList => {
+            let arguments = arguments::parse::<ListKnowledgeBasesArguments>(arguments).ok()?;
+            knowledge::list_bases(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeBasesGet => {
+            let arguments = arguments::parse::<KnowledgeBaseArguments>(arguments).ok()?;
+            knowledge::get_base(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeBasesAppend => {
+            let arguments = arguments::parse::<AppendKnowledgeBaseArguments>(arguments).ok()?;
+            knowledge::append_base(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgePipelinesCreate => {
+            let arguments = arguments::parse::<CreateKnowledgePipelineArguments>(arguments).ok()?;
+            knowledge::create_pipeline(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgePipelinesList => {
+            let arguments = arguments::parse::<ListKnowledgePipelinesArguments>(arguments).ok()?;
+            knowledge::list_pipelines(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgePipelinesGet => {
+            let arguments = arguments::parse::<KnowledgePipelineArguments>(arguments).ok()?;
+            knowledge::get_pipeline(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgePipelinesPublish => {
+            let arguments =
+                arguments::parse::<PublishKnowledgePipelineArguments>(arguments).ok()?;
+            knowledge::publish_pipeline(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
         }
         ManagementTool::UserFilesReserve => {
             let arguments = arguments::parse::<ReserveUserFileArguments>(arguments).ok()?;

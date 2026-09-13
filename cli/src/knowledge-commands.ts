@@ -1,0 +1,251 @@
+import {
+  type CloudApi,
+  encodeKnowledgeBaseListOptions,
+  encodeKnowledgePipelineListOptions,
+  KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+  type KnowledgeListOptions,
+} from '@a3s/cloud-client';
+import { readAclDocument, requireAclMutationCommand } from './acl-file';
+import type { ParsedArguments } from './arguments';
+import {
+  positionalUuid,
+  rejectAgentProviderKindOption,
+  rejectExpectedVersionOption,
+  rejectFileOption,
+  rejectGatewayRolloutOptions,
+  rejectIdempotencyOption,
+  requireArity,
+  requireIdempotencyKey,
+  requireReadCommand,
+} from './command-options';
+import type { CloudContext } from './context';
+import { requireOrganization, requireProject } from './context';
+import { usageError } from './errors';
+import {
+  knowledgeBaseMutationResult,
+  knowledgeBaseResult,
+  knowledgeBasesResult,
+  knowledgePipelineMutationResult,
+  knowledgePipelineResult,
+  knowledgePipelinesResult,
+} from './knowledge-results';
+import type { CommandResult } from './results';
+
+interface KnowledgeCommandDependencies {
+  readFile?: (path: string) => Promise<Uint8Array>;
+}
+
+export async function executeKnowledgeCommand(
+  command: string,
+  arguments_: ParsedArguments,
+  context: CloudContext,
+  cloudApi: () => CloudApi,
+  dependencies: KnowledgeCommandDependencies = {}
+): Promise<CommandResult | undefined> {
+  const organizationId = () => requireOrganization(context);
+  const projectId = () => requireProject(context);
+  switch (command) {
+    case 'knowledge-bases create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 2, 'knowledge-bases create');
+      rejectAgentProviderKindOption(arguments_);
+      const revisionAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeBase revision ACL',
+        dependencies.readFile
+      );
+      return knowledgeBaseMutationResult(
+        await cloudApi().createKnowledgeBase(
+          organizationId(),
+          projectId(),
+          { revisionAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-bases list':
+      rejectExpectedDigestOption(arguments_);
+      requireKnowledgeListCommand(arguments_, 'knowledge-bases list');
+      return knowledgeBasesResult(
+        await cloudApi().listKnowledgeBases(
+          organizationId(),
+          projectId(),
+          knowledgeListOptions(arguments_, encodeKnowledgeBaseListOptions, 'KnowledgeBase')
+        )
+      );
+    case 'knowledge-bases get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-bases get <knowledge-base-id>');
+      return knowledgeBaseResult(
+        await cloudApi().getKnowledgeBase(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeBase ID')
+        )
+      );
+    case 'knowledge-bases append': {
+      const mutation = requireDigestAclMutationCommand(
+        arguments_,
+        3,
+        'knowledge-bases append <knowledge-base-id>',
+        'KnowledgeBase'
+      );
+      const revisionAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeBase revision ACL',
+        dependencies.readFile
+      );
+      return knowledgeBaseMutationResult(
+        await cloudApi().appendKnowledgeBase(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeBase ID'),
+          {
+            expectedRevisionDigest: mutation.expectedDigest,
+            revisionAcl,
+          },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-pipelines create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 2, 'knowledge-pipelines create');
+      rejectAgentProviderKindOption(arguments_);
+      const releaseAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgePipeline release ACL',
+        dependencies.readFile
+      );
+      return knowledgePipelineMutationResult(
+        await cloudApi().createKnowledgePipeline(
+          organizationId(),
+          projectId(),
+          { releaseAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-pipelines list':
+      rejectExpectedDigestOption(arguments_);
+      requireKnowledgeListCommand(arguments_, 'knowledge-pipelines list');
+      return knowledgePipelinesResult(
+        await cloudApi().listKnowledgePipelines(
+          organizationId(),
+          projectId(),
+          knowledgeListOptions(arguments_, encodeKnowledgePipelineListOptions, 'KnowledgePipeline')
+        )
+      );
+    case 'knowledge-pipelines get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-pipelines get <pipeline-id>');
+      return knowledgePipelineResult(
+        await cloudApi().getKnowledgePipeline(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgePipeline ID')
+        )
+      );
+    case 'knowledge-pipelines publish': {
+      const mutation = requireDigestAclMutationCommand(
+        arguments_,
+        3,
+        'knowledge-pipelines publish <pipeline-id>',
+        'KnowledgePipeline'
+      );
+      const releaseAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgePipeline release ACL',
+        dependencies.readFile
+      );
+      return knowledgePipelineMutationResult(
+        await cloudApi().publishKnowledgePipeline(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgePipeline ID'),
+          {
+            expectedReleaseDigest: mutation.expectedDigest,
+            releaseAcl,
+          },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    default:
+      return undefined;
+  }
+}
+
+function requireKnowledgeListCommand(arguments_: ParsedArguments, usage: string): void {
+  requireArity(arguments_.positionals, 2, usage);
+  rejectIdempotencyOption(arguments_);
+  rejectFileOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
+  if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+    throw usageError('cursor and stream options are valid only for log commands');
+  }
+}
+
+function knowledgeListOptions(
+  arguments_: ParsedArguments,
+  encode: (options: KnowledgeListOptions) => string,
+  label: string
+): KnowledgeListOptions {
+  let limit: number | undefined;
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError(`${label} list limit must be an integer`);
+    }
+    limit = Number(arguments_.limit);
+  }
+  const options = { limit };
+  try {
+    encode(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
+
+function requireDigestAclMutationCommand(
+  arguments_: ParsedArguments,
+  arity: number,
+  usage: string,
+  label: string
+): { expectedDigest: string; idempotencyKey: string; file: string } {
+  requireArity(arguments_.positionals, arity, usage);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  rejectAgentProviderKindOption(arguments_);
+  const idempotencyKey = requireIdempotencyKey(arguments_);
+  const file = arguments_.file;
+  if (file === undefined || file.length > 4_096 || /[\0\r\n]/.test(file)) {
+    throw usageError(`--file with a valid A3S ACL path is required for ${label} mutation`);
+  }
+  const expectedDigest = arguments_.expectedDigest;
+  if (expectedDigest === undefined || !/^sha256:[0-9a-f]{64}$/.test(expectedDigest)) {
+    throw usageError(`--expected-digest must match ^sha256:[0-9a-f]{64}$ for ${label} mutation`);
+  }
+  return { expectedDigest, idempotencyKey, file };
+}
+
+function rejectExpectedDigestOption(arguments_: ParsedArguments): void {
+  if (arguments_.expectedDigest !== undefined) {
+    throw usageError(
+      '--expected-digest is valid only for knowledge-bases append and knowledge-pipelines publish'
+    );
+  }
+}
+
+function readKnowledgeAcl(
+  path: string,
+  label: string,
+  readFile?: (path: string) => Promise<Uint8Array>
+): Promise<string> {
+  return readAclDocument(path, { label, maximumBytes: KNOWLEDGE_CONTRACT_MAX_ACL_BYTES }, readFile);
+}
