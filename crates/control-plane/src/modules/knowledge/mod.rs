@@ -19,9 +19,20 @@
 //! `K0.1-C7` adds authorized idempotent KnowledgeDocument/Chunk create writes
 //! with audit and Outbox side effects over the C5 repositories. No REST/MCP.
 //! `K0.1-C8` exposes that document/chunk mutation boundary over REST/OpenAPI
-//! `K0.1-C11` persists immutable KnowledgeIndexRevision, KnowledgeRetrievalPolicyRevision, and ExternalKnowledgeBinding catalogs through migration `203` with local and PostgreSQL adapters and no public surface.
 //! with CQRS handlers and control-plane wiring. No client/CLI/MCP or live
 //! MinIO/scanner/SEV claims.
+//! `K0.1-C9` adds maintained client, CLI, and Management MCP over the same
+//! document/chunk handlers without bumping OpenAPI.
+//! `K0.1-C10` adds authorized bounded document/chunk list through REST/OpenAPI
+//! `1.94.0`, client, CLI, and Management MCP read tools.
+//! `K0.1-C11` persists immutable KnowledgeIndexRevision,
+//! KnowledgeRetrievalPolicyRevision, and ExternalKnowledgeBinding catalogs
+//! through migration `203` with local and PostgreSQL adapters and no public
+//! surface.
+//! `K0.1-C12` adds application owner index/policy/binding catalog services over
+//! those repositories so presentation cannot reach persistence adapters
+//! directly. No authorization, idempotency, audit, Outbox, REST/OpenAPI,
+//! client, CLI, or Management MCP surface.
 
 mod application;
 mod domain;
@@ -36,7 +47,9 @@ pub use application::{
     GetKnowledgeChunkHandler, GetKnowledgeDocument, GetKnowledgeDocumentHandler,
     GetKnowledgePipeline, GetKnowledgePipelineHandler, KnowledgeAccess,
     KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
-    KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
+    KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService,
+    KnowledgeIndexRevisionCatalogService, KnowledgeMutationResult,
+    KnowledgeRetrievalPolicyRevisionCatalogService, ExternalKnowledgeBindingCatalogService,
     KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
     ListKnowledgeChunks, ListKnowledgeChunksHandler, ListKnowledgeDocuments,
     ListKnowledgeDocumentsHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,

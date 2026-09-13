@@ -1,6 +1,7 @@
 mod catalog;
 mod commands;
 mod document_catalog;
+mod index_catalog;
 mod document_lifecycle;
 mod lifecycle;
 mod queries;
@@ -13,6 +14,10 @@ pub use commands::{
     PublishKnowledgePipelineHandler,
 };
 pub use document_catalog::{KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService};
+pub use index_catalog::{
+    ExternalKnowledgeBindingCatalogService, KnowledgeIndexRevisionCatalogService,
+    KnowledgeRetrievalPolicyRevisionCatalogService,
+};
 pub use document_lifecycle::{
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand, GetKnowledgeChunk,
     GetKnowledgeDocument, KnowledgeDocumentLifecycleService, ListKnowledgeChunks,
