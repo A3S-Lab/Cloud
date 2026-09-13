@@ -544,6 +544,13 @@ jobs:
           automation_invocation_postgres_replay_and_reconnect_are_durable
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Automation definition catalog PostgreSQL recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test automation_postgres_integration
+          automation_definition_postgres_reconnects_and_fences_revision_head
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Gateway Route policy security timeline persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
