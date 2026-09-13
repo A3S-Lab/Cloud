@@ -1,4 +1,4 @@
-//! Focused K0.1-C4a/C5 PostgreSQL recovery gates for Knowledge catalogs.
+//! Focused K0.1-C4a/C5/C11 PostgreSQL recovery gates for Knowledge catalogs.
 //!
 //! Kept as a separate integration binary so KnowledgeBase/Pipeline catalog
 //! certification does not depend on unrelated postgres_integration support
@@ -8,13 +8,18 @@ use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, PostgresBootstrapError, PostgresMigrationReport,
 };
 use a3s_cloud_control_plane::modules::knowledge::{
-    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgeChunk,
-    CreateKnowledgeDocument, CreateKnowledgePipeline, IKnowledgeBaseRepository,
-    IKnowledgeChunkRepository, IKnowledgeDocumentRepository, IKnowledgePipelineRepository,
-    KnowledgeBaseRevisionV1, KnowledgeChunkV1, KnowledgeDocumentV1, KnowledgePipelineReleaseV1,
-    PostgresKnowledgeBaseRepository, PostgresKnowledgeChunkRepository,
-    PostgresKnowledgeDocumentRepository, PostgresKnowledgePipelineRepository,
-    PublishKnowledgePipelineRelease,
+    AppendKnowledgeBaseRevision, CreateExternalKnowledgeBinding, CreateKnowledgeBase,
+    CreateKnowledgeChunk, CreateKnowledgeDocument, CreateKnowledgeIndexRevision,
+    CreateKnowledgePipeline, CreateKnowledgeRetrievalPolicyRevision,
+    ExternalKnowledgeBindingV1, IExternalKnowledgeBindingRepository, IKnowledgeBaseRepository,
+    IKnowledgeChunkRepository, IKnowledgeDocumentRepository, IKnowledgeIndexRevisionRepository,
+    IKnowledgePipelineRepository, IKnowledgeRetrievalPolicyRevisionRepository,
+    KnowledgeBaseRevisionV1, KnowledgeChunkV1, KnowledgeDocumentV1, KnowledgeIndexRevisionV1,
+    KnowledgePipelineReleaseV1, KnowledgeRetrievalPolicyRevisionV1,
+    PostgresExternalKnowledgeBindingRepository, PostgresKnowledgeBaseRepository,
+    PostgresKnowledgeChunkRepository, PostgresKnowledgeDocumentRepository,
+    PostgresKnowledgeIndexRevisionRepository, PostgresKnowledgePipelineRepository,
+    PostgresKnowledgeRetrievalPolicyRevisionRepository, PublishKnowledgePipelineRelease,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     KnowledgeBaseRevisionId, KnowledgePipelineReleaseId, RepositoryError,
@@ -42,6 +47,18 @@ const CHUNK_FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/k0.1/knowledge-chunk.acl"
 ));
+const INDEX_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/k0.1/knowledge-index-revision.acl"
+));
+const POLICY_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/k0.1/knowledge-retrieval-policy-revision.acl"
+));
+const BINDING_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/k0.1/external-knowledge-binding.acl"
+));
 
 #[tokio::test]
 async fn knowledge_base_catalog_postgres_reconnects_and_fences_revision_head() {
@@ -61,6 +78,17 @@ async fn knowledge_pipeline_catalog_postgres_reconnects_and_fences_release_head(
     run_isolated_postgres(&admin_url, exercise_knowledge_pipeline_catalog_postgres)
         .await
         .expect("KnowledgePipeline catalog PostgreSQL recovery gate");
+}
+
+
+#[tokio::test]
+async fn knowledge_index_policy_binding_catalog_postgres_reconnects() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(&admin_url, exercise_knowledge_index_policy_binding_catalog_postgres)
+        .await
+        .expect("Knowledge index/policy/binding catalog PostgreSQL recovery gate");
 }
 
 #[tokio::test]
@@ -337,6 +365,153 @@ async fn exercise_knowledge_document_chunk_catalog_postgres(
         .find(
             Uuid::from_u128(organization_id.as_u128() ^ 1),
             document.spec().document_id.as_uuid(),
+        )
+        .await?
+        .is_none());
+    Ok(())
+}
+
+async fn exercise_knowledge_index_policy_binding_catalog_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000201")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
+    seed_knowledge_scope(&database, organization_id, project_id).await?;
+
+    let revision =
+        KnowledgeBaseRevisionV1::parse_acl(BASE_FIXTURE).map_err(std::io::Error::other)?;
+    let bases = PostgresKnowledgeBaseRepository::new(executor.clone());
+    bases
+        .create(CreateKnowledgeBase {
+            revision: revision.clone(),
+            created_at: knowledge_timestamp(1_000),
+        })
+        .await?;
+
+    let index =
+        KnowledgeIndexRevisionV1::parse_acl(INDEX_FIXTURE).map_err(std::io::Error::other)?;
+    let indexes = Arc::new(PostgresKnowledgeIndexRevisionRepository::new(executor.clone()));
+    let created_index = indexes
+        .create(CreateKnowledgeIndexRevision {
+            index_revision: index.clone(),
+            created_at: knowledge_timestamp(1_010),
+        })
+        .await?;
+    assert_eq!(created_index.index_revision, index);
+    let duplicate_index = indexes
+        .create(CreateKnowledgeIndexRevision {
+            index_revision: index.clone(),
+            created_at: knowledge_timestamp(1_011),
+        })
+        .await;
+    assert!(matches!(duplicate_index, Err(RepositoryError::Conflict(_))));
+    assert_eq!(
+        indexes
+            .list_for_knowledge_base_revision(
+                organization_id,
+                index.spec().knowledge_base_revision_id.as_uuid(),
+                8,
+            )
+            .await?
+            .len(),
+        1
+    );
+
+    let policy = KnowledgeRetrievalPolicyRevisionV1::parse_acl(POLICY_FIXTURE)
+        .map_err(std::io::Error::other)?;
+    let policies = Arc::new(PostgresKnowledgeRetrievalPolicyRevisionRepository::new(
+        executor.clone(),
+    ));
+    let created_policy = policies
+        .create(CreateKnowledgeRetrievalPolicyRevision {
+            policy_revision: policy.clone(),
+            created_at: knowledge_timestamp(1_020),
+        })
+        .await?;
+    assert_eq!(created_policy.policy_revision, policy);
+    let duplicate_policy = policies
+        .create(CreateKnowledgeRetrievalPolicyRevision {
+            policy_revision: policy.clone(),
+            created_at: knowledge_timestamp(1_021),
+        })
+        .await;
+    assert!(matches!(duplicate_policy, Err(RepositoryError::Conflict(_))));
+    assert_eq!(
+        policies
+            .list_for_knowledge_base_revision(
+                organization_id,
+                policy.spec().knowledge_base_revision_id.as_uuid(),
+                8,
+            )
+            .await?
+            .len(),
+        1
+    );
+
+    let binding =
+        ExternalKnowledgeBindingV1::parse_acl(BINDING_FIXTURE).map_err(std::io::Error::other)?;
+    let bindings = Arc::new(PostgresExternalKnowledgeBindingRepository::new(executor.clone()));
+    let created_binding = bindings
+        .create(CreateExternalKnowledgeBinding {
+            binding: binding.clone(),
+            created_at: knowledge_timestamp(1_030),
+        })
+        .await?;
+    assert_eq!(created_binding.binding, binding);
+    let duplicate_binding = bindings
+        .create(CreateExternalKnowledgeBinding {
+            binding: binding.clone(),
+            created_at: knowledge_timestamp(1_031),
+        })
+        .await;
+    assert!(matches!(duplicate_binding, Err(RepositoryError::Conflict(_))));
+    assert_eq!(
+        bindings
+            .list_for_knowledge_base(
+                organization_id,
+                binding.spec().knowledge_base_id.as_uuid(),
+                8,
+            )
+            .await?
+            .len(),
+        1
+    );
+
+    drop(bindings);
+    drop(policies);
+    drop(indexes);
+    drop(bases);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered_indexes =
+        PostgresKnowledgeIndexRevisionRepository::new(recovered_executor.clone());
+    let recovered_policies =
+        PostgresKnowledgeRetrievalPolicyRevisionRepository::new(recovered_executor.clone());
+    let recovered_bindings =
+        PostgresExternalKnowledgeBindingRepository::new(recovered_executor);
+    let recovered_index = recovered_indexes
+        .find(organization_id, index.spec().index_revision_id.as_uuid())
+        .await?
+        .expect("KnowledgeIndexRevision after reconnect");
+    assert_eq!(recovered_index.index_revision, index);
+    let recovered_policy = recovered_policies
+        .find(organization_id, policy.spec().policy_revision_id.as_uuid())
+        .await?
+        .expect("KnowledgeRetrievalPolicyRevision after reconnect");
+    assert_eq!(recovered_policy.policy_revision, policy);
+    let recovered_binding = recovered_bindings
+        .find(organization_id, binding.spec().binding_id.as_uuid())
+        .await?
+        .expect("ExternalKnowledgeBinding after reconnect");
+    assert_eq!(recovered_binding.binding, binding);
+    assert!(recovered_indexes
+        .find(
+            Uuid::from_u128(organization_id.as_u128() ^ 1),
+            index.spec().index_revision_id.as_uuid(),
         )
         .await?
         .is_none());

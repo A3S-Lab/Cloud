@@ -19,6 +19,7 @@
 //! `K0.1-C7` adds authorized idempotent KnowledgeDocument/Chunk create writes
 //! with audit and Outbox side effects over the C5 repositories. No REST/MCP.
 //! `K0.1-C8` exposes that document/chunk mutation boundary over REST/OpenAPI
+//! `K0.1-C11` persists immutable KnowledgeIndexRevision, KnowledgeRetrievalPolicyRevision, and ExternalKnowledgeBinding catalogs through migration `203` with local and PostgreSQL adapters and no public surface.
 //! with CQRS handlers and control-plane wiring. No client/CLI/MCP or live
 //! MinIO/scanner/SEV claims.
 
@@ -51,8 +52,13 @@ pub use domain::{
     CreateKnowledgeBaseWrite, CreateKnowledgeChunk, CreateKnowledgeChunkWrite,
     CreateKnowledgeDocument, CreateKnowledgeDocumentWrite, CreateKnowledgePipeline,
     CreateKnowledgePipelineWrite, ExternalKnowledgeBindingSpecV1, ExternalKnowledgeBindingV1,
-    IKnowledgeBaseRepository, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
-    IKnowledgePipelineRepository, KnowledgeBaseLifecycleChanged, KnowledgeBaseRecord,
+    CreateExternalKnowledgeBinding, CreateKnowledgeIndexRevision,
+    CreateKnowledgeRetrievalPolicyRevision, ExternalKnowledgeBindingRecord,
+    IExternalKnowledgeBindingRepository, IKnowledgeBaseRepository, IKnowledgeChunkRepository,
+    IKnowledgeDocumentRepository, IKnowledgeIndexRevisionRepository,
+    IKnowledgePipelineRepository, IKnowledgeRetrievalPolicyRevisionRepository,
+    KnowledgeBaseLifecycleChanged, KnowledgeBaseRecord, KnowledgeIndexRevisionRecord,
+    KnowledgeRetrievalPolicyRevisionRecord,
     KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1, KnowledgeBaseWriteReference,
     KnowledgeChunkRecord, KnowledgeChunkSpecV1, KnowledgeChunkStructureV1, KnowledgeChunkV1,
     KnowledgeContentReferenceV1, KnowledgeDocumentLifecycleChanged, KnowledgeDocumentRecord,
@@ -69,10 +75,14 @@ pub use domain::{
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
 };
 pub use infrastructure::{
-    InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
-    InMemoryKnowledgeDocumentRepository, InMemoryKnowledgePipelineRepository,
-    PostgresKnowledgeBaseRepository, PostgresKnowledgeChunkRepository,
-    PostgresKnowledgeDocumentRepository, PostgresKnowledgePipelineRepository,
+    InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeBaseRepository,
+    InMemoryKnowledgeChunkRepository, InMemoryKnowledgeDocumentRepository,
+    InMemoryKnowledgeIndexRevisionRepository, InMemoryKnowledgePipelineRepository,
+    InMemoryKnowledgeRetrievalPolicyRevisionRepository,
+    PostgresExternalKnowledgeBindingRepository, PostgresKnowledgeBaseRepository,
+    PostgresKnowledgeChunkRepository, PostgresKnowledgeDocumentRepository,
+    PostgresKnowledgeIndexRevisionRepository, PostgresKnowledgePipelineRepository,
+    PostgresKnowledgeRetrievalPolicyRevisionRepository,
 };
 pub(crate) use presentation::{
     KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeChunkMutationResponse,
