@@ -1,17 +1,22 @@
 use super::{
-    AppendKnowledgeBaseRequest, CreateKnowledgeBaseRequest, CreateKnowledgePipelineRequest,
+    AppendKnowledgeBaseRequest, CreateKnowledgeBaseRequest, CreateKnowledgeChunkRequest,
+    CreateKnowledgeDocumentRequest, CreateKnowledgePipelineRequest, KnowledgeBaseMutationResponse,
+    KnowledgeBaseResponse, KnowledgeChunkMutationResponse, KnowledgeChunkResponse,
+    KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse,
+    KnowledgePipelineMutationResponse, KnowledgePipelineResponse, PublishKnowledgePipelineRequest,
     KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
-    KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
-    KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE, KnowledgeBaseMutationResponse,
-    KnowledgeBaseResponse, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
-    PublishKnowledgePipelineRequest,
+    KNOWLEDGE_CHUNK_ITEM_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
+    KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
+    KNOWLEDGE_DOCUMENT_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
+    KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
 };
 use crate::modules::knowledge::application::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgePipelineCommand,
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, GetKnowledgeBase,
-    GetKnowledgePipeline, ListKnowledgeBases, ListKnowledgePipelines,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    PublishKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
+    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand, GetKnowledgeBase,
+    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, ListKnowledgeBases,
+    ListKnowledgePipelines, PublishKnowledgePipelineCommand, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use crate::presentation::{
@@ -30,6 +35,8 @@ pub fn knowledge_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
     let append_base_bus = Arc::clone(&bus);
     let create_pipeline_bus = Arc::clone(&bus);
     let publish_pipeline_bus = Arc::clone(&bus);
+    let create_document_bus = Arc::clone(&bus);
+    let create_chunk_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .post(
             KNOWLEDGE_BASE_COLLECTION_ROUTE,
@@ -168,6 +175,75 @@ pub fn knowledge_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                     }
                 }
             },
+        )?
+        .post(
+            KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&create_document_bus);
+                async move {
+                    let body: CreateKnowledgeDocumentRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateKnowledgeDocumentCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            document_acl: body.document_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 201 },
+                            &KnowledgeDocumentMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&create_chunk_bus);
+                async move {
+                    let body: CreateKnowledgeChunkRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateKnowledgeChunkCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            document_id: request.param_as::<Uuid>("document_id")?,
+                            chunk_acl: body.chunk_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 201 },
+                            &KnowledgeChunkMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
         )?;
     organization_tenant_knowledge_write_controller(controller)
 }
@@ -177,6 +253,8 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let get_base_bus = Arc::clone(&bus);
     let list_pipelines_bus = Arc::clone(&bus);
     let get_pipeline_bus = Arc::clone(&bus);
+    let get_document_bus = Arc::clone(&bus);
+    let get_chunk_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .get(
             KNOWLEDGE_BASE_COLLECTION_ROUTE,
@@ -290,7 +368,56 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     }
                 }
             },
-        )?;
+        )?
+        .get(
+            KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_document_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetKnowledgeDocument {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            document_id: request.param_as::<Uuid>("document_id")?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(record) => BootResponse::json(&KnowledgeDocumentResponse::from(record)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(KNOWLEDGE_CHUNK_ITEM_ROUTE, move |request: BootRequest| {
+            let bus = Arc::clone(&get_chunk_bus);
+            async move {
+                let request_id = request_id(&request)?;
+                match bus
+                    .execute(GetKnowledgeChunk {
+                        organization_id: OrganizationId::from_uuid(
+                            request.param_as::<Uuid>("organization_id")?,
+                        ),
+                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                        chunk_id: request.param_as::<Uuid>("chunk_id")?,
+                        access: knowledge_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?),
+                    })
+                    .await?
+                {
+                    Ok(record) => BootResponse::json(&KnowledgeChunkResponse::from(record)),
+                    Err(error) => application_error_response(error, request_id),
+                }
+            }
+        })?;
     organization_tenant_cloud_read_controller(controller)
 }
 

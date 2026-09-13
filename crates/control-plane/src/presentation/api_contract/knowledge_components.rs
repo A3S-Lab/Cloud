@@ -1,9 +1,9 @@
 use crate::modules::knowledge::{
-    KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
-    KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+    KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     ("KnowledgeBaseSuccessResponse", "KnowledgeBase"),
@@ -20,6 +20,16 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     (
         "KnowledgePipelineMutationSuccessResponse",
         "KnowledgePipelineMutation",
+    ),
+    ("KnowledgeDocumentSuccessResponse", "KnowledgeDocument"),
+    (
+        "KnowledgeDocumentMutationSuccessResponse",
+        "KnowledgeDocumentMutation",
+    ),
+    ("KnowledgeChunkSuccessResponse", "KnowledgeChunk"),
+    (
+        "KnowledgeChunkMutationSuccessResponse",
+        "KnowledgeChunkMutation",
     ),
 ];
 
@@ -64,6 +74,36 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         201,
         "KnowledgePipelineMutationSuccessResponse",
     ),
+    (
+        "KnowledgeDocumentSuccess200",
+        200,
+        "KnowledgeDocumentSuccessResponse",
+    ),
+    (
+        "KnowledgeDocumentMutationSuccess200",
+        200,
+        "KnowledgeDocumentMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeDocumentMutationSuccess201",
+        201,
+        "KnowledgeDocumentMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeChunkSuccess200",
+        200,
+        "KnowledgeChunkSuccessResponse",
+    ),
+    (
+        "KnowledgeChunkMutationSuccess200",
+        200,
+        "KnowledgeChunkMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeChunkMutationSuccess201",
+        201,
+        "KnowledgeChunkMutationSuccessResponse",
+    ),
 ];
 
 pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Value>) {
@@ -77,6 +117,13 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
             "KnowledgePipelineMutation",
             knowledge_pipeline_mutation_schema(),
         ),
+        ("KnowledgeDocument", knowledge_document_schema()),
+        (
+            "KnowledgeDocumentMutation",
+            knowledge_document_mutation_schema(),
+        ),
+        ("KnowledgeChunk", knowledge_chunk_schema()),
+        ("KnowledgeChunkMutation", knowledge_chunk_mutation_schema()),
     ] {
         schemas.insert(name.into(), schema);
     }
@@ -196,6 +243,100 @@ fn knowledge_pipeline_mutation_schema() -> Value {
     )
 }
 
+fn knowledge_document_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "documentId",
+            "knowledgeBaseId",
+            "knowledgeBaseRevisionId",
+            "title",
+            "contractSchema",
+            "documentAcl",
+            "documentDigest",
+            "createdAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "documentId": uuid_schema(),
+            "knowledgeBaseId": uuid_schema(),
+            "knowledgeBaseRevisionId": uuid_schema(),
+            "title": { "type": "string", "minLength": 1, "maxLength": 63 },
+            "contractSchema": {
+                "type": "string",
+                "enum": [KNOWLEDGE_DOCUMENT_SCHEMA_V1]
+            },
+            "documentAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeDocument contract."
+            },
+            "documentDigest": digest_schema(),
+            "createdAt": timestamp_schema()
+        }),
+    )
+}
+
+fn knowledge_document_mutation_schema() -> Value {
+    object_schema(
+        &["knowledgeDocument", "replayed"],
+        json!({
+            "knowledgeDocument": schema_ref("KnowledgeDocument"),
+            "replayed": { "type": "boolean" }
+        }),
+    )
+}
+
+fn knowledge_chunk_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "documentId",
+            "chunkId",
+            "ordinal",
+            "contractSchema",
+            "chunkAcl",
+            "chunkDigest",
+            "createdAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "documentId": uuid_schema(),
+            "chunkId": uuid_schema(),
+            "ordinal": { "type": "integer", "minimum": 0 },
+            "contractSchema": {
+                "type": "string",
+                "enum": [KNOWLEDGE_CHUNK_SCHEMA_V1]
+            },
+            "chunkAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeChunk contract."
+            },
+            "chunkDigest": digest_schema(),
+            "createdAt": timestamp_schema()
+        }),
+    )
+}
+
+fn knowledge_chunk_mutation_schema() -> Value {
+    object_schema(
+        &["knowledgeChunk", "replayed"],
+        json!({
+            "knowledgeChunk": schema_ref("KnowledgeChunk"),
+            "replayed": { "type": "boolean" }
+        }),
+    )
+}
+
 fn object_schema(required: &[&str], properties: Value) -> Value {
     json!({
         "type": "object",
@@ -235,6 +376,10 @@ mod tests {
             "KnowledgeBaseMutation",
             "KnowledgePipeline",
             "KnowledgePipelineMutation",
+            "KnowledgeDocument",
+            "KnowledgeDocumentMutation",
+            "KnowledgeChunk",
+            "KnowledgeChunkMutation",
         ] {
             assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
         }

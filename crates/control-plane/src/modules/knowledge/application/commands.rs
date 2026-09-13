@@ -1,8 +1,12 @@
 use super::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgePipelineCommand,
-    KnowledgeCatalogLifecycleService, KnowledgeMutationResult, PublishKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
+    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand,
+    KnowledgeCatalogLifecycleService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
+    PublishKnowledgePipelineCommand,
 };
-use crate::modules::knowledge::domain::{KnowledgeBaseRecord, KnowledgePipelineRecord};
+use crate::modules::knowledge::domain::{
+    KnowledgeBaseRecord, KnowledgeChunkRecord, KnowledgeDocumentRecord, KnowledgePipelineRecord,
+};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{Command, CommandHandler, CqrsContext};
 use std::sync::Arc;
@@ -116,5 +120,61 @@ impl CommandHandler<PublishKnowledgePipelineCommand> for PublishKnowledgePipelin
     > {
         let service = Arc::clone(&self.service);
         Box::pin(async move { Ok(service.publish_knowledge_pipeline(command).await) })
+    }
+}
+
+impl Command for CreateKnowledgeDocumentCommand {
+    type Output = ApplicationResult<KnowledgeMutationResult<KnowledgeDocumentRecord>>;
+}
+
+pub struct CreateKnowledgeDocumentHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl CreateKnowledgeDocumentHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl CommandHandler<CreateKnowledgeDocumentCommand> for CreateKnowledgeDocumentHandler {
+    fn execute(
+        &self,
+        command: CreateKnowledgeDocumentCommand,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<KnowledgeMutationResult<KnowledgeDocumentRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.create_document(command).await) })
+    }
+}
+
+impl Command for CreateKnowledgeChunkCommand {
+    type Output = ApplicationResult<KnowledgeMutationResult<KnowledgeChunkRecord>>;
+}
+
+pub struct CreateKnowledgeChunkHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl CreateKnowledgeChunkHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl CommandHandler<CreateKnowledgeChunkCommand> for CreateKnowledgeChunkHandler {
+    fn execute(
+        &self,
+        command: CreateKnowledgeChunkCommand,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<KnowledgeMutationResult<KnowledgeChunkRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.create_chunk(command).await) })
     }
 }

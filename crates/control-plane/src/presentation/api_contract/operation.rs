@@ -1,4 +1,3 @@
-use super::OPENAPI_CONTRACT_VERSION;
 use super::components::response_ref;
 use super::developer_workflow_operation::{
     is_build_plan_detection_path, is_developer_workflow_creation_path, is_developer_workflow_path,
@@ -9,7 +8,8 @@ use super::developer_workflow_operation::{
 };
 use super::documentation::describe_operation_documentation;
 use super::knowledge_operation::{
-    is_base_collection_path as is_knowledge_base_collection_path, is_knowledge_path,
+    is_base_collection_path as is_knowledge_base_collection_path,
+    is_document_collection_path as is_knowledge_document_collection_path, is_knowledge_path,
     is_pipeline_collection_path as is_knowledge_pipeline_collection_path,
     query_parameters as knowledge_query_parameters,
     success_component as knowledge_success_component,
@@ -30,6 +30,7 @@ use super::user_file_operation::{
     query_parameters as user_file_query_parameters,
     success_component as user_file_success_component,
 };
+use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
@@ -53,8 +54,8 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::{
     DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
-use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
@@ -74,7 +75,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub(super) fn describe_operation(
     operation: &mut Value,
@@ -1423,7 +1424,10 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
         return vec![200];
     }
     if method == "post"
-        && (is_knowledge_base_collection_path(path) || is_knowledge_pipeline_collection_path(path))
+        && (is_knowledge_base_collection_path(path)
+            || is_knowledge_pipeline_collection_path(path)
+            || is_knowledge_document_collection_path(path)
+            || is_knowledge_document_chunk_collection_path(path))
     {
         return vec![200, 201];
     }
@@ -1723,6 +1727,12 @@ fn creates_resource(path: &str) -> bool {
         || is_user_file_collection_path(path)
         || is_knowledge_base_collection_path(path)
         || is_knowledge_pipeline_collection_path(path)
+        || is_knowledge_document_collection_path(path)
+        || is_knowledge_document_chunk_collection_path(path)
+}
+
+fn is_knowledge_document_chunk_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/projects/{project_id}/knowledge-documents/{document_id}/chunks"
 }
 
 fn is_recipient_contact_collection_path(path: &str) -> bool {
@@ -1734,7 +1744,8 @@ fn is_recipient_contact_item_path(path: &str) -> bool {
 }
 
 fn is_recipient_contact_verification_path(path: &str) -> bool {
-    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
+    path
+        == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
 }
 
 fn is_recipient_contact_revocation_path(path: &str) -> bool {
