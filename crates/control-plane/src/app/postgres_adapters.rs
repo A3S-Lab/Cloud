@@ -68,6 +68,10 @@ use crate::modules::inference::{
     PostgresInferenceUsageRepository,
 };
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
+use crate::modules::knowledge::{
+    IKnowledgeBaseRepository, IKnowledgePipelineRepository, PostgresKnowledgeBaseRepository,
+    PostgresKnowledgePipelineRepository,
+};
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
     IOutboundNotificationDeliveryRepository, IOutboundNotificationRepository,
@@ -159,6 +163,10 @@ impl PostgresAdapterFactory {
             agents: Arc::new(PostgresAgentRepository::new(self.executor.clone())),
             secrets: Arc::new(PostgresSecretRepository::new(self.executor.clone())),
             user_files: Arc::new(PostgresUserFileRepository::new(self.executor.clone())),
+            knowledge_bases: Arc::new(PostgresKnowledgeBaseRepository::new(self.executor.clone())),
+            knowledge_pipelines: Arc::new(PostgresKnowledgePipelineRepository::new(
+                self.executor.clone(),
+            )),
             connector_profiles: Arc::new(PostgresConnectorProfileRepository::new(
                 self.executor.clone(),
             )),
@@ -269,6 +277,8 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) agents: Arc<dyn IAgentRepository>,
     pub(super) secrets: Arc<dyn ISecretRepository>,
     pub(super) user_files: Arc<dyn IUserFileRepository>,
+    pub(super) knowledge_bases: Arc<dyn IKnowledgeBaseRepository>,
+    pub(super) knowledge_pipelines: Arc<dyn IKnowledgePipelineRepository>,
     pub(super) connector_profiles: Arc<dyn IConnectorProfileRepository>,
     pub(super) applications: Arc<dyn IApplicationRepository>,
     pub(super) application_sessions: Arc<dyn IApplicationSessionRepository>,

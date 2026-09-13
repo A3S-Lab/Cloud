@@ -7,6 +7,12 @@ use super::developer_workflow_operation::{
     success_component as developer_workflow_success_component,
 };
 use super::documentation::describe_operation_documentation;
+use super::knowledge_operation::{
+    is_base_collection_path as is_knowledge_base_collection_path, is_knowledge_path,
+    is_pipeline_collection_path as is_knowledge_pipeline_collection_path,
+    query_parameters as knowledge_query_parameters,
+    success_component as knowledge_success_component,
+};
 use super::privileged_management_operation::{
     is_privileged_management_mutation, is_privileged_management_path,
     query_parameters as privileged_management_query_parameters,
@@ -293,6 +299,9 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         upsert_parameter(parameters, parameter);
     }
     for parameter in user_file_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
+    for parameter in knowledge_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
     for parameter in privileged_management_query_parameters(method, path) {
@@ -1288,6 +1297,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             "SecurityGatewayRoutePolicyTimelinePageSuccess200".to_owned()
         } else if let Some(component) = user_file_success_component(method, path, status) {
             component.to_owned()
+        } else if let Some(component) = knowledge_success_component(method, path, status) {
+            component.to_owned()
         } else if let Some(component) = source_discovery_success_component(method, path, status) {
             component.to_owned()
         } else if let Some(component) = developer_workflow_success_component(method, path, status) {
@@ -1343,7 +1354,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
                 || is_agent_execution_fork_path(path)
                 || is_developer_workflow_request_body_path(path)
                 || is_privileged_management_mutation(method, path)
-                || is_user_file_path(path)))
+                || is_user_file_path(path)
+                || is_knowledge_path(path)))
     {
         error_statuses.extend([413, 415]);
     }
@@ -1376,6 +1388,11 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
         return vec![200];
     }
     if method == "post" && is_user_file_collection_path(path) {
+        return vec![200, 201];
+    }
+    if method == "post"
+        && (is_knowledge_base_collection_path(path) || is_knowledge_pipeline_collection_path(path))
+    {
         return vec![200, 201];
     }
     if method == "post" && is_durable_cell_state_mutation_path(path) {
@@ -1485,6 +1502,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Sources"
     } else if is_user_file_path(path) {
         "Files"
+    } else if is_knowledge_path(path) {
+        "Knowledge"
     } else if path.contains("secrets") {
         "Secrets"
     } else if path.contains("durable-cell-applications") {
@@ -1670,6 +1689,8 @@ fn creates_resource(path: &str) -> bool {
         || is_developer_workflow_creation_path(path)
         || is_agent_execution_checkpoint_collection_path(path)
         || is_user_file_collection_path(path)
+        || is_knowledge_base_collection_path(path)
+        || is_knowledge_pipeline_collection_path(path)
 }
 
 fn is_recipient_contact_collection_path(path: &str) -> bool {

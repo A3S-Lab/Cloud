@@ -13,12 +13,12 @@ use crate::modules::agents::{
     GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
     GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
-    GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler,
-    IAgentApprovalAuthorizationPort, IAgentExecutionCheckpointObjectStore,
-    IAgentReleaseAdmissionPort, IAgentRepository, IAgentsEnvironmentAccess, IWorkflowAgentPort,
-    IdentityAgentApprovalAuthorizationAdapter, ListAgentApprovalCheckpointsHandler,
-    ListAgentConversationsHandler, ListAgentExecutionCheckpointsHandler,
-    ListAgentExecutionsHandler, ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
+    GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler, IAgentApprovalAuthorizationPort,
+    IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort, IAgentRepository,
+    IAgentsEnvironmentAccess, IWorkflowAgentPort, IdentityAgentApprovalAuthorizationAdapter,
+    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
+    ListAgentExecutionCheckpointsHandler, ListAgentExecutionsHandler,
+    ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
     WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
@@ -253,16 +253,22 @@ use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, IIntegrationEventProjector,
     IOutboxRepository, OutboxRelay, OutboxRelayConfig,
 };
+use crate::modules::knowledge::{
+    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgePipelineHandler,
+    GetKnowledgeBaseHandler, GetKnowledgePipelineHandler, IKnowledgeBaseRepository,
+    IKnowledgePipelineRepository, KnowledgeCatalogLifecycleService, KnowledgeModule,
+    ListKnowledgeBasesHandler, ListKnowledgePipelinesHandler, PublishKnowledgePipelineHandler,
+};
 use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
     CreateOutboundNotificationSubscriptionHandler, FleetNotificationsNodeAccessAdapter,
     GetNotificationAlertPolicyHandler, GetNotificationHandler,
-    GetOutboundNotificationSubscriptionHandler, IdentityNotificationOutboxIdentityAccessAdapter,
-    IdentityOutboundRecipientContactAccessAdapter,
-    INotificationAlertPolicyRepository, INotificationRepository, INotificationsEnvironmentAccess,
-    INotificationsNodeAccess, IOutboundNotificationDispatcher, IOutboundNotificationRepository,
-    IOutboundRecipientContactAccess, ListNotificationAlertPoliciesHandler,
+    GetOutboundNotificationSubscriptionHandler, INotificationAlertPolicyRepository,
+    INotificationRepository, INotificationsEnvironmentAccess, INotificationsNodeAccess,
+    IOutboundNotificationDispatcher, IOutboundNotificationRepository,
+    IOutboundRecipientContactAccess, IdentityNotificationOutboxIdentityAccessAdapter,
+    IdentityOutboundRecipientContactAccessAdapter, ListNotificationAlertPoliciesHandler,
     ListNotificationsHandler, ListOutboundNotificationSubscriptionsHandler,
     MarkNotificationReadHandler, NotificationsModule, OutboundNotificationDispatcher,
     OutboundNotificationSmtpDispatcher, OutboxNotificationProjector,
@@ -340,20 +346,20 @@ use crate::modules::workflow::{
     GetWorkflowGoalHandler, GetWorkflowNodeCatalogHandler, GetWorkflowRevisionHandler,
     GetWorkflowRunDiagnosticsHandler, GetWorkflowRunHandler, GetWorkflowRunHistoryHandler,
     GetWorkflowRunOutputHandler, GetWorkflowRunVariablesHandler, HumanTaskCoordinator,
-    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IdentityHumanTaskAuthorizationAdapter,
-    IHumanTaskAuthorizationPort, IHumanTaskFormPort, IHumanTaskRepository, IOntologyRepository,
-    IWorkflowCompositeExecutionPort, IWorkflowDefinitionPublicationPort,
-    IWorkflowDefinitionRepository, IWorkflowEnvironmentAccess, IWorkflowGoalRepository,
-    IWorkflowProjectAccess, IWorkflowRunCoordinator, IWorkflowRunDiagnosticsReader,
-    IWorkflowRunHistoryReader, IWorkflowRunRepository, IWorkflowRunVariableReader,
-    ListHumanTasksHandler, ListOntologiesHandler, ListOntologyRevisionsHandler,
-    ListWorkflowDefinitionsHandler, ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler,
-    ListWorkflowRunsHandler, ProjectsWorkflowEnvironmentAccessAdapter,
-    ProjectsWorkflowProjectAccessAdapter, ReviseOntologyHandler, ReviseWorkflowDefinitionHandler,
-    StartWorkflowRunHandler, SubmitHumanTaskHandler, WaitWorkflowRunHandler,
-    WorkflowCompositeExecutionApplicationService, WorkflowDefinitionPublicationService,
-    WorkflowModule, WorkflowRunDiagnosticsReader, WorkflowRunFlowRuntime, WorkflowRunHistoryReader,
-    WorkflowRunReconciler, WorkflowRunVariableReader,
+    HumanTaskResumeWorker, HumanTaskResumeWorkerConfig, IHumanTaskAuthorizationPort,
+    IHumanTaskFormPort, IHumanTaskRepository, IOntologyRepository, IWorkflowCompositeExecutionPort,
+    IWorkflowDefinitionPublicationPort, IWorkflowDefinitionRepository, IWorkflowEnvironmentAccess,
+    IWorkflowGoalRepository, IWorkflowProjectAccess, IWorkflowRunCoordinator,
+    IWorkflowRunDiagnosticsReader, IWorkflowRunHistoryReader, IWorkflowRunRepository,
+    IWorkflowRunVariableReader, IdentityHumanTaskAuthorizationAdapter, ListHumanTasksHandler,
+    ListOntologiesHandler, ListOntologyRevisionsHandler, ListWorkflowDefinitionsHandler,
+    ListWorkflowGoalsHandler, ListWorkflowRevisionsHandler, ListWorkflowRunsHandler,
+    ProjectsWorkflowEnvironmentAccessAdapter, ProjectsWorkflowProjectAccessAdapter,
+    ReviseOntologyHandler, ReviseWorkflowDefinitionHandler, StartWorkflowRunHandler,
+    SubmitHumanTaskHandler, WaitWorkflowRunHandler, WorkflowCompositeExecutionApplicationService,
+    WorkflowDefinitionPublicationService, WorkflowModule, WorkflowRunDiagnosticsReader,
+    WorkflowRunFlowRuntime, WorkflowRunHistoryReader, WorkflowRunReconciler,
+    WorkflowRunVariableReader,
 };
 use crate::modules::workloads::domain::repositories::IWorkloadRepository;
 use crate::modules::workloads::domain::services::{
@@ -705,10 +711,9 @@ async fn build_api_worker_application(
         Arc::clone(&forms),
         Arc::clone(&form_semantic_core),
     ));
-    let human_task_authorization: Arc<dyn IHumanTaskAuthorizationPort> =
-        Arc::new(IdentityHumanTaskAuthorizationAdapter::new(Arc::clone(
-            &resource_authorization_decisions,
-        )));
+    let human_task_authorization: Arc<dyn IHumanTaskAuthorizationPort> = Arc::new(
+        IdentityHumanTaskAuthorizationAdapter::new(Arc::clone(&resource_authorization_decisions)),
+    );
     let search = adapters.search;
     let audit_records = adapters.audit_records;
     let audit_retention_repository = Arc::clone(&audit_records);
@@ -784,6 +789,8 @@ async fn build_api_worker_application(
     let durable_cell_storage_port: Arc<dyn IDurableCellStoragePort> =
         Arc::new(DataDurableCellStorageAdapter::new(Arc::clone(&secrets)));
     let user_files = adapters.user_files;
+    let knowledge_bases = adapters.knowledge_bases;
+    let knowledge_pipelines = adapters.knowledge_pipelines;
     let connector_profiles = adapters.connector_profiles;
     let connector_execution_adapters = postgres_adapters.connector_execution();
     let connector_attempts = connector_execution_adapters.attempts;
@@ -888,9 +895,9 @@ async fn build_api_worker_application(
             ));
             let smtp_dispatcher = OutboundNotificationSmtpDispatcher::new(
                 Arc::clone(&outbound_notification_smtp_attempts),
-                Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(Arc::clone(
-                    &recipient_contacts,
-                ))) as Arc<dyn IOutboundRecipientContactAccess>,
+                Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(
+                    Arc::clone(&recipient_contacts),
+                )) as Arc<dyn IOutboundRecipientContactAccess>,
                 smtp_delivery_service,
                 chrono_duration(config.smtp.reservation_lease_ms)?,
                 chrono_duration(config.smtp.command_timeout_ms)?,
@@ -2112,6 +2119,8 @@ async fn build_api_worker_application(
                 secrets,
                 user_files,
                 user_file_objects,
+                knowledge_bases,
+                knowledge_pipelines,
                 sources,
                 source_webhooks,
                 source_subscriptions,
@@ -2369,6 +2378,8 @@ struct ManagementApplicationDependencies {
     secrets: Arc<dyn ISecretRepository>,
     user_files: Arc<dyn IUserFileRepository>,
     user_file_objects: Arc<dyn IUserFileObjectStore>,
+    knowledge_bases: Arc<dyn IKnowledgeBaseRepository>,
+    knowledge_pipelines: Arc<dyn IKnowledgePipelineRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
@@ -2477,6 +2488,8 @@ fn build_management_application_with_health(
         secrets,
         user_files,
         user_file_objects,
+        knowledge_bases,
+        knowledge_pipelines,
         sources,
         source_webhooks,
         source_subscriptions,
@@ -2527,6 +2540,10 @@ fn build_management_application_with_health(
     let user_file_service = Arc::new(UserFileApplicationService::new(
         user_files,
         user_file_objects,
+    ));
+    let knowledge_lifecycle_service = Arc::new(KnowledgeCatalogLifecycleService::new(
+        knowledge_bases,
+        knowledge_pipelines,
     ));
     let developer_workflow_environments: Arc<dyn IDeveloperWorkflowEnvironmentPort> = Arc::new(
         ProjectsDeveloperWorkflowEnvironmentAdapter::new(Arc::clone(&environments)),
@@ -2639,9 +2656,9 @@ fn build_management_application_with_health(
     );
     let outbound_notification_connector_profiles = Arc::clone(&connector_profiles);
     let outbound_notification_recipient_contacts: Arc<dyn IOutboundRecipientContactAccess> =
-        Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(Arc::clone(
-            &recipient_contacts,
-        )));
+        Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(
+            Arc::clone(&recipient_contacts),
+        ));
     let create_connector_profiles = Arc::clone(&connector_profiles);
     let revise_connector_profiles = Arc::clone(&connector_profiles);
     let list_connector_profiles = Arc::clone(&connector_profiles);
@@ -3517,6 +3534,18 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::files::ExpireUserFileUpload, _>(
                     ExpireUserFileUploadHandler::new(Arc::clone(&user_file_service)),
                 )
+                .command_handler::<crate::modules::knowledge::CreateKnowledgeBaseCommand, _>(
+                    CreateKnowledgeBaseHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .command_handler::<crate::modules::knowledge::AppendKnowledgeBaseCommand, _>(
+                    AppendKnowledgeBaseHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .command_handler::<crate::modules::knowledge::CreateKnowledgePipelineCommand, _>(
+                    CreateKnowledgePipelineHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .command_handler::<crate::modules::knowledge::PublishKnowledgePipelineCommand, _>(
+                    PublishKnowledgePipelineHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
                         create_durable_cell_environments,
@@ -4276,6 +4305,18 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::files::GetUserFileQuota, _>(
                     GetUserFileQuotaHandler::new(user_file_service),
                 )
+                .query_handler::<crate::modules::knowledge::ListKnowledgeBases, _>(
+                    ListKnowledgeBasesHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .query_handler::<crate::modules::knowledge::GetKnowledgeBase, _>(
+                    GetKnowledgeBaseHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .query_handler::<crate::modules::knowledge::ListKnowledgePipelines, _>(
+                    ListKnowledgePipelinesHandler::new(Arc::clone(&knowledge_lifecycle_service)),
+                )
+                .query_handler::<crate::modules::knowledge::GetKnowledgePipeline, _>(
+                    GetKnowledgePipelineHandler::new(knowledge_lifecycle_service),
+                )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),
                 )
@@ -4618,6 +4659,7 @@ fn build_management_application_with_health(
         .import(ConnectorsModule)
         .import(ApplicationsModule)
         .import(FilesModule)
+        .import(KnowledgeModule)
         .import(DurableCellsModule)
         .import(SecretsModule)
         .import(SourcesModule::new(source_webhook_verifier))

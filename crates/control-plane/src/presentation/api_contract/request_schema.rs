@@ -2,6 +2,7 @@ use super::developer_workflow_operation::request_schema as developer_workflow_re
 use super::privileged_management_operation::request_schema as privileged_management_request_schema;
 use super::source_components::build_recipe_request_schema;
 use crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES;
+use crate::modules::knowledge::KNOWLEDGE_CONTRACT_MAX_ACL_BYTES;
 use a3s_cloud_contracts::NodeEnrollmentRequest;
 use a3s_runtime::contract::RuntimeCapabilities;
 use serde_json::{json, Value};
@@ -106,6 +107,18 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone" => {
             expected_version_schema("expectedVersion")
         }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-bases" => {
+            knowledge_base_create_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-bases/{knowledge_base_id}/revisions" => {
+            knowledge_base_append_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-pipelines" => {
+            knowledge_pipeline_create_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-pipelines/{pipeline_id}/releases" => {
+            knowledge_pipeline_publish_schema()
+        }
         "/organizations/{organization_id}/secrets/{secret_id}/versions" => {
             secret_value_schema()
         }
@@ -179,6 +192,74 @@ fn user_file_reservation_schema() -> Value {
                 "maxLength": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
                 "x-a3s-max-canonical-bytes": USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
                 "description": "Canonical A3S ACL UserFile admission contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_base_create_schema() -> Value {
+    object(
+        &["revisionAcl"],
+        json!({
+            "revisionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeBase revision contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_base_append_schema() -> Value {
+    object(
+        &["expectedRevisionDigest", "revisionAcl"],
+        json!({
+            "expectedRevisionDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "revisionAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeBase revision contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_pipeline_create_schema() -> Value {
+    object(
+        &["releaseAcl"],
+        json!({
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgePipeline release contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_pipeline_publish_schema() -> Value {
+    object(
+        &["expectedReleaseDigest", "releaseAcl"],
+        json!({
+            "expectedReleaseDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$"
+            },
+            "releaseAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgePipeline release contract."
             }
         }),
     )

@@ -1,4 +1,4 @@
-pub(super) const TAGS: [(&str, &str); 25] = [
+pub(super) const TAGS: [(&str, &str); 26] = [
     (
         "Platform",
         "Public diagnostics plus installation-scoped platform RBAC and tenant-support administration.",
@@ -34,6 +34,10 @@ pub(super) const TAGS: [(&str, &str); 25] = [
     (
         "Files",
         "Canonical UserFile admission, lifecycle metadata, retention cleanup intent, and organization quota operations.",
+    ),
+    (
+        "Knowledge",
+        "Authorized KnowledgeBase and KnowledgePipeline catalog lifecycle over canonical A3S ACL contracts.",
     ),
     (
         "Developer Workflows",

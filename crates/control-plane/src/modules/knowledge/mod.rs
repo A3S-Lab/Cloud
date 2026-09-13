@@ -5,16 +5,26 @@
 //! search indexes, provider clients, DAG engines, workers, or public surfaces.
 //! `K0.1-C4b1` adds application owner catalog services over those repositories.
 //! `K0.1-C4b2a` adds authorized idempotent create/append/publish writes with
-//! shared audit and Outbox side effects, still without public HTTP/MCP surfaces.
+//! shared audit and Outbox side effects.
+//! `K0.1-C4b2b1` exposes that mutation boundary over REST/OpenAPI with CQRS
+//! handlers and control-plane wiring. Maintained client, CLI, and Management MCP
+//! remain deferred to `K0.1-C4b2b2`.
 
 mod application;
 mod domain;
 mod infrastructure;
+mod presentation;
 
 pub use application::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateKnowledgeBaseCommand,
+    CreateKnowledgeBaseHandler, CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler,
+    GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgePipeline, GetKnowledgePipelineHandler,
     KnowledgeAccess, KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService,
-    KnowledgeMutationResult, KnowledgePipelineCatalogService, PublishKnowledgePipelineCommand,
+    KnowledgeMutationResult, KnowledgePipelineCatalogService, ListKnowledgeBases,
+    ListKnowledgeBasesHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
+    PublishKnowledgePipelineCommand, PublishKnowledgePipelineHandler,
+    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use domain::{
     AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
@@ -38,4 +48,10 @@ pub use domain::{
 pub use infrastructure::{
     InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
     PostgresKnowledgeBaseRepository, PostgresKnowledgePipelineRepository,
+};
+pub(crate) use presentation::{
+    KnowledgeModule, KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE,
+    KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
+    KNOWLEDGE_PIPELINE_COLLECTION_ROUTE, KNOWLEDGE_PIPELINE_ITEM_ROUTE,
+    KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
 };

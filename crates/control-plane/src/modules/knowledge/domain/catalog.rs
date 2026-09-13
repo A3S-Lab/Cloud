@@ -99,6 +99,13 @@ pub trait IKnowledgeBaseRepository: Send + Sync {
 
     async fn list(&self, limit: usize) -> Result<Vec<KnowledgeBaseRecord>, RepositoryError>;
 
+    async fn list_for_project(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeBaseRecord>, RepositoryError>;
+
     async fn find_revision(
         &self,
         organization_id: Uuid,
@@ -208,6 +215,13 @@ pub trait IKnowledgePipelineRepository: Send + Sync {
         organization_id: Uuid,
         pipeline_id: Uuid,
     ) -> Result<Option<KnowledgePipelineRecord>, RepositoryError>;
+
+    async fn list(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgePipelineRecord>, RepositoryError>;
 
     async fn find_release(
         &self,
