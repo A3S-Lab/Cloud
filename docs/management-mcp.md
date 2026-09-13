@@ -504,7 +504,7 @@ signing; signer failure, key drift, partial signing, and verification mismatch
 return no partial bundle. This read-only addition takes the exact catalogs to
 136 administrator and 76 read-only tools and adds no migration, export store,
 object namespace, queue, Connector, SIEM delivery, or commercial authority.
-Remote PostgreSQL and cross-surface certification remain pending for PA2d.
+PA2d remote certification is retained by the [PostgreSQL 17 H0 job](https://github.com/A3S-Lab/Cloud/actions/runs/33945593566/job/101250990670), the [Management MCP job](https://github.com/A3S-Lab/Cloud/actions/runs/33945593566/job/101250990708), and the [complete main CI run](https://github.com/A3S-Lab/Cloud/actions/runs/33945593566).
 
 ## Recipient-contact self-service
 
