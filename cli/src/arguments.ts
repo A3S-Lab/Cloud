@@ -18,6 +18,7 @@ export interface ParsedArguments {
   providerWorkloadFile?: string;
   storageBindingFile?: string;
   expectedVersion?: string;
+  expectedDigest?: string;
   costAttributionCode?: string;
   projectAttributionLabels: string[];
   migrationRuleId?: string;
@@ -86,6 +87,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--provider-workload-file': 'providerWorkloadFile',
   '--storage-binding-file': 'storageBindingFile',
   '--expected-version': 'expectedVersion',
+  '--expected-digest': 'expectedDigest',
   '--cost-attribution-code': 'costAttributionCode',
   '--migration-rule': 'migrationRuleId',
   '--min-ready': 'minReady',

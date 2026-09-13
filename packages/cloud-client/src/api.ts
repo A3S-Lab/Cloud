@@ -189,6 +189,21 @@ import {
   validateExpectedUserFileVersion,
   validateUserFileAdmissionAcl,
 } from './files';
+import {
+  encodeKnowledgeBaseListOptions,
+  encodeKnowledgePipelineListOptions,
+  type AppendKnowledgeBaseInput,
+  type CreateKnowledgeBaseInput,
+  type CreateKnowledgePipelineInput,
+  type KnowledgeBase,
+  type KnowledgeBaseMutationResult,
+  type KnowledgeListOptions,
+  type KnowledgePipeline,
+  type KnowledgePipelineMutationResult,
+  type PublishKnowledgePipelineInput,
+  validateKnowledgeContentDigest,
+  validateKnowledgeContractAcl,
+} from './knowledge';
 import { type CloudSequenceQuery, encodeQueryParameters, encodeSequenceQuery } from './sequence-query';
 import {
   encodeGithubSourceDiscoveryPageOptions,
@@ -497,6 +512,20 @@ function userFileCollectionPath(organizationId: string, projectId: string): stri
   return (
     `/organizations/${encodeURIComponent(organizationId)}` +
     `/projects/${encodeURIComponent(projectId)}/user-files`
+  );
+}
+
+function knowledgeBaseCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-bases`
+  );
+}
+
+function knowledgePipelineCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-pipelines`
   );
 }
 
@@ -4151,6 +4180,128 @@ export class CloudApi {
     );
   }
 
+
+  createKnowledgeBase(
+    organizationId: string,
+    projectId: string,
+    input: CreateKnowledgeBaseInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeBaseMutationResult> {
+    validateKnowledgeContractAcl(input?.revisionAcl, 'KnowledgeBase revision ACL');
+    return this.postJson(
+      knowledgeBaseCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { revisionAcl: input.revisionAcl },
+      signal
+    );
+  }
+
+  listKnowledgeBases(
+    organizationId: string,
+    projectId: string,
+    options: KnowledgeListOptions = {},
+    signal?: AbortSignal
+  ): Promise<KnowledgeBase[]> {
+    return this.get(
+      `${knowledgeBaseCollectionPath(organizationId, projectId)}${encodeKnowledgeBaseListOptions(options)}`,
+      signal
+    );
+  }
+
+  getKnowledgeBase(
+    organizationId: string,
+    projectId: string,
+    knowledgeBaseId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeBase> {
+    return this.get(
+      `${knowledgeBaseCollectionPath(organizationId, projectId)}/${encodeURIComponent(knowledgeBaseId)}`,
+      signal
+    );
+  }
+
+  appendKnowledgeBase(
+    organizationId: string,
+    projectId: string,
+    knowledgeBaseId: string,
+    input: AppendKnowledgeBaseInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeBaseMutationResult> {
+    validateKnowledgeContentDigest(input?.expectedRevisionDigest, 'KnowledgeBase expected revision digest');
+    validateKnowledgeContractAcl(input?.revisionAcl, 'KnowledgeBase revision ACL');
+    return this.postJson(
+      `${knowledgeBaseCollectionPath(organizationId, projectId)}/${encodeURIComponent(knowledgeBaseId)}/revisions`,
+      idempotencyKey,
+      {
+        expectedRevisionDigest: input.expectedRevisionDigest,
+        revisionAcl: input.revisionAcl,
+      },
+      signal
+    );
+  }
+
+  createKnowledgePipeline(
+    organizationId: string,
+    projectId: string,
+    input: CreateKnowledgePipelineInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgePipelineMutationResult> {
+    validateKnowledgeContractAcl(input?.releaseAcl, 'KnowledgePipeline release ACL');
+    return this.postJson(
+      knowledgePipelineCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { releaseAcl: input.releaseAcl },
+      signal
+    );
+  }
+
+  listKnowledgePipelines(
+    organizationId: string,
+    projectId: string,
+    options: KnowledgeListOptions = {},
+    signal?: AbortSignal
+  ): Promise<KnowledgePipeline[]> {
+    return this.get(
+      `${knowledgePipelineCollectionPath(organizationId, projectId)}${encodeKnowledgePipelineListOptions(options)}`,
+      signal
+    );
+  }
+
+  getKnowledgePipeline(
+    organizationId: string,
+    projectId: string,
+    pipelineId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgePipeline> {
+    return this.get(
+      `${knowledgePipelineCollectionPath(organizationId, projectId)}/${encodeURIComponent(pipelineId)}`,
+      signal
+    );
+  }
+
+  publishKnowledgePipeline(
+    organizationId: string,
+    projectId: string,
+    pipelineId: string,
+    input: PublishKnowledgePipelineInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgePipelineMutationResult> {
+    validateKnowledgeContentDigest(input?.expectedReleaseDigest, 'KnowledgePipeline expected release digest');
+    validateKnowledgeContractAcl(input?.releaseAcl, 'KnowledgePipeline release ACL');
+    return this.postJson(
+      `${knowledgePipelineCollectionPath(organizationId, projectId)}/${encodeURIComponent(pipelineId)}/releases`,
+      idempotencyKey,
+      {
+        expectedReleaseDigest: input.expectedReleaseDigest,
+        releaseAcl: input.releaseAcl,
+      },
+      signal
+    );
+  }
   reserveUserFile(
     organizationId: string,
     projectId: string,

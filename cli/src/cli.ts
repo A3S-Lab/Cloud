@@ -236,6 +236,14 @@ Commands:
   user-files get ID      Get one UserFile lifecycle projection
   user-files tombstone ID Tombstone one UserFile with optimistic concurrency
   user-file-quota get    Get the organization-wide UserFile quota ledger
+  knowledge-bases create Create one KnowledgeBase from canonical A3S ACL
+  knowledge-bases list   List bounded KnowledgeBase catalog projections in the selected project
+  knowledge-bases get ID Get one KnowledgeBase catalog projection
+  knowledge-bases append ID Append one KnowledgeBase revision with digest concurrency
+  knowledge-pipelines create Create one KnowledgePipeline from canonical A3S ACL
+  knowledge-pipelines list List bounded KnowledgePipeline catalog projections in the selected project
+  knowledge-pipelines get ID Get one KnowledgePipeline catalog projection
+  knowledge-pipelines publish ID Publish one KnowledgePipeline release with digest concurrency
   secrets list          List Secret metadata in the selected environment
   secrets get ID        Get Secret metadata and version states
   secrets create NAME   Create a Secret from standard input idempotently
@@ -283,6 +291,7 @@ Global options:
   --idempotency-key <key>  Required stable key for every mutation
   --file <path>             A3S ACL, native Form, Workflow, catalog, or assignment JSON input file
   --expected-version <n>    Current aggregate version for a versioned mutation
+  --expected-digest <digest> Current Knowledge catalog digest for append/publish
   --cost-attribution-code <code> Optional showback code for project-attribution update
   --label <key=value>        Repeatable bounded label for project-attribution update
   --migration-rule <id>     Target ACL migration rule for a breaking Ontology revision
