@@ -17,7 +17,12 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.91.0`.
+The current semantic contract version is `1.92.0`.
+
+Contract `1.92.0` extends the Files-owned UserFile surface with authorized
+`POST .../user-files/{userFileId}/expire` for awaiting upload reservations
+(`expectedVersion` only; OpenAPI `1.92.0`; seventh Management MCP tool). This is
+metadata-only lifecycle control and does not execute live object cleanup.
 
 Contract `1.91.0` extends the Files-owned UserFile surface with authorized
 metadata-only scan decisions (`POST .../scan`) after content PUT/GET. Contract `1.90.0` added

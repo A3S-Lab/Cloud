@@ -406,6 +406,7 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
     let item = format!("{collection}/{{user_file_id}}");
     let content = format!("{item}/content");
     let tombstone = format!("{item}/tombstone");
+    let expire = format!("{item}/expire");
     let quota = "/organizations/{organization_id}/user-file-quota";
 
     let reserve = &document["paths"][collection]["post"];
@@ -452,6 +453,15 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
         document["paths"][&tombstone]["post"]["requestBody"]["content"]["application/json"]["schema"]
             ["required"],
         json!(["expectedVersion"])
+    );
+    assert_eq!(
+        document["paths"][&expire]["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["required"],
+        json!(["expectedVersion"])
+    );
+    assert_eq!(
+        document["paths"][&expire]["post"]["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileMutationSuccess200"
     );
     let put_content = &document["paths"][&content]["put"];
     assert_eq!(put_content["tags"], json!(["Files"]));

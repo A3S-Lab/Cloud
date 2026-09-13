@@ -254,6 +254,46 @@ describe('a3s-cloud UserFile commands', () => {
     expect(output.stderr()).toBe('');
   });
 
+
+  it('expires awaiting upload reservations through the exact expire route', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const exitCode = await runCli(
+      [
+        'user-files',
+        'expire',
+        USER_FILE_ID,
+        '--expected-version=1',
+        '--idempotency-key=cli:files:expire',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ file: { ...userFile(), state: 'expired' }, replayed: false });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(`${userFileBase()}/${USER_FILE_ID}/expire`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ expectedVersion: 1 }),
+        headers: expect.objectContaining({
+          'Content-Type': 'application/json',
+          'Idempotency-Key': 'cli:files:expire',
+        }),
+      })
+    );
+    expect(String(calls[0]?.[0])).not.toContain('upload');
+    expect(output.stderr()).toBe('');
+  });
+
   it('gets admitted content bytes through the exact /content route into --file', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();

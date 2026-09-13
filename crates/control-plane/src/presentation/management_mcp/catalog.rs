@@ -257,6 +257,7 @@ pub const USER_FILES_LIST: &str = "a3s_cloud_user_files_list";
 pub const USER_FILES_GET: &str = "a3s_cloud_user_files_get";
 pub const USER_FILES_TOMBSTONE: &str = "a3s_cloud_user_files_tombstone";
 pub const USER_FILES_SCAN: &str = "a3s_cloud_user_files_scan";
+pub const USER_FILES_EXPIRE: &str = "a3s_cloud_user_files_expire";
 pub const USER_FILE_QUOTA_GET: &str = "a3s_cloud_user_file_quota_get";
 pub const KNOWLEDGE_BASES_CREATE: &str = "a3s_cloud_knowledge_bases_create";
 pub const KNOWLEDGE_BASES_LIST: &str = "a3s_cloud_knowledge_bases_list";
@@ -411,6 +412,7 @@ pub enum ManagementTool {
     UserFilesGet,
     UserFilesTombstone,
     UserFilesScan,
+    UserFilesExpire,
     UserFileQuotaGet,
     KnowledgeBasesCreate,
     KnowledgeBasesList,
@@ -496,7 +498,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 193] = [
+    const ALL: [Self; 194] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -623,6 +625,7 @@ impl ManagementTool {
         Self::UserFilesGet,
         Self::UserFilesTombstone,
         Self::UserFilesScan,
+        Self::UserFilesExpire,
         Self::UserFileQuotaGet,
         Self::KnowledgeBasesCreate,
         Self::KnowledgeBasesList,
@@ -845,6 +848,7 @@ impl ManagementTool {
             Self::UserFilesGet => USER_FILES_GET,
             Self::UserFilesTombstone => USER_FILES_TOMBSTONE,
             Self::UserFilesScan => USER_FILES_SCAN,
+            Self::UserFilesExpire => USER_FILES_EXPIRE,
             Self::UserFileQuotaGet => USER_FILE_QUOTA_GET,
             Self::KnowledgeBasesCreate => KNOWLEDGE_BASES_CREATE,
             Self::KnowledgeBasesList => KNOWLEDGE_BASES_LIST,
@@ -995,9 +999,10 @@ impl ManagementTool {
             Self::GithubInstallationRepositoriesList | Self::GithubRepositoryReferencesList => {
                 Some(ApiTokenScope::SOURCE_WRITE)
             }
-            Self::UserFilesReserve | Self::UserFilesTombstone | Self::UserFilesScan => {
-                Some(ApiTokenScope::FILE_WRITE)
-            }
+            Self::UserFilesReserve
+            | Self::UserFilesTombstone
+            | Self::UserFilesScan
+            | Self::UserFilesExpire => Some(ApiTokenScope::FILE_WRITE),
             Self::KnowledgeBasesCreate
             | Self::KnowledgeBasesAppend
             | Self::KnowledgePipelinesCreate
@@ -1201,6 +1206,7 @@ impl ManagementTool {
             | Self::UserFilesGet
             | Self::UserFilesTombstone
             | Self::UserFilesScan
+            | Self::UserFilesExpire
             | Self::KnowledgeBasesCreate
             | Self::KnowledgeBasesList
             | Self::KnowledgeBasesGet
@@ -2158,6 +2164,12 @@ impl ManagementTool {
                 "Record user file scan decision",
                 "Record one metadata-only UserFile scan decision with an evidence digest and optimistic concurrency. Accepts only admitted or rejected decisions; never accepts file bytes or scanner provider configuration.",
                 scan_user_file_schema(),
+                false,
+            ),
+            Self::UserFilesExpire => (
+                "Expire user file upload reservation",
+                "Expire one awaiting UserFile upload reservation with optimistic concurrency. Metadata-only lifecycle control; never deletes object bytes, starts a cleanup worker, or invents a second cleanup queue.",
+                expire_user_file_schema(),
                 false,
             ),
             Self::UserFileQuotaGet => (
@@ -5040,6 +5052,20 @@ fn scan_user_file_schema() -> Value {
     })
 }
 
+fn expire_user_file_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "userFileId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "userFileId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
 fn github_source_discovery_page_properties() -> Map<String, Value> {
     Map::from_iter([
         (
@@ -5493,6 +5519,7 @@ mod tests {
             ManagementTool::UserFilesReserve,
             ManagementTool::UserFilesTombstone,
             ManagementTool::UserFilesScan,
+            ManagementTool::UserFilesExpire,
         ] {
             assert_eq!(tool.required_scope(), Some(ApiTokenScope::FILE_WRITE));
             assert_eq!(
@@ -5564,6 +5591,7 @@ mod tests {
             USER_FILES_TOMBSTONE
         );
         assert_eq!(ManagementTool::UserFilesScan.name(), USER_FILES_SCAN);
+        assert_eq!(ManagementTool::UserFilesExpire.name(), USER_FILES_EXPIRE);
         assert_eq!(ManagementTool::UserFileQuotaGet.name(), USER_FILE_QUOTA_GET);
 
         let scan = ManagementTool::UserFilesScan.definition();
@@ -5583,6 +5611,27 @@ mod tests {
         }
         assert_eq!(
             scan["annotations"]["destructiveHint"].as_bool(),
+            Some(false)
+        );
+
+        let expire = ManagementTool::UserFilesExpire.definition();
+        let expire_properties = &expire["inputSchema"]["properties"];
+        for forbidden in [
+            "bytes",
+            "provider",
+            "bucket",
+            "credential",
+            "scanner",
+            "content",
+            "cleanup",
+        ] {
+            assert!(
+                expire_properties.get(forbidden).is_none(),
+                "Files expire schema exposed duplicate authority {forbidden}"
+            );
+        }
+        assert_eq!(
+            expire["annotations"]["destructiveHint"].as_bool(),
             Some(false)
         );
     }

@@ -24,6 +24,7 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "post" if is_collection_path(path) => Some("Reserve a user file"),
         "put" if is_content_path(path) => Some("Put user file content"),
         "post" if path.ends_with("/scan") => Some("Record a user file scan decision"),
+        "post" if path.ends_with("/expire") => Some("Expire a user file upload reservation"),
         "post" if path.ends_with("/tombstone") => Some("Tombstone a user file"),
         "get" if is_collection_path(path) => Some("List user files"),
         "get" if is_content_path(path) => Some("Get user file content"),
@@ -49,6 +50,9 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         ),
         "post" if path.ends_with("/scan") => Some(
             "Records one metadata-only UserFile scan decision with an evidence digest after project authorization. Admitted or rejected transitions use optimistic concurrency over the existing scan command; this is not a live antivirus scanner and does not accept file bytes or scanner provider configuration.",
+        ),
+        "post" if path.ends_with("/expire") => Some(
+            "Expires one awaiting UserFile upload reservation using optimistic concurrency over the existing expire-upload command. This is metadata-only lifecycle control; it does not delete object bytes, start a cleanup worker, or invent a second cleanup queue. Live object cleanup remains an intent on later tombstone/cleanup execution.",
         ),
         "post" if path.ends_with("/tombstone") => Some(
             "Tombstones one UserFile using optimistic concurrency. Any reserved quota is released in the same transaction and one lifecycle cleanup intent is emitted; no independent deletion queue is created.",

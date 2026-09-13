@@ -5,7 +5,7 @@ use crate::modules::files::{
 };
 use crate::modules::shared_kernel::domain::{Sha256Digest, UserFileId, UserFileUploadId};
 use a3s_boot::HttpMethod;
-use chrono::TimeDelta;
+use chrono::{DateTime, TimeDelta, Utc};
 
 const RESTRICTED_FILE_TOKEN: &str =
     "a3s_f777777777777777777777777777777777777777777777777777777777777777";
@@ -444,6 +444,144 @@ async fn user_file_rest_puts_content_through_local_object_store() -> Result<()> 
 }
 
 #[tokio::test]
+async fn user_file_rest_expires_awaiting_upload_and_keeps_upload_route_closed() -> Result<()> {
+    let directory = tempfile::tempdir().map_err(|error| BootError::Internal(error.to_string()))?;
+    let objects = Arc::new(
+        SharedUserFileObjectStore::local(directory.path())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let files = Arc::new(InMemoryUserFileRepository::default());
+    let app = build_test_application_with_user_files(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        files.clone(),
+        Arc::clone(&objects) as Arc<_>,
+    )?;
+    let organization = bootstrap_organization(&app, "files-expire", "Files expire").await?;
+    let project = create_project(&app, &organization, "files-expire-project", "Files").await?;
+    let content = b"expire-awaiting-bytes";
+    let upload_expires_at = Utc::now() + TimeDelta::seconds(2);
+    let (admission_acl, user_file_id, _) = admission_acl_for_content_with_upload_expiry(
+        &organization,
+        &project,
+        content,
+        upload_expires_at,
+    )?;
+    let collection = format!("/api/v1/organizations/{organization}/projects/{project}/user-files");
+    let expire_path = format!("{collection}/{user_file_id}/expire");
+
+    assert_eq!(
+        app.call(post_json(
+            &collection,
+            "files-expire-reserve",
+            json!({"admissionAcl": admission_acl}),
+        ))
+        .await?
+        .status(),
+        201
+    );
+
+    let too_early = app
+        .call(post_json(
+            &expire_path,
+            "files-expire-too-early",
+            json!({ "expectedVersion": 1 }),
+        ))
+        .await?;
+    assert_eq!(
+        too_early.status(),
+        409,
+        "expire before upload deadline must fail closed: {:?}",
+        response_json(&too_early).unwrap_or_default()
+    );
+
+    let wait = (upload_expires_at + TimeDelta::milliseconds(50) - Utc::now())
+        .to_std()
+        .unwrap_or_default();
+    if !wait.is_zero() {
+        tokio::time::sleep(wait).await;
+    }
+
+    let expired = app
+        .call(post_json(
+            &expire_path,
+            "files-expire-ok",
+            json!({ "expectedVersion": 1 }),
+        ))
+        .await?;
+    assert_eq!(
+        expired.status(),
+        200,
+        "expire awaiting upload failed: {:?}",
+        response_json(&expired).unwrap_or_default()
+    );
+    let expired_body = response_json(&expired)?;
+    assert_eq!(expired_body["data"]["file"]["state"], "expired");
+    assert!(expired_body["data"]["file"]["expiredAt"].is_string());
+    assert_eq!(expired_body["data"]["replayed"], false);
+
+    let replay = app
+        .call(post_json(
+            &expire_path,
+            "files-expire-ok",
+            json!({ "expectedVersion": 1 }),
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    assert_eq!(response_json(&replay)?["data"]["replayed"], true);
+
+    let wrong_state_content = b"expire-wrong-state-bytes";
+    let (wrong_acl, wrong_file_id, _) =
+        admission_acl_for_content(&organization, &project, wrong_state_content)?;
+    assert_eq!(
+        app.call(post_json(
+            &collection,
+            "files-expire-wrong-reserve",
+            json!({"admissionAcl": wrong_acl}),
+        ))
+        .await?
+        .status(),
+        201
+    );
+    assert_eq!(
+        app.call(put_user_file_content(
+            format!("{collection}/{wrong_file_id}/content"),
+            "files-expire-wrong-put",
+            1,
+            wrong_state_content,
+        ))
+        .await?
+        .status(),
+        200
+    );
+    let wrong_state = app
+        .call(post_json(
+            format!("{collection}/{wrong_file_id}/expire"),
+            "files-expire-wrong-state",
+            json!({ "expectedVersion": 2 }),
+        ))
+        .await?;
+    assert_eq!(
+        wrong_state.status(),
+        409,
+        "expire after upload must fail: {:?}",
+        response_json(&wrong_state).unwrap_or_default()
+    );
+
+    assert_eq!(
+        app.call(post_json(
+            format!("{collection}/{user_file_id}/upload"),
+            "files-no-buffered-upload-after-expire",
+            json!({"bytes": "forbidden"}),
+        ))
+        .await?
+        .status(),
+        404
+    );
+    Ok(())
+}
+
+#[tokio::test]
 async fn user_file_rest_records_scan_decisions_and_keeps_upload_route_closed() -> Result<()> {
     use futures_util::StreamExt;
 
@@ -778,6 +916,39 @@ fn admission_acl_document(
     })
     .map_err(BootError::Internal)?;
     Ok(contract.canonical_acl().to_owned())
+}
+
+fn admission_acl_for_content_with_upload_expiry(
+    organization: &str,
+    project: &str,
+    content: &[u8],
+    upload_expires_at: DateTime<Utc>,
+) -> Result<(String, UserFileId, u64)> {
+    let (organization_id, project_id) = user_file_scope(organization, project)?;
+    let user_file_id = UserFileId::new();
+    let size_bytes = content.len() as u64;
+    let contract = UserFileAdmissionContract::from_spec(UserFileAdmissionContractSpec {
+        original_name: "knowledge.bin".into(),
+        upload_expires_at,
+        retention_until: upload_expires_at + TimeDelta::days(30),
+        scan_policy: UserFileScanPolicy::Required,
+        content: UserFileContentReference::new(
+            organization_id,
+            project_id,
+            user_file_id,
+            UserFileUploadId::new(),
+            Sha256Digest::from_bytes(content),
+            size_bytes,
+            "application/octet-stream",
+        )
+        .map_err(BootError::Internal)?,
+    })
+    .map_err(BootError::Internal)?;
+    Ok((
+        contract.canonical_acl().to_owned(),
+        user_file_id,
+        size_bytes,
+    ))
 }
 
 fn admission_acl_for_content(

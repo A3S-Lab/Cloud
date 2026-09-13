@@ -1,14 +1,15 @@
 use super::content_stream::stream_user_file_content;
 use super::{
-    RecordUserFileScanRequest, ReserveUserFileRequest, TombstoneUserFileRequest,
-    UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
+    ExpireUserFileUploadRequest, RecordUserFileScanRequest, ReserveUserFileRequest,
+    TombstoneUserFileRequest, UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
     USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE,
-    USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
+    USER_FILE_EXPIRE_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE,
+    USER_FILE_TOMBSTONE_ROUTE,
 };
 use crate::modules::files::application::{
-    GetUserFile, GetUserFileContent, GetUserFileQuota, ListUserFiles, RecordUserFileScan,
-    RecordUserFileUpload, ReserveUserFile, TombstoneUserFile, UserFileTransition,
-    DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
+    ExpireUserFileUpload, GetUserFile, GetUserFileContent, GetUserFileQuota, ListUserFiles,
+    RecordUserFileScan, RecordUserFileUpload, ReserveUserFile, TombstoneUserFile,
+    UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
 };
 use crate::modules::files::USER_FILE_MAX_BYTES;
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, UserFileId};
@@ -30,6 +31,7 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
     let reserve_bus = Arc::clone(&bus);
     let content_bus = Arc::clone(&bus);
     let scan_bus = Arc::clone(&bus);
+    let expire_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
         .post(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&reserve_bus);
@@ -125,6 +127,35 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                         evidence_digest: body.evidence_digest,
                         decision: body.decision.into(),
                     })
+                    .await?
+                {
+                    Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
+                    Err(error) => application_error_response(error, request_id),
+                }
+            }
+        })?
+        .post(USER_FILE_EXPIRE_ROUTE, move |request: BootRequest| {
+            let bus = Arc::clone(&expire_bus);
+            async move {
+                let body: ExpireUserFileUploadRequest = request.json_with_content_type()?;
+                let (idempotency_key, request_id) = request_identity(&request)?;
+                match bus
+                    .execute(ExpireUserFileUpload(UserFileTransition {
+                        organization_id: OrganizationId::from_uuid(
+                            request.param_as::<Uuid>("organization_id")?,
+                        ),
+                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                        user_file_id: UserFileId::from_uuid(
+                            request.param_as::<Uuid>("user_file_id")?,
+                        ),
+                        expected_version: body.expected_version,
+                        actor_principal_id: actor_principal_id(&request)?,
+                        access: user_file_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?),
+                        idempotency_key,
+                        request_id,
+                    }))
                     .await?
                 {
                     Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),

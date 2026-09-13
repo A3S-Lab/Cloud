@@ -76,6 +76,7 @@ The maintained management surface is exact:
 | Put reserved content bytes | `PUT /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `putUserFileContent` | `user-files put-content` | — | `file:write` |
 | Get admitted content bytes | `GET /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `getUserFileContent` | `user-files get-content` | — | `cloud:read` |
 | Record scan decision | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/scan` | `recordUserFileScan` | `user-files scan` | `a3s_cloud_user_files_scan` | `file:write` |
+| Expire awaiting upload | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/expire` | `expireUserFileUpload` | `user-files expire` | `a3s_cloud_user_files_expire` | `file:write` |
 | Tombstone and release quota | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/tombstone` | `tombstoneUserFile` | `user-files tombstone` | `a3s_cloud_user_files_tombstone` | `file:write` |
 | Read organization quota | `GET /organizations/{organizationId}/user-file-quota` | `getUserFileQuota` | `user-file-quota get` | `a3s_cloud_user_file_quota_get` | `cloud:read` |
 

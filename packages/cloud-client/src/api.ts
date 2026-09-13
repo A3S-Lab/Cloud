@@ -4386,6 +4386,23 @@ export class CloudApi {
     );
   }
 
+  expireUserFileUpload(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<UserFileMutationResult> {
+    validateExpectedUserFileVersion(expectedVersion);
+    return this.postJson(
+      `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/expire`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
   putUserFileContent(
     organizationId: string,
     projectId: string,

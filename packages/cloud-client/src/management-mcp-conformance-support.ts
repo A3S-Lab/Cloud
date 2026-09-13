@@ -130,6 +130,7 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_user_files_get',
   'a3s_cloud_user_files_tombstone',
   'a3s_cloud_user_files_scan',
+  'a3s_cloud_user_files_expire',
   'a3s_cloud_user_file_quota_get',
   'a3s_cloud_knowledge_bases_create',
   'a3s_cloud_knowledge_bases_list',

@@ -236,6 +236,7 @@ Commands:
   user-files get ID      Get one UserFile lifecycle projection
   user-files tombstone ID Tombstone one UserFile with optimistic concurrency
   user-files scan ID      Record one metadata-only UserFile scan decision
+  user-files expire ID    Expire one awaiting UserFile upload reservation
   user-files put-content ID Put reserved UserFile bytes from --file
   user-files get-content ID Download admitted UserFile bytes to --file
   user-file-quota get    Get the organization-wide UserFile quota ledger
