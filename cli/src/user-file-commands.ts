@@ -25,6 +25,7 @@ import { requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
 import type { CommandResult } from './results';
 import {
+  userFileContentWriteResult,
   userFileMutationResult,
   userFileQuotaResult,
   userFileResult,
@@ -33,6 +34,7 @@ import {
 
 interface UserFileCommandDependencies {
   readFile?: (path: string) => Promise<Uint8Array>;
+  writeFile?: (path: string, content: Uint8Array) => Promise<void>;
 }
 
 export async function executeUserFileCommand(
@@ -124,6 +126,32 @@ export async function executeUserFileCommand(
           idempotencyKey
         )
       );
+    }
+    case 'user-files get-content': {
+      requireArity(arguments_.positionals, 3, 'user-files get-content <user-file-id>');
+      rejectAgentProviderKindOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      rejectIdempotencyOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+        throw usageError('cursor and stream options are valid only for log commands');
+      }
+      const filePath = arguments_.file;
+      if (filePath === undefined || filePath.length === 0) {
+        throw usageError('--file is required for user-files get-content');
+      }
+      const content = await cloudApi().getUserFileContent(
+        organizationId(),
+        projectId(),
+        positionalUuid(arguments_.positionals, 2, 'UserFile ID')
+      );
+      const writeFile =
+        dependencies.writeFile ??
+        (async (path: string, bytes: Uint8Array) => {
+          await Bun.write(path, bytes);
+        });
+      await writeFile(filePath, content);
+      return userFileContentWriteResult(filePath, content.byteLength);
     }
     case 'user-file-quota get':
       requireReadCommand(arguments_, 'user-file-quota get', 2);

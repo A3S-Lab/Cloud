@@ -470,6 +470,17 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
                 parameter["name"] == "x-a3s-expected-version" && parameter["required"] == true
             }))
     );
+    let get_content = &document["paths"][&content]["get"];
+    assert_eq!(get_content["tags"], json!(["Files"]));
+    assert_eq!(
+        get_content["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileContentSuccess200"
+    );
+    assert_eq!(
+        document["components"]["responses"]["UserFileContentSuccess200"]["content"]
+            ["application/octet-stream"]["schema"]["format"],
+        "binary"
+    );
     assert_eq!(
         document["paths"][quota]["get"]["responses"]["200"]["$ref"],
         "#/components/responses/UserFileQuotaSuccess200"

@@ -169,10 +169,10 @@ use crate::modules::executions::{
     WorkflowExecutionApplicationService,
 };
 use crate::modules::files::{
-    ExpireUserFileUploadHandler, FilesModule, GetUserFileHandler, GetUserFileQuotaHandler,
-    IUserFileObjectStore, IUserFileRepository, ListUserFilesHandler, RecordUserFileScanHandler,
-    RecordUserFileUploadHandler, ReserveUserFileHandler, SharedUserFileObjectStore,
-    TombstoneUserFileHandler, UserFileApplicationService,
+    ExpireUserFileUploadHandler, FilesModule, GetUserFileContentHandler, GetUserFileHandler,
+    GetUserFileQuotaHandler, IUserFileObjectStore, IUserFileRepository, ListUserFilesHandler,
+    RecordUserFileScanHandler, RecordUserFileUploadHandler, ReserveUserFileHandler,
+    SharedUserFileObjectStore, TombstoneUserFileHandler, UserFileApplicationService,
 };
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodePoolRepository, INodeRepository,
@@ -4301,6 +4301,9 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::files::GetUserFile, _>(
                     GetUserFileHandler::new(Arc::clone(&user_file_service)),
+                )
+                .query_handler::<crate::modules::files::GetUserFileContent, _>(
+                    GetUserFileContentHandler::new(Arc::clone(&user_file_service)),
                 )
                 .query_handler::<crate::modules::files::GetUserFileQuota, _>(
                     GetUserFileQuotaHandler::new(user_file_service),

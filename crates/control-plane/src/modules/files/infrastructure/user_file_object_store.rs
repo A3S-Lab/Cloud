@@ -1,5 +1,6 @@
 use crate::infrastructure::{
-    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectVerification,
+    ImmutableObjectClient, ImmutableObjectError, ImmutableObjectOpenResult,
+    ImmutableObjectVerification,
 };
 use crate::modules::files::application::{
     IUserFileObjectStore, UserFileObjectError, UserFileObjectReader,
@@ -90,6 +91,35 @@ impl IUserFileObjectStore for SharedUserFileObjectStore {
             )),
         }
     }
+
+    async fn open(
+        &self,
+        reference: &UserFileContentReference,
+    ) -> Result<UserFileObjectReader, UserFileObjectError> {
+        reference.validate().map_err(UserFileObjectError::Invalid)?;
+        let key = reference
+            .storage_key()
+            .map_err(UserFileObjectError::Invalid)?;
+        match self
+            .objects
+            .open(&key, USER_FILE_MAX_BYTES)
+            .await
+            .map_err(map_object_error)?
+        {
+            ImmutableObjectOpenResult::Found(opened) => {
+                if opened.size_bytes != reference.size_bytes {
+                    return Err(UserFileObjectError::Integrity(
+                        "stored UserFile object size does not match its immutable reference".into(),
+                    ));
+                }
+                Ok(opened.reader)
+            }
+            ImmutableObjectOpenResult::Missing => Err(UserFileObjectError::NotFound),
+            ImmutableObjectOpenResult::Corrupt => Err(UserFileObjectError::Integrity(
+                "stored bytes do not match their immutable UserFile reference".into(),
+            )),
+        }
+    }
 }
 
 fn map_object_error(error: ImmutableObjectError) -> UserFileObjectError {
@@ -110,6 +140,7 @@ mod tests {
         OrganizationId, ProjectId, Sha256Digest, UserFileId, UserFileUploadId,
     };
     use std::io::Cursor;
+    use tokio::io::AsyncReadExt;
 
     fn reader(bytes: &[u8]) -> UserFileObjectReader {
         Box::pin(Cursor::new(bytes.to_vec()))
@@ -147,6 +178,13 @@ mod tests {
             .expect("replay write");
         assert!(replay.replayed());
         store.verify(&reference).await.expect("verified read");
+        let mut opened = store.open(&reference).await.expect("opened read");
+        let mut recovered = Vec::new();
+        opened
+            .read_to_end(&mut recovered)
+            .await
+            .expect("read opened bytes");
+        assert_eq!(recovered, bytes);
     }
 
     #[tokio::test]

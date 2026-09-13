@@ -4385,6 +4385,19 @@ export class CloudApi {
     });
   }
 
+  getUserFileContent(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    signal?: AbortSignal
+  ): Promise<Uint8Array> {
+    return this.requestBinary(
+      'GET',
+      `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/content`,
+      { signal }
+    );
+  }
+
   getUserFileQuota(organizationId: string, signal?: AbortSignal): Promise<UserFileQuota> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/user-file-quota`, signal);
   }
@@ -5124,6 +5137,68 @@ export class CloudApi {
         signal: controller.signal,
       });
       return options.healthResponse ? await readHealthResponse<T>(response) : await readResponse<T>(response);
+    } catch (error) {
+      if (error instanceof CloudApiError) {
+        throw error;
+      }
+      if (options.signal?.aborted) {
+        throw new CloudApiError(0, 'Cloud API request was cancelled', 'REQUEST_ABORTED');
+      }
+      if (timedOut) {
+        throw new CloudApiError(0, 'Cloud API request timed out', 'REQUEST_TIMEOUT');
+      }
+      throw new CloudApiError(0, 'Cloud API request failed', 'NETWORK_ERROR');
+    } finally {
+      clearTimeout(timeout);
+      options.signal?.removeEventListener('abort', abortFromCaller);
+    }
+  }
+
+  private async requestBinary(
+    method: 'GET',
+    path: string,
+    options: {
+      signal?: AbortSignal;
+    }
+  ): Promise<Uint8Array> {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.requestTimeoutMs);
+    const abortFromCaller = () => controller.abort();
+    options.signal?.addEventListener('abort', abortFromCaller, { once: true });
+    if (options.signal?.aborted) {
+      controller.abort();
+    }
+
+    const headers: Record<string, string> = {
+      Accept: '*/*',
+      ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+    };
+
+    try {
+      const response = await this.fetcher(`${this.baseUrl}${path}`, {
+        method,
+        headers,
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        return await readResponse(response);
+      }
+      const declaredLength = Number(response.headers.get('content-length'));
+      if (Number.isFinite(declaredLength) && (declaredLength < 1 || declaredLength > USER_FILE_MAX_BYTES)) {
+        throw new CloudApiError(response.status, 'Cloud API returned an invalid response', 'INVALID_RESPONSE');
+      }
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      if (bytes.byteLength === 0 || bytes.byteLength > USER_FILE_MAX_BYTES) {
+        throw new CloudApiError(response.status, 'Cloud API returned an invalid response', 'INVALID_RESPONSE');
+      }
+      if (Number.isFinite(declaredLength) && declaredLength !== bytes.byteLength) {
+        throw new CloudApiError(response.status, 'Cloud API returned an invalid response', 'INVALID_RESPONSE');
+      }
+      return bytes;
     } catch (error) {
       if (error instanceof CloudApiError) {
         throw error;

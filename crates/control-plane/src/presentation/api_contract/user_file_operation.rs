@@ -1,9 +1,9 @@
 use crate::modules::files::{DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT};
 use crate::modules::files::{
-    USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE, USER_FILE_ITEM_ROUTE,
-    USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE, USER_FILES_CONTROLLER_PREFIX,
+    USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE,
+    USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
 };
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub(super) fn is_user_file_path(path: &str) -> bool {
     is_collection_path(path)
@@ -56,6 +56,7 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
     match (method, status) {
         ("get", 200) if is_collection_path(path) => Some("UserFileListSuccess200"),
         ("get", 200) if is_item_path(path) => Some("UserFileSuccess200"),
+        ("get", 200) if is_content_path(path) => Some("UserFileContentSuccess200"),
         ("get", 200) if is_quota_path(path) => Some("UserFileQuotaSuccess200"),
         ("post", 200 | 201) if is_collection_path(path) => Some(if status == 201 {
             "UserFileMutationSuccess201"
@@ -92,6 +93,10 @@ mod tests {
         assert_eq!(
             success_component("put", &content, 200),
             Some("UserFileMutationSuccess200")
+        );
+        assert_eq!(
+            success_component("get", &content, 200),
+            Some("UserFileContentSuccess200")
         );
         assert_eq!(
             success_component("get", &item, 200),

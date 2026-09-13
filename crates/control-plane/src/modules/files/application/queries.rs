@@ -1,4 +1,7 @@
-use super::{GetUserFile, GetUserFileQuota, ListUserFiles, UserFileApplicationService};
+use super::{
+    GetUserFile, GetUserFileContent, GetUserFileQuota, ListUserFiles, UserFileApplicationService,
+    UserFileContentStream,
+};
 use crate::modules::files::domain::{UserFile, UserFileQuota};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{Query, QueryHandler};
@@ -76,5 +79,31 @@ impl QueryHandler<GetUserFileQuota> for GetUserFileQuotaHandler {
     ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<UserFileQuota>>> {
         let service = Arc::clone(&self.service);
         Box::pin(async move { Ok(service.quota(query).await) })
+    }
+}
+
+impl Query for GetUserFileContent {
+    type Output = ApplicationResult<UserFileContentStream>;
+}
+
+pub struct GetUserFileContentHandler {
+    service: Arc<UserFileApplicationService>,
+}
+
+impl GetUserFileContentHandler {
+    pub fn new(service: Arc<UserFileApplicationService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<GetUserFileContent> for GetUserFileContentHandler {
+    fn execute(
+        &self,
+        query: GetUserFileContent,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<UserFileContentStream>>>
+    {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.get_content(query).await) })
     }
 }

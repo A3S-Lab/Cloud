@@ -4778,7 +4778,7 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
     }
     assert_eq!(
         compact_service.matches("access:UserFileAccess").count(),
-        5,
+        6,
         "every Files request must carry the Files-owned access projection"
     );
 

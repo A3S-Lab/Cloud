@@ -17,13 +17,13 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.89.0`.
+The current semantic contract version is `1.90.0`.
 
-Contract `1.89.0` extends the Files-owned UserFile surface with authorized
-content PUT. A project-authorized caller can reserve one canonical
+Contract `1.90.0` extends the Files-owned UserFile surface with authorized
+content PUT and admitted-only content GET. A project-authorized caller can reserve one canonical
 `cloud.user-file.v1` A3S ACL, `PUT` exact reserved bytes to
 `/user-files/{user_file_id}/content` as `application/octet-stream` with
-`x-a3s-expected-version`, list a bounded `1..=200` set of lifecycle
+`x-a3s-expected-version`, `GET` the same path only after scan admission (response `Content-Type` is the admission-contract media type; unauthorized and non-admitted identities fail closed as not found), list a bounded `1..=200` set of lifecycle
 projections, get one exact projection, or tombstone one aggregate with
 optimistic concurrency. An organization-wide caller can read the same
 authority's quota ledger. Reserve, content PUT, and tombstone require
@@ -40,7 +40,7 @@ return binary content, provider/bucket credentials, scanner configuration,
 multipart state, or a cleanup queue. Metadata, quota, audit, Outbox, and
 idempotency share one repository transaction; content PUT streams through the
 same immutable-object port used internally. Live MinIO/S3 provider
-scan/cleanup execution, content download/GET, and complete Files availability
+scan/cleanup execution, and complete Files availability
 are not claimed.
 
 Contract `1.76.0` adds two transient GitHub source-discovery reads under the

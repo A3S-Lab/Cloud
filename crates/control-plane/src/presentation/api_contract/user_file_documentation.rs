@@ -25,6 +25,7 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "put" if is_content_path(path) => Some("Put user file content"),
         "post" if path.ends_with("/tombstone") => Some("Tombstone a user file"),
         "get" if is_collection_path(path) => Some("List user files"),
+        "get" if is_content_path(path) => Some("Get user file content"),
         "get" if path.ends_with("/user-file-quota") => Some("Get the user file quota"),
         "get" => Some("Get a user file"),
         _ => None,
@@ -41,6 +42,9 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         ),
         "put" if is_content_path(path) => Some(
             "Uploads exact reserved UserFile bytes as application/octet-stream through the existing upload command and streaming object port. Optimistic concurrency uses x-a3s-expected-version; successful writes transition awaiting_upload to awaiting_scan. Live object-provider scan and cleanup execution remain separate open work.",
+        ),
+        "get" if is_content_path(path) => Some(
+            "Streams admitted UserFile bytes after project authorization. Only an admitted aggregate exposes its immutable reference; unauthorized, missing, and non-admitted identities fail closed as not found. Response Content-Type is the admission-contract media type. Live MinIO/S3 provider wiring, scanner execution, and cleanup workers remain separate open work.",
         ),
         "post" if path.ends_with("/tombstone") => Some(
             "Tombstones one UserFile using optimistic concurrency. Any reserved quota is released in the same transaction and one lifecycle cleanup intent is emitted; no independent deletion queue is created.",
@@ -69,6 +73,9 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         "get" if is_collection_path(path) => {
             Some("A bounded list of authorized UserFile lifecycle projections.")
         }
+        "get" if is_content_path(path) => Some(
+            "Exact admitted UserFile bytes streamed with the admission-contract media type.",
+        ),
         "get" if path.ends_with("/user-file-quota") => Some(
             "The organization quota limit, transactional allocation, remaining availability, revision, and update time.",
         ),

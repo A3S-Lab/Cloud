@@ -263,6 +263,36 @@ impl UserFileApplicationService {
         }
     }
 
+    pub async fn get_content(
+        &self,
+        request: GetUserFileContent,
+    ) -> ApplicationResult<UserFileContentStream> {
+        project(request.project_id, &request.access)?;
+        let file = match self
+            .files
+            .find(
+                request.organization_id,
+                request.project_id,
+                request.user_file_id,
+            )
+            .await
+        {
+            Ok(Some(file)) => file,
+            Ok(None) | Err(RepositoryError::NotFound) => return Err(user_file_not_found()),
+            Err(error) => return Err(error.into()),
+        };
+        let reference = match file.admitted_reference() {
+            Ok(reference) => reference.clone(),
+            Err(_) => return Err(user_file_not_found()),
+        };
+        let reader = self.objects.open(&reference).await.map_err(object_error)?;
+        Ok(UserFileContentStream {
+            media_type: reference.media_type,
+            size_bytes: reference.size_bytes,
+            reader,
+        })
+    }
+
     pub async fn list(&self, request: ListUserFiles) -> ApplicationResult<Vec<UserFile>> {
         project(request.project_id, &request.access)?;
         let limit = request.limit.unwrap_or(DEFAULT_USER_FILE_LIST_LIMIT);
@@ -398,6 +428,19 @@ pub struct GetUserFile {
     pub project_id: ProjectId,
     pub user_file_id: UserFileId,
     pub access: UserFileAccess,
+}
+
+pub struct GetUserFileContent {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub user_file_id: UserFileId,
+    pub access: UserFileAccess,
+}
+
+pub struct UserFileContentStream {
+    pub media_type: String,
+    pub size_bytes: u64,
+    pub reader: UserFileObjectReader,
 }
 
 pub struct ListUserFiles {
