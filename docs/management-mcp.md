@@ -926,8 +926,8 @@ rather than exposing a partial allocation.
 All five tools dispatch one Files command/query authority. Their schemas carry
 only canonical ACL, identities, bounds, and optimistic concurrency. They never
 accept file bytes, provider/bucket details, scanner configuration, multipart
-state, or a cleanup command. Public byte transfer and live scan/cleanup
-execution remain unavailable.
+state, or a cleanup command. REST may transfer bytes through `PUT .../content`;
+Management MCP stays metadata-only. Live scan/cleanup execution remains unavailable.
 
 ## GitHub source discovery
 

@@ -1,7 +1,7 @@
 use super::*;
 use crate::presentation::{
-    generate_openapi_contract, API_CONTRACT_VERSION_HEADER, API_MAJOR_VERSION,
-    MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION, OPENAPI_PUBLIC_PATH,
+    API_CONTRACT_VERSION_HEADER, API_MAJOR_VERSION, MINIMUM_DEPRECATION_DAYS,
+    OPENAPI_CONTRACT_VERSION, OPENAPI_PUBLIC_PATH, generate_openapi_contract,
 };
 use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
@@ -149,13 +149,15 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         assert!(operation["responses"].get("403").is_some());
         if method == "post" {
             assert_eq!(operation["x-a3s-idempotent-replay"], true);
-            assert!(operation["parameters"]
-                .as_array()
-                .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                    parameter["name"] == "idempotency-key"
-                        && parameter["in"] == "header"
-                        && parameter["required"] == true
-                })));
+            assert!(
+                operation["parameters"]
+                    .as_array()
+                    .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                        parameter["name"] == "idempotency-key"
+                            && parameter["in"] == "header"
+                            && parameter["required"] == true
+                    }))
+            );
             assert!(operation["responses"].get("413").is_some());
             assert!(operation["responses"].get("415").is_some());
             let content = operation["requestBody"]["content"]
@@ -176,8 +178,8 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         }
     }
 
-    let policy_request = &document["paths"]["/platform/role-policy/revisions"]["post"]
-        ["requestBody"]["content"]["application/json"]["schema"];
+    let policy_request = &document["paths"]["/platform/role-policy/revisions"]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
     assert_eq!(
         policy_request["required"],
         json!([
@@ -190,16 +192,15 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         policy_request["properties"]["canonicalAcl"]["maxLength"],
         crate::modules::identity::domain::value_objects::PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
     );
-    let support_request = &document["paths"]["/platform/tenant-support-grants"]["post"]
-        ["requestBody"]["content"]["application/json"]["schema"];
+    let support_request = &document["paths"]["/platform/tenant-support-grants"]["post"]["requestBody"]
+        ["content"]["application/json"]["schema"];
     assert_eq!(support_request["required"], json!(["canonicalAcl"]));
     assert_eq!(
         support_request["properties"]["canonicalAcl"]["maxLength"],
         crate::modules::identity::domain::value_objects::TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
     );
-    let trust_domain_request = &document["paths"]
-        ["/platform/trust-domains/{trust_domain_id}/revisions"]["post"]["requestBody"]["content"]
-        ["application/json"]["schema"];
+    let trust_domain_request = &document["paths"]["/platform/trust-domains/{trust_domain_id}/revisions"]
+        ["post"]["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(
         trust_domain_request["required"],
         json!(["canonicalAcl", "revisionNumber"])
@@ -212,10 +213,9 @@ fn privileged_management_openapi_is_closed_credential_bound_and_typed() -> Resul
         trust_domain_request["properties"]["expectedPreviousRevisionId"]["nullable"],
         true
     );
-    let workload_policy_path =
-        "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions";
-    let workload_policy_request = &document["paths"][workload_policy_path]["post"]["requestBody"]
-        ["content"]["application/json"]["schema"];
+    let workload_policy_path = "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions";
+    let workload_policy_request = &document["paths"][workload_policy_path]["post"]["requestBody"]["content"]
+        ["application/json"]["schema"];
     assert_eq!(
         workload_policy_request["required"],
         json!(["canonicalAcl", "revisionNumber"])
@@ -398,20 +398,21 @@ fn github_source_discovery_contract_is_bounded_closed_and_credential_free() -> R
 }
 
 #[test]
-fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_projection(
-) -> Result<()> {
+fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_projection()
+-> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
     let collection = "/organizations/{organization_id}/projects/{project_id}/user-files";
     let item = format!("{collection}/{{user_file_id}}");
+    let content = format!("{item}/content");
     let tombstone = format!("{item}/tombstone");
     let quota = "/organizations/{organization_id}/user-file-quota";
 
     let reserve = &document["paths"][collection]["post"];
     assert_eq!(reserve["tags"], json!(["Files"]));
     assert_eq!(
-        reserve["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["admissionAcl"]["maxLength"],
+        reserve["requestBody"]["content"]["application/json"]["schema"]["properties"]["admissionAcl"]
+            ["maxLength"],
         crate::modules::files::USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES
     );
     assert_eq!(
@@ -422,9 +423,11 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
         reserve["responses"]["200"]["$ref"],
         "#/components/responses/UserFileMutationSuccess200"
     );
-    assert!(reserve["requestBody"]["content"]
-        .as_object()
-        .is_some_and(|content| content.keys().all(|media| media == "application/json")));
+    assert!(
+        reserve["requestBody"]["content"]
+            .as_object()
+            .is_some_and(|content| content.keys().all(|media| media == "application/json"))
+    );
 
     let list = &document["paths"][collection]["get"];
     let limit = list["parameters"]
@@ -446,9 +449,26 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
         "#/components/responses/UserFileSuccess200"
     );
     assert_eq!(
-        document["paths"][&tombstone]["post"]["requestBody"]["content"]["application/json"]
-            ["schema"]["required"],
+        document["paths"][&tombstone]["post"]["requestBody"]["content"]["application/json"]["schema"]
+            ["required"],
         json!(["expectedVersion"])
+    );
+    let put_content = &document["paths"][&content]["put"];
+    assert_eq!(put_content["tags"], json!(["Files"]));
+    assert_eq!(
+        put_content["requestBody"]["content"]["application/octet-stream"]["schema"]["format"],
+        "binary"
+    );
+    assert_eq!(
+        put_content["responses"]["200"]["$ref"],
+        "#/components/responses/UserFileMutationSuccess200"
+    );
+    assert!(
+        put_content["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-expected-version" && parameter["required"] == true
+            }))
     );
     assert_eq!(
         document["paths"][quota]["get"]["responses"]["200"]["$ref"],
@@ -487,8 +507,8 @@ fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Res
     assert_eq!(collection["get"]["tags"], json!(["Durable Cells"]));
     assert_eq!(collection["post"]["tags"], json!(["Durable Cells"]));
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["definitionAcl"]["maxLength"],
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["definitionAcl"]
+            ["maxLength"],
         crate::modules::durable_cells::domain::DURABLE_CELL_APPLICATION_MAX_ACL_BYTES
     );
     let list_limit = collection["get"]["parameters"]
@@ -534,10 +554,12 @@ fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Res
         deployment_schema["properties"]["storageProviderProfileAcl"]["maxLength"],
         crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES
     );
-    assert!(!deployment_schema["required"]
-        .as_array()
-        .expect("required deployment fields")
-        .contains(&json!("storageProviderProfileAcl")));
+    assert!(
+        !deployment_schema["required"]
+            .as_array()
+            .expect("required deployment fields")
+            .contains(&json!("storageProviderProfileAcl"))
+    );
     assert_eq!(
         deployment_schema["properties"]["providerWorkloadAcl"]["maxLength"],
         crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
@@ -554,8 +576,8 @@ fn durable_cell_contract_is_acl_native_bounded_and_reuses_c2_through_c4() -> Res
         [format!("{base}/{{application_id}}/revisions/{{revision_id}}/routes")]["post"];
     assert_eq!(route["tags"], json!(["Durable Cells"]));
     assert_eq!(
-        route["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["gatewayScopeId"]["format"],
+        route["requestBody"]["content"]["application/json"]["schema"]["properties"]["gatewayScopeId"]
+            ["format"],
         "uuid"
     );
     assert!(route["responses"]["201"].is_object());
@@ -570,13 +592,12 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
     assert_eq!(collection["get"]["tags"], json!(["Connectors"]));
     assert_eq!(collection["post"]["tags"], json!(["Connectors"]));
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["definitionAcl"]["maxLength"],
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["definitionAcl"]
+            ["maxLength"],
         crate::modules::connectors::CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES
     );
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/json"]["schema"]
-            ["additionalProperties"],
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
         false
     );
     assert!(collection["post"]["responses"]["201"].is_object());
@@ -597,8 +618,8 @@ fn connector_profile_contract_is_acl_native_bounded_and_revisioned() -> Result<(
         json!(["expectedVersion", "definitionAcl"])
     );
     assert_eq!(
-        revisions["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedVersion"]["minimum"],
+        revisions["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedVersion"]
+            ["minimum"],
         1
     );
     assert!(revisions["post"]["responses"]["201"].is_object());
@@ -805,8 +826,8 @@ fn application_contract_is_project_scoped_acl_native_bounded_and_release_version
         json!(["expectedVersion"])
     );
     assert_eq!(
-        close["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedVersion"]["minimum"],
+        close["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedVersion"]
+            ["minimum"],
         1
     );
     assert!(close["responses"]["200"].is_object());
@@ -896,13 +917,14 @@ fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Re
     assert_eq!(collection["get"]["tags"], json!(["Notifications"]));
     assert_eq!(collection["post"]["tags"], json!(["Notifications"]));
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
-            ["maxLength"],
+        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]["maxLength"],
         crate::modules::notifications::NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES
     );
-    assert!(collection["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
+    assert!(
+        collection["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
     assert_eq!(
         collection["post"]["responses"]["201"]["$ref"],
         "#/components/responses/NotificationAlertPolicyMutationSuccess201"
@@ -973,18 +995,20 @@ fn notification_alert_policy_contract_is_acl_native_personal_and_bounded() -> Re
     assert_eq!(target["discriminator"]["propertyName"], "kind");
     assert_eq!(target["oneOf"].as_array().map(Vec::len), Some(2));
     assert!(response["properties"].get("recipientPrincipalId").is_none());
-    assert!(response["required"]
-        .as_array()
-        .is_some_and(|required| !required.contains(&json!("recipientPrincipalId"))));
+    assert!(
+        response["required"]
+            .as_array()
+            .is_some_and(|required| !required.contains(&json!("recipientPrincipalId")))
+    );
 
-    let item = &document["paths"]
-        ["/organizations/{organization_id}/notification-alert-policies/{policy_id}"]["get"];
+    let item = &document["paths"]["/organizations/{organization_id}/notification-alert-policies/{policy_id}"]
+        ["get"];
     assert_eq!(
         item["responses"]["200"]["$ref"],
         "#/components/responses/NotificationAlertPolicySuccess200"
     );
-    let revoke = &document["paths"]
-        ["/organizations/{organization_id}/notification-alert-policies/{policy_id}/revoke"]["post"];
+    let revoke = &document["paths"]["/organizations/{organization_id}/notification-alert-policies/{policy_id}/revoke"]
+        ["post"];
     assert_eq!(
         revoke["requestBody"]["content"]["application/json"]["schema"]["required"],
         json!(["expectedVersion"])
@@ -1009,13 +1033,14 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
     assert_eq!(collection["get"]["tags"], json!(["Notifications"]));
     assert_eq!(collection["post"]["tags"], json!(["Notifications"]));
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
-            ["maxLength"],
+        collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]["maxLength"],
         crate::modules::notifications::OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES
     );
-    assert!(collection["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
+    assert!(
+        collection["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
     assert!(collection["post"]["responses"]["201"].is_object());
     assert_eq!(
         collection["post"]["responses"]["201"]["$ref"],
@@ -1138,20 +1163,23 @@ fn outbound_notification_subscription_contract_is_acl_native_personal_and_bounde
         response["properties"]["maximumProviderAttempts"]["maximum"],
         8
     );
-    assert!(response["required"]
-        .as_array()
-        .is_some_and(|required| required.contains(&json!("maximumProviderAttempts"))));
+    assert!(
+        response["required"]
+            .as_array()
+            .is_some_and(|required| required.contains(&json!("maximumProviderAttempts")))
+    );
     assert_eq!(
         response["properties"]["suppressBefore"]["format"],
         "date-time"
     );
     assert_eq!(response["properties"]["suppressBefore"]["nullable"], true);
-    assert!(response["required"]
-        .as_array()
-        .is_some_and(|required| required.contains(&json!("suppressBefore"))));
+    assert!(
+        response["required"]
+            .as_array()
+            .is_some_and(|required| required.contains(&json!("suppressBefore")))
+    );
 
-    let revoke = &document["paths"]
-        ["/organizations/{organization_id}/notification-outbound-subscriptions/{subscription_id}/revoke"]
+    let revoke = &document["paths"]["/organizations/{organization_id}/notification-outbound-subscriptions/{subscription_id}/revoke"]
         ["post"];
     assert_eq!(
         revoke["requestBody"]["content"]["application/json"]["schema"]["required"],
@@ -1181,9 +1209,11 @@ async fn openapi_contract_is_public_raw_and_versioned() -> Result<()> {
         response.header(API_CONTRACT_VERSION_HEADER),
         Some(OPENAPI_CONTRACT_VERSION)
     );
-    assert!(response
-        .header("x-request-id")
-        .is_some_and(|value| Uuid::parse_str(value).is_ok()));
+    assert!(
+        response
+            .header("x-request-id")
+            .is_some_and(|value| Uuid::parse_str(value).is_ok())
+    );
     assert_eq!(
         response.header("cache-control"),
         Some("public, max-age=300")
@@ -1198,9 +1228,11 @@ async fn openapi_contract_is_public_raw_and_versioned() -> Result<()> {
         MINIMUM_DEPRECATION_DAYS
     );
     assert!(document.get("data").is_none());
-    assert!(document["paths"]
-        .as_object()
-        .is_some_and(|paths| !paths.is_empty()));
+    assert!(
+        document["paths"]
+            .as_object()
+            .is_some_and(|paths| !paths.is_empty())
+    );
     Ok(())
 }
 
@@ -1231,14 +1263,13 @@ fn recipient_contact_contract_is_exact_owner_bounded_and_redacted() -> Result<()
     assert_eq!(begin_schema["properties"]["address"]["writeOnly"], true);
     assert!(begin_schema["properties"].get("principalId").is_none());
 
-    let item = &document["paths"]
-        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}"]["get"];
+    let item = &document["paths"]["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}"]
+        ["get"];
     assert_eq!(
         item["responses"]["200"]["$ref"],
         "#/components/responses/RecipientContactSuccess200"
     );
-    let verification = &document["paths"]
-        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"]
+    let verification = &document["paths"]["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"]
         ["post"];
     let proof_schema = &verification["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(proof_schema["additionalProperties"], false);
@@ -1247,22 +1278,23 @@ fn recipient_contact_contract_is_exact_owner_bounded_and_redacted() -> Result<()
     assert_eq!(proof_schema["properties"]["proof"]["writeOnly"], true);
     assert_eq!(verification["responses"]["202"], Value::Null);
 
-    let revocation = &document["paths"]
-        ["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation"]
+    let revocation = &document["paths"]["/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/revocation"]
         ["post"];
     assert_eq!(
-        revocation["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedVersion"]["minimum"],
+        revocation["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedVersion"]
+            ["minimum"],
         1
     );
     for operation in [begin, verification, revocation] {
-        assert!(operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key"
-                    && parameter["in"] == "header"
-                    && parameter["required"] == true
-            })));
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
     }
 
     let response = &document["components"]["schemas"]["RecipientContact"];
@@ -1297,8 +1329,7 @@ fn recipient_contact_contract_is_exact_owner_bounded_and_redacted() -> Result<()
 fn security_gateway_route_policy_timeline_contract_is_exact_bounded_and_redacted() -> Result<()> {
     let app = contract_test_application()?;
     let document = generate_openapi_contract(&app)?;
-    let path = &document["paths"]
-        ["/organizations/{organization_id}/security-investigations/gateway-routes/{route_id}/timeline"];
+    let path = &document["paths"]["/organizations/{organization_id}/security-investigations/gateway-routes/{route_id}/timeline"];
     assert_eq!(path.as_object().map(serde_json::Map::len), Some(1));
     let operation = &path["get"];
     assert_eq!(operation["tags"], json!(["Security"]));
@@ -1460,9 +1491,11 @@ fn generated_openapi_is_complete_human_readable_documentation() -> Result<()> {
             let name = tag["name"]
                 .as_str()
                 .ok_or_else(|| BootError::Internal("OpenAPI tag name is missing".into()))?;
-            assert!(tag["description"]
-                .as_str()
-                .is_some_and(|description| description.len() >= 20));
+            assert!(
+                tag["description"]
+                    .as_str()
+                    .is_some_and(|description| description.len() >= 20)
+            );
             Ok(name.to_owned())
         })
         .collect::<Result<BTreeSet<_>>>()?;
@@ -1483,12 +1516,16 @@ fn generated_openapi_is_complete_human_readable_documentation() -> Result<()> {
                 !summary.contains(path) && summary.len() >= 8,
                 "{location} has a generated rather than human-readable summary"
             );
-            assert!(operation["description"]
-                .as_str()
-                .is_some_and(|description| description.len() >= 40));
-            assert!(operation["x-a3s-response-data"]
-                .as_str()
-                .is_some_and(|description| description.len() >= 10));
+            assert!(
+                operation["description"]
+                    .as_str()
+                    .is_some_and(|description| description.len() >= 40)
+            );
+            assert!(
+                operation["x-a3s-response-data"]
+                    .as_str()
+                    .is_some_and(|description| description.len() >= 10)
+            );
             for tag in operation["tags"]
                 .as_array()
                 .ok_or_else(|| BootError::Internal(format!("{location} has no tags")))?
@@ -1515,9 +1552,11 @@ fn generated_openapi_is_complete_human_readable_documentation() -> Result<()> {
             let Some(request_body) = operation.get("requestBody") else {
                 continue;
             };
-            assert!(request_body["description"]
-                .as_str()
-                .is_some_and(|description| description.len() >= 20));
+            assert!(
+                request_body["description"]
+                    .as_str()
+                    .is_some_and(|description| description.len() >= 20)
+            );
             for (media_type, media) in request_body["content"]
                 .as_object()
                 .ok_or_else(|| BootError::Internal(format!("{location} has no request content")))?
@@ -1566,9 +1605,11 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
                 BootError::Internal(format!("OpenAPI operation `{method} {path}` has no ID"))
             })?;
             assert!(operation_ids.insert(operation_id.to_owned()));
-            assert!(operation["tags"]
-                .as_array()
-                .is_some_and(|tags| !tags.is_empty()));
+            assert!(
+                operation["tags"]
+                    .as_array()
+                    .is_some_and(|tags| !tags.is_empty())
+            );
             assert!(operation["security"].is_array());
             assert!(operation["responses"].get("500").is_some());
         }
@@ -1583,13 +1624,15 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         document["paths"]["/organizations"]["get"]["security"],
         json!([{ "bearerAuth": [] }])
     );
-    assert!(document["paths"]["/organizations"]["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+    assert!(
+        document["paths"]["/organizations"]["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
     let memberships = &document["paths"]["/organizations/{organization_id}/memberships"];
     assert_eq!(memberships["get"]["tags"], json!(["Identity"]));
     assert!(memberships["get"]["responses"]["200"].is_object());
@@ -1597,15 +1640,16 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(memberships["post"]["requestBody"]["content"]["application/json"].is_object());
     assert!(memberships["post"]["responses"]["200"].is_object());
     assert!(memberships["post"]["responses"]["201"].is_object());
-    assert!(memberships["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let attribution_collection = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/attribution-profiles"];
+    assert!(
+        memberships["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let attribution_collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/attribution-profiles"];
     let attribution_update = &attribution_collection["post"];
     assert_eq!(attribution_update["tags"], json!(["Projects"]));
     assert!(attribution_update["responses"]["200"].is_object());
@@ -1635,40 +1679,48 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         attribution_schema["properties"]["labels"]["propertyNames"]["pattern"],
         "^[a-z][a-z0-9._-]*$"
     );
-    let current_attribution = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/attribution-profile"]["get"];
+    let current_attribution = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/attribution-profile"]
+        ["get"];
     assert_eq!(current_attribution["tags"], json!(["Projects"]));
     assert!(current_attribution["responses"]["200"].is_object());
-    let exact_attribution = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/attribution-profiles/{attribution_profile_id}"]["get"];
+    let exact_attribution = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/attribution-profiles/{attribution_profile_id}"]
+        ["get"];
     assert_eq!(exact_attribution["tags"], json!(["Projects"]));
-    assert!(exact_attribution["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "attribution_profile_id" && parameter["schema"]["format"] == "uuid"
-        })));
+    assert!(
+        exact_attribution["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "attribution_profile_id"
+                    && parameter["schema"]["format"] == "uuid"
+            }))
+    );
     let oidc_login = &document["paths"]["/identity/oidc/{provider_key}/login"]["get"];
     assert_eq!(oidc_login["tags"], json!(["Identity"]));
     assert_eq!(oidc_login["security"], json!([]));
     assert!(oidc_login["responses"]["303"].is_object());
     assert_eq!(oidc_login["x-a3s-oauth-cookie-bound"], true);
-    assert!(oidc_login["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "organization_id"
-                && parameter["in"] == "query"
-                && parameter["required"] == true
-                && parameter["schema"]["format"] == "uuid"
-        })));
-    let oidc_link = &document["paths"]
-        ["/organizations/{organization_id}/identity/oidc/{provider_key}/link"]["post"];
+    assert!(
+        oidc_login["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "organization_id"
+                    && parameter["in"] == "query"
+                    && parameter["required"] == true
+                    && parameter["schema"]["format"] == "uuid"
+            }))
+    );
+    let oidc_link = &document["paths"]["/organizations/{organization_id}/identity/oidc/{provider_key}/link"]
+        ["post"];
     assert_eq!(oidc_link["tags"], json!(["Identity"]));
     assert!(oidc_link["responses"]["200"].is_object());
     assert!(oidc_link.get("requestBody").is_none());
-    assert!(oidc_link["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters
-            .iter()
-            .all(|parameter| parameter["name"] != "idempotency-key")));
+    assert!(
+        oidc_link["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters
+                .iter()
+                .all(|parameter| parameter["name"] != "idempotency-key"))
+    );
     let oidc_callback = &document["paths"]["/identity/oidc/{provider_key}/callback"]["get"];
     assert_eq!(oidc_callback["security"], json!([]));
     assert!(oidc_callback["responses"]["200"].is_object());
@@ -1685,13 +1737,15 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         assert_eq!(operation["tags"], json!(["Identity"]));
         assert!(operation["requestBody"]["content"]["application/json"].is_object());
         assert!(operation["responses"]["200"].is_object());
-        assert!(operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key"
-                    && parameter["in"] == "header"
-                    && parameter["required"] == true
-            })));
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
     }
     let membership_invitations =
         &document["paths"]["/organizations/{organization_id}/membership-invitations"];
@@ -1712,15 +1766,17 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     );
     assert!(invitation_create["responses"]["200"].is_object());
     assert!(invitation_create["responses"]["201"].is_object());
-    assert!(invitation_create["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let invitation = &document["paths"]
-        ["/organizations/{organization_id}/membership-invitations/{invitation_id}"]["get"];
+    assert!(
+        invitation_create["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let invitation = &document["paths"]["/organizations/{organization_id}/membership-invitations/{invitation_id}"]
+        ["get"];
     assert_eq!(invitation["tags"], json!(["Identity"]));
     assert!(invitation["responses"]["200"].is_object());
     let my_invitations = &document["paths"]["/membership-invitations"]["get"];
@@ -1733,23 +1789,24 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         let operation = &document["paths"][path]["post"];
         assert_eq!(operation["tags"], json!(["Identity"]));
         assert_eq!(
-            operation["requestBody"]["content"]["application/json"]["schema"]
-                ["additionalProperties"],
+            operation["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
             false
         );
         assert_eq!(
-            operation["requestBody"]["content"]["application/json"]["schema"]["properties"]
-                ["expectedVersion"]["minimum"],
+            operation["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedVersion"]
+                ["minimum"],
             1
         );
         assert!(operation["responses"]["200"].is_object());
-        assert!(operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key"
-                    && parameter["in"] == "header"
-                    && parameter["required"] == true
-            })));
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
     }
     assert!(
         document["paths"]["/membership-invitations/{invitation_id}/acceptance"]["post"]
@@ -1816,12 +1873,16 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/audit-records/export"]["get"];
     assert_eq!(audit_export["tags"], json!(["Audit"]));
     assert_eq!(audit_export["summary"], "Export a signed audit page");
-    assert!(audit_export["description"]
-        .as_str()
-        .is_some_and(|description| description.contains("Ed25519 DSSE envelope")));
-    assert!(audit_export["x-a3s-response-data"]
-        .as_str()
-        .is_some_and(|description| description.contains("public verification key")));
+    assert!(
+        audit_export["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("Ed25519 DSSE envelope"))
+    );
+    assert!(
+        audit_export["x-a3s-response-data"]
+            .as_str()
+            .is_some_and(|description| description.contains("public verification key"))
+    );
     assert!(audit_export["responses"]["200"].is_object());
     assert!(audit_export["responses"]["403"].is_object());
     let audit_export_parameters = audit_export["parameters"]
@@ -1849,12 +1910,16 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         audit_manifest["summary"],
         "Export a complete signed audit manifest"
     );
-    assert!(audit_manifest["description"]
-        .as_str()
-        .is_some_and(|description| description.contains("at most eight complete pages")));
-    assert!(audit_manifest["x-a3s-response-data"]
-        .as_str()
-        .is_some_and(|description| description.contains("captured retention state")));
+    assert!(
+        audit_manifest["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("at most eight complete pages"))
+    );
+    assert!(
+        audit_manifest["x-a3s-response-data"]
+            .as_str()
+            .is_some_and(|description| description.contains("captured retention state"))
+    );
     assert!(audit_manifest["responses"]["200"].is_object());
     assert!(audit_manifest["responses"]["403"].is_object());
     assert!(audit_manifest["responses"]["422"].is_object());
@@ -1876,26 +1941,34 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert_eq!(page_size["schema"]["minimum"], 1);
     assert_eq!(page_size["schema"]["maximum"], 200);
     assert_eq!(page_size["schema"]["default"], 200);
-    assert!(audit_manifest_parameters
-        .iter()
-        .all(|parameter| !matches!(parameter["name"].as_str(), Some("cursor" | "limit"))));
+    assert!(
+        audit_manifest_parameters
+            .iter()
+            .all(|parameter| !matches!(parameter["name"].as_str(), Some("cursor" | "limit")))
+    );
     let audit_retention =
         &document["paths"]["/organizations/{organization_id}/audit-records/retention"]["get"];
     assert_eq!(audit_retention["tags"], json!(["Audit"]));
     assert_eq!(audit_retention["summary"], "Get audit retention status");
-    assert!(audit_retention["description"]
-        .as_str()
-        .is_some_and(|description| description.contains("watermarks")));
-    assert!(audit_retention["x-a3s-response-data"]
-        .as_str()
-        .is_some_and(|description| description.contains("semantic digest")));
+    assert!(
+        audit_retention["description"]
+            .as_str()
+            .is_some_and(|description| description.contains("watermarks"))
+    );
+    assert!(
+        audit_retention["x-a3s-response-data"]
+            .as_str()
+            .is_some_and(|description| description.contains("semantic digest"))
+    );
     assert!(audit_retention["responses"]["200"].is_object());
     assert!(audit_retention["responses"]["403"].is_object());
-    assert!(audit_retention["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters
-            .iter()
-            .all(|parameter| parameter["in"] != "query")));
+    assert!(
+        audit_retention["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters
+                .iter()
+                .all(|parameter| parameter["in"] != "query"))
+    );
     let notification_collection =
         &document["paths"]["/organizations/{organization_id}/notifications"]["get"];
     assert_eq!(notification_collection["tags"], json!(["Notifications"]));
@@ -1924,56 +1997,58 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         assert_eq!(parameter["required"], false);
         assert_eq!(parameter["schema"], schema);
     }
-    let notification = &document["paths"]
-        ["/organizations/{organization_id}/notifications/{notification_id}"]["get"];
+    let notification = &document["paths"]["/organizations/{organization_id}/notifications/{notification_id}"]
+        ["get"];
     assert_eq!(notification["tags"], json!(["Notifications"]));
-    assert!(notification["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "notification_id"
-                && parameter["in"] == "path"
-                && parameter["schema"]["format"] == "uuid"
-        })));
-    let notification_read = &document["paths"]
-        ["/organizations/{organization_id}/notifications/{notification_id}/read"]["post"];
+    assert!(
+        notification["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "notification_id"
+                    && parameter["in"] == "path"
+                    && parameter["schema"]["format"] == "uuid"
+            }))
+    );
+    let notification_read = &document["paths"]["/organizations/{organization_id}/notifications/{notification_id}/read"]
+        ["post"];
     assert_eq!(notification_read["tags"], json!(["Notifications"]));
     assert_eq!(
-        notification_read["requestBody"]["content"]["application/json"]["schema"]
-            ["additionalProperties"],
+        notification_read["requestBody"]["content"]["application/json"]["schema"]["additionalProperties"],
         false
     );
     assert_eq!(
-        notification_read["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedVersion"]["minimum"],
+        notification_read["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedVersion"]
+            ["minimum"],
         1
     );
-    assert!(notification_read["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let resource_grants = &document["paths"]
-        ["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
+    assert!(
+        notification_read["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let resource_grants = &document["paths"]["/organizations/{organization_id}/memberships/{membership_id}/resource-grants"];
     assert_eq!(resource_grants["get"]["tags"], json!(["Identity"]));
     assert!(resource_grants["get"]["responses"]["200"].is_object());
     assert_eq!(resource_grants["post"]["tags"], json!(["Identity"]));
     assert_eq!(
-        resource_grants["post"]["requestBody"]["content"]["application/json"]["schema"]
-            ["properties"]["scope"]["discriminator"]["propertyName"],
+        resource_grants["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["scope"]["discriminator"]["propertyName"],
         "kind"
     );
     assert!(resource_grants["post"]["responses"]["201"].is_object());
-    let resource_grant = &document["paths"]
-        ["/organizations/{organization_id}/resource-grants/{resource_grant_id}"]["get"];
+    let resource_grant = &document["paths"]["/organizations/{organization_id}/resource-grants/{resource_grant_id}"]
+        ["get"];
     assert_eq!(resource_grant["tags"], json!(["Identity"]));
-    let resource_grant_revocation = &document["paths"]
-        ["/organizations/{organization_id}/resource-grants/{resource_grant_id}/revocation"]["post"];
+    let resource_grant_revocation = &document["paths"]["/organizations/{organization_id}/resource-grants/{resource_grant_id}/revocation"]
+        ["post"];
     assert_eq!(resource_grant_revocation["tags"], json!(["Identity"]));
     assert_eq!(
-        resource_grant_revocation["requestBody"]["content"]["application/json"]["schema"]
-            ["properties"]["expectedVersion"]["minimum"],
+        resource_grant_revocation["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["expectedVersion"]["minimum"],
         1
     );
     let plugin_registries =
@@ -1986,47 +2061,47 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         json!("Enroll a plugin registry")
     );
     assert_eq!(
-        plugin_registries["post"]["requestBody"]["content"]["application/json"]["schema"]
-            ["required"],
+        plugin_registries["post"]["requestBody"]["content"]["application/json"]["schema"]["required"],
         json!(["name", "endpoint", "bootstrapRootBase64"])
     );
     assert!(plugin_registries["post"]["responses"]["200"].is_object());
-    assert!(plugin_registries["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key" && parameter["in"] == "header"
-        })));
-    let plugin_registry = &document["paths"]
-        ["/organizations/{organization_id}/plugin-registries/{registry_id}"]["get"];
+    assert!(
+        plugin_registries["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key" && parameter["in"] == "header"
+            }))
+    );
+    let plugin_registry = &document["paths"]["/organizations/{organization_id}/plugin-registries/{registry_id}"]
+        ["get"];
     assert_eq!(plugin_registry["tags"], json!(["Plugins"]));
     let node_pools = &document["paths"]["/organizations/{organization_id}/node-pools"];
     assert_eq!(node_pools["get"]["tags"], json!(["Fleet"]));
     assert_eq!(node_pools["post"]["tags"], json!(["Fleet"]));
     assert_eq!(
-        node_pools["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["memberNodeIds"]["maxItems"],
+        node_pools["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["memberNodeIds"]
+            ["maxItems"],
         10_000
     );
     assert!(node_pools["post"]["responses"]["201"].is_object());
-    let member_removal = &document["paths"]
-        ["/organizations/{organization_id}/node-pools/{node_pool_id}/members/removal"]["post"];
+    let member_removal = &document["paths"]["/organizations/{organization_id}/node-pools/{node_pool_id}/members/removal"]
+        ["post"];
     assert_eq!(member_removal["tags"], json!(["Fleet"]));
     assert_eq!(
-        member_removal["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["memberNodeIds"]["maxItems"],
+        member_removal["requestBody"]["content"]["application/json"]["schema"]["properties"]["memberNodeIds"]
+            ["maxItems"],
         10_000
     );
-    let maintenance = &document["paths"]
-        ["/organizations/{organization_id}/node-pools/{node_pool_id}/maintenance"]["post"];
+    let maintenance = &document["paths"]["/organizations/{organization_id}/node-pools/{node_pool_id}/maintenance"]
+        ["post"];
     assert_eq!(maintenance["tags"], json!(["Fleet"]));
     assert_eq!(
         maintenance["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]
             ["maxLength"],
         1_024
     );
-    let plugin_search_schema = &document["paths"]
-        ["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/search"]["post"]
-        ["requestBody"]["content"]["application/json"]["schema"];
+    let plugin_search_schema = &document["paths"]["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/search"]
+        ["post"]["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(
         plugin_search_schema["properties"]["host"],
         plugin_catalog_host_input_schema()
@@ -2035,8 +2110,7 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         plugin_search_schema["properties"]["search"],
         plugin_catalog_search_input_schema()
     );
-    let plugin_inspection_schema = &document["paths"]
-        ["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/inspect"]
+    let plugin_inspection_schema = &document["paths"]["/organizations/{organization_id}/plugin-registries/{registry_id}/catalog/inspect"]
         ["post"]["requestBody"]["content"]["application/json"]["schema"];
     let canonical_inspection = plugin_catalog_inspection_input_schema();
     assert_eq!(
@@ -2060,23 +2134,27 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         assert_eq!(operation["tags"], json!(["Plugins"]));
         assert!(operation["requestBody"]["content"]["application/json"].is_object());
         assert!(operation["responses"]["200"].is_object());
-        assert!(!operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key" && parameter["in"] == "header"
-            })));
+        assert!(
+            !operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key" && parameter["in"] == "header"
+                }))
+        );
     }
-    let log_stream = &document["paths"]
-        ["/organizations/{organization_id}/build-runs/{build_run_id}/logs/stream"]["get"];
+    let log_stream = &document["paths"]["/organizations/{organization_id}/build-runs/{build_run_id}/logs/stream"]
+        ["get"];
     assert_eq!(
         log_stream["responses"]["200"]["$ref"],
         "#/components/responses/SseSuccess200"
     );
-    assert!(log_stream["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "last-event-id" && parameter["in"] == "header"
-        })));
+    assert!(
+        log_stream["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "last-event-id" && parameter["in"] == "header"
+            }))
+    );
     assert!(document["paths"]
         .get("/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workloads")
         .and_then(|path| path.get("post"))
@@ -2084,20 +2162,20 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         .and_then(|body| body.get("content"))
         .and_then(|content| content.get("application/vnd.a3s.acl"))
         .is_some());
-    let mcp_profile = &document["paths"]
-        ["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile"];
+    let mcp_profile = &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/mcp-service-profile"];
     assert!(mcp_profile["get"]["responses"]["200"].is_object());
     assert!(mcp_profile["get"]["responses"].get("413").is_none());
     assert!(mcp_profile["get"]["responses"].get("415").is_none());
     assert!(mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"].is_object());
     assert_eq!(
-        mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
-            ["maxLength"],
+        mcp_profile["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]["maxLength"],
         65_536
     );
-    assert!(mcp_profile["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
+    assert!(
+        mcp_profile["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
     assert!(mcp_profile["post"]["responses"]["200"].is_object());
     assert!(mcp_profile["post"]["responses"]["201"].is_object());
     assert!(mcp_profile["post"]["responses"]["413"].is_object());
@@ -2111,31 +2189,36 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             ["maxLength"],
         1_048_576
     );
-    assert!(ontology_collection["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
+    assert!(
+        ontology_collection["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
     assert!(ontology_collection["post"]["responses"]["201"].is_object());
     assert!(ontology_collection["post"]["responses"]["413"].is_object());
     assert!(ontology_collection["post"]["responses"]["415"].is_object());
-    let ontology_revision = &document["paths"]
-        ["/organizations/{organization_id}/ontologies/{ontology_id}/revisions"]["post"];
+    let ontology_revision = &document["paths"]["/organizations/{organization_id}/ontologies/{ontology_id}/revisions"]
+        ["post"];
     assert_eq!(ontology_revision["tags"], json!(["Workflow"]));
-    assert!(ontology_revision["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "x-a3s-expected-version"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    assert!(ontology_revision["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "x-a3s-migration-rule"
-                && parameter["in"] == "header"
-                && parameter["required"] == false
-        })));
-    let workflow_definition_collection = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
+    assert!(
+        ontology_revision["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-expected-version"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    assert!(
+        ontology_revision["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-migration-rule"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == false
+            }))
+    );
+    let workflow_definition_collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
     assert_eq!(
         workflow_definition_collection["get"]["tags"],
         json!(["Workflow"])
@@ -2144,8 +2227,8 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         workflow_definition_collection["post"]["tags"],
         json!(["Workflow"])
     );
-    let workflow_publication = &workflow_definition_collection["post"]["requestBody"]["content"]
-        ["application/json"]["schema"];
+    let workflow_publication = &workflow_definition_collection["post"]["requestBody"]["content"]["application/json"]
+        ["schema"];
     assert_eq!(workflow_publication["additionalProperties"], false);
     assert_eq!(
         workflow_publication["properties"]["definitionAcl"]["maxLength"],
@@ -2193,8 +2276,8 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(workflow_definition_collection["post"]["responses"]["201"].is_object());
     assert!(workflow_definition_collection["post"]["responses"]["413"].is_object());
     assert!(workflow_definition_collection["post"]["responses"]["415"].is_object());
-    let workflow_node_catalog = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/workflow-node-catalog"]["get"];
+    let workflow_node_catalog = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-node-catalog"]
+        ["get"];
     assert_eq!(workflow_node_catalog["tags"], json!(["Workflow"]));
     assert!(workflow_node_catalog["requestBody"].is_null());
     assert!(workflow_node_catalog["responses"]["200"].is_object());
@@ -2202,8 +2285,8 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         workflow_node_catalog["x-a3s-api-contract-version"],
         OPENAPI_CONTRACT_VERSION
     );
-    let workflow_run_variables = &document["paths"]
-        ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/variables"]["get"];
+    let workflow_run_variables = &document["paths"]["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/variables"]
+        ["get"];
     assert_eq!(workflow_run_variables["tags"], json!(["Workflow"]));
     assert!(workflow_run_variables["requestBody"].is_null());
     assert!(workflow_run_variables["responses"]["200"].is_object());
@@ -2214,8 +2297,8 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         workflow_run_variables["x-a3s-api-contract-version"],
         OPENAPI_CONTRACT_VERSION
     );
-    let workflow_run_diagnostics = &document["paths"]
-        ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics"]["get"];
+    let workflow_run_diagnostics = &document["paths"]["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/diagnostics"]
+        ["get"];
     assert_eq!(workflow_run_diagnostics["tags"], json!(["Workflow"]));
     assert_eq!(
         workflow_run_diagnostics["summary"],
@@ -2229,16 +2312,17 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         workflow_run_diagnostics["x-a3s-api-contract-version"],
         OPENAPI_CONTRACT_VERSION
     );
-    let workflow_revision = &document["paths"]
-        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
+    let workflow_revision = &document["paths"]["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"]
         ["post"];
-    assert!(workflow_revision["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "x-a3s-expected-version"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+    assert!(
+        workflow_revision["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-expected-version"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
     let workflow_goal_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-goals"];
     assert_eq!(
@@ -2246,40 +2330,43 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         json!(["Workflow"])
     );
     assert_eq!(
-        workflow_goal_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]
-            ["schema"]["maxLength"],
+        workflow_goal_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
+            ["maxLength"],
         262_144
     );
-    assert!(workflow_goal_collection["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
-    let workflow_plan = &document["paths"]
-        ["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
+    assert!(
+        workflow_goal_collection["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
+    let workflow_plan = &document["paths"]["/organizations/{organization_id}/workflow-goals/{workflow_goal_id}/plan-revisions/{plan_revision_id}"]
         ["get"];
     assert_eq!(workflow_plan["tags"], json!(["Workflow"]));
-    let human_task_collection = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/human-tasks"]["get"];
+    let human_task_collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/human-tasks"]
+        ["get"];
     assert_eq!(human_task_collection["tags"], json!(["Workflow"]));
-    assert!(human_task_collection["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "limit"
-                && parameter["in"] == "query"
-                && parameter["schema"]["minimum"] == 1
-                && parameter["schema"]["maximum"] == 200
-        }) && parameters.iter().any(|parameter| {
-            parameter["name"] == "status"
-                && parameter["in"] == "query"
-                && parameter["schema"]["enum"]
-                    == json!([
-                        "pending_activation",
-                        "ready",
-                        "claimed",
-                        "completed",
-                        "expired",
-                        "cancelled"
-                    ])
-        })));
+    assert!(
+        human_task_collection["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "limit"
+                    && parameter["in"] == "query"
+                    && parameter["schema"]["minimum"] == 1
+                    && parameter["schema"]["maximum"] == 200
+            }) && parameters.iter().any(|parameter| {
+                parameter["name"] == "status"
+                    && parameter["in"] == "query"
+                    && parameter["schema"]["enum"]
+                        == json!([
+                            "pending_activation",
+                            "ready",
+                            "claimed",
+                            "completed",
+                            "expired",
+                            "cancelled"
+                        ])
+            }))
+    );
     assert!(human_task_collection["responses"]["200"].is_object());
     let human_task =
         &document["paths"]["/organizations/{organization_id}/human-tasks/{human_task_id}"]["get"];
@@ -2309,17 +2396,20 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             "{action}"
         );
     }
-    let submission = &document["paths"]
-        ["/organizations/{organization_id}/human-tasks/{human_task_id}/submission"]["post"];
+    let submission = &document["paths"]["/organizations/{organization_id}/human-tasks/{human_task_id}/submission"]
+        ["post"];
     assert_eq!(submission["tags"], json!(["Workflow"]));
     assert!(submission["responses"]["200"].is_object());
     assert!(submission["responses"]["413"].is_object());
     assert!(submission["responses"]["415"].is_object());
-    assert!(submission["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().all(|parameter| {
-            parameter["name"] != "idempotency-key" && parameter["name"] != "x-a3s-expected-version"
-        })));
+    assert!(
+        submission["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().all(|parameter| {
+                parameter["name"] != "idempotency-key"
+                    && parameter["name"] != "x-a3s-expected-version"
+            }))
+    );
     let submission_schema = &submission["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(submission_schema["additionalProperties"], false);
     assert_eq!(
@@ -2359,30 +2449,34 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(form_collection["post"]["responses"]["201"].is_object());
     assert!(form_collection["post"]["responses"]["413"].is_object());
     assert!(form_collection["post"]["responses"]["415"].is_object());
-    assert!(form_collection["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+    assert!(
+        form_collection["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
     let form = &document["paths"]["/organizations/{organization_id}/forms/{form_id}"]["get"];
     assert_eq!(form["tags"], json!(["Forms"]));
-    let form_revision = &document["paths"]
-        ["/organizations/{organization_id}/forms/{form_id}/draft-revisions"]["post"];
+    let form_revision = &document["paths"]["/organizations/{organization_id}/forms/{form_id}/draft-revisions"]
+        ["post"];
     assert_eq!(form_revision["tags"], json!(["Forms"]));
     assert_eq!(
         &form_revision["requestBody"]["content"]["application/json"]["schema"],
         form_draft_schema
     );
-    assert!(form_revision["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "x-a3s-expected-version"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-                && parameter["schema"]["minimum"] == 1
-        })));
+    assert!(
+        form_revision["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-expected-version"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+                    && parameter["schema"]["minimum"] == 1
+            }))
+    );
     let form_releases =
         &document["paths"]["/organizations/{organization_id}/forms/{form_id}/releases"];
     assert_eq!(form_releases["get"]["tags"], json!(["Forms"]));
@@ -2390,35 +2484,42 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert!(form_releases["post"].get("requestBody").is_none());
     assert!(form_releases["post"]["responses"]["200"].is_object());
     assert!(form_releases["post"]["responses"]["201"].is_object());
-    assert!(form_releases["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "x-a3s-expected-version"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-                && parameter["schema"]["minimum"] == 1
-        })));
-    let form_release = &document["paths"]
-        ["/organizations/{organization_id}/forms/{form_id}/releases/{release_id}"]["get"];
+    assert!(
+        form_releases["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "x-a3s-expected-version"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+                    && parameter["schema"]["minimum"] == 1
+            }))
+    );
+    let form_release = &document["paths"]["/organizations/{organization_id}/forms/{form_id}/releases/{release_id}"]
+        ["get"];
     assert_eq!(form_release["tags"], json!(["Forms"]));
-    let mcp_route_collection = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
+    let mcp_route_collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies"];
     assert_eq!(mcp_route_collection["get"]["tags"], json!(["Edge"]));
     assert!(mcp_route_collection["get"]["responses"]["200"].is_object());
-    assert!(mcp_route_collection["get"]["responses"]
-        .get("413")
-        .is_none());
-    assert!(mcp_route_collection["get"]["responses"]
-        .get("415")
-        .is_none());
+    assert!(
+        mcp_route_collection["get"]["responses"]
+            .get("413")
+            .is_none()
+    );
+    assert!(
+        mcp_route_collection["get"]["responses"]
+            .get("415")
+            .is_none()
+    );
     assert_eq!(
         mcp_route_collection["post"]["requestBody"]["content"]["application/vnd.a3s.acl"]["schema"]
             ["maxLength"],
         524_288
     );
-    assert!(mcp_route_collection["post"]["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
+    assert!(
+        mcp_route_collection["post"]["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
     for path in [
         "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/mcp-route-policies",
         "/organizations/{organization_id}/mcp-route-policies/{route_id}/revisions",
@@ -2444,13 +2545,15 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         assert_eq!(operation["tags"], json!(["Workloads"]));
         assert!(operation["requestBody"]["content"]["application/json"].is_object());
         assert!(operation["requestBody"]["content"]["application/vnd.a3s.acl"].is_object());
-        assert!(operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key"
-                    && parameter["in"] == "header"
-                    && parameter["required"] == true
-            })));
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
         assert!(operation["responses"]["200"].is_object());
         assert!(operation["responses"]["202"].is_object());
     }
@@ -2467,13 +2570,15 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         let operation = &document["paths"][path][method];
         assert_eq!(operation["tags"], json!(["Workloads"]));
         assert!(operation.get("requestBody").is_none());
-        assert!(operation["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == "idempotency-key"
-                    && parameter["in"] == "header"
-                    && parameter["required"] == true
-            })));
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
         assert!(operation["responses"]["200"].is_object());
         assert!(operation["responses"]["202"].is_object());
     }
@@ -2483,76 +2588,83 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     ] {
         let operation = &document["paths"][path]["post"];
         assert_eq!(operation["tags"], json!(["Edge"]));
-        assert!(operation["parameters"]
+        assert!(
+            operation["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == "idempotency-key"
+                        && parameter["in"] == "header"
+                        && parameter["required"] == true
+                }))
+        );
+        assert!(operation["responses"]["200"].is_object());
+        assert!(operation["responses"]["201"].is_object());
+    }
+    let executions = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions"];
+    assert!(executions["get"].is_object());
+    assert!(executions["post"]["requestBody"]["content"]["application/json"].is_object());
+    assert!(
+        executions["post"]["parameters"]
             .as_array()
             .is_some_and(|parameters| parameters.iter().any(|parameter| {
                 parameter["name"] == "idempotency-key"
                     && parameter["in"] == "header"
                     && parameter["required"] == true
-            })));
-        assert!(operation["responses"]["200"].is_object());
-        assert!(operation["responses"]["201"].is_object());
-    }
-    let executions = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/executions"];
-    assert!(executions["get"].is_object());
-    assert!(executions["post"]["requestBody"]["content"]["application/json"].is_object());
-    assert!(executions["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+            }))
+    );
     let execution =
         &document["paths"]["/organizations/{organization_id}/executions/{execution_id}"];
     assert!(execution["get"].is_object());
     assert!(execution["delete"].is_object());
-    let execution_templates = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/execution-templates"];
+    let execution_templates = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/execution-templates"];
     assert!(execution_templates["get"].is_object());
     assert!(execution_templates["post"]["requestBody"]["content"]["application/json"].is_object());
-    assert!(execution_templates["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let execution_template_revision = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/execution-templates/{template_id}/revisions/{revision_id}"]
+    assert!(
+        execution_templates["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let execution_template_revision = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/execution-templates/{template_id}/revisions/{revision_id}"]
         ["get"];
     assert!(execution_template_revision.is_object());
     for parameter_name in ["template_id", "revision_id"] {
-        assert!(execution_template_revision["parameters"]
-            .as_array()
-            .is_some_and(|parameters| parameters.iter().any(|parameter| {
-                parameter["name"] == parameter_name
-                    && parameter["in"] == "path"
-                    && parameter["schema"]["format"] == "uuid"
-            })));
+        assert!(
+            execution_template_revision["parameters"]
+                .as_array()
+                .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                    parameter["name"] == parameter_name
+                        && parameter["in"] == "path"
+                        && parameter["schema"]["format"] == "uuid"
+                }))
+        );
     }
 
-    let conversations = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"];
+    let conversations = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"];
     assert_eq!(conversations["get"]["tags"], json!(["Agents"]));
     assert_eq!(conversations["post"]["tags"], json!(["Agents"]));
     assert!(conversations["post"].get("requestBody").is_none());
     assert!(conversations["post"]["responses"]["201"].is_object());
-    assert!(conversations["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let agent_executions = &document["paths"]
-        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/executions"];
-    assert!(agent_executions["get"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
-        })));
+    assert!(
+        conversations["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let agent_executions = &document["paths"]["/organizations/{organization_id}/agent-conversations/{conversation_id}/executions"];
+    assert!(
+        agent_executions["get"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
+            }))
+    );
     assert!(agent_executions["post"]["requestBody"]["content"]["application/json"].is_object());
     assert!(agent_executions["post"]["responses"]["202"].is_object());
     assert!(
@@ -2560,73 +2672,84 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
             ["get"]
             .is_object()
     );
-    let agent_cancellation = &document["paths"]
-        ["/organizations/{organization_id}/agent-executions/{execution_id}/cancel"]["post"];
+    let agent_cancellation = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/cancel"]
+        ["post"];
     assert_eq!(agent_cancellation["tags"], json!(["Agents"]));
     assert!(agent_cancellation.get("requestBody").is_none());
     assert!(agent_cancellation["responses"]["202"].is_object());
-    assert!(agent_cancellation["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
-    let agent_events = &document["paths"]
-        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]["get"];
-    assert!(agent_events["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters
-            .iter()
-            .any(|parameter| { parameter["name"] == "cursor" && parameter["in"] == "query" })
-            && parameters.iter().any(|parameter| {
-                parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
-            })));
-    let agent_event_stream = &document["paths"]
-        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events/stream"]
+    assert!(
+        agent_cancellation["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
+    let agent_events = &document["paths"]["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]
+        ["get"];
+    assert!(
+        agent_events["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters
+                .iter()
+                .any(|parameter| { parameter["name"] == "cursor" && parameter["in"] == "query" })
+                && parameters.iter().any(|parameter| {
+                    parameter["name"] == "limit" && parameter["schema"]["maximum"] == 200
+                }))
+    );
+    let agent_event_stream = &document["paths"]["/organizations/{organization_id}/agent-conversations/{conversation_id}/events/stream"]
         ["get"];
     assert_eq!(
         agent_event_stream["responses"]["200"]["$ref"],
         "#/components/responses/SseSuccess200"
     );
-    assert!(agent_event_stream["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "limit" && parameter["schema"]["maximum"] == 16
-        }) && parameters.iter().any(|parameter| {
-            parameter["name"] == "last-event-id" && parameter["in"] == "header"
-        })));
+    assert!(
+        agent_event_stream["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "limit" && parameter["schema"]["maximum"] == 16
+            }) && parameters.iter().any(|parameter| {
+                parameter["name"] == "last-event-id" && parameter["in"] == "header"
+            }))
+    );
 
-    let asset_git = &document["paths"]
-        ["/organizations/{organization_id}/assets/{asset_id}/git/info/refs"]["get"];
+    let asset_git = &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/git/info/refs"]
+        ["get"];
     assert_eq!(asset_git["tags"], json!(["Assets"]));
-    assert!(asset_git["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "service"
-                && parameter["in"] == "query"
-                && parameter["required"] == true
-                && parameter["schema"]["enum"] == json!(["git-upload-pack", "git-receive-pack"])
-        })));
+    assert!(
+        asset_git["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "service"
+                    && parameter["in"] == "query"
+                    && parameter["required"] == true
+                    && parameter["schema"]["enum"] == json!(["git-upload-pack", "git-receive-pack"])
+            }))
+    );
     assert_eq!(
         asset_git["responses"]["200"]["$ref"],
         "#/components/responses/AssetGitAdvertisementSuccess200"
     );
 
-    let receive_pack = &document["paths"]
-        ["/organizations/{organization_id}/assets/{asset_id}/git/git-receive-pack"]["post"];
+    let receive_pack = &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/git/git-receive-pack"]
+        ["post"];
     assert!(
         receive_pack["requestBody"]["content"]["application/x-git-receive-pack-request"]
             .is_object()
     );
-    assert!(receive_pack["requestBody"]["content"]
-        .get("application/json")
-        .is_none());
-    assert!(receive_pack["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters
-            .iter()
-            .all(|parameter| parameter["name"] != "idempotency-key")));
+    assert!(
+        receive_pack["requestBody"]["content"]
+            .get("application/json")
+            .is_none()
+    );
+    assert!(
+        receive_pack["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters
+                .iter()
+                .all(|parameter| parameter["name"] != "idempotency-key"))
+    );
     assert_eq!(
         receive_pack["responses"]["200"]["$ref"],
         "#/components/responses/AssetGitReceivePackSuccess200"
@@ -2644,11 +2767,13 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
     assert_eq!(assets["get"]["tags"], json!(["Assets"]));
     assert_eq!(assets["post"]["tags"], json!(["Assets"]));
     assert!(assets["post"]["responses"]["201"].is_object());
-    assert!(assets["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key" && parameter["in"] == "header"
-        })));
+    assert!(
+        assets["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key" && parameter["in"] == "header"
+            }))
+    );
     let archive =
         &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/archive"]["post"];
     assert!(archive.get("requestBody").is_none());
@@ -2656,18 +2781,19 @@ fn generated_openapi_operations_have_stable_ids_security_and_envelopes() -> Resu
         &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/releases"];
     assert!(releases["get"].is_object());
     assert!(releases["post"]["responses"]["201"].is_object());
-    let selection = &document["paths"]
-        ["/organizations/{organization_id}/assets/{asset_id}/release-selection"]["get"];
-    assert!(selection["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "version"
-                && parameter["in"] == "query"
-                && parameter["required"] == false
-                && parameter["schema"]["type"] == "string"
-        })));
-    let yank = &document["paths"]
-        ["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/yank"]
+    let selection = &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/release-selection"]
+        ["get"];
+    assert!(
+        selection["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "version"
+                    && parameter["in"] == "query"
+                    && parameter["required"] == false
+                    && parameter["schema"]["type"] == "string"
+            }))
+    );
+    let yank = &document["paths"]["/organizations/{organization_id}/assets/{asset_id}/releases/{asset_release_id}/yank"]
         ["post"];
     assert!(yank.get("requestBody").is_none());
     Ok(())
@@ -2699,23 +2825,22 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
 
     let collection = &document["paths"][base];
     assert_eq!(collection["get"]["tags"], json!(["Inference"]));
-    assert_eq!(
-        collection["get"]["summary"],
-        json!("List inference routes")
-    );
+    assert_eq!(collection["get"]["summary"], json!("List inference routes"));
     assert!(collection["get"]["responses"]["200"].is_object());
     assert_eq!(collection["post"]["tags"], json!(["Inference"]));
     assert_eq!(
         collection["post"]["summary"],
         json!("Publish an inference route")
     );
-    assert!(collection["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+    assert!(
+        collection["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
     assert!(collection["post"]["responses"]["202"].is_object());
     let publish_schema =
         &collection["post"]["requestBody"]["content"]["application/json"]["schema"];
@@ -2723,29 +2848,27 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
         publish_schema["required"],
         json!(["router", "models", "grants", "binding"])
     );
-    assert!(publish_schema["properties"]["grants"]["items"]["properties"]["credentialId"].is_object());
+    assert!(
+        publish_schema["properties"]["grants"]["items"]["properties"]["credentialId"].is_object()
+    );
 
     let get_route = &document["paths"][&route]["get"];
     assert_eq!(get_route["tags"], json!(["Inference"]));
-    assert_eq!(
-        get_route["summary"],
-        json!("Get an inference route")
-    );
+    assert_eq!(get_route["summary"], json!("Get an inference route"));
     assert!(get_route["responses"]["200"].is_object());
 
     let revise = &document["paths"][&revisions]["post"];
     assert_eq!(revise["tags"], json!(["Inference"]));
-    assert_eq!(
-        revise["summary"],
-        json!("Revise an inference route")
+    assert_eq!(revise["summary"], json!("Revise an inference route"));
+    assert!(
+        revise["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
     );
-    assert!(revise["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
     assert!(revise["responses"]["202"].is_object());
     let revise_schema = &revise["requestBody"]["content"]["application/json"]["schema"];
     assert_eq!(
@@ -2759,17 +2882,16 @@ fn inference_route_openapi_contract_documents_publish_revise_retire_and_reads() 
 
     let retire_op = &document["paths"][&retire]["post"];
     assert_eq!(retire_op["tags"], json!(["Inference"]));
-    assert_eq!(
-        retire_op["summary"],
-        json!("Retire an inference route")
+    assert_eq!(retire_op["summary"], json!("Retire an inference route"));
+    assert!(
+        retire_op["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
     );
-    assert!(retire_op["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
     assert!(retire_op["responses"]["202"].is_object());
     assert!(retire_op["requestBody"].is_object());
     let retire_schema = &retire_op["requestBody"]["content"]["application/json"]["schema"];
@@ -2798,22 +2920,21 @@ fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() ->
 
     let collection = &document["paths"][keys];
     assert_eq!(collection["get"]["tags"], json!(["Identity"]));
-    assert_eq!(
-        collection["get"]["summary"],
-        json!("List inference keys")
-    );
+    assert_eq!(collection["get"]["summary"], json!("List inference keys"));
     assert_eq!(collection["post"]["tags"], json!(["Identity"]));
     assert_eq!(
         collection["post"]["summary"],
         json!("Create an inference key")
     );
-    assert!(collection["post"]["parameters"]
-        .as_array()
-        .is_some_and(|parameters| parameters.iter().any(|parameter| {
-            parameter["name"] == "idempotency-key"
-                && parameter["in"] == "header"
-                && parameter["required"] == true
-        })));
+    assert!(
+        collection["post"]["parameters"]
+            .as_array()
+            .is_some_and(|parameters| parameters.iter().any(|parameter| {
+                parameter["name"] == "idempotency-key"
+                    && parameter["in"] == "header"
+                    && parameter["required"] == true
+            }))
+    );
     assert!(collection["post"]["responses"]["201"].is_object());
     assert!(collection["post"]["responses"]["200"].is_object());
     assert_eq!(
@@ -2827,10 +2948,7 @@ fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() ->
 
     let rotate_op = &document["paths"][&rotate]["post"];
     assert_eq!(rotate_op["tags"], json!(["Identity"]));
-    assert_eq!(
-        rotate_op["summary"],
-        json!("Rotate an inference key")
-    );
+    assert_eq!(rotate_op["summary"], json!("Rotate an inference key"));
     assert!(rotate_op["responses"]["201"].is_object());
     assert!(rotate_op["responses"]["200"].is_object());
     assert_eq!(
@@ -2838,25 +2956,22 @@ fn inference_key_and_usage_openapi_contract_documents_identity_and_showback() ->
         json!(["expiresAt", "expectedAggregateVersion"])
     );
     assert_eq!(
-        rotate_op["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedAggregateVersion"]["minimum"],
+        rotate_op["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedAggregateVersion"]
+            ["minimum"],
         json!(1)
     );
 
     let revoke_op = &document["paths"][&revoke]["post"];
     assert_eq!(revoke_op["tags"], json!(["Identity"]));
-    assert_eq!(
-        revoke_op["summary"],
-        json!("Revoke an inference key")
-    );
+    assert_eq!(revoke_op["summary"], json!("Revoke an inference key"));
     assert!(revoke_op["responses"]["202"].is_object());
     assert_eq!(
         revoke_op["requestBody"]["content"]["application/json"]["schema"]["required"],
         json!(["expectedAggregateVersion"])
     );
     assert_eq!(
-        revoke_op["requestBody"]["content"]["application/json"]["schema"]["properties"]
-            ["expectedAggregateVersion"]["minimum"],
+        revoke_op["requestBody"]["content"]["application/json"]["schema"]["properties"]["expectedAggregateVersion"]
+            ["minimum"],
         json!(1)
     );
 

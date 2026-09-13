@@ -1,29 +1,33 @@
 use super::{
-    ReserveUserFileRequest, TombstoneUserFileRequest, UserFileMutationResponse,
-    UserFileQuotaResponse, UserFileResponse, USER_FILES_CONTROLLER_PREFIX,
-    USER_FILE_COLLECTION_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE,
-    USER_FILE_TOMBSTONE_ROUTE,
+    ReserveUserFileRequest, TombstoneUserFileRequest, USER_FILE_COLLECTION_ROUTE,
+    USER_FILE_CONTENT_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE,
+    USER_FILE_TOMBSTONE_ROUTE, USER_FILES_CONTROLLER_PREFIX, UserFileMutationResponse,
+    UserFileQuotaResponse, UserFileResponse,
 };
+use crate::modules::files::USER_FILE_MAX_BYTES;
 use crate::modules::files::application::{
-    GetUserFile, GetUserFileQuota, ListUserFiles, ReserveUserFile, TombstoneUserFile,
-    UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
+    DEFAULT_USER_FILE_LIST_LIMIT, GetUserFile, GetUserFileQuota, ListUserFiles,
+    MAXIMUM_USER_FILE_LIST_LIMIT, RecordUserFileUpload, ReserveUserFile, TombstoneUserFile,
+    UserFileTransition,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, UserFileId};
 use crate::presentation::{
-    actor_principal_id, application_error_response, organization_tenant_cloud_read_controller,
-    organization_tenant_file_write_controller, request_id, request_identity,
-    resource_access_evaluator, user_file_access, with_deferred_resource_scope,
-    DeferredResourceScope,
+    DeferredResourceScope, actor_principal_id, application_error_response,
+    organization_tenant_cloud_read_controller, organization_tenant_file_write_controller,
+    request_id, request_identity, resource_access_evaluator, user_file_access,
+    with_deferred_resource_scope,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
     RouteDefinition,
 };
+use std::io::Cursor;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
     let reserve_bus = Arc::clone(&bus);
+    let content_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
         .post(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&reserve_bus);
@@ -50,6 +54,43 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                         if result.replayed { 200 } else { 201 },
                         &UserFileMutationResponse::from(result),
                     ),
+                    Err(error) => application_error_response(error, request_id),
+                }
+            }
+        })?
+        .put(USER_FILE_CONTENT_ROUTE, move |request: BootRequest| {
+            let bus = Arc::clone(&content_bus);
+            async move {
+                require_octet_stream_content_type(&request)?;
+                request.validate_with_body_limit(USER_FILE_MAX_BYTES as usize)?;
+                let expected_version = expected_version(&request)?;
+                let (idempotency_key, request_id) = request_identity(&request)?;
+                let organization_id =
+                    OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+                let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+                let user_file_id = UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?);
+                let actor_principal_id = actor_principal_id(&request)?;
+                let access = user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?);
+                let reader = Box::pin(Cursor::new(request.into_body()));
+                match bus
+                    .execute(RecordUserFileUpload {
+                        transition: UserFileTransition {
+                            organization_id,
+                            project_id,
+                            user_file_id,
+                            expected_version,
+                            actor_principal_id,
+                            access,
+                            idempotency_key,
+                            request_id,
+                        },
+                        reader,
+                    })
+                    .await?
+                {
+                    Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
                     Err(error) => application_error_response(error, request_id),
                 }
             }
@@ -177,4 +218,30 @@ fn list_limit(request: &BootRequest) -> Result<usize> {
         )));
     }
     Ok(limit)
+}
+
+fn expected_version(request: &BootRequest) -> Result<u64> {
+    let raw = request
+        .header("x-a3s-expected-version")
+        .ok_or_else(|| BootError::BadRequest("x-a3s-expected-version header is required".into()))?;
+    let expected_version = raw.parse::<u64>().map_err(|_| {
+        BootError::BadRequest("x-a3s-expected-version must be a positive integer".into())
+    })?;
+    if expected_version == 0 {
+        return Err(BootError::BadRequest(
+            "x-a3s-expected-version must be a positive integer".into(),
+        ));
+    }
+    Ok(expected_version)
+}
+
+fn require_octet_stream_content_type(request: &BootRequest) -> Result<()> {
+    let content_type = request.header("content-type").unwrap_or_default().trim();
+    let media_type = content_type.split(';').next().unwrap_or_default().trim();
+    if !media_type.eq_ignore_ascii_case("application/octet-stream") {
+        return Err(BootError::UnsupportedMediaType(
+            "UserFile content requires application/octet-stream".into(),
+        ));
+    }
+    Ok(())
 }

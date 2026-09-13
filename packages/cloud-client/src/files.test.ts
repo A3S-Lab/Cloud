@@ -23,7 +23,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe('UserFile client surface', () => {
-  it('uses the exact metadata lifecycle routes and never adds a buffered binary upload route', async () => {
+  it('uses metadata lifecycle routes plus PUT content and never exposes /upload', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
@@ -41,6 +41,14 @@ describe('UserFile client surface', () => {
     await api.listUserFiles('organization / one', 'project / one');
     await api.getUserFile('organization / one', 'project / one', 'file / one');
     await api.tombstoneUserFile('organization / one', 'project / one', 'file / one', 1, 'files:tombstone');
+    await api.putUserFileContent(
+      'organization / one',
+      'project / one',
+      'file / one',
+      new Uint8Array([1, 2, 3, 4]),
+      1,
+      'files:content'
+    );
     await api.getUserFileQuota('organization / one');
 
     expect(calls.map(([input]) => input)).toEqual([
@@ -48,6 +56,7 @@ describe('UserFile client surface', () => {
       `/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files?limit=${DEFAULT_USER_FILE_LIST_LIMIT}`,
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/tombstone',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/user-file-quota',
     ]);
     expect(calls[0]?.[1]).toEqual(
@@ -62,6 +71,17 @@ describe('UserFile client surface', () => {
         method: 'POST',
         headers: expect.objectContaining({ 'Idempotency-Key': 'files:tombstone' }),
         body: JSON.stringify({ expectedVersion: 1 }),
+      })
+    );
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'PUT',
+        headers: expect.objectContaining({
+          'Content-Type': 'application/octet-stream',
+          'Idempotency-Key': 'files:content',
+          'x-a3s-expected-version': '1',
+        }),
+        body: expect.any(Uint8Array),
       })
     );
     expect(JSON.stringify(calls)).not.toContain('must-not-cross-boundary');
@@ -99,6 +119,9 @@ describe('UserFile client surface', () => {
     expect(() => api.tombstoneUserFile('organization', 'project', 'file', 0, 'files:tombstone')).toThrow(
       RangeError
     );
+    expect(() =>
+      api.putUserFileContent('organization', 'project', 'file', new Uint8Array(0), 1, 'files:content')
+    ).toThrow(RangeError);
     expect(() => api.listUserFiles('organization', 'project', { limit: 201 })).toThrow(RangeError);
     expect(called).toBe(false);
   });

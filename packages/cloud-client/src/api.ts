@@ -186,6 +186,7 @@ import {
   type UserFileListOptions,
   type UserFileMutationResult,
   type UserFileQuota,
+  USER_FILE_MAX_BYTES,
   validateExpectedUserFileVersion,
   validateUserFileAdmissionAcl,
 } from './files';
@@ -4359,6 +4360,31 @@ export class CloudApi {
     );
   }
 
+  putUserFileContent(
+    organizationId: string,
+    projectId: string,
+    userFileId: string,
+    content: Uint8Array,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<UserFileMutationResult> {
+    validateExpectedUserFileVersion(expectedVersion);
+    if (!(content instanceof Uint8Array)) {
+      throw new TypeError('UserFile content must be a Uint8Array');
+    }
+    if (content.byteLength === 0 || content.byteLength > USER_FILE_MAX_BYTES) {
+      throw new RangeError(`UserFile content must be between 1 and ${USER_FILE_MAX_BYTES} bytes`);
+    }
+    return this.request('PUT', `${userFileCollectionPath(organizationId, projectId)}/${encodeURIComponent(userFileId)}/content`, {
+      body: content,
+      contentType: 'application/octet-stream',
+      idempotencyKey,
+      signal,
+      additionalHeaders: { 'x-a3s-expected-version': String(expectedVersion) },
+    });
+  }
+
   getUserFileQuota(organizationId: string, signal?: AbortSignal): Promise<UserFileQuota> {
     return this.get(`/organizations/${encodeURIComponent(organizationId)}/user-file-quota`, signal);
   }
@@ -5048,7 +5074,7 @@ export class CloudApi {
     method: 'DELETE' | 'GET' | 'POST' | 'PUT',
     path: string,
     options: {
-      body?: string;
+      body?: string | Uint8Array;
       contentType?: string;
       healthResponse?: boolean;
       idempotencyKey?: string;

@@ -17,27 +17,31 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.77.0`.
+The current semantic contract version is `1.89.0`.
 
-Contract `1.77.0` adds the Files-owned UserFile metadata lifecycle. A
-project-authorized caller can reserve one canonical `cloud.user-file.v1` A3S
-ACL, list a bounded `1..=200` set of lifecycle projections, get one exact
-projection, or tombstone one aggregate with optimistic concurrency. An
-organization-wide caller can read the same authority's quota ledger. Reserve
-and tombstone require caller-owned idempotency; a new reservation returns
-`201`, while replay returns the same typed mutation at `200`.
+Contract `1.89.0` extends the Files-owned UserFile surface with authorized
+content PUT. A project-authorized caller can reserve one canonical
+`cloud.user-file.v1` A3S ACL, `PUT` exact reserved bytes to
+`/user-files/{user_file_id}/content` as `application/octet-stream` with
+`x-a3s-expected-version`, list a bounded `1..=200` set of lifecycle
+projections, get one exact projection, or tombstone one aggregate with
+optimistic concurrency. An organization-wide caller can read the same
+authority's quota ledger. Reserve, content PUT, and tombstone require
+caller-owned idempotency; a new reservation returns `201`, while replay
+returns the same typed mutation at `200`.
 
 Every UserFile response is closed and contains the canonical admission ACL,
 provider-neutral logical object reference, content and contract digests,
 bounded size/media type, upload and retention deadlines, closed lifecycle,
 scan evidence digest or rejection code when present, aggregate version,
 derived cleanup time, and canonical timestamps. The quota response contains
-only limit, allocated, available, revision, and update time. No request or
-response accepts binary content, provider/bucket credentials, scanner
-configuration, multipart state, or a cleanup queue. Metadata, quota, audit,
-Outbox, and idempotency share one repository transaction; immutable bytes
-remain behind the internal streaming object port. Public byte transfer, live
-scan/cleanup execution, and complete Files availability are not claimed.
+only limit, allocated, available, revision, and update time. Responses never
+return binary content, provider/bucket credentials, scanner configuration,
+multipart state, or a cleanup queue. Metadata, quota, audit, Outbox, and
+idempotency share one repository transaction; content PUT streams through the
+same immutable-object port used internally. Live MinIO/S3 provider
+scan/cleanup execution, content download/GET, and complete Files availability
+are not claimed.
 
 Contract `1.76.0` adds two transient GitHub source-discovery reads under the
 authoritative Organization connection. A `source:write` caller can list a
