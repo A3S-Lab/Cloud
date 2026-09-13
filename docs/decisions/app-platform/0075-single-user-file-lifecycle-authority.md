@@ -73,15 +73,18 @@ The maintained management surface is exact:
 | Reserve metadata and quota | `POST /organizations/{organizationId}/projects/{projectId}/user-files` | `reserveUserFile` | `user-files reserve` | `a3s_cloud_user_files_reserve` | `file:write` |
 | List bounded projections | `GET /organizations/{organizationId}/projects/{projectId}/user-files` | `listUserFiles` | `user-files list` | `a3s_cloud_user_files_list` | `cloud:read` |
 | Get one projection | `GET /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}` | `getUserFile` | `user-files get` | `a3s_cloud_user_files_get` | `cloud:read` |
+| Put reserved content bytes | `PUT /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `putUserFileContent` | `user-files put-content` | — | `file:write` |
+| Get admitted content bytes | `GET /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/content` | `getUserFileContent` | `user-files get-content` | — | `cloud:read` |
 | Tombstone and release quota | `POST /organizations/{organizationId}/projects/{projectId}/user-files/{userFileId}/tombstone` | `tombstoneUserFile` | `user-files tombstone` | `a3s_cloud_user_files_tombstone` | `file:write` |
 | Read organization quota | `GET /organizations/{organizationId}/user-file-quota` | `getUserFileQuota` | `user-file-quota get` | `a3s_cloud_user_file_quota_get` | `cloud:read` |
 
-REST/OpenAPI `1.77.0` and Management MCP dispatch the same commands and
-queries and reuse the same DTO projections. The public request body carries
-only canonical bounded ACL or optimistic version data. No public route or MCP
-tool carries file bytes.
+REST/OpenAPI `1.90.0` and Management MCP dispatch the same metadata commands and
+queries and reuse the same DTO projections. Authorized REST `PUT`/`GET .../content`
+streams bytes through the Files object port; only an admitted aggregate exposes
+bytes on GET. Management MCP remains metadata-only and never accepts or returns
+file bytes.
 
-Internal upload, scan, and unused-reservation expiry commands retain the same
+Internal scan and unused-reservation expiry commands retain the same
 Application service and interfaces, but they are not advertised as available
 until their owning provider/execution and cleanup gates have retained evidence.
 Knowledge consumes only an admitted typed reference and remains the sole owner

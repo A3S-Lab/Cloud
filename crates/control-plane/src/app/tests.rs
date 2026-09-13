@@ -237,9 +237,9 @@ mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
 mod inference_key_tests;
-mod knowledge_tests;
 mod inference_route_tests;
 mod inference_usage_tests;
+mod knowledge_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
 mod notification_tests;
@@ -320,6 +320,15 @@ impl IUserFileObjectStore for UnavailableUserFileObjectStore {
     ) -> std::result::Result<(), UserFileObjectError> {
         Err(UserFileObjectError::Unavailable(
             "UserFile object verification is unavailable in this fixture".into(),
+        ))
+    }
+
+    async fn open(
+        &self,
+        _reference: &UserFileContentReference,
+    ) -> std::result::Result<UserFileObjectReader, UserFileObjectError> {
+        Err(UserFileObjectError::Unavailable(
+            "UserFile object reads are unavailable in this fixture".into(),
         ))
     }
 }

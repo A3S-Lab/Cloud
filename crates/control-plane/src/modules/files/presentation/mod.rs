@@ -1,3 +1,4 @@
+mod content_stream;
 mod controller;
 mod dto;
 mod files_module;

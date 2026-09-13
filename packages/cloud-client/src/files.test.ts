@@ -23,7 +23,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 }
 
 describe('UserFile client surface', () => {
-  it('uses metadata lifecycle routes plus PUT content and never exposes /upload', async () => {
+  it('uses metadata lifecycle routes plus PUT/GET content and never exposes /upload', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
@@ -49,6 +49,15 @@ describe('UserFile client surface', () => {
       1,
       'files:content'
     );
+    const binaryFetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return new Response(new Uint8Array([9, 8, 7]), {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream', 'content-length': '3' },
+      });
+    };
+    const downloadApi = new CloudApi('caller-token', '/api/v1', { fetch: binaryFetcher });
+    await downloadApi.getUserFileContent('organization / one', 'project / one', 'file / one');
     await api.getUserFileQuota('organization / one');
 
     expect(calls.map(([input]) => input)).toEqual([
@@ -56,6 +65,7 @@ describe('UserFile client surface', () => {
       `/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files?limit=${DEFAULT_USER_FILE_LIST_LIMIT}`,
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/tombstone',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/user-file-quota',
     ]);
@@ -82,6 +92,12 @@ describe('UserFile client surface', () => {
           'x-a3s-expected-version': '1',
         }),
         body: expect.any(Uint8Array),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Accept: '*/*' }),
       })
     );
     expect(JSON.stringify(calls)).not.toContain('must-not-cross-boundary');

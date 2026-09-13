@@ -950,6 +950,10 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     response_components.insert(
+        "UserFileContentSuccess200".into(),
+        user_file_content_response_component(),
+    );
+    response_components.insert(
         "AssetGitAdvertisementSuccess200".into(),
         asset_git_response_component(
             "Git Smart HTTP reference advertisement",
@@ -1495,6 +1499,29 @@ fn sse_response_component() -> Value {
             "x-a3s-api-contract-version": { "schema": { "type": "string", "example": OPENAPI_CONTRACT_VERSION } }
         },
         "content": { "text/event-stream": { "schema": { "type": "string" } } }
+    })
+}
+
+fn user_file_content_response_component() -> Value {
+    json!({
+        "description": "Admitted UserFile bytes streamed with the admission-contract media type",
+        "headers": {
+            "x-request-id": { "schema": { "type": "string", "format": "uuid" } },
+            "x-a3s-api-contract-version": { "schema": { "type": "string", "example": OPENAPI_CONTRACT_VERSION } },
+            "content-type": {
+                "schema": { "type": "string" },
+                "description": "Media type declared by the admitted UserFile admission contract."
+            },
+            "content-length": {
+                "schema": { "type": "integer", "minimum": 1 },
+                "description": "Exact admitted byte length from the immutable UserFile reference."
+            }
+        },
+        "content": {
+            "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+            }
+        }
     })
 }
 

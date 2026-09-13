@@ -1,21 +1,22 @@
+use super::content_stream::stream_user_file_content;
 use super::{
-    ReserveUserFileRequest, TombstoneUserFileRequest, USER_FILE_COLLECTION_ROUTE,
-    USER_FILE_CONTENT_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE,
-    USER_FILE_TOMBSTONE_ROUTE, USER_FILES_CONTROLLER_PREFIX, UserFileMutationResponse,
-    UserFileQuotaResponse, UserFileResponse,
+    ReserveUserFileRequest, TombstoneUserFileRequest, UserFileMutationResponse,
+    UserFileQuotaResponse, UserFileResponse, USER_FILES_CONTROLLER_PREFIX,
+    USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE, USER_FILE_ITEM_ROUTE,
+    USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
+};
+use crate::modules::files::application::{
+    GetUserFile, GetUserFileContent, GetUserFileQuota, ListUserFiles, RecordUserFileUpload,
+    ReserveUserFile, TombstoneUserFile, UserFileTransition, DEFAULT_USER_FILE_LIST_LIMIT,
+    MAXIMUM_USER_FILE_LIST_LIMIT,
 };
 use crate::modules::files::USER_FILE_MAX_BYTES;
-use crate::modules::files::application::{
-    DEFAULT_USER_FILE_LIST_LIMIT, GetUserFile, GetUserFileQuota, ListUserFiles,
-    MAXIMUM_USER_FILE_LIST_LIMIT, RecordUserFileUpload, ReserveUserFile, TombstoneUserFile,
-    UserFileTransition,
-};
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId, UserFileId};
 use crate::presentation::{
-    DeferredResourceScope, actor_principal_id, application_error_response,
-    organization_tenant_cloud_read_controller, organization_tenant_file_write_controller,
-    request_id, request_identity, resource_access_evaluator, user_file_access,
-    with_deferred_resource_scope,
+    actor_principal_id, application_error_response, organization_tenant_cloud_read_controller,
+    organization_tenant_file_write_controller, request_id, request_identity,
+    resource_access_evaluator, user_file_access, with_deferred_resource_scope,
+    DeferredResourceScope,
 };
 use a3s_boot::{
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
@@ -130,6 +131,7 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
 pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     let list_bus = Arc::clone(&bus);
     let get_bus = Arc::clone(&bus);
+    let content_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
         .get(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&list_bus);
@@ -178,6 +180,34 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     .await?
                 {
                     Ok(file) => BootResponse::json(&UserFileResponse::from(file)),
+                    Err(error) => application_error_response(error, request_id),
+                }
+            }
+        })?
+        .get(USER_FILE_CONTENT_ROUTE, move |request: BootRequest| {
+            let bus = Arc::clone(&content_bus);
+            async move {
+                let request_id = request_id(&request)?;
+                match bus
+                    .execute(GetUserFileContent {
+                        organization_id: OrganizationId::from_uuid(
+                            request.param_as::<Uuid>("organization_id")?,
+                        ),
+                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                        user_file_id: UserFileId::from_uuid(
+                            request.param_as::<Uuid>("user_file_id")?,
+                        ),
+                        access: user_file_access(&resource_access_evaluator(
+                            &request.require_auth_principal()?,
+                        )?),
+                    })
+                    .await?
+                {
+                    Ok(content) => stream_user_file_content(
+                        content.media_type,
+                        content.size_bytes,
+                        content.reader,
+                    ),
                     Err(error) => application_error_response(error, request_id),
                 }
             }

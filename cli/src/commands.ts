@@ -87,6 +87,7 @@ export interface CommandDependencies {
   fetch?: CloudFetch;
   readFile?: (path: string) => Promise<Uint8Array>;
   readStdin?: ReadStdin;
+  writeFile?: (path: string, content: Uint8Array) => Promise<void>;
 }
 
 export async function executeCommand(
@@ -218,6 +219,7 @@ export async function executeCommand(
   }
   const userFileResult = await executeUserFileCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,
+    writeFile: dependencies.writeFile,
   });
   if (userFileResult !== undefined) {
     return userFileResult;

@@ -55,3 +55,17 @@ export function userFileQuotaResult(row: UserFileQuota): CommandResult {
     ),
   };
 }
+
+export function userFileContentWriteResult(path: string, byteLength: number): CommandResult {
+  const row = { path, byteLength };
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [
+        { header: 'PATH', value: (value) => value.path },
+        { header: 'BYTES', value: (value) => value.byteLength },
+      ]
+    ),
+  };
+}

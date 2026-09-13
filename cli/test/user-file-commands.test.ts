@@ -203,6 +203,43 @@ describe('a3s-cloud UserFile commands', () => {
     expect(String(calls[0]?.[0])).not.toContain('upload');
     expect(output.stderr()).toBe('');
   });
+
+  it('gets admitted content bytes through the exact /content route into --file', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const content = new Uint8Array([1, 2, 3, 4, 5]);
+    let written: { path: string; bytes: Uint8Array } | undefined;
+    const exitCode = await runCli(
+      ['user-files', 'get-content', USER_FILE_ID, '--file=download.bin', '--output=json'],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        writeFile: async (path, bytes) => {
+          written = { path, bytes };
+        },
+        fetch: async (...args) => {
+          calls.push(args);
+          return new Response(content, {
+            status: 200,
+            headers: { 'content-type': 'application/octet-stream', 'content-length': String(content.byteLength) },
+          });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(`${userFileBase()}/${USER_FILE_ID}/content`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'GET',
+        headers: expect.objectContaining({ Accept: '*/*' }),
+      })
+    );
+    expect(written).toEqual({ path: 'download.bin', bytes: content });
+    expect(String(calls[0]?.[0])).not.toContain('upload');
+    expect(output.stderr()).toBe('');
+  });
 });
 
 function completeEnvironment(): Record<string, string> {

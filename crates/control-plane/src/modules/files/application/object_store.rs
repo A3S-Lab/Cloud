@@ -38,4 +38,9 @@ pub trait IUserFileObjectStore: Send + Sync {
 
     async fn verify(&self, reference: &UserFileContentReference)
         -> Result<(), UserFileObjectError>;
+
+    async fn open(
+        &self,
+        reference: &UserFileContentReference,
+    ) -> Result<UserFileObjectReader, UserFileObjectError>;
 }

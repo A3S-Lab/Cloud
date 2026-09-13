@@ -236,6 +236,7 @@ Commands:
   user-files get ID      Get one UserFile lifecycle projection
   user-files tombstone ID Tombstone one UserFile with optimistic concurrency
   user-files put-content ID Put reserved UserFile bytes from --file
+  user-files get-content ID Download admitted UserFile bytes to --file
   user-file-quota get    Get the organization-wide UserFile quota ledger
   knowledge-bases create Create one KnowledgeBase from canonical A3S ACL
   knowledge-bases list   List bounded KnowledgeBase catalog projections in the selected project
@@ -339,6 +340,7 @@ export interface CliRuntime {
   environment?: ProcessEnvironment;
   fetch?: CloudFetch;
   readFile?: (path: string) => Promise<Uint8Array>;
+  writeFile?: (path: string, content: Uint8Array) => Promise<void>;
   readStdin?: (limitBytes: number) => Promise<Uint8Array>;
   writeStdout?: (value: string) => void;
   writeStderr?: (value: string) => void;
@@ -362,6 +364,7 @@ export async function runCli(argv: readonly string[], runtime: CliRuntime = {}):
     const result = await executeCommand(arguments_, context, {
       fetch: runtime.fetch,
       readFile: runtime.readFile,
+      writeFile: runtime.writeFile,
       readStdin: runtime.readStdin,
     });
     writeStdout(

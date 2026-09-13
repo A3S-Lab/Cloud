@@ -443,6 +443,120 @@ async fn user_file_rest_puts_content_through_local_object_store() -> Result<()> 
     Ok(())
 }
 
+#[tokio::test]
+async fn user_file_rest_gets_admitted_content_through_local_object_store() -> Result<()> {
+    use crate::modules::files::{
+        RecordUserFileScan, UserFileAccess, UserFileApplicationService, UserFileScanDecision,
+        UserFileState, UserFileTransition,
+    };
+    use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
+    use futures_util::StreamExt;
+    use uuid::Uuid;
+
+    let directory = tempfile::tempdir().map_err(|error| BootError::Internal(error.to_string()))?;
+    let objects = Arc::new(
+        SharedUserFileObjectStore::local(directory.path())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let files = Arc::new(InMemoryUserFileRepository::default());
+    let app = build_test_application_with_user_files(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        files.clone(),
+        Arc::clone(&objects) as Arc<_>,
+    )?;
+    let organization = bootstrap_organization(&app, "files-download", "Files download").await?;
+    let project = create_project(&app, &organization, "files-download-project", "Files").await?;
+    let content = b"admitted-download-bytes";
+    let (admission_acl, user_file_id, _size_bytes) =
+        admission_acl_for_content(&organization, &project, content)?;
+    let collection = format!("/api/v1/organizations/{organization}/projects/{project}/user-files");
+    let content_path = format!("{collection}/{user_file_id}/content");
+
+    let reserved = app
+        .call(post_json(
+            &collection,
+            "files-download-reserve",
+            json!({"admissionAcl": admission_acl}),
+        ))
+        .await?;
+    assert_eq!(reserved.status(), 201);
+
+    let before_admit = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
+    assert_eq!(before_admit.status(), 404);
+
+    let uploaded = app
+        .call(put_user_file_content(
+            content_path.clone(),
+            "files-download-put",
+            1,
+            content,
+        ))
+        .await?;
+    assert_eq!(uploaded.status(), 200);
+    assert_eq!(
+        response_json(&uploaded)?["data"]["file"]["state"],
+        "awaiting_scan"
+    );
+
+    let after_upload = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
+    assert_eq!(after_upload.status(), 404);
+
+    let service = UserFileApplicationService::new(files.clone(), objects);
+    let organization_id = OrganizationId::from_uuid(
+        Uuid::parse_str(&organization).map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let project_id = ProjectId::from_uuid(
+        Uuid::parse_str(&project).map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let admitted = service
+        .record_scan(RecordUserFileScan {
+            transition: UserFileTransition {
+                organization_id,
+                project_id,
+                user_file_id,
+                expected_version: 2,
+                actor_principal_id: PrincipalId::new(),
+                access: UserFileAccess::organization_wide(),
+                idempotency_key: "files-download-scan".into(),
+                request_id: Uuid::now_v7(),
+            },
+            evidence_digest: Sha256Digest::from_bytes(b"download-scan-evidence")
+                .as_str()
+                .into(),
+            decision: UserFileScanDecision::Admitted,
+        })
+        .await
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    assert_eq!(admitted.file.state, UserFileState::Admitted);
+
+    let downloaded = app.call(get_as(&content_path, ADMIN_TOKEN)).await?;
+    assert_eq!(downloaded.status(), 200);
+    assert_eq!(downloaded.content_type(), Some("application/octet-stream"));
+    assert_eq!(
+        downloaded.content_length().ok().flatten(),
+        Some(content.len() as u64)
+    );
+    let mut stream = downloaded
+        .into_body_stream()
+        .ok_or_else(|| BootError::Internal("expected streamed UserFile content body".into()))?;
+    let mut recovered = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        recovered.extend_from_slice(&chunk?);
+    }
+    assert_eq!(recovered, content);
+
+    let imaginary_buffered_upload = app
+        .call(post_json(
+            format!("{collection}/{user_file_id}/upload"),
+            "files-no-buffered-upload-after-download",
+            json!({"bytes": "forbidden"}),
+        ))
+        .await?;
+    assert_eq!(imaginary_buffered_upload.status(), 404);
+    Ok(())
+}
+
 fn admission_acl(
     organization: &str,
     project: &str,
