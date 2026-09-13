@@ -116,3 +116,50 @@ function encodeKnowledgeListOptions(
   }
   return `?limit=${limit}`;
 }
+
+
+export const KNOWLEDGE_DOCUMENT_SCHEMA = 'cloud.knowledge-document.v1' as const;
+export const KNOWLEDGE_CHUNK_SCHEMA = 'cloud.knowledge-chunk.v1' as const;
+
+export interface KnowledgeDocument {
+  organizationId: string;
+  projectId: string;
+  documentId: string;
+  knowledgeBaseId: string;
+  knowledgeBaseRevisionId: string;
+  title: string;
+  contractSchema: typeof KNOWLEDGE_DOCUMENT_SCHEMA;
+  documentAcl: string;
+  documentDigest: string;
+  createdAt: string;
+}
+
+export interface KnowledgeDocumentMutationResult {
+  knowledgeDocument: KnowledgeDocument;
+  replayed: boolean;
+}
+
+export interface KnowledgeChunk {
+  organizationId: string;
+  projectId: string;
+  documentId: string;
+  chunkId: string;
+  ordinal: number;
+  contractSchema: typeof KNOWLEDGE_CHUNK_SCHEMA;
+  chunkAcl: string;
+  chunkDigest: string;
+  createdAt: string;
+}
+
+export interface KnowledgeChunkMutationResult {
+  knowledgeChunk: KnowledgeChunk;
+  replayed: boolean;
+}
+
+export interface CreateKnowledgeDocumentInput {
+  documentAcl: string;
+}
+
+export interface CreateKnowledgeChunkInput {
+  chunkAcl: string;
+}

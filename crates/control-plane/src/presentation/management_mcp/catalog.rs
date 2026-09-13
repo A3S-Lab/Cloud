@@ -267,6 +267,10 @@ pub const KNOWLEDGE_PIPELINES_CREATE: &str = "a3s_cloud_knowledge_pipelines_crea
 pub const KNOWLEDGE_PIPELINES_LIST: &str = "a3s_cloud_knowledge_pipelines_list";
 pub const KNOWLEDGE_PIPELINES_GET: &str = "a3s_cloud_knowledge_pipelines_get";
 pub const KNOWLEDGE_PIPELINES_PUBLISH: &str = "a3s_cloud_knowledge_pipelines_publish";
+pub const KNOWLEDGE_DOCUMENTS_CREATE: &str = "a3s_cloud_knowledge_documents_create";
+pub const KNOWLEDGE_DOCUMENTS_GET: &str = "a3s_cloud_knowledge_documents_get";
+pub const KNOWLEDGE_CHUNKS_CREATE: &str = "a3s_cloud_knowledge_chunks_create";
+pub const KNOWLEDGE_CHUNKS_GET: &str = "a3s_cloud_knowledge_chunks_get";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
 pub const PLUGIN_ASSIGNMENTS_GET: &str = "a3s_cloud_plugin_assignments_get";
@@ -422,6 +426,10 @@ pub enum ManagementTool {
     KnowledgePipelinesList,
     KnowledgePipelinesGet,
     KnowledgePipelinesPublish,
+    KnowledgeDocumentsCreate,
+    KnowledgeDocumentsGet,
+    KnowledgeChunksCreate,
+    KnowledgeChunksGet,
     PluginRegistriesList,
     PluginRegistriesGet,
     PluginAssignmentsList,
@@ -498,7 +506,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 194] = [
+    const ALL: [Self; 198] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -635,6 +643,10 @@ impl ManagementTool {
         Self::KnowledgePipelinesList,
         Self::KnowledgePipelinesGet,
         Self::KnowledgePipelinesPublish,
+        Self::KnowledgeDocumentsCreate,
+        Self::KnowledgeDocumentsGet,
+        Self::KnowledgeChunksCreate,
+        Self::KnowledgeChunksGet,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
         Self::PluginAssignmentsList,
@@ -858,6 +870,10 @@ impl ManagementTool {
             Self::KnowledgePipelinesList => KNOWLEDGE_PIPELINES_LIST,
             Self::KnowledgePipelinesGet => KNOWLEDGE_PIPELINES_GET,
             Self::KnowledgePipelinesPublish => KNOWLEDGE_PIPELINES_PUBLISH,
+            Self::KnowledgeDocumentsCreate => KNOWLEDGE_DOCUMENTS_CREATE,
+            Self::KnowledgeDocumentsGet => KNOWLEDGE_DOCUMENTS_GET,
+            Self::KnowledgeChunksCreate => KNOWLEDGE_CHUNKS_CREATE,
+            Self::KnowledgeChunksGet => KNOWLEDGE_CHUNKS_GET,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
             Self::PluginAssignmentsList => PLUGIN_ASSIGNMENTS_LIST,
@@ -1006,7 +1022,9 @@ impl ManagementTool {
             Self::KnowledgeBasesCreate
             | Self::KnowledgeBasesAppend
             | Self::KnowledgePipelinesCreate
-            | Self::KnowledgePipelinesPublish => Some(ApiTokenScope::KNOWLEDGE_WRITE),
+            | Self::KnowledgePipelinesPublish
+            | Self::KnowledgeDocumentsCreate
+            | Self::KnowledgeChunksCreate => Some(ApiTokenScope::KNOWLEDGE_WRITE),
             Self::PluginAssignmentsSet | Self::PluginPlanProjectionsConfirm => {
                 Some(ApiTokenScope::PLUGIN_WRITE)
             }
@@ -1065,7 +1083,9 @@ impl ManagementTool {
             | Self::KnowledgeBasesList
             | Self::KnowledgeBasesGet
             | Self::KnowledgePipelinesList
-            | Self::KnowledgePipelinesGet => Some(ApiTokenScope::CLOUD_READ),
+            | Self::KnowledgePipelinesGet
+            | Self::KnowledgeDocumentsGet
+            | Self::KnowledgeChunksGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
             | Self::NotificationAlertPoliciesRevoke
@@ -1214,7 +1234,11 @@ impl ManagementTool {
             | Self::KnowledgePipelinesCreate
             | Self::KnowledgePipelinesList
             | Self::KnowledgePipelinesGet
-            | Self::KnowledgePipelinesPublish => Some(ManagementResourceBinding::ProjectArgument),
+            | Self::KnowledgePipelinesPublish
+            | Self::KnowledgeDocumentsCreate
+            | Self::KnowledgeDocumentsGet
+            | Self::KnowledgeChunksCreate
+            | Self::KnowledgeChunksGet => Some(ManagementResourceBinding::ProjectArgument),
             Self::ConnectorProfilesCreate
             | Self::ConnectorProfilesRevise
             | Self::ConnectorProfilesList
@@ -2135,6 +2159,30 @@ impl ManagementTool {
                 "Publish one immutable KnowledgePipeline release with digest concurrency and explicit idempotency.",
                 publish_knowledge_pipeline_schema(),
                 false,
+            ),
+            Self::KnowledgeDocumentsCreate => (
+                "Create knowledge document",
+                "Create one project-scoped KnowledgeDocument from canonical A3S ACL with explicit idempotency.",
+                create_knowledge_document_schema(),
+                false,
+            ),
+            Self::KnowledgeDocumentsGet => (
+                "Get knowledge document",
+                "Get one tenant-authorized KnowledgeDocument lifecycle projection.",
+                knowledge_document_schema(),
+                true,
+            ),
+            Self::KnowledgeChunksCreate => (
+                "Create knowledge chunk",
+                "Create one KnowledgeChunk under an existing KnowledgeDocument from canonical A3S ACL with explicit idempotency.",
+                create_knowledge_chunk_schema(),
+                false,
+            ),
+            Self::KnowledgeChunksGet => (
+                "Get knowledge chunk",
+                "Get one tenant-authorized KnowledgeChunk lifecycle projection.",
+                knowledge_chunk_schema(),
+                true,
             ),
             Self::UserFilesReserve => (
                 "Reserve user file",
@@ -4945,6 +4993,69 @@ fn publish_knowledge_pipeline_schema() -> Value {
     })
 }
 
+fn create_knowledge_document_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "documentAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeDocument contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "documentAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn knowledge_document_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "documentId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "documentId"],
+        "additionalProperties": false
+    })
+}
+
+fn create_knowledge_chunk_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "documentId": {"type": "string", "format": "uuid"},
+            "chunkAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeChunk contract."
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["projectId", "documentId", "chunkAcl", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn knowledge_chunk_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "chunkId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "chunkId"],
+        "additionalProperties": false
+    })
+}
+
 fn reserve_user_file_schema() -> Value {
     json!({
         "type": "object",
@@ -5434,6 +5545,8 @@ mod tests {
             ManagementTool::KnowledgeBasesAppend,
             ManagementTool::KnowledgePipelinesCreate,
             ManagementTool::KnowledgePipelinesPublish,
+            ManagementTool::KnowledgeDocumentsCreate,
+            ManagementTool::KnowledgeChunksCreate,
         ] {
             assert_eq!(tool.required_scope(), Some(ApiTokenScope::KNOWLEDGE_WRITE));
             assert_eq!(
@@ -5448,6 +5561,8 @@ mod tests {
             ManagementTool::KnowledgeBasesGet,
             ManagementTool::KnowledgePipelinesList,
             ManagementTool::KnowledgePipelinesGet,
+            ManagementTool::KnowledgeDocumentsGet,
+            ManagementTool::KnowledgeChunksGet,
         ] {
             assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
             assert_eq!(
@@ -5510,6 +5625,27 @@ mod tests {
         assert_eq!(
             ManagementTool::KnowledgePipelinesPublish.name(),
             KNOWLEDGE_PIPELINES_PUBLISH
+        );
+        let document_create = ManagementTool::KnowledgeDocumentsCreate.definition();
+        assert_eq!(
+            document_create["inputSchema"]["properties"]["documentAcl"]["maxLength"],
+            KNOWLEDGE_CONTRACT_MAX_ACL_BYTES
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeDocumentsCreate.name(),
+            KNOWLEDGE_DOCUMENTS_CREATE
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeDocumentsGet.name(),
+            KNOWLEDGE_DOCUMENTS_GET
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeChunksCreate.name(),
+            KNOWLEDGE_CHUNKS_CREATE
+        );
+        assert_eq!(
+            ManagementTool::KnowledgeChunksGet.name(),
+            KNOWLEDGE_CHUNKS_GET
         );
     }
 

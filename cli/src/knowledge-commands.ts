@@ -25,6 +25,10 @@ import {
   knowledgeBaseMutationResult,
   knowledgeBaseResult,
   knowledgeBasesResult,
+  knowledgeChunkMutationResult,
+  knowledgeChunkResult,
+  knowledgeDocumentMutationResult,
+  knowledgeDocumentResult,
   knowledgePipelineMutationResult,
   knowledgePipelineResult,
   knowledgePipelinesResult,
@@ -171,6 +175,63 @@ export async function executeKnowledgeCommand(
         )
       );
     }
+    case 'knowledge-documents create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 2, 'knowledge-documents create');
+      rejectAgentProviderKindOption(arguments_);
+      const documentAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeDocument ACL',
+        dependencies.readFile
+      );
+      return knowledgeDocumentMutationResult(
+        await cloudApi().createKnowledgeDocument(
+          organizationId(),
+          projectId(),
+          { documentAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-documents get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-documents get <document-id>');
+      return knowledgeDocumentResult(
+        await cloudApi().getKnowledgeDocument(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeDocument ID')
+        )
+      );
+    case 'knowledge-chunks create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 3, 'knowledge-chunks create <document-id>');
+      rejectAgentProviderKindOption(arguments_);
+      const chunkAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeChunk ACL',
+        dependencies.readFile
+      );
+      return knowledgeChunkMutationResult(
+        await cloudApi().createKnowledgeChunk(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeDocument ID'),
+          { chunkAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-chunks get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-chunks get <chunk-id>');
+      return knowledgeChunkResult(
+        await cloudApi().getKnowledgeChunk(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeChunk ID')
+        )
+      );
     default:
       return undefined;
   }

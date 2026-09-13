@@ -251,3 +251,170 @@ function capture() {
     stderr: () => stderr,
   };
 }
+
+const DOCUMENT_ID = '018f0000-0000-7000-8000-000000000303';
+const CHUNK_ID = '018f0000-0000-7000-8000-000000000304';
+const DOCUMENT_ACL = `knowledge_document {
+  document_id = "${DOCUMENT_ID}"
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  organization_id = "${ORGANIZATION_ID}"
+  project_id = "${PROJECT_ID}"
+  provenance_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  retention_until = "2027-08-21T00:00:00.000000Z"
+  schema = "cloud.knowledge-document.v1"
+  tags = ["returns"]
+  title = "Return policy"
+  source {
+    content_digest = "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    kind = "admitted_user_file"
+    user_file_id = "018f0000-0000-7000-8000-000000000203"
+  }
+}
+`;
+const CHUNK_ACL = `knowledge_chunk {
+  chunk_id = "${CHUNK_ID}"
+  content_digest = "sha256:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+  document_id = "${DOCUMENT_ID}"
+  object_ref = "organizations/org/projects/proj/knowledge/chunks/0"
+  ordinal = 0
+  organization_id = "${ORGANIZATION_ID}"
+  project_id = "${PROJECT_ID}"
+  parent_chunk_id = ""
+  provenance_digest = "sha256:cdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd"
+  schema = "cloud.knowledge-chunk.v1"
+  structure = "general"
+  tags = ["section-1"]
+}
+`;
+
+describe('a3s-cloud KnowledgeDocument/Chunk lifecycle commands', () => {
+  it('creates and gets documents and chunks through exact lifecycle routes', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async (path: string) => {
+        if (path === 'knowledge-document.acl') {
+          return new TextEncoder().encode(DOCUMENT_ACL);
+        }
+        expect(path).toBe('knowledge-chunk.acl');
+        return new TextEncoder().encode(CHUNK_ACL);
+      },
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const path = String(args[0]);
+        const method = String(args[1]?.method ?? 'GET');
+        if (path.endsWith('/chunks') && method === 'POST') {
+          return envelope({ knowledgeChunk: knowledgeChunk(), replayed: false }, 201);
+        }
+        if (path === knowledgeDocumentBase() && method === 'POST') {
+          return envelope({ knowledgeDocument: knowledgeDocument(), replayed: false }, 201);
+        }
+        if (path.includes(`/knowledge-documents/${DOCUMENT_ID}`)) {
+          return envelope(knowledgeDocument());
+        }
+        if (path.includes(`/knowledge-chunks/${CHUNK_ID}`)) {
+          return envelope(knowledgeChunk());
+        }
+        throw new Error(`unexpected fetch ${method} ${path}`);
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'knowledge-documents',
+          'create',
+          '--file=knowledge-document.acl',
+          '--idempotency-key=cli:knowledge:create-document',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(['knowledge-documents', 'get', DOCUMENT_ID, '--output=json'], runtime)
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'knowledge-chunks',
+          'create',
+          DOCUMENT_ID,
+          '--file=knowledge-chunk.acl',
+          '--idempotency-key=cli:knowledge:create-chunk',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(await runCli(['knowledge-chunks', 'get', CHUNK_ID, '--output=json'], runtime)).toBe(
+      ExitCode.Success
+    );
+
+    expect(calls.map(([input]) => String(input))).toEqual([
+      knowledgeDocumentBase(),
+      `${knowledgeDocumentBase()}/${DOCUMENT_ID}`,
+      `${knowledgeDocumentBase()}/${DOCUMENT_ID}/chunks`,
+      `${knowledgeChunkBase()}/${CHUNK_ID}`,
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ documentAcl: DOCUMENT_ACL }),
+      })
+    );
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ chunkAcl: CHUNK_ACL }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+});
+
+function knowledgeDocument() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    documentId: DOCUMENT_ID,
+    knowledgeBaseId: KNOWLEDGE_BASE_ID,
+    knowledgeBaseRevisionId: REVISION_ID,
+    title: 'Return policy',
+    contractSchema: 'cloud.knowledge-document.v1',
+    documentAcl: DOCUMENT_ACL,
+    documentDigest: DIGEST,
+    createdAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+function knowledgeChunk() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    documentId: DOCUMENT_ID,
+    chunkId: CHUNK_ID,
+    ordinal: 0,
+    contractSchema: 'cloud.knowledge-chunk.v1',
+    chunkAcl: CHUNK_ACL,
+    chunkDigest: DIGEST,
+    createdAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+function knowledgeDocumentBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/knowledge-documents`
+  );
+}
+
+function knowledgeChunkBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/knowledge-chunks`
+  );
+}
