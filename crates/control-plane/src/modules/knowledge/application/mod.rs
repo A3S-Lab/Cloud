@@ -2,6 +2,7 @@ mod catalog;
 mod commands;
 mod document_catalog;
 mod index_catalog;
+mod index_lifecycle;
 mod document_lifecycle;
 mod lifecycle;
 mod queries;
@@ -17,6 +18,10 @@ pub use document_catalog::{KnowledgeChunkCatalogService, KnowledgeDocumentCatalo
 pub use index_catalog::{
     ExternalKnowledgeBindingCatalogService, KnowledgeIndexRevisionCatalogService,
     KnowledgeRetrievalPolicyRevisionCatalogService,
+};
+pub use index_lifecycle::{
+    CreateExternalKnowledgeBindingCommand, CreateKnowledgeIndexRevisionCommand,
+    CreateKnowledgeRetrievalPolicyRevisionCommand, KnowledgeIndexLifecycleService,
 };
 pub use document_lifecycle::{
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand, GetKnowledgeChunk,

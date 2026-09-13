@@ -1,16 +1,22 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
-    require_one_row, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
+    transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::knowledge::domain::{
-    CreateExternalKnowledgeBinding, CreateKnowledgeIndexRevision,
-    CreateKnowledgeRetrievalPolicyRevision, ExternalKnowledgeBindingRecord,
-    ExternalKnowledgeBindingV1, IExternalKnowledgeBindingRepository,
+    CreateExternalKnowledgeBinding, CreateExternalKnowledgeBindingWrite,
+    CreateKnowledgeIndexRevision, CreateKnowledgeIndexRevisionWrite,
+    CreateKnowledgeRetrievalPolicyRevision, CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ExternalKnowledgeBindingRecord, ExternalKnowledgeBindingV1,
+    ExternalKnowledgeBindingWriteReference, IExternalKnowledgeBindingRepository,
     IKnowledgeIndexRevisionRepository, IKnowledgeRetrievalPolicyRevisionRepository,
-    KnowledgeIndexRevisionRecord, KnowledgeIndexRevisionV1,
+    KnowledgeIndexRevisionRecord, KnowledgeIndexRevisionV1, KnowledgeIndexWriteReference,
     KnowledgeRetrievalPolicyRevisionRecord, KnowledgeRetrievalPolicyRevisionV1,
+    KnowledgeRetrievalPolicyWriteReference,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, IdempotentWrite, PrincipalId, RepositoryError,
+};
 use a3s_orm::{
     sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
 };
@@ -102,6 +108,87 @@ impl IKnowledgeIndexRevisionRepository for PostgresKnowledgeIndexRevisionReposit
             .await
             .map_err(transaction_error)
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeIndexRevisionRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) = idempotency_replay::<KnowledgeIndexWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_index(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.index_revision_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeIndexRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeIndexRevisionRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgeIndexWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_index(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.index_revision_id,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeIndexRevision idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_index(transaction, &write.record).await?;
+                    persist_knowledge_index_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.index.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
 }
 
 #[derive(Clone)]
@@ -188,6 +275,90 @@ impl IKnowledgeRetrievalPolicyRevisionRepository
             .await
             .map_err(transaction_error)
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) =
+                        idempotency_replay::<KnowledgeRetrievalPolicyWriteReference>(
+                            transaction,
+                            &idempotency,
+                        )
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_policy(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.policy_revision_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) =
+                        idempotency_replay::<KnowledgeRetrievalPolicyWriteReference>(
+                            transaction,
+                            &write.idempotency,
+                        )
+                        .await?
+                    {
+                        let record = load_policy(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.policy_revision_id,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeRetrievalPolicyRevision idempotency reference is missing"
+                                    .into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_policy(transaction, &write.record).await?;
+                    persist_knowledge_retrieval_policy_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.retrieval-policy.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
 }
 
 #[derive(Clone)]
@@ -263,6 +434,89 @@ impl IExternalKnowledgeBindingRepository for PostgresExternalKnowledgeBindingRep
                     )
                     .await?;
                     rows.into_iter().map(decode_binding).collect()
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalKnowledgeBindingRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) =
+                        idempotency_replay::<ExternalKnowledgeBindingWriteReference>(
+                            transaction,
+                            &idempotency,
+                        )
+                        .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_binding(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.binding_id,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateExternalKnowledgeBindingWrite,
+    ) -> Result<IdempotentWrite<ExternalKnowledgeBindingRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) =
+                        idempotency_replay::<ExternalKnowledgeBindingWriteReference>(
+                            transaction,
+                            &write.idempotency,
+                        )
+                        .await?
+                    {
+                        let record = load_binding(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.binding_id,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "ExternalKnowledgeBinding idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_binding(transaction, &write.record).await?;
+                    persist_external_knowledge_binding_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.external-binding.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
                 })
             })
             .await
@@ -376,6 +630,133 @@ async fn insert_binding(
         ),
         Err(error) => Err(error),
     }
+}
+
+
+async fn persist_knowledge_index_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgeIndexRevisionRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.index_revision.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.index_revision_id.as_uuid(),
+            occurred_at: record.created_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "knowledgeBaseRevisionId": spec.knowledge_base_revision_id,
+                "indexRevisionId": spec.index_revision_id,
+                "indexDigest": record.index_revision.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgeIndexWriteReference::from(record),
+    )
+    .await
+}
+
+async fn persist_knowledge_retrieval_policy_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgeRetrievalPolicyRevisionRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.policy_revision.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.policy_revision_id.as_uuid(),
+            occurred_at: record.created_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "knowledgeBaseRevisionId": spec.knowledge_base_revision_id,
+                "policyRevisionId": spec.policy_revision_id,
+                "policyDigest": record.policy_revision.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgeRetrievalPolicyWriteReference::from(record),
+    )
+    .await
+}
+
+async fn persist_external_knowledge_binding_side_effects(
+    transaction: &PostgresTransaction,
+    record: &ExternalKnowledgeBindingRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.binding.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.binding_id.as_uuid(),
+            occurred_at: record.created_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "knowledgeBaseId": spec.knowledge_base_id,
+                "bindingId": spec.binding_id,
+                "bindingDigest": record.binding.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &ExternalKnowledgeBindingWriteReference::from(record),
+    )
+    .await
 }
 
 async fn load_index(

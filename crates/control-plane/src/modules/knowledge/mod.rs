@@ -33,6 +33,8 @@
 //! those repositories so presentation cannot reach persistence adapters
 //! directly. No authorization, idempotency, audit, Outbox, REST/OpenAPI,
 //! client, CLI, or Management MCP surface.
+//! `K0.1-C13` adds authorized idempotent index/policy/binding create writes with
+//! audit and Outbox side effects over the C11 repositories. No REST/MCP.
 
 mod application;
 mod domain;
@@ -48,8 +50,10 @@ pub use application::{
     GetKnowledgePipeline, GetKnowledgePipelineHandler, KnowledgeAccess,
     KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
     KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService,
-    KnowledgeIndexRevisionCatalogService, KnowledgeMutationResult,
-    KnowledgeRetrievalPolicyRevisionCatalogService, ExternalKnowledgeBindingCatalogService,
+    KnowledgeIndexLifecycleService, KnowledgeIndexRevisionCatalogService,
+    KnowledgeMutationResult, KnowledgeRetrievalPolicyRevisionCatalogService,
+    ExternalKnowledgeBindingCatalogService, CreateExternalKnowledgeBindingCommand,
+    CreateKnowledgeIndexRevisionCommand, CreateKnowledgeRetrievalPolicyRevisionCommand,
     KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
     ListKnowledgeChunks, ListKnowledgeChunksHandler, ListKnowledgeDocuments,
     ListKnowledgeDocumentsHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
@@ -65,8 +69,10 @@ pub use domain::{
     CreateKnowledgeBaseWrite, CreateKnowledgeChunk, CreateKnowledgeChunkWrite,
     CreateKnowledgeDocument, CreateKnowledgeDocumentWrite, CreateKnowledgePipeline,
     CreateKnowledgePipelineWrite, ExternalKnowledgeBindingSpecV1, ExternalKnowledgeBindingV1,
-    CreateExternalKnowledgeBinding, CreateKnowledgeIndexRevision,
-    CreateKnowledgeRetrievalPolicyRevision, ExternalKnowledgeBindingRecord,
+    CreateExternalKnowledgeBinding, CreateExternalKnowledgeBindingWrite,
+    CreateKnowledgeIndexRevision, CreateKnowledgeIndexRevisionWrite,
+    CreateKnowledgeRetrievalPolicyRevision, CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ExternalKnowledgeBindingRecord,
     IExternalKnowledgeBindingRepository, IKnowledgeBaseRepository, IKnowledgeChunkRepository,
     IKnowledgeDocumentRepository, IKnowledgeIndexRevisionRepository,
     IKnowledgePipelineRepository, IKnowledgeRetrievalPolicyRevisionRepository,
