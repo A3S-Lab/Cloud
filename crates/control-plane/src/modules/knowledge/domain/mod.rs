@@ -1,5 +1,6 @@
 mod acl;
 mod base_revision;
+mod catalog;
 mod chunk;
 mod document;
 mod external_binding;
@@ -12,6 +13,11 @@ mod types;
 mod tests;
 
 pub use base_revision::{KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1};
+pub use catalog::{
+    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
+    IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRecord,
+    KnowledgePipelineRecord, PublishKnowledgePipelineRelease,
+};
 pub use chunk::{KnowledgeChunkSpecV1, KnowledgeChunkV1};
 pub use document::{
     KnowledgeContentReferenceV1, KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1,

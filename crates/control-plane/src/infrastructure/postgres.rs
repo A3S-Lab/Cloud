@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 200;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "200";
+pub const CLOUD_MIGRATION_COUNT: i64 = 201;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "201";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1807,6 +1807,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/200_mcp_route_policy_profile_admission.sql"
+            )),
+        ),
+        Migration::new(
+            "201",
+            "KnowledgeBase and KnowledgePipeline catalogs",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/201_knowledge_catalog.sql"
             )),
         ),
     ]

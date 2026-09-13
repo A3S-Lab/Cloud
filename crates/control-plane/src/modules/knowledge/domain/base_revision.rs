@@ -77,6 +77,14 @@ impl KnowledgeBaseRevisionV1 {
     pub const fn digest(&self) -> &Sha256Digest {
         &self.digest
     }
+
+    pub fn validate(&self) -> Result<(), String> {
+        let restored = Self::restore(self.canonical_acl(), self.digest.as_str())?;
+        if restored != *self {
+            return Err("KnowledgeBaseRevision drifted from canonical ACL".into());
+        }
+        Ok(())
+    }
 }
 
 fn sealed(spec: KnowledgeBaseRevisionSpecV1) -> Result<KnowledgeBaseRevisionV1, String> {
