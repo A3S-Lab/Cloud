@@ -8,11 +8,18 @@ mod index_revision;
 mod pipeline_release;
 mod retrieval_policy;
 mod types;
+mod writes;
 
 #[cfg(test)]
 mod tests;
 
 pub use base_revision::{KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1};
+pub use writes::{
+    AppendKnowledgeBaseWrite, CreateKnowledgeBaseWrite, CreateKnowledgePipelineWrite,
+    KnowledgeBaseLifecycleChanged, KnowledgeBaseWriteReference, KnowledgePipelineLifecycleChanged,
+    KnowledgePipelineWriteReference, PublishKnowledgePipelineWrite,
+    KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA,
+};
 pub use catalog::{
     AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
     IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRecord,

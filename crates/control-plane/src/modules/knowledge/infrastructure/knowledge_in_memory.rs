@@ -1,25 +1,39 @@
 use crate::modules::knowledge::domain::{
-    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
+    AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
+    CreateKnowledgeBaseWrite, CreateKnowledgePipeline, CreateKnowledgePipelineWrite,
     IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRecord,
-    KnowledgeBaseRevisionV1, KnowledgePipelineRecord, KnowledgePipelineReleaseV1,
-    PublishKnowledgePipelineRelease,
+    KnowledgeBaseRevisionV1, KnowledgeBaseWriteReference, KnowledgePipelineRecord,
+    KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference, PublishKnowledgePipelineRelease,
+    PublishKnowledgePipelineWrite,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, IdempotentWrite, RepositoryError,
+};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
 /// Deterministic local adapter for the KnowledgeBase revision catalog.
-#[derive(Default)]
 pub struct InMemoryKnowledgeBaseRepository {
     heads: RwLock<BTreeMap<(Uuid, Uuid), KnowledgeBaseRecord>>,
     revisions: RwLock<BTreeMap<Uuid, KnowledgeBaseRevisionV1>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgeBaseWriteReference>>,
 }
 
 impl InMemoryKnowledgeBaseRepository {
     pub fn new() -> Self {
         Self::default()
+    }
+}
+
+impl Default for InMemoryKnowledgeBaseRepository {
+    fn default() -> Self {
+        Self {
+            heads: RwLock::new(BTreeMap::new()),
+            revisions: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
+        }
     }
 }
 
@@ -122,13 +136,103 @@ impl IKnowledgeBaseRepository for InMemoryKnowledgeBaseRepository {
         heads.insert(key, updated.clone());
         Ok(updated)
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeBaseRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(
+            reference.organization_id.as_uuid(),
+            reference.knowledge_base_id,
+        )
+        .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgeBase {
+                revision: write.record.revision.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgeBaseWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
+
+    async fn append_write(
+        &self,
+        write: AppendKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .append_revision(AppendKnowledgeBaseRevision {
+                organization_id: write.record.revision.spec().organization_id.as_uuid(),
+                knowledge_base_id: write.record.revision.spec().knowledge_base_id.as_uuid(),
+                expected_revision_digest: write.expected_revision_digest.clone(),
+                revision: write.record.revision.clone(),
+                updated_at: write.record.updated_at,
+            })
+            .await?;
+        let reference = KnowledgeBaseWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
 }
 
 /// Deterministic local adapter for the KnowledgePipeline release catalog.
-#[derive(Default)]
 pub struct InMemoryKnowledgePipelineRepository {
     heads: RwLock<BTreeMap<(Uuid, Uuid), KnowledgePipelineRecord>>,
     releases: RwLock<BTreeMap<Uuid, KnowledgePipelineReleaseV1>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgePipelineWriteReference>>,
+}
+
+impl Default for InMemoryKnowledgePipelineRepository {
+    fn default() -> Self {
+        Self {
+            heads: RwLock::new(BTreeMap::new()),
+            releases: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
+        }
+    }
 }
 
 impl InMemoryKnowledgePipelineRepository {
@@ -221,6 +325,83 @@ impl IKnowledgePipelineRepository for InMemoryKnowledgePipelineRepository {
         releases.insert(release_id, updated.release.clone());
         heads.insert(key, updated.clone());
         Ok(updated)
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgePipelineRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(reference.organization_id.as_uuid(), reference.pipeline_id)
+            .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgePipeline {
+                release: write.record.release.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgePipelineWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
+
+    async fn publish_write(
+        &self,
+        write: PublishKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .publish_release(PublishKnowledgePipelineRelease {
+                organization_id: write.record.release.spec().organization_id.as_uuid(),
+                pipeline_id: write.record.release.spec().pipeline_id.as_uuid(),
+                expected_release_digest: write.expected_release_digest.clone(),
+                release: write.record.release.clone(),
+                updated_at: write.record.updated_at,
+            })
+            .await?;
+        let reference = KnowledgePipelineWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
     }
 }
 

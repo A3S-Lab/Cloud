@@ -1,14 +1,19 @@
 use crate::infrastructure::{
-    execute, fetch_all, fetch_optional, is_foreign_key_violation, is_unique_violation,
-    require_one_row, transaction_error, PostgresPersistenceError,
+    execute, fetch_all, fetch_optional, idempotency_replay, is_foreign_key_violation,
+    is_unique_violation, require_one_row, store_audit, store_idempotency, store_outbox,
+    transaction_error, AuditWrite, PostgresPersistenceError,
 };
 use crate::modules::knowledge::domain::{
-    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
+    AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
+    CreateKnowledgeBaseWrite, CreateKnowledgePipeline, CreateKnowledgePipelineWrite,
     IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRecord,
-    KnowledgeBaseRevisionV1, KnowledgePipelineRecord, KnowledgePipelineReleaseV1,
-    PublishKnowledgePipelineRelease,
+    KnowledgeBaseRevisionV1, KnowledgeBaseWriteReference, KnowledgePipelineRecord,
+    KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference, PublishKnowledgePipelineRelease,
+    PublishKnowledgePipelineWrite,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{
+    IdempotencyRequest, IdempotentWrite, PrincipalId, RepositoryError,
+};
 use a3s_orm::{
     sql_query, DecodeError, FromRow, FromValue, PostgresExecutor, PostgresTransaction, Row,
 };
@@ -179,6 +184,182 @@ impl IKnowledgeBaseRepository for PostgresKnowledgeBaseRepository {
             .await
             .map_err(transaction_error)
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeBaseRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) = idempotency_replay::<KnowledgeBaseWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_base_head(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.knowledge_base_id,
+                        false,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgeBaseWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_base_head(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.knowledge_base_id,
+                            false,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeBase idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_base_head(transaction, &write.record).await?;
+                    insert_base_revision(
+                        transaction,
+                        &write.record.revision,
+                        None,
+                        None,
+                        write.record.created_at,
+                    )
+                    .await?;
+                    persist_knowledge_base_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.base.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn append_write(
+        &self,
+        write: AppendKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgeBaseWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_base_head(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.knowledge_base_id,
+                            false,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgeBase idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    let organization_id = write.record.revision.spec().organization_id.as_uuid();
+                    let knowledge_base_id =
+                        write.record.revision.spec().knowledge_base_id.as_uuid();
+                    let current = load_base_head(
+                        transaction,
+                        organization_id,
+                        knowledge_base_id,
+                        true,
+                    )
+                    .await?
+                    .ok_or(RepositoryError::NotFound)
+                    .map_err(PostgresPersistenceError::Repository)?;
+                    let parent_revision_id = current.revision.spec().revision_id.as_uuid();
+                    let parent_digest = current.revision.digest().as_str().to_string();
+                    let updated = current
+                        .append(
+                            write.record.revision.clone(),
+                            &write.expected_revision_digest,
+                            write.record.updated_at,
+                        )
+                        .map_err(|error| {
+                            PostgresPersistenceError::Repository(RepositoryError::Conflict(error))
+                        })?;
+                    insert_base_revision(
+                        transaction,
+                        &updated.revision,
+                        Some(parent_revision_id),
+                        Some(parent_digest.as_str()),
+                        updated.updated_at,
+                    )
+                    .await?;
+                    update_base_head(transaction, &updated).await?;
+                    persist_knowledge_base_side_effects(
+                        transaction,
+                        &updated,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.base.revised",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: updated,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
 }
 
 /// Durable KnowledgePipeline release catalog.
@@ -280,6 +461,167 @@ impl IKnowledgePipelineRepository for PostgresKnowledgePipelineRepository {
                         .await?;
                     update_pipeline_head(transaction, &updated).await?;
                     Ok(updated)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgePipelineRecord>, RepositoryError> {
+        let idempotency = idempotency.clone();
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let Some(reference) = idempotency_replay::<KnowledgePipelineWriteReference>(
+                        transaction,
+                        &idempotency,
+                    )
+                    .await?
+                    else {
+                        return Ok(None);
+                    };
+                    load_pipeline_head(
+                        transaction,
+                        reference.value.organization_id.as_uuid(),
+                        reference.value.pipeline_id,
+                        false,
+                    )
+                    .await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgePipelineWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_pipeline_head(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.pipeline_id,
+                            false,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgePipeline idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    insert_pipeline_head(transaction, &write.record).await?;
+                    insert_pipeline_release(
+                        transaction,
+                        &write.record.release,
+                        write.record.created_at,
+                    )
+                    .await?;
+                    persist_knowledge_pipeline_side_effects(
+                        transaction,
+                        &write.record,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.pipeline.created",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: write.record,
+                        replayed: false,
+                    })
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn publish_write(
+        &self,
+        write: PublishKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError> {
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    if let Some(reference) = idempotency_replay::<KnowledgePipelineWriteReference>(
+                        transaction,
+                        &write.idempotency,
+                    )
+                    .await?
+                    {
+                        let record = load_pipeline_head(
+                            transaction,
+                            reference.value.organization_id.as_uuid(),
+                            reference.value.pipeline_id,
+                            false,
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            PostgresPersistenceError::Invariant(
+                                "KnowledgePipeline idempotency reference is missing".into(),
+                            )
+                        })?;
+                        return Ok(IdempotentWrite {
+                            value: record,
+                            replayed: true,
+                        });
+                    }
+                    write
+                        .validate()
+                        .map_err(PostgresPersistenceError::Invariant)?;
+                    let organization_id = write.record.release.spec().organization_id.as_uuid();
+                    let pipeline_id = write.record.release.spec().pipeline_id.as_uuid();
+                    let current =
+                        load_pipeline_head(transaction, organization_id, pipeline_id, true)
+                            .await?
+                            .ok_or(RepositoryError::NotFound)
+                            .map_err(PostgresPersistenceError::Repository)?;
+                    let updated = current
+                        .publish(
+                            write.record.release.clone(),
+                            &write.expected_release_digest,
+                            write.record.updated_at,
+                        )
+                        .map_err(|error| {
+                            PostgresPersistenceError::Repository(RepositoryError::Conflict(error))
+                        })?;
+                    insert_pipeline_release(transaction, &updated.release, updated.updated_at)
+                        .await?;
+                    update_pipeline_head(transaction, &updated).await?;
+                    persist_knowledge_pipeline_side_effects(
+                        transaction,
+                        &updated,
+                        &write.event,
+                        write.actor_principal_id,
+                        write.request_id,
+                        &write.idempotency,
+                        "knowledge.pipeline.published",
+                    )
+                    .await?;
+                    Ok(IdempotentWrite {
+                        value: updated,
+                        replayed: false,
+                    })
                 })
             })
             .await
@@ -785,6 +1127,92 @@ impl FromRow for KnowledgePipelineReleaseRow {
             release_acl: decode(row, 4)?,
         })
     }
+}
+
+
+async fn persist_knowledge_base_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgeBaseRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.revision.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.knowledge_base_id.as_uuid(),
+            occurred_at: record.updated_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "knowledgeBaseId": spec.knowledge_base_id,
+                "revisionId": spec.revision_id,
+                "generation": spec.generation,
+                "revisionDigest": record.revision.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgeBaseWriteReference::from(record),
+    )
+    .await
+}
+
+async fn persist_knowledge_pipeline_side_effects(
+    transaction: &PostgresTransaction,
+    record: &KnowledgePipelineRecord,
+    event: &a3s_cloud_contracts::DomainEventEnvelope,
+    actor_principal_id: PrincipalId,
+    request_id: Uuid,
+    idempotency: &IdempotencyRequest,
+    action: &'static str,
+) -> Result<(), PostgresPersistenceError> {
+    let spec = record.release.spec();
+    store_outbox(transaction, event).await?;
+    store_audit(
+        transaction,
+        &AuditWrite {
+            audit_id: Uuid::now_v7(),
+            actor_id: Some(actor_principal_id.as_uuid()),
+            action,
+            aggregate_id: spec.pipeline_id.as_uuid(),
+            occurred_at: record.updated_at,
+            request_id,
+            scope: AuditWrite::resource_scope(
+                spec.organization_id.as_uuid(),
+                spec.project_id,
+                None,
+            ),
+            details: serde_json::json!({
+                "projectId": spec.project_id,
+                "pipelineId": spec.pipeline_id,
+                "releaseId": spec.release_id,
+                "releaseDigest": record.release.digest().as_str(),
+            }),
+        },
+    )
+    .await?;
+    store_idempotency(
+        transaction,
+        idempotency,
+        &KnowledgePipelineWriteReference::from(record),
+    )
+    .await
 }
 
 fn decode<T: FromValue>(row: &impl Row, index: usize) -> Result<T, DecodeError> {
