@@ -1,11 +1,14 @@
 use crate::modules::knowledge::domain::{
-    CreateExternalKnowledgeBinding, CreateKnowledgeIndexRevision,
-    CreateKnowledgeRetrievalPolicyRevision, ExternalKnowledgeBindingRecord,
+    CreateExternalKnowledgeBinding, CreateExternalKnowledgeBindingWrite,
+    CreateKnowledgeIndexRevision, CreateKnowledgeIndexRevisionWrite,
+    CreateKnowledgeRetrievalPolicyRevision, CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ExternalKnowledgeBindingRecord, ExternalKnowledgeBindingWriteReference,
     IExternalKnowledgeBindingRepository, IKnowledgeIndexRevisionRepository,
     IKnowledgeRetrievalPolicyRevisionRepository, KnowledgeIndexRevisionRecord,
-    KnowledgeRetrievalPolicyRevisionRecord,
+    KnowledgeIndexWriteReference, KnowledgeRetrievalPolicyRevisionRecord,
+    KnowledgeRetrievalPolicyWriteReference,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -13,12 +16,14 @@ use uuid::Uuid;
 
 pub struct InMemoryKnowledgeIndexRevisionRepository {
     records: RwLock<BTreeMap<(Uuid, Uuid), KnowledgeIndexRevisionRecord>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgeIndexWriteReference>>,
 }
 
 impl Default for InMemoryKnowledgeIndexRevisionRepository {
     fn default() -> Self {
         Self {
             records: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
         }
     }
 }
@@ -92,16 +97,64 @@ impl IKnowledgeIndexRevisionRepository for InMemoryKnowledgeIndexRevisionReposit
             .cloned()
             .collect())
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeIndexRevisionRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(
+            reference.organization_id.as_uuid(),
+            reference.index_revision_id,
+        )
+        .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeIndexRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeIndexRevisionRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgeIndexRevision {
+                index_revision: write.record.index_revision.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgeIndexWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
 }
 
 pub struct InMemoryKnowledgeRetrievalPolicyRevisionRepository {
     records: RwLock<BTreeMap<(Uuid, Uuid), KnowledgeRetrievalPolicyRevisionRecord>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgeRetrievalPolicyWriteReference>>,
 }
 
 impl Default for InMemoryKnowledgeRetrievalPolicyRevisionRepository {
     fn default() -> Self {
         Self {
             records: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
         }
     }
 }
@@ -179,16 +232,64 @@ impl IKnowledgeRetrievalPolicyRevisionRepository
             .cloned()
             .collect())
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(
+            reference.organization_id.as_uuid(),
+            reference.policy_revision_id,
+        )
+        .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgeRetrievalPolicyRevision {
+                policy_revision: write.record.policy_revision.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgeRetrievalPolicyWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
 }
 
 pub struct InMemoryExternalKnowledgeBindingRepository {
     records: RwLock<BTreeMap<(Uuid, Uuid), ExternalKnowledgeBindingRecord>>,
+    idempotency: RwLock<BTreeMap<(String, String), ExternalKnowledgeBindingWriteReference>>,
 }
 
 impl Default for InMemoryExternalKnowledgeBindingRepository {
     fn default() -> Self {
         Self {
             records: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
         }
     }
 }
@@ -255,6 +356,49 @@ impl IExternalKnowledgeBindingRepository for InMemoryExternalKnowledgeBindingRep
             .take(limit)
             .cloned()
             .collect())
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalKnowledgeBindingRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(reference.organization_id.as_uuid(), reference.binding_id)
+            .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateExternalKnowledgeBindingWrite,
+    ) -> Result<IdempotentWrite<ExternalKnowledgeBindingRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateExternalKnowledgeBinding {
+                binding: write.record.binding.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = ExternalKnowledgeBindingWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
     }
 }
 

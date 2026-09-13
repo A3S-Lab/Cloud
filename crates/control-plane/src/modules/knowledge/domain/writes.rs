@@ -2,6 +2,13 @@ use super::catalog::{KnowledgeBaseRecord, KnowledgePipelineRecord};
 use super::chunk::KnowledgeChunkV1;
 use super::document::KnowledgeDocumentV1;
 use super::document_catalog::{KnowledgeChunkRecord, KnowledgeDocumentRecord};
+use super::external_binding::ExternalKnowledgeBindingV1;
+use super::index_catalog::{
+    ExternalKnowledgeBindingRecord, KnowledgeIndexRevisionRecord,
+    KnowledgeRetrievalPolicyRevisionRecord,
+};
+use super::index_revision::KnowledgeIndexRevisionV1;
+use super::retrieval_policy::KnowledgeRetrievalPolicyRevisionV1;
 use crate::modules::shared_kernel::domain::{
     validate_audit_action, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId,
 };
@@ -588,6 +595,417 @@ fn validate_knowledge_chunk_event(
         return Err("KnowledgeChunk lifecycle payload drifted from record".into());
     }
     let _ = KNOWLEDGE_CHUNK_LIFECYCLE_EVENT_SCHEMA;
+    Ok(())
+}
+
+
+pub const KNOWLEDGE_INDEX_LIFECYCLE_EVENT_SCHEMA: &str = "cloud.knowledge-index.lifecycle.v1";
+pub const KNOWLEDGE_RETRIEVAL_POLICY_LIFECYCLE_EVENT_SCHEMA: &str =
+    "cloud.knowledge-retrieval-policy.lifecycle.v1";
+pub const EXTERNAL_KNOWLEDGE_BINDING_LIFECYCLE_EVENT_SCHEMA: &str =
+    "cloud.external-knowledge-binding.lifecycle.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeIndexLifecycleChanged {
+    pub project_id: Uuid,
+    pub knowledge_base_revision_id: Uuid,
+    pub index_revision_id: Uuid,
+    pub index_digest: String,
+    pub action: String,
+}
+
+impl KnowledgeIndexLifecycleChanged {
+    pub fn created(
+        record: &KnowledgeIndexRevisionRecord,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        Self::envelope(record, "created", "knowledge.index.created", request_id)
+    }
+
+    fn envelope(
+        record: &KnowledgeIndexRevisionRecord,
+        action: &str,
+        event_key: &str,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        let spec = record.index_revision.spec();
+        let payload = Self {
+            project_id: spec.project_id.as_uuid(),
+            knowledge_base_revision_id: spec.knowledge_base_revision_id.as_uuid(),
+            index_revision_id: spec.index_revision_id.as_uuid(),
+            index_digest: record.index_revision.digest().as_str().to_string(),
+            action: action.to_owned(),
+        };
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: event_key.into(),
+            schema_version: 1,
+            scope: CloudScopeRef::Organization {
+                organization_id: spec.organization_id.as_uuid(),
+            },
+            aggregate_id: spec.index_revision_id.as_uuid(),
+            aggregate_version: 1,
+            occurred_at: record.created_at,
+            correlation_id: request_id,
+            causation_id: None,
+            payload: serde_json::to_value(payload).map_err(|error| error.to_string())?,
+        })
+    }
+
+    pub fn matches(&self, record: &KnowledgeIndexRevisionRecord, action: &str) -> bool {
+        let spec = record.index_revision.spec();
+        self.project_id == spec.project_id.as_uuid()
+            && self.knowledge_base_revision_id == spec.knowledge_base_revision_id.as_uuid()
+            && self.index_revision_id == spec.index_revision_id.as_uuid()
+            && self.index_digest == record.index_revision.digest().as_str()
+            && self.action == action
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeRetrievalPolicyLifecycleChanged {
+    pub project_id: Uuid,
+    pub knowledge_base_revision_id: Uuid,
+    pub policy_revision_id: Uuid,
+    pub policy_digest: String,
+    pub action: String,
+}
+
+impl KnowledgeRetrievalPolicyLifecycleChanged {
+    pub fn created(
+        record: &KnowledgeRetrievalPolicyRevisionRecord,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        Self::envelope(
+            record,
+            "created",
+            "knowledge.retrieval-policy.created",
+            request_id,
+        )
+    }
+
+    fn envelope(
+        record: &KnowledgeRetrievalPolicyRevisionRecord,
+        action: &str,
+        event_key: &str,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        let spec = record.policy_revision.spec();
+        let payload = Self {
+            project_id: spec.project_id.as_uuid(),
+            knowledge_base_revision_id: spec.knowledge_base_revision_id.as_uuid(),
+            policy_revision_id: spec.policy_revision_id.as_uuid(),
+            policy_digest: record.policy_revision.digest().as_str().to_string(),
+            action: action.to_owned(),
+        };
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: event_key.into(),
+            schema_version: 1,
+            scope: CloudScopeRef::Organization {
+                organization_id: spec.organization_id.as_uuid(),
+            },
+            aggregate_id: spec.policy_revision_id.as_uuid(),
+            aggregate_version: 1,
+            occurred_at: record.created_at,
+            correlation_id: request_id,
+            causation_id: None,
+            payload: serde_json::to_value(payload).map_err(|error| error.to_string())?,
+        })
+    }
+
+    pub fn matches(&self, record: &KnowledgeRetrievalPolicyRevisionRecord, action: &str) -> bool {
+        let spec = record.policy_revision.spec();
+        self.project_id == spec.project_id.as_uuid()
+            && self.knowledge_base_revision_id == spec.knowledge_base_revision_id.as_uuid()
+            && self.policy_revision_id == spec.policy_revision_id.as_uuid()
+            && self.policy_digest == record.policy_revision.digest().as_str()
+            && self.action == action
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExternalKnowledgeBindingLifecycleChanged {
+    pub project_id: Uuid,
+    pub knowledge_base_id: Uuid,
+    pub binding_id: Uuid,
+    pub binding_digest: String,
+    pub action: String,
+}
+
+impl ExternalKnowledgeBindingLifecycleChanged {
+    pub fn created(
+        record: &ExternalKnowledgeBindingRecord,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        Self::envelope(
+            record,
+            "created",
+            "knowledge.external-binding.created",
+            request_id,
+        )
+    }
+
+    fn envelope(
+        record: &ExternalKnowledgeBindingRecord,
+        action: &str,
+        event_key: &str,
+        request_id: Uuid,
+    ) -> Result<DomainEventEnvelope, String> {
+        let spec = record.binding.spec();
+        let payload = Self {
+            project_id: spec.project_id.as_uuid(),
+            knowledge_base_id: spec.knowledge_base_id.as_uuid(),
+            binding_id: spec.binding_id.as_uuid(),
+            binding_digest: record.binding.digest().as_str().to_string(),
+            action: action.to_owned(),
+        };
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: event_key.into(),
+            schema_version: 1,
+            scope: CloudScopeRef::Organization {
+                organization_id: spec.organization_id.as_uuid(),
+            },
+            aggregate_id: spec.binding_id.as_uuid(),
+            aggregate_version: 1,
+            occurred_at: record.created_at,
+            correlation_id: request_id,
+            causation_id: None,
+            payload: serde_json::to_value(payload).map_err(|error| error.to_string())?,
+        })
+    }
+
+    pub fn matches(&self, record: &ExternalKnowledgeBindingRecord, action: &str) -> bool {
+        let spec = record.binding.spec();
+        self.project_id == spec.project_id.as_uuid()
+            && self.knowledge_base_id == spec.knowledge_base_id.as_uuid()
+            && self.binding_id == spec.binding_id.as_uuid()
+            && self.binding_digest == record.binding.digest().as_str()
+            && self.action == action
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeIndexWriteReference {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub index_revision_id: Uuid,
+    pub index_digest: String,
+}
+
+impl From<&KnowledgeIndexRevisionRecord> for KnowledgeIndexWriteReference {
+    fn from(record: &KnowledgeIndexRevisionRecord) -> Self {
+        let spec = record.index_revision.spec();
+        Self {
+            organization_id: spec.organization_id,
+            project_id: spec.project_id,
+            index_revision_id: spec.index_revision_id.as_uuid(),
+            index_digest: record.index_revision.digest().as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeIndexRevisionWrite {
+    pub record: KnowledgeIndexRevisionRecord,
+    pub event: DomainEventEnvelope,
+    pub actor_principal_id: PrincipalId,
+    pub request_id: Uuid,
+    pub idempotency: IdempotencyRequest,
+}
+
+impl CreateKnowledgeIndexRevisionWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        KnowledgeIndexRevisionV1::restore(
+            self.record.index_revision.canonical_acl(),
+            self.record.index_revision.digest().as_str(),
+        )?;
+        validate_audit_action("knowledge.index.created")?;
+        validate_knowledge_index_event(&self.event, &self.record, self.request_id, "created")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KnowledgeRetrievalPolicyWriteReference {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub policy_revision_id: Uuid,
+    pub policy_digest: String,
+}
+
+impl From<&KnowledgeRetrievalPolicyRevisionRecord> for KnowledgeRetrievalPolicyWriteReference {
+    fn from(record: &KnowledgeRetrievalPolicyRevisionRecord) -> Self {
+        let spec = record.policy_revision.spec();
+        Self {
+            organization_id: spec.organization_id,
+            project_id: spec.project_id,
+            policy_revision_id: spec.policy_revision_id.as_uuid(),
+            policy_digest: record.policy_revision.digest().as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateKnowledgeRetrievalPolicyRevisionWrite {
+    pub record: KnowledgeRetrievalPolicyRevisionRecord,
+    pub event: DomainEventEnvelope,
+    pub actor_principal_id: PrincipalId,
+    pub request_id: Uuid,
+    pub idempotency: IdempotencyRequest,
+}
+
+impl CreateKnowledgeRetrievalPolicyRevisionWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        KnowledgeRetrievalPolicyRevisionV1::restore(
+            self.record.policy_revision.canonical_acl(),
+            self.record.policy_revision.digest().as_str(),
+        )?;
+        validate_audit_action("knowledge.retrieval-policy.created")?;
+        validate_knowledge_retrieval_policy_event(
+            &self.event,
+            &self.record,
+            self.request_id,
+            "created",
+        )
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExternalKnowledgeBindingWriteReference {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub binding_id: Uuid,
+    pub binding_digest: String,
+}
+
+impl From<&ExternalKnowledgeBindingRecord> for ExternalKnowledgeBindingWriteReference {
+    fn from(record: &ExternalKnowledgeBindingRecord) -> Self {
+        let spec = record.binding.spec();
+        Self {
+            organization_id: spec.organization_id,
+            project_id: spec.project_id,
+            binding_id: spec.binding_id.as_uuid(),
+            binding_digest: record.binding.digest().as_str().to_string(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateExternalKnowledgeBindingWrite {
+    pub record: ExternalKnowledgeBindingRecord,
+    pub event: DomainEventEnvelope,
+    pub actor_principal_id: PrincipalId,
+    pub request_id: Uuid,
+    pub idempotency: IdempotencyRequest,
+}
+
+impl CreateExternalKnowledgeBindingWrite {
+    pub fn validate(&self) -> Result<(), String> {
+        ExternalKnowledgeBindingV1::restore(
+            self.record.binding.canonical_acl(),
+            self.record.binding.digest().as_str(),
+        )?;
+        validate_audit_action("knowledge.external-binding.created")?;
+        validate_external_knowledge_binding_event(
+            &self.event,
+            &self.record,
+            self.request_id,
+            "created",
+        )
+    }
+}
+
+fn validate_knowledge_index_event(
+    event: &DomainEventEnvelope,
+    record: &KnowledgeIndexRevisionRecord,
+    request_id: Uuid,
+    action: &str,
+) -> Result<(), String> {
+    event.validate()?;
+    let expected_key = match action {
+        "created" => "knowledge.index.created",
+        _ => return Err("unknown KnowledgeIndexRevision lifecycle action".into()),
+    };
+    let spec = record.index_revision.spec();
+    if event.event_key != expected_key
+        || event.correlation_id != request_id
+        || event.aggregate_id != spec.index_revision_id.as_uuid()
+        || event.aggregate_version != 1
+        || event.occurred_at != record.created_at
+    {
+        return Err("KnowledgeIndexRevision lifecycle event drifted from record".into());
+    }
+    let payload: KnowledgeIndexLifecycleChanged =
+        serde_json::from_value(event.payload.clone()).map_err(|error| error.to_string())?;
+    if !payload.matches(record, action) {
+        return Err("KnowledgeIndexRevision lifecycle payload drifted from record".into());
+    }
+    let _ = KNOWLEDGE_INDEX_LIFECYCLE_EVENT_SCHEMA;
+    Ok(())
+}
+
+fn validate_knowledge_retrieval_policy_event(
+    event: &DomainEventEnvelope,
+    record: &KnowledgeRetrievalPolicyRevisionRecord,
+    request_id: Uuid,
+    action: &str,
+) -> Result<(), String> {
+    event.validate()?;
+    let expected_key = match action {
+        "created" => "knowledge.retrieval-policy.created",
+        _ => return Err("unknown KnowledgeRetrievalPolicyRevision lifecycle action".into()),
+    };
+    let spec = record.policy_revision.spec();
+    if event.event_key != expected_key
+        || event.correlation_id != request_id
+        || event.aggregate_id != spec.policy_revision_id.as_uuid()
+        || event.aggregate_version != 1
+        || event.occurred_at != record.created_at
+    {
+        return Err("KnowledgeRetrievalPolicyRevision lifecycle event drifted from record".into());
+    }
+    let payload: KnowledgeRetrievalPolicyLifecycleChanged =
+        serde_json::from_value(event.payload.clone()).map_err(|error| error.to_string())?;
+    if !payload.matches(record, action) {
+        return Err("KnowledgeRetrievalPolicyRevision lifecycle payload drifted from record".into());
+    }
+    let _ = KNOWLEDGE_RETRIEVAL_POLICY_LIFECYCLE_EVENT_SCHEMA;
+    Ok(())
+}
+
+fn validate_external_knowledge_binding_event(
+    event: &DomainEventEnvelope,
+    record: &ExternalKnowledgeBindingRecord,
+    request_id: Uuid,
+    action: &str,
+) -> Result<(), String> {
+    event.validate()?;
+    let expected_key = match action {
+        "created" => "knowledge.external-binding.created",
+        _ => return Err("unknown ExternalKnowledgeBinding lifecycle action".into()),
+    };
+    let spec = record.binding.spec();
+    if event.event_key != expected_key
+        || event.correlation_id != request_id
+        || event.aggregate_id != spec.binding_id.as_uuid()
+        || event.aggregate_version != 1
+        || event.occurred_at != record.created_at
+    {
+        return Err("ExternalKnowledgeBinding lifecycle event drifted from record".into());
+    }
+    let payload: ExternalKnowledgeBindingLifecycleChanged =
+        serde_json::from_value(event.payload.clone()).map_err(|error| error.to_string())?;
+    if !payload.matches(record, action) {
+        return Err("ExternalKnowledgeBinding lifecycle payload drifted from record".into());
+    }
+    let _ = EXTERNAL_KNOWLEDGE_BINDING_LIFECYCLE_EVENT_SCHEMA;
     Ok(())
 }
 

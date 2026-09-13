@@ -1,7 +1,11 @@
+use super::writes::{
+    CreateExternalKnowledgeBindingWrite, CreateKnowledgeIndexRevisionWrite,
+    CreateKnowledgeRetrievalPolicyRevisionWrite,
+};
 use super::{
     ExternalKnowledgeBindingV1, KnowledgeIndexRevisionV1, KnowledgeRetrievalPolicyRevisionV1,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -51,6 +55,16 @@ pub trait IKnowledgeIndexRevisionRepository: Send + Sync {
         knowledge_base_revision_id: Uuid,
         limit: usize,
     ) -> Result<Vec<KnowledgeIndexRevisionRecord>, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeIndexRevisionRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeIndexRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeIndexRevisionRecord>, RepositoryError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -97,6 +111,16 @@ pub trait IKnowledgeRetrievalPolicyRevisionRepository: Send + Sync {
         knowledge_base_revision_id: Uuid,
         limit: usize,
     ) -> Result<Vec<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeRetrievalPolicyRevisionWrite,
+    ) -> Result<IdempotentWrite<KnowledgeRetrievalPolicyRevisionRecord>, RepositoryError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -140,6 +164,16 @@ pub trait IExternalKnowledgeBindingRepository: Send + Sync {
         knowledge_base_id: Uuid,
         limit: usize,
     ) -> Result<Vec<ExternalKnowledgeBindingRecord>, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<ExternalKnowledgeBindingRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateExternalKnowledgeBindingWrite,
+    ) -> Result<IdempotentWrite<ExternalKnowledgeBindingRecord>, RepositoryError>;
 }
 
 fn validate_timestamp(value: DateTime<Utc>) -> Result<(), String> {
