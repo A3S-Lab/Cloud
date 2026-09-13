@@ -16,6 +16,8 @@
 //! those repositories so presentation cannot reach persistence adapters
 //! directly. No authorization, idempotency, audit, Outbox, REST/OpenAPI,
 //! client, CLI, or Management MCP surface.
+//! `K0.1-C7` adds authorized idempotent KnowledgeDocument/Chunk create writes
+//! with audit and Outbox side effects over the C5 repositories. No REST/MCP.
 
 mod application;
 mod domain;
@@ -24,10 +26,12 @@ mod presentation;
 
 pub use application::{
     AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateKnowledgeBaseCommand,
-    CreateKnowledgeBaseHandler, CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler,
-    GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgePipeline, GetKnowledgePipelineHandler,
-    KnowledgeAccess, KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService,
-    KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService, KnowledgeMutationResult,
+    CreateKnowledgeBaseHandler, CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand,
+    CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler, GetKnowledgeBase,
+    GetKnowledgeBaseHandler, GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline,
+    GetKnowledgePipelineHandler, KnowledgeAccess, KnowledgeBaseCatalogService,
+    KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
+    KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
     KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
     ListKnowledgePipelines, ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
     PublishKnowledgePipelineHandler, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
@@ -36,15 +40,16 @@ pub use application::{
 };
 pub use domain::{
     AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
-    CreateKnowledgeBaseWrite, CreateKnowledgeChunk, CreateKnowledgeDocument,
-    CreateKnowledgePipeline, CreateKnowledgePipelineWrite, ExternalKnowledgeBindingSpecV1,
-    ExternalKnowledgeBindingV1, IKnowledgeBaseRepository, IKnowledgeChunkRepository,
-    IKnowledgeDocumentRepository, IKnowledgePipelineRepository, KnowledgeBaseLifecycleChanged,
-    KnowledgeBaseRecord, KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1,
-    KnowledgeBaseWriteReference, KnowledgeChunkRecord, KnowledgeChunkSpecV1,
-    KnowledgeChunkStructureV1, KnowledgeChunkV1, KnowledgeContentReferenceV1,
-    KnowledgeDocumentRecord, KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1,
-    KnowledgeDocumentV1, KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1,
+    CreateKnowledgeBaseWrite, CreateKnowledgeChunk, CreateKnowledgeChunkWrite,
+    CreateKnowledgeDocument, CreateKnowledgeDocumentWrite, CreateKnowledgePipeline,
+    CreateKnowledgePipelineWrite, ExternalKnowledgeBindingSpecV1, ExternalKnowledgeBindingV1,
+    IKnowledgeBaseRepository, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
+    IKnowledgePipelineRepository, KnowledgeBaseLifecycleChanged, KnowledgeBaseRecord,
+    KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1, KnowledgeBaseWriteReference,
+    KnowledgeChunkRecord, KnowledgeChunkSpecV1, KnowledgeChunkStructureV1, KnowledgeChunkV1,
+    KnowledgeContentReferenceV1, KnowledgeDocumentLifecycleChanged, KnowledgeDocumentRecord,
+    KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1, KnowledgeDocumentV1,
+    KnowledgeDocumentWriteReference, KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1,
     KnowledgeIndexStrategyV1, KnowledgePipelineLifecycleChanged, KnowledgePipelineRecord,
     KnowledgePipelineReleaseSpecV1, KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference,
     KnowledgeRetrievalPolicyRevisionSpecV1, KnowledgeRetrievalPolicyRevisionV1,

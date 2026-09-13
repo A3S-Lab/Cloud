@@ -1,8 +1,10 @@
 use crate::modules::knowledge::domain::{
-    CreateKnowledgeChunk, CreateKnowledgeDocument, IKnowledgeChunkRepository,
-    IKnowledgeDocumentRepository, KnowledgeChunkRecord, KnowledgeDocumentRecord,
+    CreateKnowledgeChunk, CreateKnowledgeChunkWrite, CreateKnowledgeDocument,
+    CreateKnowledgeDocumentWrite, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
+    KnowledgeChunkRecord, KnowledgeChunkWriteReference, KnowledgeDocumentRecord,
+    KnowledgeDocumentWriteReference,
 };
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -11,12 +13,14 @@ use uuid::Uuid;
 /// Deterministic local adapter for immutable KnowledgeDocument records.
 pub struct InMemoryKnowledgeDocumentRepository {
     documents: RwLock<BTreeMap<(Uuid, Uuid), KnowledgeDocumentRecord>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgeDocumentWriteReference>>,
 }
 
 impl Default for InMemoryKnowledgeDocumentRepository {
     fn default() -> Self {
         Self {
             documents: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
         }
     }
 }
@@ -84,17 +88,62 @@ impl IKnowledgeDocumentRepository for InMemoryKnowledgeDocumentRepository {
             .cloned()
             .collect())
     }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeDocumentRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(reference.organization_id.as_uuid(), reference.document_id)
+            .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeDocumentWrite,
+    ) -> Result<IdempotentWrite<KnowledgeDocumentRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgeDocument {
+                document: write.record.document.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgeDocumentWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
+    }
 }
 
 /// Deterministic local adapter for immutable KnowledgeChunk records.
 pub struct InMemoryKnowledgeChunkRepository {
     chunks: RwLock<BTreeMap<(Uuid, Uuid), KnowledgeChunkRecord>>,
+    idempotency: RwLock<BTreeMap<(String, String), KnowledgeChunkWriteReference>>,
 }
 
 impl Default for InMemoryKnowledgeChunkRepository {
     fn default() -> Self {
         Self {
             chunks: RwLock::new(BTreeMap::new()),
+            idempotency: RwLock::new(BTreeMap::new()),
         }
     }
 }
@@ -161,6 +210,49 @@ impl IKnowledgeChunkRepository for InMemoryKnowledgeChunkRepository {
             .take(limit)
             .cloned()
             .collect())
+    }
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeChunkRecord>, RepositoryError> {
+        let key = (idempotency.scope.clone(), idempotency.key.clone());
+        let Some(reference) = self.idempotency.read().await.get(&key).cloned() else {
+            return Ok(None);
+        };
+        self.find(reference.organization_id.as_uuid(), reference.chunk_id)
+            .await
+    }
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeChunkWrite,
+    ) -> Result<IdempotentWrite<KnowledgeChunkRecord>, RepositoryError> {
+        write.validate().map_err(RepositoryError::Conflict)?;
+        if let Some(existing) = self.replay_write(&write.idempotency).await? {
+            return Ok(IdempotentWrite {
+                value: existing,
+                replayed: true,
+            });
+        }
+        let record = self
+            .create(CreateKnowledgeChunk {
+                chunk: write.record.chunk.clone(),
+                created_at: write.record.created_at,
+            })
+            .await?;
+        let reference = KnowledgeChunkWriteReference::from(&record);
+        self.idempotency.write().await.insert(
+            (
+                write.idempotency.scope.clone(),
+                write.idempotency.key.clone(),
+            ),
+            reference,
+        );
+        Ok(IdempotentWrite {
+            value: record,
+            replayed: false,
+        })
     }
 }
 
