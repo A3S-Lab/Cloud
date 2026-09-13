@@ -1,5 +1,9 @@
+use super::writes::{
+    AppendKnowledgeBaseWrite, CreateKnowledgeBaseWrite, CreateKnowledgePipelineWrite,
+    PublishKnowledgePipelineWrite,
+};
 use super::{KnowledgeBaseRevisionV1, KnowledgePipelineReleaseV1};
-use crate::modules::shared_kernel::domain::RepositoryError;
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -106,6 +110,21 @@ pub trait IKnowledgeBaseRepository: Send + Sync {
         &self,
         request: AppendKnowledgeBaseRevision,
     ) -> Result<KnowledgeBaseRecord, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgeBaseRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError>;
+
+    async fn append_write(
+        &self,
+        write: AppendKnowledgeBaseWrite,
+    ) -> Result<IdempotentWrite<KnowledgeBaseRecord>, RepositoryError>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -201,6 +220,21 @@ pub trait IKnowledgePipelineRepository: Send + Sync {
         &self,
         request: PublishKnowledgePipelineRelease,
     ) -> Result<KnowledgePipelineRecord, RepositoryError>;
+
+    async fn replay_write(
+        &self,
+        idempotency: &IdempotencyRequest,
+    ) -> Result<Option<KnowledgePipelineRecord>, RepositoryError>;
+
+    async fn create_write(
+        &self,
+        write: CreateKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError>;
+
+    async fn publish_write(
+        &self,
+        write: PublishKnowledgePipelineWrite,
+    ) -> Result<IdempotentWrite<KnowledgePipelineRecord>, RepositoryError>;
 }
 
 fn validate_timestamp(value: DateTime<Utc>) -> Result<(), String> {
