@@ -12,6 +12,10 @@
 //! `K0.1-C5` persists immutable KnowledgeDocument and KnowledgeChunk catalogs
 //! through migration `202` without search indexes, ingestion workers,
 //! authorization surfaces, or public REST/MCP interfaces.
+//! `K0.1-C6` adds application owner document/chunk catalog services over
+//! those repositories so presentation cannot reach persistence adapters
+//! directly. No authorization, idempotency, audit, Outbox, REST/OpenAPI,
+//! client, CLI, or Management MCP surface.
 
 mod application;
 mod domain;
@@ -23,11 +27,12 @@ pub use application::{
     CreateKnowledgeBaseHandler, CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler,
     GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgePipeline, GetKnowledgePipelineHandler,
     KnowledgeAccess, KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService,
-    KnowledgeMutationResult, KnowledgePipelineCatalogService, ListKnowledgeBases,
-    ListKnowledgeBasesHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
-    PublishKnowledgePipelineCommand, PublishKnowledgePipelineHandler,
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService, KnowledgeMutationResult,
+    KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
+    ListKnowledgePipelines, ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
+    PublishKnowledgePipelineHandler, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use domain::{
     AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
