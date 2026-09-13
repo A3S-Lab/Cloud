@@ -551,6 +551,20 @@ jobs:
           automation_definition_postgres_reconnects_and_fences_revision_head
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify KnowledgeBase catalog PostgreSQL recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test knowledge_postgres_integration
+          knowledge_base_catalog_postgres_reconnects_and_fences_revision_head
+          -- --exact --nocapture --test-threads=1
+
+      - name: Certify KnowledgePipeline catalog PostgreSQL recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test knowledge_postgres_integration
+          knowledge_pipeline_catalog_postgres_reconnects_and_fences_release_head
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Gateway Route policy security timeline persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
