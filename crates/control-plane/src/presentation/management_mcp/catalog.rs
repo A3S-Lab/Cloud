@@ -43,11 +43,14 @@ use crate::modules::identity::domain::value_objects::{
 };
 use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::knowledge::{
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    KNOWLEDGE_CONTRACT_MAX_ACL_BYTES, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
@@ -276,12 +279,16 @@ pub const KNOWLEDGE_CHUNKS_CREATE: &str = "a3s_cloud_knowledge_chunks_create";
 pub const KNOWLEDGE_CHUNKS_LIST: &str = "a3s_cloud_knowledge_chunks_list";
 pub const KNOWLEDGE_CHUNKS_GET: &str = "a3s_cloud_knowledge_chunks_get";
 pub const KNOWLEDGE_INDEX_REVISIONS_CREATE: &str = "a3s_cloud_knowledge_index_revisions_create";
+pub const KNOWLEDGE_INDEX_REVISIONS_LIST: &str = "a3s_cloud_knowledge_index_revisions_list";
 pub const KNOWLEDGE_INDEX_REVISIONS_GET: &str = "a3s_cloud_knowledge_index_revisions_get";
 pub const KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_CREATE: &str =
     "a3s_cloud_knowledge_retrieval_policy_revisions_create";
+pub const KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_LIST: &str =
+    "a3s_cloud_knowledge_retrieval_policy_revisions_list";
 pub const KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_GET: &str =
     "a3s_cloud_knowledge_retrieval_policy_revisions_get";
 pub const EXTERNAL_KNOWLEDGE_BINDINGS_CREATE: &str = "a3s_cloud_external_knowledge_bindings_create";
+pub const EXTERNAL_KNOWLEDGE_BINDINGS_LIST: &str = "a3s_cloud_external_knowledge_bindings_list";
 pub const EXTERNAL_KNOWLEDGE_BINDINGS_GET: &str = "a3s_cloud_external_knowledge_bindings_get";
 pub const PLUGIN_REGISTRIES_GET: &str = "a3s_cloud_plugin_registries_get";
 pub const PLUGIN_REGISTRIES_LIST: &str = "a3s_cloud_plugin_registries_list";
@@ -445,10 +452,13 @@ pub enum ManagementTool {
     KnowledgeChunksList,
     KnowledgeChunksGet,
     KnowledgeIndexRevisionsCreate,
+    KnowledgeIndexRevisionsList,
     KnowledgeIndexRevisionsGet,
     KnowledgeRetrievalPolicyRevisionsCreate,
+    KnowledgeRetrievalPolicyRevisionsList,
     KnowledgeRetrievalPolicyRevisionsGet,
     ExternalKnowledgeBindingsCreate,
+    ExternalKnowledgeBindingsList,
     ExternalKnowledgeBindingsGet,
     PluginRegistriesList,
     PluginRegistriesGet,
@@ -526,7 +536,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 206] = [
+    const ALL: [Self; 209] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -670,10 +680,13 @@ impl ManagementTool {
         Self::KnowledgeChunksList,
         Self::KnowledgeChunksGet,
         Self::KnowledgeIndexRevisionsCreate,
+        Self::KnowledgeIndexRevisionsList,
         Self::KnowledgeIndexRevisionsGet,
         Self::KnowledgeRetrievalPolicyRevisionsCreate,
+        Self::KnowledgeRetrievalPolicyRevisionsList,
         Self::KnowledgeRetrievalPolicyRevisionsGet,
         Self::ExternalKnowledgeBindingsCreate,
+        Self::ExternalKnowledgeBindingsList,
         Self::ExternalKnowledgeBindingsGet,
         Self::PluginRegistriesList,
         Self::PluginRegistriesGet,
@@ -905,12 +918,15 @@ impl ManagementTool {
             Self::KnowledgeChunksList => KNOWLEDGE_CHUNKS_LIST,
             Self::KnowledgeChunksGet => KNOWLEDGE_CHUNKS_GET,
             Self::KnowledgeIndexRevisionsCreate => KNOWLEDGE_INDEX_REVISIONS_CREATE,
+            Self::KnowledgeIndexRevisionsList => KNOWLEDGE_INDEX_REVISIONS_LIST,
             Self::KnowledgeIndexRevisionsGet => KNOWLEDGE_INDEX_REVISIONS_GET,
             Self::KnowledgeRetrievalPolicyRevisionsCreate => {
                 KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_CREATE
             }
+            Self::KnowledgeRetrievalPolicyRevisionsList => KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_LIST,
             Self::KnowledgeRetrievalPolicyRevisionsGet => KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_GET,
             Self::ExternalKnowledgeBindingsCreate => EXTERNAL_KNOWLEDGE_BINDINGS_CREATE,
+            Self::ExternalKnowledgeBindingsList => EXTERNAL_KNOWLEDGE_BINDINGS_LIST,
             Self::ExternalKnowledgeBindingsGet => EXTERNAL_KNOWLEDGE_BINDINGS_GET,
             Self::PluginRegistriesList => PLUGIN_REGISTRIES_LIST,
             Self::PluginRegistriesGet => PLUGIN_REGISTRIES_GET,
@@ -1129,8 +1145,11 @@ impl ManagementTool {
             | Self::KnowledgeDocumentsGet
             | Self::KnowledgeChunksList
             | Self::KnowledgeChunksGet
+            | Self::KnowledgeIndexRevisionsList
             | Self::KnowledgeIndexRevisionsGet
+            | Self::KnowledgeRetrievalPolicyRevisionsList
             | Self::KnowledgeRetrievalPolicyRevisionsGet
+            | Self::ExternalKnowledgeBindingsList
             | Self::ExternalKnowledgeBindingsGet => Some(ApiTokenScope::CLOUD_READ),
             Self::NotificationsRead
             | Self::NotificationAlertPoliciesCreate
@@ -1288,10 +1307,13 @@ impl ManagementTool {
             | Self::KnowledgeChunksList
             | Self::KnowledgeChunksGet
             | Self::KnowledgeIndexRevisionsCreate
+            | Self::KnowledgeIndexRevisionsList
             | Self::KnowledgeIndexRevisionsGet
             | Self::KnowledgeRetrievalPolicyRevisionsCreate
+            | Self::KnowledgeRetrievalPolicyRevisionsList
             | Self::KnowledgeRetrievalPolicyRevisionsGet
             | Self::ExternalKnowledgeBindingsCreate
+            | Self::ExternalKnowledgeBindingsList
             | Self::ExternalKnowledgeBindingsGet => Some(ManagementResourceBinding::ProjectArgument),
             Self::ConnectorProfilesCreate
             | Self::ConnectorProfilesRevise
@@ -2256,6 +2278,12 @@ impl ManagementTool {
                 create_knowledge_index_revision_schema(),
                 false,
             ),
+            Self::KnowledgeIndexRevisionsList => (
+                "List knowledge index revisions",
+                "List bounded KnowledgeIndexRevision lifecycle projections for one tenant-authorized KnowledgeBase revision.",
+                list_knowledge_index_revisions_schema(),
+                true,
+            ),
             Self::KnowledgeIndexRevisionsGet => (
                 "Get knowledge index revision",
                 "Get one tenant-authorized KnowledgeIndexRevision lifecycle projection.",
@@ -2268,6 +2296,12 @@ impl ManagementTool {
                 create_knowledge_retrieval_policy_revision_schema(),
                 false,
             ),
+            Self::KnowledgeRetrievalPolicyRevisionsList => (
+                "List knowledge retrieval policy revisions",
+                "List bounded KnowledgeRetrievalPolicyRevision lifecycle projections for one tenant-authorized KnowledgeBase revision.",
+                list_knowledge_retrieval_policy_revisions_schema(),
+                true,
+            ),
             Self::KnowledgeRetrievalPolicyRevisionsGet => (
                 "Get knowledge retrieval policy revision",
                 "Get one tenant-authorized KnowledgeRetrievalPolicyRevision lifecycle projection.",
@@ -2279,6 +2313,12 @@ impl ManagementTool {
                 "Create one project-scoped ExternalKnowledgeBinding from canonical A3S ACL with explicit idempotency.",
                 create_external_knowledge_binding_schema(),
                 false,
+            ),
+            Self::ExternalKnowledgeBindingsList => (
+                "List external knowledge bindings",
+                "List bounded ExternalKnowledgeBinding lifecycle projections for one tenant-authorized KnowledgeBase.",
+                list_external_knowledge_bindings_schema(),
+                true,
             ),
             Self::ExternalKnowledgeBindingsGet => (
                 "Get external knowledge binding",
@@ -5226,6 +5266,61 @@ fn knowledge_index_revision_schema() -> Value {
     })
 }
 
+fn list_knowledge_index_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseRevisionId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+                "default": DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "knowledgeBaseRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_knowledge_retrieval_policy_revisions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseRevisionId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+                "default": DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "knowledgeBaseRevisionId"],
+        "additionalProperties": false
+    })
+}
+
+fn list_external_knowledge_bindings_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseId": {"type": "string", "format": "uuid"},
+            "limit": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+                "default": DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT
+            }
+        },
+        "required": ["projectId", "knowledgeBaseId"],
+        "additionalProperties": false
+    })
+}
+
+
 fn create_knowledge_retrieval_policy_revision_schema() -> Value {
     json!({
         "type": "object",
@@ -5800,8 +5895,11 @@ mod tests {
             ManagementTool::KnowledgeDocumentsGet,
             ManagementTool::KnowledgeChunksList,
             ManagementTool::KnowledgeChunksGet,
+            ManagementTool::KnowledgeIndexRevisionsList,
             ManagementTool::KnowledgeIndexRevisionsGet,
+            ManagementTool::KnowledgeRetrievalPolicyRevisionsList,
             ManagementTool::KnowledgeRetrievalPolicyRevisionsGet,
+            ManagementTool::ExternalKnowledgeBindingsList,
             ManagementTool::ExternalKnowledgeBindingsGet,
         ] {
             assert_eq!(tool.required_scope(), Some(ApiTokenScope::CLOUD_READ));
@@ -5900,6 +5998,10 @@ mod tests {
             KNOWLEDGE_INDEX_REVISIONS_CREATE
         );
         assert_eq!(
+            ManagementTool::KnowledgeIndexRevisionsList.name(),
+            KNOWLEDGE_INDEX_REVISIONS_LIST
+        );
+        assert_eq!(
             ManagementTool::KnowledgeIndexRevisionsGet.name(),
             KNOWLEDGE_INDEX_REVISIONS_GET
         );
@@ -5908,12 +6010,20 @@ mod tests {
             KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_CREATE
         );
         assert_eq!(
+            ManagementTool::KnowledgeRetrievalPolicyRevisionsList.name(),
+            KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_LIST
+        );
+        assert_eq!(
             ManagementTool::KnowledgeRetrievalPolicyRevisionsGet.name(),
             KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_GET
         );
         assert_eq!(
             ManagementTool::ExternalKnowledgeBindingsCreate.name(),
             EXTERNAL_KNOWLEDGE_BINDINGS_CREATE
+        );
+        assert_eq!(
+            ManagementTool::ExternalKnowledgeBindingsList.name(),
+            EXTERNAL_KNOWLEDGE_BINDINGS_LIST
         );
         assert_eq!(
             ManagementTool::ExternalKnowledgeBindingsGet.name(),

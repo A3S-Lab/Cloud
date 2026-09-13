@@ -152,6 +152,12 @@ const EXTERNAL_BINDING_COLUMNS: readonly TableColumn<ExternalKnowledgeBinding>[]
   { header: 'CREATED AT', value: (row) => row.createdAt },
 ];
 
+export function knowledgeIndexRevisionsResult(
+  rows: KnowledgeIndexRevision[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, KNOWLEDGE_INDEX_COLUMNS) };
+}
+
 export function knowledgeIndexRevisionResult(row: KnowledgeIndexRevision): CommandResult {
   return { json: row, table: renderTable([row], KNOWLEDGE_INDEX_COLUMNS) };
 }
@@ -167,6 +173,12 @@ export function knowledgeIndexRevisionMutationResult(
       [...KNOWLEDGE_INDEX_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
+}
+
+export function knowledgeRetrievalPolicyRevisionsResult(
+  rows: KnowledgeRetrievalPolicyRevision[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, KNOWLEDGE_POLICY_COLUMNS) };
 }
 
 export function knowledgeRetrievalPolicyRevisionResult(
@@ -186,6 +198,12 @@ export function knowledgeRetrievalPolicyRevisionMutationResult(
       [...KNOWLEDGE_POLICY_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
+}
+
+export function externalKnowledgeBindingsResult(
+  rows: ExternalKnowledgeBinding[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, EXTERNAL_BINDING_COLUMNS) };
 }
 
 export function externalKnowledgeBindingResult(row: ExternalKnowledgeBinding): CommandResult {

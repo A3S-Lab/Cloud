@@ -64,7 +64,9 @@ use super::knowledge::{
     KnowledgeBaseArguments, KnowledgeChunkArguments, KnowledgeDocumentArguments,
     KnowledgeIndexRevisionArguments, KnowledgePipelineArguments,
     KnowledgeRetrievalPolicyRevisionArguments, ListKnowledgeBasesArguments,
-    ListKnowledgeChunksArguments, ListKnowledgeDocumentsArguments, ListKnowledgePipelinesArguments,
+    ListExternalKnowledgeBindingsArguments, ListKnowledgeChunksArguments,
+    ListKnowledgeDocumentsArguments, ListKnowledgeIndexRevisionsArguments,
+    ListKnowledgePipelinesArguments, ListKnowledgeRetrievalPolicyRevisionsArguments,
     PublishKnowledgePipelineArguments,
 };
 use super::notifications::{
@@ -1690,6 +1692,18 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::KnowledgeIndexRevisionsList => {
+            let arguments =
+                arguments::parse::<ListKnowledgeIndexRevisionsArguments>(arguments).ok()?;
+            knowledge::list_index_revisions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::KnowledgeIndexRevisionsCreate => {
             let arguments =
                 arguments::parse::<CreateKnowledgeIndexRevisionArguments>(arguments).ok()?;
@@ -1707,6 +1721,20 @@ pub async fn execute(
             let arguments =
                 arguments::parse::<KnowledgeIndexRevisionArguments>(arguments).ok()?;
             knowledge::get_index_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeRetrievalPolicyRevisionsList => {
+            let arguments = arguments::parse::<ListKnowledgeRetrievalPolicyRevisionsArguments>(
+                arguments,
+            )
+            .ok()?;
+            knowledge::list_retrieval_policy_revisions(
                 query_bus,
                 organization_id,
                 arguments,
@@ -1734,6 +1762,18 @@ pub async fn execute(
             let arguments =
                 arguments::parse::<KnowledgeRetrievalPolicyRevisionArguments>(arguments).ok()?;
             knowledge::get_retrieval_policy_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ExternalKnowledgeBindingsList => {
+            let arguments =
+                arguments::parse::<ListExternalKnowledgeBindingsArguments>(arguments).ok()?;
+            knowledge::list_external_bindings(
                 query_bus,
                 organization_id,
                 arguments,

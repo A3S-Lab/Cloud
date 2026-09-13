@@ -5,8 +5,11 @@ import {
   DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
   encodeKnowledgeBaseListOptions,
   encodeKnowledgeChunkListOptions,
+  encodeExternalKnowledgeBindingListOptions,
   encodeKnowledgeDocumentListOptions,
+  encodeKnowledgeIndexRevisionListOptions,
   encodeKnowledgePipelineListOptions,
+  encodeKnowledgeRetrievalPolicyRevisionListOptions,
   DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
   DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
   MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
@@ -337,6 +340,10 @@ describe('Knowledge index/policy/binding client surface', () => {
       'knowledge:create-index'
     );
     await api.getKnowledgeIndexRevision('organization / one', 'project / one', 'index / one');
+    await api.listKnowledgeIndexRevisions('organization / one', 'project / one', {
+      knowledgeBaseRevisionId: 'revision / one',
+      limit: 8,
+    });
     await api.createKnowledgeRetrievalPolicyRevision(
       'organization / one',
       'project / one',
@@ -344,6 +351,10 @@ describe('Knowledge index/policy/binding client surface', () => {
       'knowledge:create-policy'
     );
     await api.getKnowledgeRetrievalPolicyRevision('organization / one', 'project / one', 'policy / one');
+    await api.listKnowledgeRetrievalPolicyRevisions('organization / one', 'project / one', {
+      knowledgeBaseRevisionId: 'revision / one',
+      limit: 8,
+    });
     await api.createExternalKnowledgeBinding(
       'organization / one',
       'project / one',
@@ -351,14 +362,21 @@ describe('Knowledge index/policy/binding client surface', () => {
       'knowledge:create-binding'
     );
     await api.getExternalKnowledgeBinding('organization / one', 'project / one', 'binding / one');
+    await api.listExternalKnowledgeBindings('organization / one', 'project / one', {
+      knowledgeBaseId: 'base / one',
+      limit: 8,
+    });
 
     expect(calls.map(([input]) => input)).toEqual([
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-index-revisions',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-index-revisions/index%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-index-revisions?knowledgeBaseRevisionId=revision%20%2F%20one&limit=8',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-retrieval-policy-revisions',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-retrieval-policy-revisions/policy%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-retrieval-policy-revisions?knowledgeBaseRevisionId=revision%20%2F%20one&limit=8',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/external-knowledge-bindings',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/external-knowledge-bindings/binding%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/external-knowledge-bindings?knowledgeBaseId=base%20%2F%20one&limit=8',
     ]);
     expect(calls[0]?.[1]).toEqual(
       expect.objectContaining({
@@ -367,6 +385,24 @@ describe('Knowledge index/policy/binding client surface', () => {
         body: JSON.stringify({ indexAcl: INDEX_ACL }),
       })
     );
+  });
+
+  it('enforces index, policy, and binding list bounds locally', () => {
+    expect(() =>
+      encodeKnowledgeIndexRevisionListOptions({
+        knowledgeBaseRevisionId: 'revision',
+        limit: 0,
+      })
+    ).toThrow(RangeError);
+    expect(() =>
+      encodeKnowledgeRetrievalPolicyRevisionListOptions({
+        knowledgeBaseRevisionId: 'revision',
+        limit: 201,
+      })
+    ).toThrow(RangeError);
+    expect(() =>
+      encodeExternalKnowledgeBindingListOptions({ knowledgeBaseId: 'base', limit: 0 })
+    ).toThrow(RangeError);
   });
 
   it('rejects malformed index, policy, and binding ACL before issuing a request', () => {

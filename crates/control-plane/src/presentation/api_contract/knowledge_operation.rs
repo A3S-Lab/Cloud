@@ -1,6 +1,8 @@
 use crate::modules::knowledge::{
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
     EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE, EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE,
     KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
     KNOWLEDGE_CHUNK_ITEM_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
@@ -10,8 +12,10 @@ use crate::modules::knowledge::{
     KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 use serde_json::{json, Value};
 
@@ -160,6 +164,72 @@ pub(super) fn query_parameters(method: &str, path: &str) -> Vec<Value> {
                 "default": DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT
             }
         })]
+    } else if method == "get" && is_index_revision_collection_path(path) {
+        vec![
+            json!({
+                "name": "knowledgeBaseRevisionId",
+                "in": "query",
+                "required": true,
+                "description": "KnowledgeBase revision identity whose authorized KnowledgeIndexRevision projections are listed.",
+                "schema": {"type": "string", "format": "uuid"}
+            }),
+            json!({
+                "name": "limit",
+                "in": "query",
+                "required": false,
+                "description": "Maximum KnowledgeIndexRevision projections returned for the authorized KnowledgeBase revision.",
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+                    "default": DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT
+                }
+            }),
+        ]
+    } else if method == "get" && is_retrieval_policy_revision_collection_path(path) {
+        vec![
+            json!({
+                "name": "knowledgeBaseRevisionId",
+                "in": "query",
+                "required": true,
+                "description": "KnowledgeBase revision identity whose authorized KnowledgeRetrievalPolicyRevision projections are listed.",
+                "schema": {"type": "string", "format": "uuid"}
+            }),
+            json!({
+                "name": "limit",
+                "in": "query",
+                "required": false,
+                "description": "Maximum KnowledgeRetrievalPolicyRevision projections returned for the authorized KnowledgeBase revision.",
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+                    "default": DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT
+                }
+            }),
+        ]
+    } else if method == "get" && is_external_binding_collection_path(path) {
+        vec![
+            json!({
+                "name": "knowledgeBaseId",
+                "in": "query",
+                "required": true,
+                "description": "KnowledgeBase identity whose authorized ExternalKnowledgeBinding projections are listed.",
+                "schema": {"type": "string", "format": "uuid"}
+            }),
+            json!({
+                "name": "limit",
+                "in": "query",
+                "required": false,
+                "description": "Maximum ExternalKnowledgeBinding projections returned for the authorized KnowledgeBase.",
+                "schema": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+                    "default": DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT
+                }
+            }),
+        ]
     } else {
         Vec::new()
     }
@@ -207,6 +277,9 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         } else {
             "KnowledgeChunkMutationSuccess200"
         }),
+        ("get", 200) if is_index_revision_collection_path(path) => {
+            Some("KnowledgeIndexRevisionListSuccess200")
+        },
         ("get", 200) if is_index_revision_item_path(path) => {
             Some("KnowledgeIndexRevisionSuccess200")
         },
@@ -215,6 +288,9 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         } else {
             "KnowledgeIndexRevisionMutationSuccess200"
         }),
+        ("get", 200) if is_retrieval_policy_revision_collection_path(path) => {
+            Some("KnowledgeRetrievalPolicyRevisionListSuccess200")
+        },
         ("get", 200) if is_retrieval_policy_revision_item_path(path) => {
             Some("KnowledgeRetrievalPolicyRevisionSuccess200")
         },
@@ -225,6 +301,9 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
                 "KnowledgeRetrievalPolicyRevisionMutationSuccess200"
             },
         ),
+        ("get", 200) if is_external_binding_collection_path(path) => {
+            Some("ExternalKnowledgeBindingListSuccess200")
+        },
         ("get", 200) if is_external_binding_item_path(path) => {
             Some("ExternalKnowledgeBindingSuccess200")
         },

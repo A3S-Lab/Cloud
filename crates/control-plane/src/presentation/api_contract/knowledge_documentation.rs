@@ -46,17 +46,26 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "KnowledgeIndexRevisionMutation" => Some(
             "KnowledgeIndexRevision mutation result with explicit idempotent-replay state and the authoritative index projection.",
         ),
+        "KnowledgeIndexRevisionList" => Some(
+            "Bounded list of authorized KnowledgeIndexRevision projections for one KnowledgeBase revision.",
+        ),
         "KnowledgeRetrievalPolicyRevision" => Some(
             "Authoritative KnowledgeRetrievalPolicyRevision projection binding the canonical policy ACL, search mode, top-k, and digests.",
         ),
         "KnowledgeRetrievalPolicyRevisionMutation" => Some(
             "KnowledgeRetrievalPolicyRevision mutation result with explicit idempotent-replay state and the authoritative policy projection.",
         ),
+        "KnowledgeRetrievalPolicyRevisionList" => Some(
+            "Bounded list of authorized KnowledgeRetrievalPolicyRevision projections for one KnowledgeBase revision.",
+        ),
         "ExternalKnowledgeBinding" => Some(
             "Authoritative ExternalKnowledgeBinding projection binding the canonical binding ACL, display name, and digests.",
         ),
         "ExternalKnowledgeBindingMutation" => Some(
             "ExternalKnowledgeBinding mutation result with explicit idempotent-replay state and the authoritative binding projection.",
+        ),
+        "ExternalKnowledgeBindingList" => Some(
+            "Bounded list of authorized ExternalKnowledgeBinding projections for one KnowledgeBase.",
         ),
         _ => None,
     }
@@ -88,17 +97,26 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "post" if is_index_revision_collection_path(path) => {
             Some("Create a knowledge index revision")
         }
+        "get" if is_index_revision_collection_path(path) => {
+            Some("List knowledge index revisions")
+        }
         "get" if path.contains("/knowledge-index-revisions/") => {
             Some("Get a knowledge index revision")
         }
         "post" if is_retrieval_policy_revision_collection_path(path) => {
             Some("Create a knowledge retrieval policy revision")
         }
+        "get" if is_retrieval_policy_revision_collection_path(path) => {
+            Some("List knowledge retrieval policy revisions")
+        }
         "get" if path.contains("/knowledge-retrieval-policy-revisions/") => {
             Some("Get a knowledge retrieval policy revision")
         }
         "post" if is_external_binding_collection_path(path) => {
             Some("Create an external knowledge binding")
+        }
+        "get" if is_external_binding_collection_path(path) => {
+            Some("List external knowledge bindings")
         }
         "get" if path.contains("/external-knowledge-bindings/") => {
             Some("Get an external knowledge binding")
@@ -213,6 +231,15 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         }
         "get" if is_document_chunk_collection_path(path) => {
             Some("A bounded list of authorized KnowledgeChunk projections.")
+        }
+        "get" if is_index_revision_collection_path(path) => {
+            Some("A bounded list of authorized KnowledgeIndexRevision projections.")
+        }
+        "get" if is_retrieval_policy_revision_collection_path(path) => {
+            Some("A bounded list of authorized KnowledgeRetrievalPolicyRevision projections.")
+        }
+        "get" if is_external_binding_collection_path(path) => {
+            Some("A bounded list of authorized ExternalKnowledgeBinding projections.")
         }
         "get" if path.contains("/knowledge-chunks/") => {
             Some("The authoritative KnowledgeChunk projection.")

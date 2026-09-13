@@ -9,6 +9,12 @@ export const DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT = 50;
 export const MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT = 200;
 export const DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT = 50;
 export const MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT = 200;
+export const DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT = 50;
+export const MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT = 200;
+export const DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT = 50;
+export const MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT = 200;
+export const DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT = 50;
+export const MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT = 200;
 
 const CONTENT_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
 
@@ -202,6 +208,75 @@ export function encodeKnowledgeChunkListOptions(
     'KnowledgeChunk'
   );
 }
+
+export interface KnowledgeIndexRevisionListOptions {
+  knowledgeBaseRevisionId: string;
+  limit?: number;
+}
+
+export interface KnowledgeRetrievalPolicyRevisionListOptions {
+  knowledgeBaseRevisionId: string;
+  limit?: number;
+}
+
+export interface ExternalKnowledgeBindingListOptions {
+  knowledgeBaseId: string;
+  limit?: number;
+}
+
+export function encodeKnowledgeIndexRevisionListOptions(
+  options: KnowledgeIndexRevisionListOptions
+): string {
+  if (
+    typeof options.knowledgeBaseRevisionId !== 'string' ||
+    options.knowledgeBaseRevisionId.length === 0
+  ) {
+    throw new TypeError('KnowledgeIndexRevision list requires knowledgeBaseRevisionId');
+  }
+  const limitPart = encodeKnowledgeListOptions(
+    options,
+    DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    'KnowledgeIndexRevision'
+  ).slice(1);
+  return `?knowledgeBaseRevisionId=${encodeURIComponent(options.knowledgeBaseRevisionId)}&${limitPart}`;
+}
+
+export function encodeKnowledgeRetrievalPolicyRevisionListOptions(
+  options: KnowledgeRetrievalPolicyRevisionListOptions
+): string {
+  if (
+    typeof options.knowledgeBaseRevisionId !== 'string' ||
+    options.knowledgeBaseRevisionId.length === 0
+  ) {
+    throw new TypeError(
+      'KnowledgeRetrievalPolicyRevision list requires knowledgeBaseRevisionId'
+    );
+  }
+  const limitPart = encodeKnowledgeListOptions(
+    options,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    'KnowledgeRetrievalPolicyRevision'
+  ).slice(1);
+  return `?knowledgeBaseRevisionId=${encodeURIComponent(options.knowledgeBaseRevisionId)}&${limitPart}`;
+}
+
+export function encodeExternalKnowledgeBindingListOptions(
+  options: ExternalKnowledgeBindingListOptions
+): string {
+  if (typeof options.knowledgeBaseId !== 'string' || options.knowledgeBaseId.length === 0) {
+    throw new TypeError('ExternalKnowledgeBinding list requires knowledgeBaseId');
+  }
+  const limitPart = encodeKnowledgeListOptions(
+    options,
+    DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    'ExternalKnowledgeBinding'
+  ).slice(1);
+  return `?knowledgeBaseId=${encodeURIComponent(options.knowledgeBaseId)}&${limitPart}`;
+}
+
 
 
 export const KNOWLEDGE_INDEX_REVISION_SCHEMA = 'cloud.knowledge-index-revision.v1' as const;

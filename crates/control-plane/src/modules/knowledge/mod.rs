@@ -40,6 +40,8 @@
 //! client/CLI/MCP or live MinIO/scanner/SEV claims.
 //! `K0.1-C15` adds maintained client, CLI, and Management MCP over the same
 //! index/policy/binding handlers without bumping OpenAPI.
+//! `K0.1-C16` adds authorized bounded list for index/policy/binding through
+//! REST/OpenAPI `1.96.0`, client, CLI, and three Management MCP read tools.
 
 mod application;
 mod domain;
@@ -63,14 +65,21 @@ pub use application::{
     KnowledgeDocumentLifecycleService, KnowledgeIndexLifecycleService,
     KnowledgeIndexRevisionCatalogService, KnowledgeMutationResult,
     KnowledgePipelineCatalogService, KnowledgeRetrievalPolicyRevisionCatalogService,
-    ListKnowledgeBases, ListKnowledgeBasesHandler, ListKnowledgeChunks, ListKnowledgeChunksHandler,
-    ListKnowledgeDocuments, ListKnowledgeDocumentsHandler, ListKnowledgePipelines,
-    ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
+    ListExternalKnowledgeBindings, ListExternalKnowledgeBindingsHandler, ListKnowledgeBases,
+    ListKnowledgeBasesHandler, ListKnowledgeChunks, ListKnowledgeChunksHandler,
+    ListKnowledgeDocuments, ListKnowledgeDocumentsHandler, ListKnowledgeIndexRevisions,
+    ListKnowledgeIndexRevisionsHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
+    ListKnowledgeRetrievalPolicyRevisions, ListKnowledgeRetrievalPolicyRevisionsHandler,
+    PublishKnowledgePipelineCommand,
     PublishKnowledgePipelineHandler, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT, MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 pub use domain::{
     AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,

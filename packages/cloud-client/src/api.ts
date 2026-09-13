@@ -196,7 +196,10 @@ import {
 import {
   encodeKnowledgeBaseListOptions,
   encodeKnowledgeChunkListOptions,
+  encodeExternalKnowledgeBindingListOptions,
   encodeKnowledgeDocumentListOptions,
+  encodeKnowledgeIndexRevisionListOptions,
+  encodeKnowledgeRetrievalPolicyRevisionListOptions,
   encodeKnowledgePipelineListOptions,
   type AppendKnowledgeBaseInput,
   type CreateExternalKnowledgeBindingInput,
@@ -4480,6 +4483,43 @@ export class CloudApi {
       signal
     );
   }
+
+  listKnowledgeIndexRevisions(
+    organizationId: string,
+    projectId: string,
+    options: KnowledgeIndexRevisionListOptions,
+    signal?: AbortSignal
+  ): Promise<KnowledgeIndexRevision[]> {
+    return this.get(
+      `${knowledgeIndexRevisionCollectionPath(organizationId, projectId)}${encodeKnowledgeIndexRevisionListOptions(options)}`,
+      signal
+    );
+  }
+
+  listKnowledgeRetrievalPolicyRevisions(
+    organizationId: string,
+    projectId: string,
+    options: KnowledgeRetrievalPolicyRevisionListOptions,
+    signal?: AbortSignal
+  ): Promise<KnowledgeRetrievalPolicyRevision[]> {
+    return this.get(
+      `${knowledgeRetrievalPolicyRevisionCollectionPath(organizationId, projectId)}${encodeKnowledgeRetrievalPolicyRevisionListOptions(options)}`,
+      signal
+    );
+  }
+
+  listExternalKnowledgeBindings(
+    organizationId: string,
+    projectId: string,
+    options: ExternalKnowledgeBindingListOptions,
+    signal?: AbortSignal
+  ): Promise<ExternalKnowledgeBinding[]> {
+    return this.get(
+      `${externalKnowledgeBindingCollectionPath(organizationId, projectId)}${encodeExternalKnowledgeBindingListOptions(options)}`,
+      signal
+    );
+  }
+
 
   createKnowledgeRetrievalPolicyRevision(
     organizationId: string,

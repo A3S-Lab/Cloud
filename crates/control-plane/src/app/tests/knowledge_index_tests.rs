@@ -21,7 +21,7 @@ const RESTRICTED_KNOWLEDGE_TOKEN: &str =
     "a3s_c888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
-async fn knowledge_index_policy_binding_rest_create_get_replay_and_deny_unauthorized_project(
+async fn knowledge_index_policy_binding_rest_create_get_list_replay_and_deny_unauthorized_project(
 ) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
@@ -245,6 +245,65 @@ async fn knowledge_index_policy_binding_rest_create_get_replay_and_deny_unauthor
     let fetched_binding = response_json(&fetched_binding)?;
     assert_eq!(fetched_binding["data"]["bindingId"], FIXTURE_BINDING_ID);
     assert_eq!(fetched_binding["data"]["projectId"], granted_project);
+
+    let knowledge_base_revision_id = created["data"]["knowledgeIndexRevision"]
+        ["knowledgeBaseRevisionId"]
+        .as_str()
+        .ok_or_else(|| {
+            BootError::Internal("KnowledgeIndexRevision has no knowledgeBaseRevisionId".into())
+        })?;
+    let listed_indexes = app
+        .call(get_as(
+            format!(
+                "{granted_indexes}?knowledgeBaseRevisionId={knowledge_base_revision_id}&limit=8"
+            ),
+            RESTRICTED_KNOWLEDGE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed_indexes.status(), 200);
+    let listed_indexes = response_json(&listed_indexes)?;
+    assert_eq!(
+        listed_indexes["data"].as_array().map(|items| items.len()),
+        Some(1)
+    );
+
+    let listed_policies = app
+        .call(get_as(
+            format!(
+                "{granted_policies}?knowledgeBaseRevisionId={knowledge_base_revision_id}&limit=8"
+            ),
+            RESTRICTED_KNOWLEDGE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed_policies.status(), 200);
+    let listed_policies = response_json(&listed_policies)?;
+    assert_eq!(
+        listed_policies["data"].as_array().map(|items| items.len()),
+        Some(1)
+    );
+
+    let knowledge_base_id = created_binding["data"]["externalKnowledgeBinding"]["knowledgeBaseId"]
+        .as_str()
+        .ok_or_else(|| {
+            BootError::Internal("ExternalKnowledgeBinding has no knowledgeBaseId".into())
+        })?;
+    let listed_bindings = app
+        .call(get_as(
+            format!("{granted_bindings}?knowledgeBaseId={knowledge_base_id}&limit=8"),
+            RESTRICTED_KNOWLEDGE_TOKEN,
+        ))
+        .await?;
+    assert_eq!(listed_bindings.status(), 200);
+    let listed_bindings = response_json(&listed_bindings)?;
+    assert_eq!(
+        listed_bindings["data"].as_array().map(|items| items.len()),
+        Some(1)
+    );
+
+    let missing_revision = app
+        .call(get_as(&granted_indexes, RESTRICTED_KNOWLEDGE_TOKEN))
+        .await?;
+    assert_eq!(missing_revision.status(), 400);
 
     let denied_acl = rewrite_tenant_ids(KNOWLEDGE_INDEX_ACL, &organization, &denied_project);
     let denied_create = app

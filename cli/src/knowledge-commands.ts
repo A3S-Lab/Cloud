@@ -1,13 +1,19 @@
 import {
   type CloudApi,
+  encodeExternalKnowledgeBindingListOptions,
   encodeKnowledgeBaseListOptions,
   encodeKnowledgeChunkListOptions,
   encodeKnowledgeDocumentListOptions,
+  encodeKnowledgeIndexRevisionListOptions,
   encodeKnowledgePipelineListOptions,
+  encodeKnowledgeRetrievalPolicyRevisionListOptions,
   KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+  type ExternalKnowledgeBindingListOptions,
   type KnowledgeChunkListOptions,
   type KnowledgeDocumentListOptions,
+  type KnowledgeIndexRevisionListOptions,
   type KnowledgeListOptions,
+  type KnowledgeRetrievalPolicyRevisionListOptions,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
@@ -28,6 +34,7 @@ import { usageError } from './errors';
 import {
   externalKnowledgeBindingMutationResult,
   externalKnowledgeBindingResult,
+  externalKnowledgeBindingsResult,
   knowledgeBaseMutationResult,
   knowledgeBaseResult,
   knowledgeBasesResult,
@@ -39,11 +46,13 @@ import {
   knowledgeDocumentsResult,
   knowledgeIndexRevisionMutationResult,
   knowledgeIndexRevisionResult,
+  knowledgeIndexRevisionsResult,
   knowledgePipelineMutationResult,
   knowledgePipelineResult,
   knowledgePipelinesResult,
   knowledgeRetrievalPolicyRevisionMutationResult,
   knowledgeRetrievalPolicyRevisionResult,
+  knowledgeRetrievalPolicyRevisionsResult,
 } from './knowledge-results';
 import type { CommandResult } from './results';
 
@@ -268,6 +277,22 @@ export async function executeKnowledgeCommand(
           positionalUuid(arguments_.positionals, 2, 'KnowledgeChunk ID')
         )
       );
+    case 'knowledge-index-revisions list':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(
+        arguments_,
+        'knowledge-index-revisions list <knowledge-base-revision-id>'
+      );
+      return knowledgeIndexRevisionsResult(
+        await cloudApi().listKnowledgeIndexRevisions(
+          organizationId(),
+          projectId(),
+          knowledgeIndexRevisionListOptions(
+            arguments_,
+            positionalUuid(arguments_.positionals, 2, 'KnowledgeBase revision ID')
+          )
+        )
+      );
     case 'knowledge-index-revisions create': {
       rejectExpectedDigestOption(arguments_);
       const mutation = requireAclMutationCommand(arguments_, 2, 'knowledge-index-revisions create');
@@ -294,6 +319,22 @@ export async function executeKnowledgeCommand(
           organizationId(),
           projectId(),
           positionalUuid(arguments_.positionals, 2, 'KnowledgeIndexRevision ID')
+        )
+      );
+    case 'knowledge-retrieval-policy-revisions list':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(
+        arguments_,
+        'knowledge-retrieval-policy-revisions list <knowledge-base-revision-id>'
+      );
+      return knowledgeRetrievalPolicyRevisionsResult(
+        await cloudApi().listKnowledgeRetrievalPolicyRevisions(
+          organizationId(),
+          projectId(),
+          knowledgeRetrievalPolicyRevisionListOptions(
+            arguments_,
+            positionalUuid(arguments_.positionals, 2, 'KnowledgeBase revision ID')
+          )
         )
       );
     case 'knowledge-retrieval-policy-revisions create': {
@@ -329,6 +370,19 @@ export async function executeKnowledgeCommand(
           organizationId(),
           projectId(),
           positionalUuid(arguments_.positionals, 2, 'KnowledgeRetrievalPolicyRevision ID')
+        )
+      );
+    case 'external-knowledge-bindings list':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'external-knowledge-bindings list <knowledge-base-id>');
+      return externalKnowledgeBindingsResult(
+        await cloudApi().listExternalKnowledgeBindings(
+          organizationId(),
+          projectId(),
+          externalKnowledgeBindingListOptions(
+            arguments_,
+            positionalUuid(arguments_.positionals, 2, 'KnowledgeBase ID')
+          )
         )
       );
     case 'external-knowledge-bindings create': {
@@ -376,6 +430,72 @@ function requireKnowledgeListCommand(arguments_: ParsedArguments, usage: string)
   }
 }
 
+
+function knowledgeIndexRevisionListOptions(
+  arguments_: ParsedArguments,
+  knowledgeBaseRevisionId: string
+): KnowledgeIndexRevisionListOptions {
+  const options: KnowledgeIndexRevisionListOptions = { knowledgeBaseRevisionId };
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError('KnowledgeIndexRevision list limit must be an integer');
+    }
+    options.limit = Number(arguments_.limit);
+  }
+  try {
+    encodeKnowledgeIndexRevisionListOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
+
+function knowledgeRetrievalPolicyRevisionListOptions(
+  arguments_: ParsedArguments,
+  knowledgeBaseRevisionId: string
+): KnowledgeRetrievalPolicyRevisionListOptions {
+  const options: KnowledgeRetrievalPolicyRevisionListOptions = { knowledgeBaseRevisionId };
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError('KnowledgeRetrievalPolicyRevision list limit must be an integer');
+    }
+    options.limit = Number(arguments_.limit);
+  }
+  try {
+    encodeKnowledgeRetrievalPolicyRevisionListOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
+
+function externalKnowledgeBindingListOptions(
+  arguments_: ParsedArguments,
+  knowledgeBaseId: string
+): ExternalKnowledgeBindingListOptions {
+  const options: ExternalKnowledgeBindingListOptions = { knowledgeBaseId };
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError('ExternalKnowledgeBinding list limit must be an integer');
+    }
+    options.limit = Number(arguments_.limit);
+  }
+  try {
+    encodeExternalKnowledgeBindingListOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
 function knowledgeDocumentListOptions(
   arguments_: ParsedArguments,
   knowledgeBaseId: string

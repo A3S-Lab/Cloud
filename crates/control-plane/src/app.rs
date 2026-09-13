@@ -265,8 +265,9 @@ use crate::modules::knowledge::{
     IKnowledgeIndexRevisionRepository, IKnowledgePipelineRepository,
     IKnowledgeRetrievalPolicyRevisionRepository, KnowledgeCatalogLifecycleService,
     KnowledgeDocumentLifecycleService, KnowledgeIndexLifecycleService, KnowledgeModule,
-    ListKnowledgeBasesHandler, ListKnowledgeChunksHandler, ListKnowledgeDocumentsHandler,
-    ListKnowledgePipelinesHandler, PublishKnowledgePipelineHandler,
+    ListExternalKnowledgeBindingsHandler, ListKnowledgeBasesHandler, ListKnowledgeChunksHandler,
+    ListKnowledgeDocumentsHandler, ListKnowledgeIndexRevisionsHandler,
+    ListKnowledgePipelinesHandler, ListKnowledgeRetrievalPolicyRevisionsHandler, PublishKnowledgePipelineHandler,
 };
 use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
@@ -4413,7 +4414,22 @@ fn build_management_application_with_health(
                     )),
                 )
                 .query_handler::<crate::modules::knowledge::GetExternalKnowledgeBinding, _>(
-                    GetExternalKnowledgeBindingHandler::new(knowledge_index_lifecycle_service),
+                    GetExternalKnowledgeBindingHandler::new(Arc::clone(
+                        &knowledge_index_lifecycle_service,
+                    )),
+                )
+                .query_handler::<crate::modules::knowledge::ListKnowledgeIndexRevisions, _>(
+                    ListKnowledgeIndexRevisionsHandler::new(Arc::clone(
+                        &knowledge_index_lifecycle_service,
+                    )),
+                )
+                .query_handler::<crate::modules::knowledge::ListKnowledgeRetrievalPolicyRevisions, _>(
+                    ListKnowledgeRetrievalPolicyRevisionsHandler::new(Arc::clone(
+                        &knowledge_index_lifecycle_service,
+                    )),
+                )
+                .query_handler::<crate::modules::knowledge::ListExternalKnowledgeBindings, _>(
+                    ListExternalKnowledgeBindingsHandler::new(knowledge_index_lifecycle_service),
                 )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),

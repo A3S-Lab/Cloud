@@ -2,9 +2,11 @@ use crate::modules::knowledge::{
     EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, KNOWLEDGE_BASE_REVISION_SCHEMA_V1,
     KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
     KNOWLEDGE_INDEX_REVISION_SCHEMA_V1, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
-    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1, MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 use serde_json::{json, Map, Value};
 
@@ -45,6 +47,10 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
         "KnowledgeIndexRevisionMutation",
     ),
     (
+        "KnowledgeIndexRevisionListSuccessResponse",
+        "KnowledgeIndexRevisionList",
+    ),
+    (
         "KnowledgeRetrievalPolicyRevisionSuccessResponse",
         "KnowledgeRetrievalPolicyRevision",
     ),
@@ -53,12 +59,20 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
         "KnowledgeRetrievalPolicyRevisionMutation",
     ),
     (
+        "KnowledgeRetrievalPolicyRevisionListSuccessResponse",
+        "KnowledgeRetrievalPolicyRevisionList",
+    ),
+    (
         "ExternalKnowledgeBindingSuccessResponse",
         "ExternalKnowledgeBinding",
     ),
     (
         "ExternalKnowledgeBindingMutationSuccessResponse",
         "ExternalKnowledgeBindingMutation",
+    ),
+    (
+        "ExternalKnowledgeBindingListSuccessResponse",
+        "ExternalKnowledgeBindingList",
     ),
 ];
 
@@ -144,6 +158,11 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         "KnowledgeChunkMutationSuccessResponse",
     ),
     (
+        "KnowledgeIndexRevisionListSuccess200",
+        200,
+        "KnowledgeIndexRevisionListSuccessResponse",
+    ),
+    (
         "KnowledgeIndexRevisionSuccess200",
         200,
         "KnowledgeIndexRevisionSuccessResponse",
@@ -159,6 +178,11 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         "KnowledgeIndexRevisionMutationSuccessResponse",
     ),
     (
+        "KnowledgeRetrievalPolicyRevisionListSuccess200",
+        200,
+        "KnowledgeRetrievalPolicyRevisionListSuccessResponse",
+    ),
+    (
         "KnowledgeRetrievalPolicyRevisionSuccess200",
         200,
         "KnowledgeRetrievalPolicyRevisionSuccessResponse",
@@ -172,6 +196,11 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         "KnowledgeRetrievalPolicyRevisionMutationSuccess201",
         201,
         "KnowledgeRetrievalPolicyRevisionMutationSuccessResponse",
+    ),
+    (
+        "ExternalKnowledgeBindingListSuccess200",
+        200,
+        "ExternalKnowledgeBindingListSuccessResponse",
     ),
     (
         "ExternalKnowledgeBindingSuccess200",
@@ -211,6 +240,7 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
         ("KnowledgeChunkList", knowledge_chunk_list_schema()),
         ("KnowledgeChunkMutation", knowledge_chunk_mutation_schema()),
         ("KnowledgeIndexRevision", knowledge_index_revision_schema()),
+        ("KnowledgeIndexRevisionList", knowledge_index_revision_list_schema()),
         (
             "KnowledgeIndexRevisionMutation",
             knowledge_index_revision_mutation_schema(),
@@ -220,10 +250,15 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
             knowledge_retrieval_policy_revision_schema(),
         ),
         (
+            "KnowledgeRetrievalPolicyRevisionList",
+            knowledge_retrieval_policy_revision_list_schema(),
+        ),
+        (
             "KnowledgeRetrievalPolicyRevisionMutation",
             knowledge_retrieval_policy_revision_mutation_schema(),
         ),
         ("ExternalKnowledgeBinding", external_knowledge_binding_schema()),
+        ("ExternalKnowledgeBindingList", external_knowledge_binding_list_schema()),
         (
             "ExternalKnowledgeBindingMutation",
             external_knowledge_binding_mutation_schema(),
@@ -398,6 +433,30 @@ fn knowledge_chunk_list_schema() -> Value {
         "type": "array",
         "maxItems": MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
         "items": schema_ref("KnowledgeChunk")
+    })
+}
+
+fn knowledge_index_revision_list_schema() -> Value {
+    json!({
+        "type": "array",
+        "maxItems": MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+        "items": schema_ref("KnowledgeIndexRevision")
+    })
+}
+
+fn knowledge_retrieval_policy_revision_list_schema() -> Value {
+    json!({
+        "type": "array",
+        "maxItems": MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+        "items": schema_ref("KnowledgeRetrievalPolicyRevision")
+    })
+}
+
+fn external_knowledge_binding_list_schema() -> Value {
+    json!({
+        "type": "array",
+        "maxItems": MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+        "items": schema_ref("ExternalKnowledgeBinding")
     })
 }
 

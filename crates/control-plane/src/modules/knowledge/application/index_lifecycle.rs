@@ -18,6 +18,13 @@ use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
+pub const DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT: usize = 200;
+pub const DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT: usize = 200;
+pub const DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT: usize = 200;
+
 #[derive(Debug, Clone)]
 pub struct CreateKnowledgeIndexRevisionCommand {
     pub organization_id: OrganizationId,
@@ -51,6 +58,34 @@ pub struct CreateExternalKnowledgeBindingCommand {
     pub request_id: Uuid,
 }
 
+
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgeIndexRevisions {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub knowledge_base_revision_id: Uuid,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgeRetrievalPolicyRevisions {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub knowledge_base_revision_id: Uuid,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListExternalKnowledgeBindings {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub knowledge_base_id: Uuid,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
 
 #[derive(Debug, Clone)]
 pub struct GetKnowledgeIndexRevision {
@@ -330,6 +365,93 @@ impl KnowledgeIndexLifecycleService {
         }
         Ok(record)
     }
+    pub async fn list_index_revisions(
+        &self,
+        query: ListKnowledgeIndexRevisions,
+    ) -> ApplicationResult<Vec<KnowledgeIndexRevisionRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query
+            .limit
+            .unwrap_or(DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgeIndexRevision list limit must be between 1 and {MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT}"
+            )));
+        }
+        let records = self
+            .indexes
+            .list_for_knowledge_base_revision(
+                query.organization_id.as_uuid(),
+                query.knowledge_base_revision_id,
+                limit,
+            )
+            .await?;
+        for record in &records {
+            if record.index_revision.spec().project_id != query.project_id {
+                return Err(knowledge_not_found());
+            }
+        }
+        Ok(records)
+    }
+
+    pub async fn list_retrieval_policy_revisions(
+        &self,
+        query: ListKnowledgeRetrievalPolicyRevisions,
+    ) -> ApplicationResult<Vec<KnowledgeRetrievalPolicyRevisionRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query
+            .limit
+            .unwrap_or(DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgeRetrievalPolicyRevision list limit must be between 1 and {MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT}"
+            )));
+        }
+        let records = self
+            .policies
+            .list_for_knowledge_base_revision(
+                query.organization_id.as_uuid(),
+                query.knowledge_base_revision_id,
+                limit,
+            )
+            .await?;
+        for record in &records {
+            if record.policy_revision.spec().project_id != query.project_id {
+                return Err(knowledge_not_found());
+            }
+        }
+        Ok(records)
+    }
+
+    pub async fn list_external_bindings(
+        &self,
+        query: ListExternalKnowledgeBindings,
+    ) -> ApplicationResult<Vec<ExternalKnowledgeBindingRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query
+            .limit
+            .unwrap_or(DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "ExternalKnowledgeBinding list limit must be between 1 and {MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT}"
+            )));
+        }
+        let records = self
+            .bindings
+            .list_for_knowledge_base(
+                query.organization_id.as_uuid(),
+                query.knowledge_base_id,
+                limit,
+            )
+            .await?;
+        for record in &records {
+            if record.binding.spec().project_id != query.project_id {
+                return Err(knowledge_not_found());
+            }
+        }
+        Ok(records)
+    }
+
 }
 
 
