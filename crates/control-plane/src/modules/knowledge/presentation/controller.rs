@@ -1,25 +1,35 @@
 use super::{
-    AppendKnowledgeBaseRequest, CreateKnowledgeBaseRequest, CreateKnowledgeChunkRequest,
-    CreateKnowledgeDocumentRequest, CreateKnowledgePipelineRequest, KnowledgeBaseMutationResponse,
-    KnowledgeBaseResponse, KnowledgeChunkMutationResponse, KnowledgeChunkResponse,
-    KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse,
-    KnowledgePipelineMutationResponse, KnowledgePipelineResponse, PublishKnowledgePipelineRequest,
-    KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
-    KNOWLEDGE_CHUNK_ITEM_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
-    KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
-    KNOWLEDGE_DOCUMENT_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
-    KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
+    AppendKnowledgeBaseRequest, CreateExternalKnowledgeBindingRequest, CreateKnowledgeBaseRequest,
+    CreateKnowledgeChunkRequest, CreateKnowledgeDocumentRequest,
+    CreateKnowledgeIndexRevisionRequest, CreateKnowledgePipelineRequest,
+    CreateKnowledgeRetrievalPolicyRevisionRequest, ExternalKnowledgeBindingMutationResponse,
+    ExternalKnowledgeBindingResponse, KnowledgeBaseMutationResponse, KnowledgeBaseResponse,
+    KnowledgeChunkMutationResponse, KnowledgeChunkResponse, KnowledgeDocumentMutationResponse,
+    KnowledgeDocumentResponse, KnowledgeIndexRevisionMutationResponse,
+    KnowledgeIndexRevisionResponse, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
+    KnowledgeRetrievalPolicyRevisionMutationResponse, KnowledgeRetrievalPolicyRevisionResponse,
+    PublishKnowledgePipelineRequest, EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE,
+    EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE, KNOWLEDGE_BASE_COLLECTION_ROUTE,
+    KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CHUNK_ITEM_ROUTE,
+    KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
+    KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
+    KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE, KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE,
+    KNOWLEDGE_PIPELINE_COLLECTION_ROUTE, KNOWLEDGE_PIPELINE_ITEM_ROUTE,
+    KNOWLEDGE_PIPELINE_RELEASE_ROUTE, KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE,
 };
 use crate::modules::knowledge::application::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
-    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand, GetKnowledgeBase,
-    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, ListKnowledgeBases,
-    ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgePipelines,
-    PublishKnowledgePipelineCommand, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    AppendKnowledgeBaseCommand, CreateExternalKnowledgeBindingCommand, CreateKnowledgeBaseCommand,
+    CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand,
+    CreateKnowledgeIndexRevisionCommand, CreateKnowledgePipelineCommand,
+    CreateKnowledgeRetrievalPolicyRevisionCommand, GetExternalKnowledgeBinding, GetKnowledgeBase,
+    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgeIndexRevision, GetKnowledgePipeline,
+    GetKnowledgeRetrievalPolicyRevision, ListKnowledgeBases, ListKnowledgeChunks,
+    ListKnowledgeDocuments, ListKnowledgePipelines, PublishKnowledgePipelineCommand,
+    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use crate::presentation::{
@@ -40,6 +50,9 @@ pub fn knowledge_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
     let publish_pipeline_bus = Arc::clone(&bus);
     let create_document_bus = Arc::clone(&bus);
     let create_chunk_bus = Arc::clone(&bus);
+    let create_index_bus = Arc::clone(&bus);
+    let create_policy_bus = Arc::clone(&bus);
+    let create_binding_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .post(
             KNOWLEDGE_BASE_COLLECTION_ROUTE,
@@ -247,6 +260,111 @@ pub fn knowledge_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                     }
                 }
             },
+        )?
+        .post(
+            KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&create_index_bus);
+                async move {
+                    let body: CreateKnowledgeIndexRevisionRequest =
+                        request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateKnowledgeIndexRevisionCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            index_acl: body.index_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 201 },
+                            &KnowledgeIndexRevisionMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&create_policy_bus);
+                async move {
+                    let body: CreateKnowledgeRetrievalPolicyRevisionRequest =
+                        request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateKnowledgeRetrievalPolicyRevisionCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            policy_acl: body.policy_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 201 },
+                            &KnowledgeRetrievalPolicyRevisionMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .post(
+            EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&create_binding_bus);
+                async move {
+                    let body: CreateExternalKnowledgeBindingRequest =
+                        request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    match bus
+                        .execute(CreateExternalKnowledgeBindingCommand {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            binding_acl: body.binding_acl,
+                            actor_principal_id: actor_principal_id(&request)?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => BootResponse::json_with_status(
+                            if result.replayed { 200 } else { 201 },
+                            &ExternalKnowledgeBindingMutationResponse::from(result),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
         )?;
     organization_tenant_knowledge_write_controller(controller)
 }
@@ -260,6 +378,9 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let get_document_bus = Arc::clone(&bus);
     let list_chunks_bus = Arc::clone(&bus);
     let get_chunk_bus = Arc::clone(&bus);
+    let get_index_bus = Arc::clone(&bus);
+    let get_policy_bus = Arc::clone(&bus);
+    let get_binding_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .get(
             KNOWLEDGE_BASE_COLLECTION_ROUTE,
@@ -497,7 +618,94 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     Err(error) => application_error_response(error, request_id),
                 }
             }
-        })?;
+        })?
+        .get(
+            KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_index_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetKnowledgeIndexRevision {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            index_revision_id: request.param_as::<Uuid>("index_revision_id")?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(record) => {
+                            BootResponse::json(&KnowledgeIndexRevisionResponse::from(record))
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_policy_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetKnowledgeRetrievalPolicyRevision {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            policy_revision_id: request.param_as::<Uuid>("policy_revision_id")?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(record) => BootResponse::json(
+                            &KnowledgeRetrievalPolicyRevisionResponse::from(record),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&get_binding_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(GetExternalKnowledgeBinding {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            binding_id: request.param_as::<Uuid>("binding_id")?,
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(record) => {
+                            BootResponse::json(&ExternalKnowledgeBindingResponse::from(record))
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?;
     organization_tenant_cloud_read_controller(controller)
 }
 

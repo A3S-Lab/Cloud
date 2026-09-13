@@ -9,8 +9,12 @@ use super::developer_workflow_operation::{
 use super::documentation::describe_operation_documentation;
 use super::knowledge_operation::{
     is_base_collection_path as is_knowledge_base_collection_path,
-    is_document_collection_path as is_knowledge_document_collection_path, is_knowledge_path,
+    is_document_collection_path as is_knowledge_document_collection_path,
+    is_external_binding_collection_path as is_external_knowledge_binding_collection_path,
+    is_index_revision_collection_path as is_knowledge_index_revision_collection_path,
+    is_knowledge_path,
     is_pipeline_collection_path as is_knowledge_pipeline_collection_path,
+    is_retrieval_policy_revision_collection_path as is_knowledge_retrieval_policy_revision_collection_path,
     query_parameters as knowledge_query_parameters,
     success_component as knowledge_success_component,
 };
@@ -1427,7 +1431,10 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
         && (is_knowledge_base_collection_path(path)
             || is_knowledge_pipeline_collection_path(path)
             || is_knowledge_document_collection_path(path)
-            || is_knowledge_document_chunk_collection_path(path))
+            || is_knowledge_document_chunk_collection_path(path)
+            || is_knowledge_index_revision_collection_path(path)
+            || is_knowledge_retrieval_policy_revision_collection_path(path)
+            || is_external_knowledge_binding_collection_path(path))
     {
         return vec![200, 201];
     }
@@ -1729,6 +1736,9 @@ fn creates_resource(path: &str) -> bool {
         || is_knowledge_pipeline_collection_path(path)
         || is_knowledge_document_collection_path(path)
         || is_knowledge_document_chunk_collection_path(path)
+        || is_knowledge_index_revision_collection_path(path)
+        || is_knowledge_retrieval_policy_revision_collection_path(path)
+        || is_external_knowledge_binding_collection_path(path)
 }
 
 fn is_knowledge_document_chunk_collection_path(path: &str) -> bool {

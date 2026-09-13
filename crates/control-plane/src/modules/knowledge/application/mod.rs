@@ -10,9 +10,10 @@ mod resource_access;
 
 pub use catalog::{KnowledgeBaseCatalogService, KnowledgePipelineCatalogService};
 pub use commands::{
-    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgeChunkHandler,
-    CreateKnowledgeDocumentHandler, CreateKnowledgePipelineHandler,
-    PublishKnowledgePipelineHandler,
+    AppendKnowledgeBaseHandler, CreateExternalKnowledgeBindingHandler, CreateKnowledgeBaseHandler,
+    CreateKnowledgeChunkHandler, CreateKnowledgeDocumentHandler,
+    CreateKnowledgeIndexRevisionHandler, CreateKnowledgePipelineHandler,
+    CreateKnowledgeRetrievalPolicyRevisionHandler, PublishKnowledgePipelineHandler,
 };
 pub use document_catalog::{KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService};
 pub use index_catalog::{
@@ -21,7 +22,9 @@ pub use index_catalog::{
 };
 pub use index_lifecycle::{
     CreateExternalKnowledgeBindingCommand, CreateKnowledgeIndexRevisionCommand,
-    CreateKnowledgeRetrievalPolicyRevisionCommand, KnowledgeIndexLifecycleService,
+    CreateKnowledgeRetrievalPolicyRevisionCommand, GetExternalKnowledgeBinding,
+    GetKnowledgeIndexRevision, GetKnowledgeRetrievalPolicyRevision,
+    KnowledgeIndexLifecycleService,
 };
 pub use document_lifecycle::{
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand, GetKnowledgeChunk,
@@ -39,8 +42,9 @@ pub use lifecycle::{
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use queries::{
-    GetKnowledgeBaseHandler, GetKnowledgeChunkHandler, GetKnowledgeDocumentHandler,
-    GetKnowledgePipelineHandler, ListKnowledgeBasesHandler, ListKnowledgeChunksHandler,
-    ListKnowledgeDocumentsHandler, ListKnowledgePipelinesHandler,
+    GetExternalKnowledgeBindingHandler, GetKnowledgeBaseHandler, GetKnowledgeChunkHandler,
+    GetKnowledgeDocumentHandler, GetKnowledgeIndexRevisionHandler, GetKnowledgePipelineHandler,
+    GetKnowledgeRetrievalPolicyRevisionHandler, ListKnowledgeBasesHandler,
+    ListKnowledgeChunksHandler, ListKnowledgeDocumentsHandler, ListKnowledgePipelinesHandler,
 };
 pub use resource_access::KnowledgeAccess;

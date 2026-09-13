@@ -51,7 +51,9 @@ use crate::modules::identity::{
 };
 use crate::modules::knowledge::{
     InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
-    InMemoryKnowledgeDocumentRepository, InMemoryKnowledgePipelineRepository,
+    InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeDocumentRepository,
+    InMemoryKnowledgeIndexRevisionRepository, InMemoryKnowledgePipelineRepository,
+    InMemoryKnowledgeRetrievalPolicyRevisionRepository,
 };
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
@@ -241,6 +243,7 @@ mod inference_key_tests;
 mod inference_route_tests;
 mod inference_usage_tests;
 mod knowledge_document_tests;
+mod knowledge_index_tests;
 mod knowledge_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
@@ -739,6 +742,10 @@ struct TestRuntimeRepositories {
     knowledge_pipelines: Option<Arc<InMemoryKnowledgePipelineRepository>>,
     knowledge_documents: Option<Arc<InMemoryKnowledgeDocumentRepository>>,
     knowledge_chunks: Option<Arc<InMemoryKnowledgeChunkRepository>>,
+    knowledge_index_revisions: Option<Arc<InMemoryKnowledgeIndexRevisionRepository>>,
+    knowledge_retrieval_policy_revisions:
+        Option<Arc<InMemoryKnowledgeRetrievalPolicyRevisionRepository>>,
+    external_knowledge_bindings: Option<Arc<InMemoryExternalKnowledgeBindingRepository>>,
     inference_usage: Option<Arc<crate::modules::inference::InMemoryInferenceUsageRepository>>,
     inference_credentials:
         Option<Arc<crate::modules::identity::InMemoryInferenceCredentialRepository>>,
@@ -2108,6 +2115,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         knowledge_pipelines,
         knowledge_documents,
         knowledge_chunks,
+        knowledge_index_revisions,
+        knowledge_retrieval_policy_revisions,
+        external_knowledge_bindings,
         inference_usage,
         inference_credentials,
     } = runtime_repositories;
@@ -2368,6 +2378,14 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 .unwrap_or_else(|| Arc::new(InMemoryKnowledgeDocumentRepository::new())),
             knowledge_chunks: knowledge_chunks
                 .unwrap_or_else(|| Arc::new(InMemoryKnowledgeChunkRepository::new())),
+            knowledge_index_revisions: knowledge_index_revisions
+                .unwrap_or_else(|| Arc::new(InMemoryKnowledgeIndexRevisionRepository::new())),
+            knowledge_retrieval_policy_revisions: knowledge_retrieval_policy_revisions
+                .unwrap_or_else(|| {
+                    Arc::new(InMemoryKnowledgeRetrievalPolicyRevisionRepository::new())
+                }),
+            external_knowledge_bindings: external_knowledge_bindings
+                .unwrap_or_else(|| Arc::new(InMemoryExternalKnowledgeBindingRepository::new())),
             sources,
             source_webhooks,
             source_subscriptions,
