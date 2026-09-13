@@ -1273,6 +1273,12 @@ jobs:
           bash -n tools/box-conformance/collect_bx0_clean_host_evidence.sh
           bash -n tools/box-conformance/run_bx0_clean_host_exit_audit.sh
           bash -n tools/box-conformance/run_bx0_clean_host_prep.sh
+          bash -n tools/box-conformance/validate_bx0_tee_isolation_evidence.sh
+          bash -n tools/box-conformance/run_bx0_tee_isolation_audit.sh
+          bash -n tools/box-conformance/collect_bx0_tee_isolation_evidence.sh
+          bash -n tools/box-conformance/run_bx0_tee_isolation_audit_ci.sh
+          bash -n tools/box-conformance/verify_bx0_tee_box_hardware_run.sh
+          bash -n tools/box-conformance/preflight_bx0_sev_org_arming.sh
           bash -n tools/cell-conformance/verify_celld_release.sh
           bash -n tools/c0-conformance/run_cross_surface_gate.sh
           bash -n tools/dev/run_cloud.sh
@@ -1299,6 +1305,9 @@ jobs:
 
       - name: Certify BX0.5 clean-host gate CI fail-closed harness
         run: bash tools/box-conformance/run_bx0_clean_host_gate_ci.sh
+
+      - name: Certify BX0.3 TEE isolation CI fail-closed harness
+        run: bash tools/box-conformance/run_bx0_tee_isolation_audit_ci.sh
 
       - name: Test REST contract compatibility checker
         run: python3 -m unittest discover -s tools/api-contract -p 'test_*.py'

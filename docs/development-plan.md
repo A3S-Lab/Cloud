@@ -801,6 +801,13 @@ root, and skip detached `open_tree` / remount RO binds after device-policy drop.
 `BX0.3` remains open for complete Sandbox plus hardware-backed MicroVM/TEE
 isolation certification on the joint gate.
 
+The twelfth `BX0.3` slice rebases the BX0 branch onto Cloud `main` and pins
+merged A3S Box `0ce44d4dcf572fc473512deadf9e69b05ea69a16` (`3.2.6`, PR #335)
+with OCI Runtime `931def0b8c32313802262bbdbebfda669956ca4f`, replacing the
+pre-merge `96e3a5d` tip used by retained run `34720439337`. Retained Sandbox /
+provider conformance evidence stays valid for that older tip only until the
+joint gate is re-run; hardware-backed MicroVM/TEE isolation remains open.
+
 The rest of `BX0.3` remains open only for complete Sandbox plus hardware-backed
 MicroVM/TEE isolation certification.
 

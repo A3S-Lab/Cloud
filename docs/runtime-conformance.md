@@ -200,7 +200,17 @@ private generation-bound RA-TLS artifact before releasing the deferred guest
 workload, re-attests every running observation and automatic restart, rejects
 tampered or missing evidence, and defines separate simulated and hardware CI
 gates. The hardware gate is present but has not been executed for this lock,
-so hardware TEE certification remains release-blocking.
+so hardware TEE certification remains release-blocking. Arm it only through
+Box `docs/ci-kvm-runner.md` (`SEV_SNP_CI` + `sev-snp` runner); skipped jobs
+and simulated SEV-SNP profiles are not hardware evidence.
+
+Cloud binds that hardware evidence only through
+`tools/box-conformance/run_bx0_tee_isolation_audit.sh`. Without an operator
+`A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFICATION` line
+(`A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFIED ... simulate=false` citing a green Box
+hardware SEV Actions run), the audit prints
+`A3S_CLOUD_BX0_TEE_ISOLATION_BLOCKED` and exits 2. Sandbox provider re-cert and
+KVM-only conformance do not satisfy this TEE gate. Prefer `collect_bx0_tee_isolation_evidence.sh` and `verify_bx0_tee_box_hardware_run.sh` to refuse skipped or SHA-mismatched Box SEV runs (including hand-edited certs) before unlock. Operator sequence: `tools/box-conformance/OPERATOR_TEE.md`. Physical-capacity stop: without an online AMD SEV-SNP runner, skip developing PW0 / EXIT / later slices; that skip is not Verified.
 
 The eighth `BX0.3` slice advances the pinned A3S Box revision to
 `9ee75351ed1c5b5648639476e664c97825879f89`. Native OCI config and history use
