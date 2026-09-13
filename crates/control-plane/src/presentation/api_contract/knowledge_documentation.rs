@@ -1,7 +1,7 @@
 use super::knowledge_operation::{
-    is_base_collection_path, is_document_chunk_collection_path,
-    is_document_collection_path, is_document_item_path, is_knowledge_path,
-    is_pipeline_collection_path,
+    is_base_collection_path, is_document_chunk_collection_path, is_document_collection_path,
+    is_document_item_path, is_external_binding_collection_path, is_index_revision_collection_path,
+    is_knowledge_path, is_pipeline_collection_path, is_retrieval_policy_revision_collection_path,
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
@@ -40,6 +40,24 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "KnowledgeChunkList" => Some(
             "Bounded list of authorized KnowledgeChunk projections for one KnowledgeDocument.",
         ),
+        "KnowledgeIndexRevision" => Some(
+            "Authoritative KnowledgeIndexRevision projection binding the canonical index ACL, strategy, embedding dimension, and digests.",
+        ),
+        "KnowledgeIndexRevisionMutation" => Some(
+            "KnowledgeIndexRevision mutation result with explicit idempotent-replay state and the authoritative index projection.",
+        ),
+        "KnowledgeRetrievalPolicyRevision" => Some(
+            "Authoritative KnowledgeRetrievalPolicyRevision projection binding the canonical policy ACL, search mode, top-k, and digests.",
+        ),
+        "KnowledgeRetrievalPolicyRevisionMutation" => Some(
+            "KnowledgeRetrievalPolicyRevision mutation result with explicit idempotent-replay state and the authoritative policy projection.",
+        ),
+        "ExternalKnowledgeBinding" => Some(
+            "Authoritative ExternalKnowledgeBinding projection binding the canonical binding ACL, display name, and digests.",
+        ),
+        "ExternalKnowledgeBindingMutation" => Some(
+            "ExternalKnowledgeBinding mutation result with explicit idempotent-replay state and the authoritative binding projection.",
+        ),
         _ => None,
     }
 }
@@ -67,6 +85,24 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "get" if is_document_item_path(path) => Some("Get a knowledge document"),
         "get" if is_document_chunk_collection_path(path) => Some("List knowledge chunks"),
         "get" if path.contains("/knowledge-chunks/") => Some("Get a knowledge chunk"),
+        "post" if is_index_revision_collection_path(path) => {
+            Some("Create a knowledge index revision")
+        }
+        "get" if path.contains("/knowledge-index-revisions/") => {
+            Some("Get a knowledge index revision")
+        }
+        "post" if is_retrieval_policy_revision_collection_path(path) => {
+            Some("Create a knowledge retrieval policy revision")
+        }
+        "get" if path.contains("/knowledge-retrieval-policy-revisions/") => {
+            Some("Get a knowledge retrieval policy revision")
+        }
+        "post" if is_external_binding_collection_path(path) => {
+            Some("Create an external knowledge binding")
+        }
+        "get" if path.contains("/external-knowledge-bindings/") => {
+            Some("Get an external knowledge binding")
+        }
         _ => None,
     }
 }
@@ -118,6 +154,24 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         "get" if path.contains("/knowledge-chunks/") => {
             Some("Reads one authorized KnowledgeChunk projection by immutable identity.")
         }
+        "post" if is_index_revision_collection_path(path) => Some(
+            "Creates one KnowledgeIndexRevision from a canonical A3S ACL contract. Audit, Outbox, and idempotency commit atomically through the authorized index lifecycle boundary. This surface does not claim live MinIO, scanner, or SEV ingestion.",
+        ),
+        "get" if path.contains("/knowledge-index-revisions/") => {
+            Some("Reads one authorized KnowledgeIndexRevision projection by immutable identity.")
+        }
+        "post" if is_retrieval_policy_revision_collection_path(path) => Some(
+            "Creates one KnowledgeRetrievalPolicyRevision from a canonical A3S ACL contract. Audit, Outbox, and idempotency commit atomically through the authorized index lifecycle boundary.",
+        ),
+        "get" if path.contains("/knowledge-retrieval-policy-revisions/") => Some(
+            "Reads one authorized KnowledgeRetrievalPolicyRevision projection by immutable identity.",
+        ),
+        "post" if is_external_binding_collection_path(path) => Some(
+            "Creates one ExternalKnowledgeBinding from a canonical A3S ACL contract. Audit, Outbox, and idempotency commit atomically through the authorized index lifecycle boundary.",
+        ),
+        "get" if path.contains("/external-knowledge-bindings/") => {
+            Some("Reads one authorized ExternalKnowledgeBinding projection by immutable identity.")
+        }
         _ => None,
     }
 }
@@ -127,6 +181,15 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         return None;
     }
     match method {
+        "post" if path.contains("/external-knowledge-bindings") => Some(
+            "The authoritative ExternalKnowledgeBinding after the mutation plus an idempotent-replay indicator.",
+        ),
+        "post" if path.contains("/knowledge-retrieval-policy-revisions") => Some(
+            "The authoritative KnowledgeRetrievalPolicyRevision after the mutation plus an idempotent-replay indicator.",
+        ),
+        "post" if path.contains("/knowledge-index-revisions") => Some(
+            "The authoritative KnowledgeIndexRevision after the mutation plus an idempotent-replay indicator.",
+        ),
         "post" if path.contains("/knowledge-chunks") || path.ends_with("/chunks") => Some(
             "The authoritative KnowledgeChunk after the mutation plus an idempotent-replay indicator.",
         ),
@@ -159,6 +222,15 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         }
         "get" if path.contains("/knowledge-pipelines/") => {
             Some("The authoritative KnowledgePipeline head projection.")
+        }
+        "get" if path.contains("/knowledge-index-revisions/") => {
+            Some("The authoritative KnowledgeIndexRevision projection.")
+        }
+        "get" if path.contains("/knowledge-retrieval-policy-revisions/") => {
+            Some("The authoritative KnowledgeRetrievalPolicyRevision projection.")
+        }
+        "get" if path.contains("/external-knowledge-bindings/") => {
+            Some("The authoritative ExternalKnowledgeBinding projection.")
         }
         "get" => Some("The authoritative KnowledgeBase head projection."),
         _ => None,

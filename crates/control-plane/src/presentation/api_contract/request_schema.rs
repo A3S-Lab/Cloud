@@ -133,6 +133,15 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/knowledge-documents/{document_id}/chunks" => {
             knowledge_chunk_create_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-index-revisions" => {
+            knowledge_index_revision_create_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-retrieval-policy-revisions" => {
+            knowledge_retrieval_policy_revision_create_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/external-knowledge-bindings" => {
+            external_knowledge_binding_create_schema()
+        }
         "/organizations/{organization_id}/secrets/{secret_id}/versions" => {
             secret_value_schema()
         }
@@ -342,6 +351,51 @@ fn knowledge_chunk_create_schema() -> Value {
                 "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
                 "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
                 "description": "Canonical A3S ACL KnowledgeChunk contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_index_revision_create_schema() -> Value {
+    object(
+        &["indexAcl"],
+        json!({
+            "indexAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeIndexRevision contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_retrieval_policy_revision_create_schema() -> Value {
+    object(
+        &["policyAcl"],
+        json!({
+            "policyAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeRetrievalPolicyRevision contract."
+            }
+        }),
+    )
+}
+
+fn external_knowledge_binding_create_schema() -> Value {
+    object(
+        &["bindingAcl"],
+        json!({
+            "bindingAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL ExternalKnowledgeBinding contract."
             }
         }),
     )

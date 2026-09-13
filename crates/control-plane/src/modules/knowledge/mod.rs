@@ -35,6 +35,9 @@
 //! client, CLI, or Management MCP surface.
 //! `K0.1-C13` adds authorized idempotent index/policy/binding create writes with
 //! audit and Outbox side effects over the C11 repositories. No REST/MCP.
+//! `K0.1-C14` exposes that index/policy/binding mutation boundary over
+//! REST/OpenAPI `1.95.0` with CQRS handlers and control-plane wiring. No
+//! client/CLI/MCP or live MinIO/scanner/SEV claims.
 
 mod application;
 mod domain;
@@ -42,22 +45,25 @@ mod infrastructure;
 mod presentation;
 
 pub use application::{
-    AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateKnowledgeBaseCommand,
-    CreateKnowledgeBaseHandler, CreateKnowledgeChunkCommand, CreateKnowledgeChunkHandler,
-    CreateKnowledgeDocumentCommand, CreateKnowledgeDocumentHandler, CreateKnowledgePipelineCommand,
-    CreateKnowledgePipelineHandler, GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgeChunk,
-    GetKnowledgeChunkHandler, GetKnowledgeDocument, GetKnowledgeDocumentHandler,
-    GetKnowledgePipeline, GetKnowledgePipelineHandler, KnowledgeAccess,
-    KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
-    KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService,
-    KnowledgeIndexLifecycleService, KnowledgeIndexRevisionCatalogService,
-    KnowledgeMutationResult, KnowledgeRetrievalPolicyRevisionCatalogService,
-    ExternalKnowledgeBindingCatalogService, CreateExternalKnowledgeBindingCommand,
-    CreateKnowledgeIndexRevisionCommand, CreateKnowledgeRetrievalPolicyRevisionCommand,
-    KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
-    ListKnowledgeChunks, ListKnowledgeChunksHandler, ListKnowledgeDocuments,
-    ListKnowledgeDocumentsHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
-    PublishKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateExternalKnowledgeBindingCommand,
+    CreateExternalKnowledgeBindingHandler, CreateKnowledgeBaseCommand, CreateKnowledgeBaseHandler,
+    CreateKnowledgeChunkCommand, CreateKnowledgeChunkHandler, CreateKnowledgeDocumentCommand,
+    CreateKnowledgeDocumentHandler, CreateKnowledgeIndexRevisionCommand,
+    CreateKnowledgeIndexRevisionHandler, CreateKnowledgePipelineCommand,
+    CreateKnowledgePipelineHandler, CreateKnowledgeRetrievalPolicyRevisionCommand,
+    CreateKnowledgeRetrievalPolicyRevisionHandler, ExternalKnowledgeBindingCatalogService,
+    GetExternalKnowledgeBinding, GetExternalKnowledgeBindingHandler, GetKnowledgeBase,
+    GetKnowledgeBaseHandler, GetKnowledgeChunk, GetKnowledgeChunkHandler, GetKnowledgeDocument,
+    GetKnowledgeDocumentHandler, GetKnowledgeIndexRevision, GetKnowledgeIndexRevisionHandler,
+    GetKnowledgePipeline, GetKnowledgePipelineHandler, GetKnowledgeRetrievalPolicyRevision,
+    GetKnowledgeRetrievalPolicyRevisionHandler, KnowledgeAccess, KnowledgeBaseCatalogService,
+    KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService,
+    KnowledgeDocumentLifecycleService, KnowledgeIndexLifecycleService,
+    KnowledgeIndexRevisionCatalogService, KnowledgeMutationResult,
+    KnowledgePipelineCatalogService, KnowledgeRetrievalPolicyRevisionCatalogService,
+    ListKnowledgeBases, ListKnowledgeBasesHandler, ListKnowledgeChunks, ListKnowledgeChunksHandler,
+    ListKnowledgeDocuments, ListKnowledgeDocumentsHandler, ListKnowledgePipelines,
+    ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
     PublishKnowledgePipelineHandler, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
     DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
     DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
@@ -104,13 +110,19 @@ pub use infrastructure::{
     PostgresKnowledgeRetrievalPolicyRevisionRepository,
 };
 pub(crate) use presentation::{
+    ExternalKnowledgeBindingMutationResponse, ExternalKnowledgeBindingResponse,
     KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeChunkMutationResponse,
     KnowledgeChunkResponse, KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse,
-    KnowledgeModule, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
-    KNOWLEDGE_BASE_COLLECTION_ROUTE,
-    KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CHUNK_ITEM_ROUTE,
-    KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
-    KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
-    KNOWLEDGE_PIPELINE_COLLECTION_ROUTE, KNOWLEDGE_PIPELINE_ITEM_ROUTE,
-    KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
+    KnowledgeIndexRevisionMutationResponse, KnowledgeIndexRevisionResponse, KnowledgeModule,
+    KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
+    KnowledgeRetrievalPolicyRevisionMutationResponse, KnowledgeRetrievalPolicyRevisionResponse,
+    EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE, EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE,
+    KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
+    KNOWLEDGE_CHUNK_ITEM_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
+    KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
+    KNOWLEDGE_DOCUMENT_ITEM_ROUTE, KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE,
+    KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
+    KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE,
 };

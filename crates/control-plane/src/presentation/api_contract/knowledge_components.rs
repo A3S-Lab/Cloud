@@ -1,8 +1,10 @@
 use crate::modules::knowledge::{
-    KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
-    KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, KNOWLEDGE_BASE_REVISION_SCHEMA_V1,
+    KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
+    KNOWLEDGE_INDEX_REVISION_SCHEMA_V1, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use serde_json::{json, Map, Value};
 
@@ -33,6 +35,30 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     (
         "KnowledgeChunkMutationSuccessResponse",
         "KnowledgeChunkMutation",
+    ),
+    (
+        "KnowledgeIndexRevisionSuccessResponse",
+        "KnowledgeIndexRevision",
+    ),
+    (
+        "KnowledgeIndexRevisionMutationSuccessResponse",
+        "KnowledgeIndexRevisionMutation",
+    ),
+    (
+        "KnowledgeRetrievalPolicyRevisionSuccessResponse",
+        "KnowledgeRetrievalPolicyRevision",
+    ),
+    (
+        "KnowledgeRetrievalPolicyRevisionMutationSuccessResponse",
+        "KnowledgeRetrievalPolicyRevisionMutation",
+    ),
+    (
+        "ExternalKnowledgeBindingSuccessResponse",
+        "ExternalKnowledgeBinding",
+    ),
+    (
+        "ExternalKnowledgeBindingMutationSuccessResponse",
+        "ExternalKnowledgeBindingMutation",
     ),
 ];
 
@@ -117,6 +143,51 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         201,
         "KnowledgeChunkMutationSuccessResponse",
     ),
+    (
+        "KnowledgeIndexRevisionSuccess200",
+        200,
+        "KnowledgeIndexRevisionSuccessResponse",
+    ),
+    (
+        "KnowledgeIndexRevisionMutationSuccess200",
+        200,
+        "KnowledgeIndexRevisionMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeIndexRevisionMutationSuccess201",
+        201,
+        "KnowledgeIndexRevisionMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeRetrievalPolicyRevisionSuccess200",
+        200,
+        "KnowledgeRetrievalPolicyRevisionSuccessResponse",
+    ),
+    (
+        "KnowledgeRetrievalPolicyRevisionMutationSuccess200",
+        200,
+        "KnowledgeRetrievalPolicyRevisionMutationSuccessResponse",
+    ),
+    (
+        "KnowledgeRetrievalPolicyRevisionMutationSuccess201",
+        201,
+        "KnowledgeRetrievalPolicyRevisionMutationSuccessResponse",
+    ),
+    (
+        "ExternalKnowledgeBindingSuccess200",
+        200,
+        "ExternalKnowledgeBindingSuccessResponse",
+    ),
+    (
+        "ExternalKnowledgeBindingMutationSuccess200",
+        200,
+        "ExternalKnowledgeBindingMutationSuccessResponse",
+    ),
+    (
+        "ExternalKnowledgeBindingMutationSuccess201",
+        201,
+        "ExternalKnowledgeBindingMutationSuccessResponse",
+    ),
 ];
 
 pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Value>) {
@@ -139,6 +210,24 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
         ("KnowledgeChunk", knowledge_chunk_schema()),
         ("KnowledgeChunkList", knowledge_chunk_list_schema()),
         ("KnowledgeChunkMutation", knowledge_chunk_mutation_schema()),
+        ("KnowledgeIndexRevision", knowledge_index_revision_schema()),
+        (
+            "KnowledgeIndexRevisionMutation",
+            knowledge_index_revision_mutation_schema(),
+        ),
+        (
+            "KnowledgeRetrievalPolicyRevision",
+            knowledge_retrieval_policy_revision_schema(),
+        ),
+        (
+            "KnowledgeRetrievalPolicyRevisionMutation",
+            knowledge_retrieval_policy_revision_mutation_schema(),
+        ),
+        ("ExternalKnowledgeBinding", external_knowledge_binding_schema()),
+        (
+            "ExternalKnowledgeBindingMutation",
+            external_knowledge_binding_mutation_schema(),
+        ),
     ] {
         schemas.insert(name.into(), schema);
     }
@@ -377,6 +466,152 @@ fn object_schema(required: &[&str], properties: Value) -> Value {
     })
 }
 
+
+fn knowledge_index_revision_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "knowledgeBaseRevisionId",
+            "indexRevisionId",
+            "strategy",
+            "embeddingDimension",
+            "contractSchema",
+            "indexAcl",
+            "indexDigest",
+            "createdAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "knowledgeBaseRevisionId": uuid_schema(),
+            "indexRevisionId": uuid_schema(),
+            "strategy": {
+                "type": "string",
+                "enum": ["vector", "full_text", "hybrid", "inverted"]
+            },
+            "embeddingDimension": { "type": "integer", "minimum": 0 },
+            "contractSchema": {
+                "type": "string",
+                "enum": [KNOWLEDGE_INDEX_REVISION_SCHEMA_V1]
+            },
+            "indexAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeIndexRevision contract."
+            },
+            "indexDigest": digest_schema(),
+            "createdAt": timestamp_schema()
+        }),
+    )
+}
+
+fn knowledge_index_revision_mutation_schema() -> Value {
+    object_schema(
+        &["knowledgeIndexRevision", "replayed"],
+        json!({
+            "knowledgeIndexRevision": schema_ref("KnowledgeIndexRevision"),
+            "replayed": { "type": "boolean" }
+        }),
+    )
+}
+
+fn knowledge_retrieval_policy_revision_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "knowledgeBaseRevisionId",
+            "policyRevisionId",
+            "searchMode",
+            "topK",
+            "contractSchema",
+            "policyAcl",
+            "policyDigest",
+            "createdAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "knowledgeBaseRevisionId": uuid_schema(),
+            "policyRevisionId": uuid_schema(),
+            "searchMode": { "type": "string", "minLength": 1 },
+            "topK": { "type": "integer", "minimum": 1 },
+            "contractSchema": {
+                "type": "string",
+                "enum": [KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1]
+            },
+            "policyAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeRetrievalPolicyRevision contract."
+            },
+            "policyDigest": digest_schema(),
+            "createdAt": timestamp_schema()
+        }),
+    )
+}
+
+fn knowledge_retrieval_policy_revision_mutation_schema() -> Value {
+    object_schema(
+        &["knowledgeRetrievalPolicyRevision", "replayed"],
+        json!({
+            "knowledgeRetrievalPolicyRevision": schema_ref("KnowledgeRetrievalPolicyRevision"),
+            "replayed": { "type": "boolean" }
+        }),
+    )
+}
+
+fn external_knowledge_binding_schema() -> Value {
+    object_schema(
+        &[
+            "organizationId",
+            "projectId",
+            "knowledgeBaseId",
+            "bindingId",
+            "displayName",
+            "contractSchema",
+            "bindingAcl",
+            "bindingDigest",
+            "createdAt",
+        ],
+        json!({
+            "organizationId": uuid_schema(),
+            "projectId": uuid_schema(),
+            "knowledgeBaseId": uuid_schema(),
+            "bindingId": uuid_schema(),
+            "displayName": { "type": "string", "minLength": 1, "maxLength": 63 },
+            "contractSchema": {
+                "type": "string",
+                "enum": [EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1]
+            },
+            "bindingAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL ExternalKnowledgeBinding contract."
+            },
+            "bindingDigest": digest_schema(),
+            "createdAt": timestamp_schema()
+        }),
+    )
+}
+
+fn external_knowledge_binding_mutation_schema() -> Value {
+    object_schema(
+        &["externalKnowledgeBinding", "replayed"],
+        json!({
+            "externalKnowledgeBinding": schema_ref("ExternalKnowledgeBinding"),
+            "replayed": { "type": "boolean" }
+        }),
+    )
+}
+
 fn schema_ref(name: &str) -> Value {
     json!({ "$ref": format!("#/components/schemas/{name}") })
 }
@@ -411,6 +646,12 @@ mod tests {
             "KnowledgeDocumentMutation",
             "KnowledgeChunk",
             "KnowledgeChunkMutation",
+            "KnowledgeIndexRevision",
+            "KnowledgeIndexRevisionMutation",
+            "KnowledgeRetrievalPolicyRevision",
+            "KnowledgeRetrievalPolicyRevisionMutation",
+            "ExternalKnowledgeBinding",
+            "ExternalKnowledgeBindingMutation",
         ] {
             assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
         }

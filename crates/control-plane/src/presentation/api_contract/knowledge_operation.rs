@@ -1,13 +1,17 @@
 use crate::modules::knowledge::{
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE, EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE,
     KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
     KNOWLEDGE_CHUNK_ITEM_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
     KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
-    KNOWLEDGE_DOCUMENT_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
+    KNOWLEDGE_DOCUMENT_ITEM_ROUTE, KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE,
+    KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
     KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use serde_json::{json, Value};
 
@@ -22,6 +26,12 @@ pub(super) fn is_knowledge_path(path: &str) -> bool {
         || is_document_item_path(path)
         || is_document_chunk_collection_path(path)
         || is_chunk_item_path(path)
+        || is_index_revision_collection_path(path)
+        || is_index_revision_item_path(path)
+        || is_retrieval_policy_revision_collection_path(path)
+        || is_retrieval_policy_revision_item_path(path)
+        || is_external_binding_collection_path(path)
+        || is_external_binding_item_path(path)
 }
 
 pub(super) fn is_base_collection_path(path: &str) -> bool {
@@ -62,6 +72,30 @@ pub(super) fn is_document_chunk_collection_path(path: &str) -> bool {
 
 fn is_chunk_item_path(path: &str) -> bool {
     path == full_route(KNOWLEDGE_CHUNK_ITEM_ROUTE)
+}
+
+pub(super) fn is_index_revision_collection_path(path: &str) -> bool {
+    path == full_route(KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE)
+}
+
+fn is_index_revision_item_path(path: &str) -> bool {
+    path == full_route(KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE)
+}
+
+pub(super) fn is_retrieval_policy_revision_collection_path(path: &str) -> bool {
+    path == full_route(KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE)
+}
+
+fn is_retrieval_policy_revision_item_path(path: &str) -> bool {
+    path == full_route(KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE)
+}
+
+pub(super) fn is_external_binding_collection_path(path: &str) -> bool {
+    path == full_route(EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE)
+}
+
+fn is_external_binding_item_path(path: &str) -> bool {
+    path == full_route(EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE)
 }
 
 pub(super) fn query_parameters(method: &str, path: &str) -> Vec<Value> {
@@ -173,6 +207,32 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         } else {
             "KnowledgeChunkMutationSuccess200"
         }),
+        ("get", 200) if is_index_revision_item_path(path) => {
+            Some("KnowledgeIndexRevisionSuccess200")
+        },
+        ("post", 200 | 201) if is_index_revision_collection_path(path) => Some(if status == 201 {
+            "KnowledgeIndexRevisionMutationSuccess201"
+        } else {
+            "KnowledgeIndexRevisionMutationSuccess200"
+        }),
+        ("get", 200) if is_retrieval_policy_revision_item_path(path) => {
+            Some("KnowledgeRetrievalPolicyRevisionSuccess200")
+        },
+        ("post", 200 | 201) if is_retrieval_policy_revision_collection_path(path) => Some(
+            if status == 201 {
+                "KnowledgeRetrievalPolicyRevisionMutationSuccess201"
+            } else {
+                "KnowledgeRetrievalPolicyRevisionMutationSuccess200"
+            },
+        ),
+        ("get", 200) if is_external_binding_item_path(path) => {
+            Some("ExternalKnowledgeBindingSuccess200")
+        },
+        ("post", 200 | 201) if is_external_binding_collection_path(path) => Some(if status == 201 {
+            "ExternalKnowledgeBindingMutationSuccess201"
+        } else {
+            "ExternalKnowledgeBindingMutationSuccess200"
+        }),
         _ => None,
     }
 }
@@ -194,9 +254,18 @@ mod tests {
         let document_item = full_route(KNOWLEDGE_DOCUMENT_ITEM_ROUTE);
         let chunk_collection = full_route(KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE);
         let chunk_item = full_route(KNOWLEDGE_CHUNK_ITEM_ROUTE);
+        let index_collection = full_route(KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE);
+        let index_item = full_route(KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE);
+        let policy_collection = full_route(KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE);
+        let policy_item = full_route(KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE);
+        let binding_collection = full_route(EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE);
+        let binding_item = full_route(EXTERNAL_KNOWLEDGE_BINDING_ITEM_ROUTE);
         assert!(is_knowledge_path(&base_collection));
         assert!(is_knowledge_path(&document_collection));
         assert!(is_knowledge_path(&chunk_item));
+        assert!(is_knowledge_path(&index_collection));
+        assert!(is_knowledge_path(&policy_item));
+        assert!(is_knowledge_path(&binding_item));
         assert_eq!(query_parameters("get", &base_collection).len(), 1);
         assert_eq!(query_parameters("get", &pipeline_collection).len(), 1);
         assert_eq!(query_parameters("get", &document_collection).len(), 2);
@@ -236,6 +305,30 @@ mod tests {
         assert_eq!(
             success_component("get", &chunk_item, 200),
             Some("KnowledgeChunkSuccess200")
+        );
+        assert_eq!(
+            success_component("post", &index_collection, 201),
+            Some("KnowledgeIndexRevisionMutationSuccess201")
+        );
+        assert_eq!(
+            success_component("get", &index_item, 200),
+            Some("KnowledgeIndexRevisionSuccess200")
+        );
+        assert_eq!(
+            success_component("post", &policy_collection, 201),
+            Some("KnowledgeRetrievalPolicyRevisionMutationSuccess201")
+        );
+        assert_eq!(
+            success_component("get", &policy_item, 200),
+            Some("KnowledgeRetrievalPolicyRevisionSuccess200")
+        );
+        assert_eq!(
+            success_component("post", &binding_collection, 201),
+            Some("ExternalKnowledgeBindingMutationSuccess201")
+        );
+        assert_eq!(
+            success_component("get", &binding_item, 200),
+            Some("ExternalKnowledgeBindingSuccess200")
         );
     }
 }

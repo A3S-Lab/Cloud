@@ -1,5 +1,5 @@
 use super::lifecycle::KnowledgeMutationResult;
-use super::resource_access::{project, KnowledgeAccess};
+use super::resource_access::{knowledge_not_found, project, KnowledgeAccess};
 use crate::modules::knowledge::domain::{
     CreateExternalKnowledgeBindingWrite, CreateKnowledgeIndexRevisionWrite,
     CreateKnowledgeRetrievalPolicyRevisionWrite, ExternalKnowledgeBindingLifecycleChanged,
@@ -51,6 +51,30 @@ pub struct CreateExternalKnowledgeBindingCommand {
     pub request_id: Uuid,
 }
 
+
+#[derive(Debug, Clone)]
+pub struct GetKnowledgeIndexRevision {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub index_revision_id: Uuid,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct GetKnowledgeRetrievalPolicyRevision {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub policy_revision_id: Uuid,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct GetExternalKnowledgeBinding {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub binding_id: Uuid,
+    pub access: KnowledgeAccess,
+}
 /// Authorized Knowledge index/policy/binding lifecycle boundary.
 #[derive(Clone)]
 pub struct KnowledgeIndexLifecycleService {
@@ -258,7 +282,56 @@ impl KnowledgeIndexLifecycleService {
             replayed: written.replayed,
         })
     }
+
+    pub async fn get_index_revision(
+        &self,
+        query: GetKnowledgeIndexRevision,
+    ) -> ApplicationResult<KnowledgeIndexRevisionRecord> {
+        project(query.project_id, &query.access)?;
+        let record = self
+            .indexes
+            .find(query.organization_id.as_uuid(), query.index_revision_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if record.index_revision.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        Ok(record)
+    }
+
+    pub async fn get_retrieval_policy_revision(
+        &self,
+        query: GetKnowledgeRetrievalPolicyRevision,
+    ) -> ApplicationResult<KnowledgeRetrievalPolicyRevisionRecord> {
+        project(query.project_id, &query.access)?;
+        let record = self
+            .policies
+            .find(query.organization_id.as_uuid(), query.policy_revision_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if record.policy_revision.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        Ok(record)
+    }
+
+    pub async fn get_external_binding(
+        &self,
+        query: GetExternalKnowledgeBinding,
+    ) -> ApplicationResult<ExternalKnowledgeBindingRecord> {
+        project(query.project_id, &query.access)?;
+        let record = self
+            .bindings
+            .find(query.organization_id.as_uuid(), query.binding_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if record.binding.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        Ok(record)
+    }
 }
+
 
 fn canonical_now() -> ApplicationResult<chrono::DateTime<Utc>> {
     let now = Utc::now();

@@ -1,11 +1,15 @@
 use super::{
     AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
-    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand,
-    KnowledgeCatalogLifecycleService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
+    CreateExternalKnowledgeBindingCommand, CreateKnowledgeDocumentCommand,
+    CreateKnowledgeIndexRevisionCommand, CreateKnowledgePipelineCommand,
+    CreateKnowledgeRetrievalPolicyRevisionCommand, KnowledgeCatalogLifecycleService,
+    KnowledgeDocumentLifecycleService, KnowledgeIndexLifecycleService, KnowledgeMutationResult,
     PublishKnowledgePipelineCommand,
 };
 use crate::modules::knowledge::domain::{
-    KnowledgeBaseRecord, KnowledgeChunkRecord, KnowledgeDocumentRecord, KnowledgePipelineRecord,
+    ExternalKnowledgeBindingRecord, KnowledgeBaseRecord, KnowledgeChunkRecord,
+    KnowledgeDocumentRecord, KnowledgeIndexRevisionRecord, KnowledgePipelineRecord,
+    KnowledgeRetrievalPolicyRevisionRecord,
 };
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{Command, CommandHandler, CqrsContext};
@@ -176,5 +180,95 @@ impl CommandHandler<CreateKnowledgeChunkCommand> for CreateKnowledgeChunkHandler
     > {
         let service = Arc::clone(&self.service);
         Box::pin(async move { Ok(service.create_chunk(command).await) })
+    }
+}
+
+impl Command for CreateKnowledgeIndexRevisionCommand {
+    type Output = ApplicationResult<KnowledgeMutationResult<KnowledgeIndexRevisionRecord>>;
+}
+
+pub struct CreateKnowledgeIndexRevisionHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl CreateKnowledgeIndexRevisionHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl CommandHandler<CreateKnowledgeIndexRevisionCommand> for CreateKnowledgeIndexRevisionHandler {
+    fn execute(
+        &self,
+        command: CreateKnowledgeIndexRevisionCommand,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<KnowledgeMutationResult<KnowledgeIndexRevisionRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.create_index_revision(command).await) })
+    }
+}
+
+impl Command for CreateKnowledgeRetrievalPolicyRevisionCommand {
+    type Output = ApplicationResult<KnowledgeMutationResult<KnowledgeRetrievalPolicyRevisionRecord>>;
+}
+
+pub struct CreateKnowledgeRetrievalPolicyRevisionHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl CreateKnowledgeRetrievalPolicyRevisionHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl CommandHandler<CreateKnowledgeRetrievalPolicyRevisionCommand>
+    for CreateKnowledgeRetrievalPolicyRevisionHandler
+{
+    fn execute(
+        &self,
+        command: CreateKnowledgeRetrievalPolicyRevisionCommand,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<
+            ApplicationResult<KnowledgeMutationResult<KnowledgeRetrievalPolicyRevisionRecord>>,
+        >,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.create_retrieval_policy_revision(command).await) })
+    }
+}
+
+impl Command for CreateExternalKnowledgeBindingCommand {
+    type Output = ApplicationResult<KnowledgeMutationResult<ExternalKnowledgeBindingRecord>>;
+}
+
+pub struct CreateExternalKnowledgeBindingHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl CreateExternalKnowledgeBindingHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl CommandHandler<CreateExternalKnowledgeBindingCommand>
+    for CreateExternalKnowledgeBindingHandler
+{
+    fn execute(
+        &self,
+        command: CreateExternalKnowledgeBindingCommand,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<KnowledgeMutationResult<ExternalKnowledgeBindingRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.create_external_binding(command).await) })
     }
 }
