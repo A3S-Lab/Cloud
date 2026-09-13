@@ -199,10 +199,15 @@ import {
   encodeKnowledgeDocumentListOptions,
   encodeKnowledgePipelineListOptions,
   type AppendKnowledgeBaseInput,
+  type CreateExternalKnowledgeBindingInput,
   type CreateKnowledgeBaseInput,
   type CreateKnowledgeChunkInput,
   type CreateKnowledgeDocumentInput,
+  type CreateKnowledgeIndexRevisionInput,
   type CreateKnowledgePipelineInput,
+  type CreateKnowledgeRetrievalPolicyRevisionInput,
+  type ExternalKnowledgeBinding,
+  type ExternalKnowledgeBindingMutationResult,
   type KnowledgeBase,
   type KnowledgeBaseMutationResult,
   type KnowledgeChunk,
@@ -211,9 +216,13 @@ import {
   type KnowledgeDocumentMutationResult,
   type KnowledgeChunkListOptions,
   type KnowledgeDocumentListOptions,
+  type KnowledgeIndexRevision,
+  type KnowledgeIndexRevisionMutationResult,
   type KnowledgeListOptions,
   type KnowledgePipeline,
   type KnowledgePipelineMutationResult,
+  type KnowledgeRetrievalPolicyRevision,
+  type KnowledgeRetrievalPolicyRevisionMutationResult,
   type PublishKnowledgePipelineInput,
   validateKnowledgeContentDigest,
   validateKnowledgeContractAcl,
@@ -564,6 +573,30 @@ function knowledgeChunkItemPath(organizationId: string, projectId: string, chunk
   return (
     `/organizations/${encodeURIComponent(organizationId)}` +
     `/projects/${encodeURIComponent(projectId)}/knowledge-chunks/${encodeURIComponent(chunkId)}`
+  );
+}
+
+function knowledgeIndexRevisionCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-index-revisions`
+  );
+}
+
+function knowledgeRetrievalPolicyRevisionCollectionPath(
+  organizationId: string,
+  projectId: string
+): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/knowledge-retrieval-policy-revisions`
+  );
+}
+
+function externalKnowledgeBindingCollectionPath(organizationId: string, projectId: string): string {
+  return (
+    `/organizations/${encodeURIComponent(organizationId)}` +
+    `/projects/${encodeURIComponent(projectId)}/external-knowledge-bindings`
   );
 }
 
@@ -4418,6 +4451,90 @@ export class CloudApi {
     signal?: AbortSignal
   ): Promise<KnowledgeChunk> {
     return this.get(knowledgeChunkItemPath(organizationId, projectId, chunkId), signal);
+  }
+
+  createKnowledgeIndexRevision(
+    organizationId: string,
+    projectId: string,
+    input: CreateKnowledgeIndexRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeIndexRevisionMutationResult> {
+    validateKnowledgeContractAcl(input?.indexAcl, 'KnowledgeIndexRevision ACL');
+    return this.postJson(
+      knowledgeIndexRevisionCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { indexAcl: input.indexAcl },
+      signal
+    );
+  }
+
+  getKnowledgeIndexRevision(
+    organizationId: string,
+    projectId: string,
+    indexRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeIndexRevision> {
+    return this.get(
+      `${knowledgeIndexRevisionCollectionPath(organizationId, projectId)}/${encodeURIComponent(indexRevisionId)}`,
+      signal
+    );
+  }
+
+  createKnowledgeRetrievalPolicyRevision(
+    organizationId: string,
+    projectId: string,
+    input: CreateKnowledgeRetrievalPolicyRevisionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeRetrievalPolicyRevisionMutationResult> {
+    validateKnowledgeContractAcl(input?.policyAcl, 'KnowledgeRetrievalPolicyRevision ACL');
+    return this.postJson(
+      knowledgeRetrievalPolicyRevisionCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { policyAcl: input.policyAcl },
+      signal
+    );
+  }
+
+  getKnowledgeRetrievalPolicyRevision(
+    organizationId: string,
+    projectId: string,
+    policyRevisionId: string,
+    signal?: AbortSignal
+  ): Promise<KnowledgeRetrievalPolicyRevision> {
+    return this.get(
+      `${knowledgeRetrievalPolicyRevisionCollectionPath(organizationId, projectId)}/${encodeURIComponent(policyRevisionId)}`,
+      signal
+    );
+  }
+
+  createExternalKnowledgeBinding(
+    organizationId: string,
+    projectId: string,
+    input: CreateExternalKnowledgeBindingInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ExternalKnowledgeBindingMutationResult> {
+    validateKnowledgeContractAcl(input?.bindingAcl, 'ExternalKnowledgeBinding ACL');
+    return this.postJson(
+      externalKnowledgeBindingCollectionPath(organizationId, projectId),
+      idempotencyKey,
+      { bindingAcl: input.bindingAcl },
+      signal
+    );
+  }
+
+  getExternalKnowledgeBinding(
+    organizationId: string,
+    projectId: string,
+    bindingId: string,
+    signal?: AbortSignal
+  ): Promise<ExternalKnowledgeBinding> {
+    return this.get(
+      `${externalKnowledgeBindingCollectionPath(organizationId, projectId)}/${encodeURIComponent(bindingId)}`,
+      signal
+    );
   }
 
   reserveUserFile(

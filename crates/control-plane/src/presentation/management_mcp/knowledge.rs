@@ -1,13 +1,19 @@
 use super::{arguments, tool_result};
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::knowledge::{
-    AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
-    CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand, GetKnowledgeBase,
-    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, KnowledgeBaseMutationResponse,
-    KnowledgeBaseResponse, KnowledgeChunkMutationResponse, KnowledgeChunkResponse,
-    KnowledgeDocumentMutationResponse, KnowledgeDocumentResponse, KnowledgePipelineMutationResponse,
-    KnowledgePipelineResponse, ListKnowledgeBases, ListKnowledgeChunks,
-    ListKnowledgeDocuments, ListKnowledgePipelines, PublishKnowledgePipelineCommand,
+    AppendKnowledgeBaseCommand, CreateExternalKnowledgeBindingCommand, CreateKnowledgeBaseCommand,
+    CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand,
+    CreateKnowledgeIndexRevisionCommand, CreateKnowledgePipelineCommand,
+    CreateKnowledgeRetrievalPolicyRevisionCommand, ExternalKnowledgeBindingMutationResponse,
+    ExternalKnowledgeBindingResponse, GetExternalKnowledgeBinding, GetKnowledgeBase,
+    GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgeIndexRevision, GetKnowledgePipeline,
+    GetKnowledgeRetrievalPolicyRevision, KnowledgeBaseMutationResponse, KnowledgeBaseResponse,
+    KnowledgeChunkMutationResponse, KnowledgeChunkResponse, KnowledgeDocumentMutationResponse,
+    KnowledgeDocumentResponse, KnowledgeIndexRevisionMutationResponse,
+    KnowledgeIndexRevisionResponse, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
+    KnowledgeRetrievalPolicyRevisionMutationResponse, KnowledgeRetrievalPolicyRevisionResponse,
+    ListKnowledgeBases, ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgePipelines,
+    PublishKnowledgePipelineCommand,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use crate::presentation::knowledge_access;
@@ -529,3 +535,212 @@ pub async fn list_chunks(
     }
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateKnowledgeIndexRevisionArguments {
+    project_id: Uuid,
+    index_acl: String,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeIndexRevisionArguments {
+    project_id: Uuid,
+    index_revision_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateKnowledgeRetrievalPolicyRevisionArguments {
+    project_id: Uuid,
+    policy_acl: String,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct KnowledgeRetrievalPolicyRevisionArguments {
+    project_id: Uuid,
+    policy_revision_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateExternalKnowledgeBindingArguments {
+    project_id: Uuid,
+    binding_acl: String,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExternalKnowledgeBindingArguments {
+    project_id: Uuid,
+    binding_id: Uuid,
+}
+
+pub async fn create_index_revision(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateKnowledgeIndexRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateKnowledgeIndexRevisionCommand {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            index_acl: arguments.index_acl,
+            actor_principal_id,
+            access: knowledge_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            KnowledgeIndexRevisionMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_index_revision(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: KnowledgeIndexRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetKnowledgeIndexRevision {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            index_revision_id: arguments.index_revision_id,
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(record) => tool_result::success(
+            200,
+            KnowledgeIndexRevisionResponse::from(record),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_retrieval_policy_revision(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateKnowledgeRetrievalPolicyRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateKnowledgeRetrievalPolicyRevisionCommand {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            policy_acl: arguments.policy_acl,
+            actor_principal_id,
+            access: knowledge_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            KnowledgeRetrievalPolicyRevisionMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_retrieval_policy_revision(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: KnowledgeRetrievalPolicyRevisionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetKnowledgeRetrievalPolicyRevision {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            policy_revision_id: arguments.policy_revision_id,
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(record) => tool_result::success(
+            200,
+            KnowledgeRetrievalPolicyRevisionResponse::from(record),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_external_binding(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateExternalKnowledgeBindingArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateExternalKnowledgeBindingCommand {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            binding_acl: arguments.binding_acl,
+            actor_principal_id,
+            access: knowledge_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ExternalKnowledgeBindingMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_external_binding(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ExternalKnowledgeBindingArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetExternalKnowledgeBinding {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            binding_id: arguments.binding_id,
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(record) => tool_result::success(
+            200,
+            ExternalKnowledgeBindingResponse::from(record),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}

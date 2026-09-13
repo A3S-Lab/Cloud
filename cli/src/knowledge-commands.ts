@@ -26,6 +26,8 @@ import type { CloudContext } from './context';
 import { requireOrganization, requireProject } from './context';
 import { usageError } from './errors';
 import {
+  externalKnowledgeBindingMutationResult,
+  externalKnowledgeBindingResult,
   knowledgeBaseMutationResult,
   knowledgeBaseResult,
   knowledgeBasesResult,
@@ -35,9 +37,13 @@ import {
   knowledgeDocumentMutationResult,
   knowledgeDocumentResult,
   knowledgeDocumentsResult,
+  knowledgeIndexRevisionMutationResult,
+  knowledgeIndexRevisionResult,
   knowledgePipelineMutationResult,
   knowledgePipelineResult,
   knowledgePipelinesResult,
+  knowledgeRetrievalPolicyRevisionMutationResult,
+  knowledgeRetrievalPolicyRevisionResult,
 } from './knowledge-results';
 import type { CommandResult } from './results';
 
@@ -260,6 +266,97 @@ export async function executeKnowledgeCommand(
           organizationId(),
           projectId(),
           positionalUuid(arguments_.positionals, 2, 'KnowledgeChunk ID')
+        )
+      );
+    case 'knowledge-index-revisions create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 2, 'knowledge-index-revisions create');
+      rejectAgentProviderKindOption(arguments_);
+      const indexAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeIndexRevision ACL',
+        dependencies.readFile
+      );
+      return knowledgeIndexRevisionMutationResult(
+        await cloudApi().createKnowledgeIndexRevision(
+          organizationId(),
+          projectId(),
+          { indexAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-index-revisions get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-index-revisions get <index-revision-id>');
+      return knowledgeIndexRevisionResult(
+        await cloudApi().getKnowledgeIndexRevision(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeIndexRevision ID')
+        )
+      );
+    case 'knowledge-retrieval-policy-revisions create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(
+        arguments_,
+        2,
+        'knowledge-retrieval-policy-revisions create'
+      );
+      rejectAgentProviderKindOption(arguments_);
+      const policyAcl = await readKnowledgeAcl(
+        mutation.file,
+        'KnowledgeRetrievalPolicyRevision ACL',
+        dependencies.readFile
+      );
+      return knowledgeRetrievalPolicyRevisionMutationResult(
+        await cloudApi().createKnowledgeRetrievalPolicyRevision(
+          organizationId(),
+          projectId(),
+          { policyAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'knowledge-retrieval-policy-revisions get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(
+        arguments_,
+        'knowledge-retrieval-policy-revisions get <policy-revision-id>'
+      );
+      return knowledgeRetrievalPolicyRevisionResult(
+        await cloudApi().getKnowledgeRetrievalPolicyRevision(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeRetrievalPolicyRevision ID')
+        )
+      );
+    case 'external-knowledge-bindings create': {
+      rejectExpectedDigestOption(arguments_);
+      const mutation = requireAclMutationCommand(arguments_, 2, 'external-knowledge-bindings create');
+      rejectAgentProviderKindOption(arguments_);
+      const bindingAcl = await readKnowledgeAcl(
+        mutation.file,
+        'ExternalKnowledgeBinding ACL',
+        dependencies.readFile
+      );
+      return externalKnowledgeBindingMutationResult(
+        await cloudApi().createExternalKnowledgeBinding(
+          organizationId(),
+          projectId(),
+          { bindingAcl },
+          mutation.idempotencyKey
+        )
+      );
+    }
+    case 'external-knowledge-bindings get':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'external-knowledge-bindings get <binding-id>');
+      return externalKnowledgeBindingResult(
+        await cloudApi().getExternalKnowledgeBinding(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'ExternalKnowledgeBinding ID')
         )
       );
     default:

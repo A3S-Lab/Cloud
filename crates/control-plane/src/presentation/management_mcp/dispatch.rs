@@ -57,11 +57,15 @@ use super::identity::{
     RevokeRecipientContactArguments, RevokeResourceGrantArguments,
 };
 use super::knowledge::{
-    AppendKnowledgeBaseArguments, CreateKnowledgeBaseArguments, CreateKnowledgeChunkArguments,
-    CreateKnowledgeDocumentArguments, CreateKnowledgePipelineArguments, KnowledgeBaseArguments,
-    KnowledgeChunkArguments, KnowledgeDocumentArguments, KnowledgePipelineArguments,
-    ListKnowledgeBasesArguments, ListKnowledgeChunksArguments, ListKnowledgeDocumentsArguments,
-    ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
+    AppendKnowledgeBaseArguments, CreateExternalKnowledgeBindingArguments,
+    CreateKnowledgeBaseArguments, CreateKnowledgeChunkArguments, CreateKnowledgeDocumentArguments,
+    CreateKnowledgeIndexRevisionArguments, CreateKnowledgePipelineArguments,
+    CreateKnowledgeRetrievalPolicyRevisionArguments, ExternalKnowledgeBindingArguments,
+    KnowledgeBaseArguments, KnowledgeChunkArguments, KnowledgeDocumentArguments,
+    KnowledgeIndexRevisionArguments, KnowledgePipelineArguments,
+    KnowledgeRetrievalPolicyRevisionArguments, ListKnowledgeBasesArguments,
+    ListKnowledgeChunksArguments, ListKnowledgeDocumentsArguments, ListKnowledgePipelinesArguments,
+    PublishKnowledgePipelineArguments,
 };
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
@@ -1678,6 +1682,83 @@ pub async fn execute(
         ManagementTool::KnowledgeChunksGet => {
             let arguments = arguments::parse::<KnowledgeChunkArguments>(arguments).ok()?;
             knowledge::get_chunk(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeIndexRevisionsCreate => {
+            let arguments =
+                arguments::parse::<CreateKnowledgeIndexRevisionArguments>(arguments).ok()?;
+            knowledge::create_index_revision(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeIndexRevisionsGet => {
+            let arguments =
+                arguments::parse::<KnowledgeIndexRevisionArguments>(arguments).ok()?;
+            knowledge::get_index_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeRetrievalPolicyRevisionsCreate => {
+            let arguments = arguments::parse::<CreateKnowledgeRetrievalPolicyRevisionArguments>(
+                arguments,
+            )
+            .ok()?;
+            knowledge::create_retrieval_policy_revision(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeRetrievalPolicyRevisionsGet => {
+            let arguments =
+                arguments::parse::<KnowledgeRetrievalPolicyRevisionArguments>(arguments).ok()?;
+            knowledge::get_retrieval_policy_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ExternalKnowledgeBindingsCreate => {
+            let arguments =
+                arguments::parse::<CreateExternalKnowledgeBindingArguments>(arguments).ok()?;
+            knowledge::create_external_binding(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ExternalKnowledgeBindingsGet => {
+            let arguments =
+                arguments::parse::<ExternalKnowledgeBindingArguments>(arguments).ok()?;
+            knowledge::get_external_binding(
                 query_bus,
                 organization_id,
                 arguments,

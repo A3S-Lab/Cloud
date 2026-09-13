@@ -202,3 +202,74 @@ export function encodeKnowledgeChunkListOptions(
     'KnowledgeChunk'
   );
 }
+
+
+export const KNOWLEDGE_INDEX_REVISION_SCHEMA = 'cloud.knowledge-index-revision.v1' as const;
+export const KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA =
+  'cloud.knowledge-retrieval-policy-revision.v1' as const;
+export const EXTERNAL_KNOWLEDGE_BINDING_SCHEMA = 'cloud.external-knowledge-binding.v1' as const;
+
+export interface KnowledgeIndexRevision {
+  organizationId: string;
+  projectId: string;
+  knowledgeBaseRevisionId: string;
+  indexRevisionId: string;
+  strategy: string;
+  embeddingDimension: number;
+  contractSchema: typeof KNOWLEDGE_INDEX_REVISION_SCHEMA;
+  indexAcl: string;
+  indexDigest: string;
+  createdAt: string;
+}
+
+export interface KnowledgeIndexRevisionMutationResult {
+  knowledgeIndexRevision: KnowledgeIndexRevision;
+  replayed: boolean;
+}
+
+export interface KnowledgeRetrievalPolicyRevision {
+  organizationId: string;
+  projectId: string;
+  knowledgeBaseRevisionId: string;
+  policyRevisionId: string;
+  searchMode: string;
+  topK: number;
+  contractSchema: typeof KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA;
+  policyAcl: string;
+  policyDigest: string;
+  createdAt: string;
+}
+
+export interface KnowledgeRetrievalPolicyRevisionMutationResult {
+  knowledgeRetrievalPolicyRevision: KnowledgeRetrievalPolicyRevision;
+  replayed: boolean;
+}
+
+export interface ExternalKnowledgeBinding {
+  organizationId: string;
+  projectId: string;
+  knowledgeBaseId: string;
+  bindingId: string;
+  displayName: string;
+  contractSchema: typeof EXTERNAL_KNOWLEDGE_BINDING_SCHEMA;
+  bindingAcl: string;
+  bindingDigest: string;
+  createdAt: string;
+}
+
+export interface ExternalKnowledgeBindingMutationResult {
+  externalKnowledgeBinding: ExternalKnowledgeBinding;
+  replayed: boolean;
+}
+
+export interface CreateKnowledgeIndexRevisionInput {
+  indexAcl: string;
+}
+
+export interface CreateKnowledgeRetrievalPolicyRevisionInput {
+  policyAcl: string;
+}
+
+export interface CreateExternalKnowledgeBindingInput {
+  bindingAcl: string;
+}

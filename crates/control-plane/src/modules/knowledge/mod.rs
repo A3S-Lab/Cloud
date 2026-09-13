@@ -38,6 +38,8 @@
 //! `K0.1-C14` exposes that index/policy/binding mutation boundary over
 //! REST/OpenAPI `1.95.0` with CQRS handlers and control-plane wiring. No
 //! client/CLI/MCP or live MinIO/scanner/SEV claims.
+//! `K0.1-C15` adds maintained client, CLI, and Management MCP over the same
+//! index/policy/binding handlers without bumping OpenAPI.
 
 mod application;
 mod domain;
