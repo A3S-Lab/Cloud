@@ -3,10 +3,14 @@
 //! `K0.1-C3` freezes canonical Knowledge and KnowledgePipeline contracts.
 //! `K0.1-C4a` adds the durable KnowledgeBase/PipelineRelease catalogs without
 //! search indexes, provider clients, DAG engines, workers, or public surfaces.
+//! `K0.1-C4b1` adds application owner catalog services over those repositories
+//! without authorization, idempotency, audit, Outbox, or public HTTP/MCP.
 
+mod application;
 mod domain;
 mod infrastructure;
 
+pub use application::{KnowledgeBaseCatalogService, KnowledgePipelineCatalogService};
 pub use domain::{
     AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
     ExternalKnowledgeBindingSpecV1, ExternalKnowledgeBindingV1, IKnowledgeBaseRepository,
