@@ -9,6 +9,9 @@
 //! `K0.1-C4b2b1` exposes that mutation boundary over REST/OpenAPI with CQRS
 //! handlers and control-plane wiring. `K0.1-C4b2b2` adds the maintained client,
 //! CLI, and Management MCP authority over the same catalog lifecycle handlers.
+//! `K0.1-C5` persists immutable KnowledgeDocument and KnowledgeChunk catalogs
+//! through migration `202` without search indexes, ingestion workers,
+//! authorization surfaces, or public REST/MCP interfaces.
 
 mod application;
 mod domain;
@@ -18,41 +21,45 @@ mod presentation;
 pub use application::{
     AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateKnowledgeBaseCommand,
     CreateKnowledgeBaseHandler, CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler,
-    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, GetKnowledgeBase,
-    GetKnowledgeBaseHandler, GetKnowledgePipeline, GetKnowledgePipelineHandler, KnowledgeAccess,
-    KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeMutationResult,
-    KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
-    ListKnowledgePipelines, ListKnowledgePipelinesHandler, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT, PublishKnowledgePipelineCommand,
-    PublishKnowledgePipelineHandler,
+    GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgePipeline, GetKnowledgePipelineHandler,
+    KnowledgeAccess, KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService,
+    KnowledgeMutationResult, KnowledgePipelineCatalogService, ListKnowledgeBases,
+    ListKnowledgeBasesHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
+    PublishKnowledgePipelineCommand, PublishKnowledgePipelineHandler,
+    DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use domain::{
     AppendKnowledgeBaseRevision, AppendKnowledgeBaseWrite, CreateKnowledgeBase,
-    CreateKnowledgeBaseWrite, CreateKnowledgePipeline, CreateKnowledgePipelineWrite,
-    EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, ExternalKnowledgeBindingSpecV1,
-    ExternalKnowledgeBindingV1, IKnowledgeBaseRepository, IKnowledgePipelineRepository,
-    KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_BASE_REVISION_SCHEMA_V1,
-    KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
-    KNOWLEDGE_INDEX_REVISION_SCHEMA_V1, KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA,
-    KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1, KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
-    KnowledgeBaseLifecycleChanged, KnowledgeBaseRecord, KnowledgeBaseRevisionSpecV1,
-    KnowledgeBaseRevisionV1, KnowledgeBaseWriteReference, KnowledgeChunkSpecV1,
+    CreateKnowledgeBaseWrite, CreateKnowledgeChunk, CreateKnowledgeDocument,
+    CreateKnowledgePipeline, CreateKnowledgePipelineWrite, ExternalKnowledgeBindingSpecV1,
+    ExternalKnowledgeBindingV1, IKnowledgeBaseRepository, IKnowledgeChunkRepository,
+    IKnowledgeDocumentRepository, IKnowledgePipelineRepository, KnowledgeBaseLifecycleChanged,
+    KnowledgeBaseRecord, KnowledgeBaseRevisionSpecV1, KnowledgeBaseRevisionV1,
+    KnowledgeBaseWriteReference, KnowledgeChunkRecord, KnowledgeChunkSpecV1,
     KnowledgeChunkStructureV1, KnowledgeChunkV1, KnowledgeContentReferenceV1,
-    KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1, KnowledgeDocumentV1,
-    KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1, KnowledgeIndexStrategyV1,
-    KnowledgePipelineLifecycleChanged, KnowledgePipelineRecord, KnowledgePipelineReleaseSpecV1,
-    KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference,
+    KnowledgeDocumentRecord, KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1,
+    KnowledgeDocumentV1, KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1,
+    KnowledgeIndexStrategyV1, KnowledgePipelineLifecycleChanged, KnowledgePipelineRecord,
+    KnowledgePipelineReleaseSpecV1, KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference,
     KnowledgeRetrievalPolicyRevisionSpecV1, KnowledgeRetrievalPolicyRevisionV1,
     PublishKnowledgePipelineRelease, PublishKnowledgePipelineWrite,
+    EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA,
+    KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+    KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
+    KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
 };
 pub use infrastructure::{
-    InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
-    PostgresKnowledgeBaseRepository, PostgresKnowledgePipelineRepository,
+    InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
+    InMemoryKnowledgeDocumentRepository, InMemoryKnowledgePipelineRepository,
+    PostgresKnowledgeBaseRepository, PostgresKnowledgeChunkRepository,
+    PostgresKnowledgeDocumentRepository, PostgresKnowledgePipelineRepository,
 };
 pub(crate) use presentation::{
-    KNOWLEDGE_BASE_COLLECTION_ROUTE, KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE,
-    KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
-    KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE, KnowledgeBaseMutationResponse,
-    KnowledgeBaseResponse, KnowledgeModule, KnowledgePipelineMutationResponse,
-    KnowledgePipelineResponse,
+    KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeModule,
+    KnowledgePipelineMutationResponse, KnowledgePipelineResponse, KNOWLEDGE_BASE_COLLECTION_ROUTE,
+    KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
+    KNOWLEDGE_PIPELINE_COLLECTION_ROUTE, KNOWLEDGE_PIPELINE_ITEM_ROUTE,
+    KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
 };

@@ -1,6 +1,14 @@
+mod knowledge_document_in_memory;
+mod knowledge_document_postgres;
 mod knowledge_in_memory;
 mod knowledge_postgres;
 
+pub use knowledge_document_in_memory::{
+    InMemoryKnowledgeChunkRepository, InMemoryKnowledgeDocumentRepository,
+};
+pub use knowledge_document_postgres::{
+    PostgresKnowledgeChunkRepository, PostgresKnowledgeDocumentRepository,
+};
 pub use knowledge_in_memory::{
     InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
 };

@@ -1,4 +1,4 @@
-//! Focused K0.1-C4a PostgreSQL recovery gates for Knowledge catalogs.
+//! Focused K0.1-C4a/C5 PostgreSQL recovery gates for Knowledge catalogs.
 //!
 //! Kept as a separate integration binary so KnowledgeBase/Pipeline catalog
 //! certification does not depend on unrelated postgres_integration support
@@ -8,10 +8,13 @@ use a3s_cloud_control_plane::infrastructure::{
     connect_postgres, migrate_postgres, PostgresBootstrapError, PostgresMigrationReport,
 };
 use a3s_cloud_control_plane::modules::knowledge::{
-    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgePipeline,
-    IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRevisionV1,
-    KnowledgePipelineReleaseV1, PostgresKnowledgeBaseRepository,
-    PostgresKnowledgePipelineRepository, PublishKnowledgePipelineRelease,
+    AppendKnowledgeBaseRevision, CreateKnowledgeBase, CreateKnowledgeChunk,
+    CreateKnowledgeDocument, CreateKnowledgePipeline, IKnowledgeBaseRepository,
+    IKnowledgeChunkRepository, IKnowledgeDocumentRepository, IKnowledgePipelineRepository,
+    KnowledgeBaseRevisionV1, KnowledgeChunkV1, KnowledgeDocumentV1, KnowledgePipelineReleaseV1,
+    PostgresKnowledgeBaseRepository, PostgresKnowledgeChunkRepository,
+    PostgresKnowledgeDocumentRepository, PostgresKnowledgePipelineRepository,
+    PublishKnowledgePipelineRelease,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     KnowledgeBaseRevisionId, KnowledgePipelineReleaseId, RepositoryError,
@@ -30,6 +33,14 @@ const BASE_FIXTURE: &str = include_str!(concat!(
 const PIPELINE_FIXTURE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../contracts/k0.1/knowledge-pipeline-release.acl"
+));
+const DOCUMENT_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/k0.1/knowledge-document.acl"
+));
+const CHUNK_FIXTURE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../contracts/k0.1/knowledge-chunk.acl"
 ));
 
 #[tokio::test]
@@ -52,6 +63,21 @@ async fn knowledge_pipeline_catalog_postgres_reconnects_and_fences_release_head(
         .expect("KnowledgePipeline catalog PostgreSQL recovery gate");
 }
 
+#[tokio::test]
+async fn knowledge_document_and_chunk_catalog_postgres_reconnects() {
+    let Some(admin_url) = std::env::var("A3S_CLOUD_TEST_POSTGRES_URL").ok() else {
+        return;
+    };
+    run_isolated_postgres(
+        &admin_url,
+        exercise_knowledge_document_chunk_catalog_postgres,
+    )
+    .await
+    
+.map_err(|e| { eprintln!("DOCUMENT_CHUNK_GATE_ERR: {e:?}"); e })
+.expect("KnowledgeDocument/Chunk catalog PostgreSQL recovery gate");
+}
+
 async fn exercise_knowledge_base_catalog_postgres(
     url: String,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +87,8 @@ async fn exercise_knowledge_base_catalog_postgres(
     let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
     seed_knowledge_scope(&database, organization_id, project_id).await?;
 
-    let revision = KnowledgeBaseRevisionV1::parse_acl(BASE_FIXTURE).map_err(std::io::Error::other)?;
+    let revision =
+        KnowledgeBaseRevisionV1::parse_acl(BASE_FIXTURE).map_err(std::io::Error::other)?;
     let repository = Arc::new(PostgresKnowledgeBaseRepository::new(executor.clone()));
     let created = repository
         .create(CreateKnowledgeBase {
@@ -201,7 +228,10 @@ async fn exercise_knowledge_pipeline_catalog_postgres(
     let recovered_executor = connect_postgres(&url, 8).await?;
     let recovered = PostgresKnowledgePipelineRepository::new(recovered_executor);
     let recovered_head = recovered
-        .find(organization_id, updated.release.spec().pipeline_id.as_uuid())
+        .find(
+            organization_id,
+            updated.release.spec().pipeline_id.as_uuid(),
+        )
         .await?
         .expect("KnowledgePipeline head after reconnect");
     assert_eq!(recovered_head.release, successor);
@@ -216,6 +246,100 @@ async fn exercise_knowledge_pipeline_catalog_postgres(
             .expect("historical release after reconnect"),
         release
     );
+    Ok(())
+}
+
+async fn exercise_knowledge_document_chunk_catalog_postgres(
+    url: String,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let executor = migrate_and_connect_for_test(&url, 8).await?;
+    let database = Database::new(PostgresDialect, executor.clone());
+    let organization_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000201")?;
+    let project_id = Uuid::parse_str("018f0000-0000-7000-8000-000000000202")?;
+    seed_knowledge_scope(&database, organization_id, project_id).await?;
+
+    let revision =
+        KnowledgeBaseRevisionV1::parse_acl(BASE_FIXTURE).map_err(std::io::Error::other)?;
+    let bases = PostgresKnowledgeBaseRepository::new(executor.clone());
+    bases
+        .create(CreateKnowledgeBase {
+            revision: revision.clone(),
+            created_at: knowledge_timestamp(1_000),
+        })
+        .await?;
+
+    let document =
+        KnowledgeDocumentV1::parse_acl(DOCUMENT_FIXTURE).map_err(std::io::Error::other)?;
+    let documents = Arc::new(PostgresKnowledgeDocumentRepository::new(executor.clone()));
+    let created_document = documents
+        .create(CreateKnowledgeDocument {
+            document: document.clone(),
+            created_at: knowledge_timestamp(1_010),
+        })
+        .await?;
+    assert_eq!(created_document.document, document);
+    let duplicate = documents
+        .create(CreateKnowledgeDocument {
+            document: document.clone(),
+            created_at: knowledge_timestamp(1_011),
+        })
+        .await;
+    assert!(matches!(duplicate, Err(RepositoryError::Conflict(_))));
+    assert_eq!(
+        documents
+            .list_for_knowledge_base(
+                organization_id,
+                document.spec().knowledge_base_id.as_uuid(),
+                8,
+            )
+            .await?
+            .len(),
+        1
+    );
+
+    let chunk = KnowledgeChunkV1::parse_acl(CHUNK_FIXTURE).map_err(std::io::Error::other)?;
+    let chunks = Arc::new(PostgresKnowledgeChunkRepository::new(executor.clone()));
+    let created_chunk = chunks
+        .create(CreateKnowledgeChunk {
+            chunk: chunk.clone(),
+            created_at: knowledge_timestamp(1_020),
+        })
+        .await?;
+    assert_eq!(created_chunk.chunk, chunk);
+    assert_eq!(
+        chunks
+            .list_for_document(organization_id, document.spec().document_id.as_uuid(), 8)
+            .await?
+            .len(),
+        1
+    );
+
+    drop(chunks);
+    drop(documents);
+    drop(bases);
+    drop(database);
+    drop(executor);
+
+    let recovered_executor = connect_postgres(&url, 8).await?;
+    let recovered_documents = PostgresKnowledgeDocumentRepository::new(recovered_executor.clone());
+    let recovered_chunks = PostgresKnowledgeChunkRepository::new(recovered_executor);
+    let recovered_document = recovered_documents
+        .find(organization_id, document.spec().document_id.as_uuid())
+        .await?
+        .expect("KnowledgeDocument after reconnect");
+    assert_eq!(recovered_document.document, document);
+    let recovered_chunk = recovered_chunks
+        .find(organization_id, chunk.spec().chunk_id.as_uuid())
+        .await?
+        .expect("KnowledgeChunk after reconnect");
+    assert_eq!(recovered_chunk.chunk, chunk);
+    assert!(recovered_documents
+        .find(
+            Uuid::from_u128(organization_id.as_u128() ^ 1),
+            document.spec().document_id.as_uuid(),
+        )
+        .await?
+        .is_none());
     Ok(())
 }
 
