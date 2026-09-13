@@ -1573,7 +1573,7 @@ and [complete main CI](https://github.com/A3S-Lab/Cloud/actions/runs/32651905148
 verify the persisted and cross-surface boundaries. Persisted manifest and
 authorized SIEM-delivery lifecycles remain separate from transient PA2d export.
 
-Implemented `C0.3-PA2d` (remote certification pending) adds a transient
+Verified `C0.3-PA2d` adds a transient
 `AuditExportSnapshot`, not a durable
 aggregate. It contains one organization's captured retention state and at most
 eight pages of records selected under one exclusive retention-row lock. The
