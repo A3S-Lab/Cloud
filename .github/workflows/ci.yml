@@ -526,14 +526,14 @@ jobs:
       - name: Certify Automation webhook PostgreSQL recovery
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
+          --test automation_postgres_integration
           automation_webhook_postgres_scope_replay_and_reconnect_are_durable
           -- --exact --nocapture --test-threads=1
 
       - name: Certify Automation schedule-state PostgreSQL recovery
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
-          --test postgres_integration
+          --test automation_postgres_integration
           automation_schedule_state_postgres_fences_and_recovers
           -- --exact --nocapture --test-threads=1
 

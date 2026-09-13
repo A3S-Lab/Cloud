@@ -457,11 +457,14 @@ async fn exercise_automation_webhook_postgres(
         .find_endpoint_by_key(organization_id, project_id, environment_id, "release-hook")
         .await?
         .expect("endpoint after reconnect");
-    assert_eq!(recovered_endpoint.endpoint, endpoint);
+    assert_eq!(recovered_endpoint.endpoint.endpoint_id, endpoint.endpoint_id);
+    assert_eq!(recovered_endpoint.endpoint.endpoint_key, endpoint.endpoint_key);
+    assert_eq!(recovered_endpoint.endpoint.revision_id, endpoint.revision_id);
     assert_eq!(
         recovered_endpoint.endpoint.state,
         a3s_cloud_contracts::AutomationWebhookEndpointStateV1::Disabled
     );
+    assert_eq!(recovered_endpoint.endpoint.generation, 2);
     let recovered_delivery = recovered
         .find_delivery(endpoint.endpoint_id, request.delivery_id)
         .await?
