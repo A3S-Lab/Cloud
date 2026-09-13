@@ -195,6 +195,8 @@ import {
 } from './files';
 import {
   encodeKnowledgeBaseListOptions,
+  encodeKnowledgeChunkListOptions,
+  encodeKnowledgeDocumentListOptions,
   encodeKnowledgePipelineListOptions,
   type AppendKnowledgeBaseInput,
   type CreateKnowledgeBaseInput,
@@ -207,6 +209,8 @@ import {
   type KnowledgeChunkMutationResult,
   type KnowledgeDocument,
   type KnowledgeDocumentMutationResult,
+  type KnowledgeChunkListOptions,
+  type KnowledgeDocumentListOptions,
   type KnowledgeListOptions,
   type KnowledgePipeline,
   type KnowledgePipelineMutationResult,
@@ -4353,6 +4357,18 @@ export class CloudApi {
     );
   }
 
+  listKnowledgeDocuments(
+    organizationId: string,
+    projectId: string,
+    options: KnowledgeDocumentListOptions,
+    signal?: AbortSignal
+  ): Promise<KnowledgeDocument[]> {
+    return this.get(
+      `${knowledgeDocumentCollectionPath(organizationId, projectId)}${encodeKnowledgeDocumentListOptions(options)}`,
+      signal
+    );
+  }
+
   getKnowledgeDocument(
     organizationId: string,
     projectId: string,
@@ -4378,6 +4394,19 @@ export class CloudApi {
       knowledgeDocumentChunkCollectionPath(organizationId, projectId, documentId),
       idempotencyKey,
       { chunkAcl: input.chunkAcl },
+      signal
+    );
+  }
+
+  listKnowledgeChunks(
+    organizationId: string,
+    projectId: string,
+    documentId: string,
+    options: KnowledgeChunkListOptions = {},
+    signal?: AbortSignal
+  ): Promise<KnowledgeChunk[]> {
+    return this.get(
+      `${knowledgeDocumentChunkCollectionPath(organizationId, projectId, documentId)}${encodeKnowledgeChunkListOptions(options)}`,
       signal
     );
   }

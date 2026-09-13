@@ -4,7 +4,13 @@ import {
   DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
   DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
   encodeKnowledgeBaseListOptions,
+  encodeKnowledgeChunkListOptions,
+  encodeKnowledgeDocumentListOptions,
   encodeKnowledgePipelineListOptions,
+  DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
+  DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+  MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+  MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
   KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
   MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
   MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
@@ -150,7 +156,28 @@ describe('Knowledge catalog client surface', () => {
       )
     ).toThrow(TypeError);
     expect(() => api.listKnowledgeBases('organization', 'project', { limit: 201 })).toThrow(RangeError);
+    expect(() =>
+      api.listKnowledgeDocuments('organization', 'project', { knowledgeBaseId: '' })
+    ).toThrow(TypeError);
+    expect(() => api.listKnowledgeChunks('organization', 'project', 'document', { limit: 201 })).toThrow(
+      RangeError
+    );
     expect(called).toBe(false);
+  });
+
+  it('enforces document and chunk list bounds locally', () => {
+    expect(
+      encodeKnowledgeDocumentListOptions({ knowledgeBaseId: '018f0000-0000-7000-8000-000000000301' })
+    ).toBe(
+      `?knowledgeBaseId=018f0000-0000-7000-8000-000000000301&limit=${DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT}`
+    );
+    expect(encodeKnowledgeChunkListOptions()).toBe(`?limit=${DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT}`);
+    expect(() => encodeKnowledgeDocumentListOptions({ knowledgeBaseId: 'base', limit: 0 })).toThrow(
+      RangeError
+    );
+    expect(() => encodeKnowledgeChunkListOptions({ limit: MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT + 1 })).toThrow(
+      RangeError
+    );
   });
 });
 
@@ -204,6 +231,9 @@ describe('KnowledgeDocument/Chunk lifecycle client surface', () => {
       { documentAcl: DOCUMENT_ACL },
       'knowledge:create-document'
     );
+    await api.listKnowledgeDocuments('organization / one', 'project / one', {
+      knowledgeBaseId: 'base / one',
+    });
     await api.getKnowledgeDocument('organization / one', 'project / one', 'document / one');
     await api.createKnowledgeChunk(
       'organization / one',
@@ -212,12 +242,15 @@ describe('KnowledgeDocument/Chunk lifecycle client surface', () => {
       { chunkAcl: CHUNK_ACL },
       'knowledge:create-chunk'
     );
+    await api.listKnowledgeChunks('organization / one', 'project / one', 'document / one');
     await api.getKnowledgeChunk('organization / one', 'project / one', 'chunk / one');
 
     expect(calls.map(([input]) => input)).toEqual([
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-documents',
+      `/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-documents?knowledgeBaseId=base%20%2F%20one&limit=${DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT}`,
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-documents/document%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-documents/document%20%2F%20one/chunks',
+      `/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-documents/document%20%2F%20one/chunks?limit=${DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT}`,
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-chunks/chunk%20%2F%20one',
     ]);
     expect(calls[0]?.[1]).toEqual(
@@ -227,7 +260,7 @@ describe('KnowledgeDocument/Chunk lifecycle client surface', () => {
         body: JSON.stringify({ documentAcl: DOCUMENT_ACL }),
       })
     );
-    expect(calls[2]?.[1]).toEqual(
+    expect(calls[3]?.[1]).toEqual(
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({ 'Idempotency-Key': 'knowledge:create-chunk' }),
@@ -257,6 +290,27 @@ describe('KnowledgeDocument/Chunk lifecycle client surface', () => {
         'knowledge:create-chunk'
       )
     ).toThrow(TypeError);
+    expect(() =>
+      api.listKnowledgeDocuments('organization', 'project', { knowledgeBaseId: '' })
+    ).toThrow(TypeError);
+    expect(() => api.listKnowledgeChunks('organization', 'project', 'document', { limit: 201 })).toThrow(
+      RangeError
+    );
     expect(called).toBe(false);
+  });
+
+  it('enforces document and chunk list bounds locally', () => {
+    expect(
+      encodeKnowledgeDocumentListOptions({ knowledgeBaseId: '018f0000-0000-7000-8000-000000000301' })
+    ).toBe(
+      `?knowledgeBaseId=018f0000-0000-7000-8000-000000000301&limit=${DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT}`
+    );
+    expect(encodeKnowledgeChunkListOptions()).toBe(`?limit=${DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT}`);
+    expect(() => encodeKnowledgeDocumentListOptions({ knowledgeBaseId: 'base', limit: 0 })).toThrow(
+      RangeError
+    );
+    expect(() => encodeKnowledgeChunkListOptions({ limit: MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT + 1 })).toThrow(
+      RangeError
+    );
   });
 });

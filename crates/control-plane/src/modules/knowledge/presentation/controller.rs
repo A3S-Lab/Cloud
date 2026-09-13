@@ -14,8 +14,11 @@ use crate::modules::knowledge::application::{
     AppendKnowledgeBaseCommand, CreateKnowledgeBaseCommand, CreateKnowledgeChunkCommand,
     CreateKnowledgeDocumentCommand, CreateKnowledgePipelineCommand, GetKnowledgeBase,
     GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline, ListKnowledgeBases,
-    ListKnowledgePipelines, PublishKnowledgePipelineCommand, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgePipelines,
+    PublishKnowledgePipelineCommand, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
     DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
@@ -253,7 +256,9 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let get_base_bus = Arc::clone(&bus);
     let list_pipelines_bus = Arc::clone(&bus);
     let get_pipeline_bus = Arc::clone(&bus);
+    let list_documents_bus = Arc::clone(&bus);
     let get_document_bus = Arc::clone(&bus);
+    let list_chunks_bus = Arc::clone(&bus);
     let get_chunk_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .get(
@@ -369,6 +374,47 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                 }
             },
         )?
+
+        .get(
+            KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_documents_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let knowledge_base_id = request
+                        .optional_query_value_as::<Uuid>("knowledgeBaseId")?
+                        .ok_or_else(|| {
+                            BootError::BadRequest(
+                                "knowledgeBaseId query parameter is required".into(),
+                            )
+                        })?;
+                    match bus
+                        .execute(ListKnowledgeDocuments {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            knowledge_base_id,
+                            limit: Some(document_list_limit(&request)?),
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(records) => BootResponse::json(
+                            &records
+                                .into_iter()
+                                .map(KnowledgeDocumentResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .get(
             KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
             move |request: BootRequest| {
@@ -391,6 +437,40 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                         .await?
                     {
                         Ok(record) => BootResponse::json(&KnowledgeDocumentResponse::from(record)),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+
+        .get(
+            KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_chunks_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    match bus
+                        .execute(ListKnowledgeChunks {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            document_id: request.param_as::<Uuid>("document_id")?,
+                            limit: Some(chunk_list_limit(&request)?),
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(records) => BootResponse::json(
+                            &records
+                                .into_iter()
+                                .map(KnowledgeChunkResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
@@ -444,3 +524,28 @@ fn pipeline_list_limit(request: &BootRequest) -> Result<usize> {
     }
     Ok(limit)
 }
+
+fn document_list_limit(request: &BootRequest) -> Result<usize> {
+    let limit = request
+        .optional_query_value_as::<usize>("limit")?
+        .unwrap_or(DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT);
+    if limit == 0 || limit > MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT {
+        return Err(BootError::BadRequest(format!(
+            "limit must be between 1 and {MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}
+
+fn chunk_list_limit(request: &BootRequest) -> Result<usize> {
+    let limit = request
+        .optional_query_value_as::<usize>("limit")?
+        .unwrap_or(DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT);
+    if limit == 0 || limit > MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT {
+        return Err(BootError::BadRequest(format!(
+            "limit must be between 1 and {MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}
+

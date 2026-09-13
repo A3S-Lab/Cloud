@@ -1,8 +1,12 @@
 import {
   type CloudApi,
   encodeKnowledgeBaseListOptions,
+  encodeKnowledgeChunkListOptions,
+  encodeKnowledgeDocumentListOptions,
   encodeKnowledgePipelineListOptions,
   KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+  type KnowledgeChunkListOptions,
+  type KnowledgeDocumentListOptions,
   type KnowledgeListOptions,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
@@ -27,8 +31,10 @@ import {
   knowledgeBasesResult,
   knowledgeChunkMutationResult,
   knowledgeChunkResult,
+  knowledgeChunksResult,
   knowledgeDocumentMutationResult,
   knowledgeDocumentResult,
+  knowledgeDocumentsResult,
   knowledgePipelineMutationResult,
   knowledgePipelineResult,
   knowledgePipelinesResult,
@@ -193,6 +199,19 @@ export async function executeKnowledgeCommand(
         )
       );
     }
+    case 'knowledge-documents list':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-documents list <knowledge-base-id>');
+      return knowledgeDocumentsResult(
+        await cloudApi().listKnowledgeDocuments(
+          organizationId(),
+          projectId(),
+          knowledgeDocumentListOptions(
+            arguments_,
+            positionalUuid(arguments_.positionals, 2, 'KnowledgeBase ID')
+          )
+        )
+      );
     case 'knowledge-documents get':
       rejectExpectedDigestOption(arguments_);
       requireReadCommand(arguments_, 'knowledge-documents get <document-id>');
@@ -222,6 +241,17 @@ export async function executeKnowledgeCommand(
         )
       );
     }
+    case 'knowledge-chunks list':
+      rejectExpectedDigestOption(arguments_);
+      requireReadCommand(arguments_, 'knowledge-chunks list <document-id>');
+      return knowledgeChunksResult(
+        await cloudApi().listKnowledgeChunks(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'KnowledgeDocument ID'),
+          knowledgeChunkListOptions(arguments_)
+        )
+      );
     case 'knowledge-chunks get':
       rejectExpectedDigestOption(arguments_);
       requireReadCommand(arguments_, 'knowledge-chunks get <chunk-id>');
@@ -247,6 +277,32 @@ function requireKnowledgeListCommand(arguments_: ParsedArguments, usage: string)
   if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
     throw usageError('cursor and stream options are valid only for log commands');
   }
+}
+
+function knowledgeDocumentListOptions(
+  arguments_: ParsedArguments,
+  knowledgeBaseId: string
+): KnowledgeDocumentListOptions {
+  const options: KnowledgeDocumentListOptions = { knowledgeBaseId };
+  if (arguments_.limit !== undefined) {
+    if (!/^[0-9]+$/.test(arguments_.limit)) {
+      throw usageError('KnowledgeDocument list limit must be an integer');
+    }
+    options.limit = Number(arguments_.limit);
+  }
+  try {
+    encodeKnowledgeDocumentListOptions(options);
+  } catch (error) {
+    if (error instanceof Error) {
+      throw usageError(error.message);
+    }
+    throw error;
+  }
+  return options;
+}
+
+function knowledgeChunkListOptions(arguments_: ParsedArguments): KnowledgeChunkListOptions {
+  return knowledgeListOptions(arguments_, encodeKnowledgeChunkListOptions, 'KnowledgeChunk');
 }
 
 function knowledgeListOptions(

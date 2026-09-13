@@ -1,7 +1,7 @@
 use super::{
     GetKnowledgeBase, GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline,
     KnowledgeCatalogLifecycleService, KnowledgeDocumentLifecycleService, ListKnowledgeBases,
-    ListKnowledgePipelines,
+    ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgePipelines,
 };
 use crate::modules::knowledge::domain::{
     KnowledgeBaseRecord, KnowledgeChunkRecord, KnowledgeDocumentRecord, KnowledgePipelineRecord,
@@ -167,3 +167,58 @@ impl QueryHandler<GetKnowledgeChunk> for GetKnowledgeChunkHandler {
         Box::pin(async move { Ok(service.get_chunk(query).await) })
     }
 }
+
+impl Query for ListKnowledgeDocuments {
+    type Output = ApplicationResult<Vec<KnowledgeDocumentRecord>>;
+}
+
+pub struct ListKnowledgeDocumentsHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl ListKnowledgeDocumentsHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<ListKnowledgeDocuments> for ListKnowledgeDocumentsHandler {
+    fn execute(
+        &self,
+        query: ListKnowledgeDocuments,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<KnowledgeDocumentRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.list_documents(query).await) })
+    }
+}
+
+impl Query for ListKnowledgeChunks {
+    type Output = ApplicationResult<Vec<KnowledgeChunkRecord>>;
+}
+
+pub struct ListKnowledgeChunksHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl ListKnowledgeChunksHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<ListKnowledgeChunks> for ListKnowledgeChunksHandler {
+    fn execute(
+        &self,
+        query: ListKnowledgeChunks,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<Vec<KnowledgeChunkRecord>>>>
+    {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.list_chunks(query).await) })
+    }
+}
+

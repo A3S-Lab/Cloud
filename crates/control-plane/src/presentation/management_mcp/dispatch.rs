@@ -60,7 +60,8 @@ use super::knowledge::{
     AppendKnowledgeBaseArguments, CreateKnowledgeBaseArguments, CreateKnowledgeChunkArguments,
     CreateKnowledgeDocumentArguments, CreateKnowledgePipelineArguments, KnowledgeBaseArguments,
     KnowledgeChunkArguments, KnowledgeDocumentArguments, KnowledgePipelineArguments,
-    ListKnowledgeBasesArguments, ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
+    ListKnowledgeBasesArguments, ListKnowledgeChunksArguments, ListKnowledgeDocumentsArguments,
+    ListKnowledgePipelinesArguments, PublishKnowledgePipelineArguments,
 };
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
@@ -1629,6 +1630,17 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::KnowledgeDocumentsList => {
+            let arguments = arguments::parse::<ListKnowledgeDocumentsArguments>(arguments).ok()?;
+            knowledge::list_documents(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::KnowledgeDocumentsGet => {
             let arguments = arguments::parse::<KnowledgeDocumentArguments>(arguments).ok()?;
             knowledge::get_document(
@@ -1646,6 +1658,17 @@ pub async fn execute(
                 command_bus,
                 organization_id,
                 actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::KnowledgeChunksList => {
+            let arguments = arguments::parse::<ListKnowledgeChunksArguments>(arguments).ok()?;
+            knowledge::list_chunks(
+                query_bus,
+                organization_id,
                 arguments,
                 resource_access,
                 request_id,

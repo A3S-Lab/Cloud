@@ -37,9 +37,13 @@ pub use application::{
     KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
     KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
     KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
-    ListKnowledgePipelines, ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
+    ListKnowledgeChunks, ListKnowledgeChunksHandler, ListKnowledgeDocuments,
+    ListKnowledgeDocumentsHandler, ListKnowledgePipelines, ListKnowledgePipelinesHandler,
+    PublishKnowledgePipelineCommand,
     PublishKnowledgePipelineHandler, DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT, DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
     DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use domain::{

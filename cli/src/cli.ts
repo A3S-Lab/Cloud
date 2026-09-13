@@ -249,8 +249,10 @@ Commands:
   knowledge-pipelines get ID Get one KnowledgePipeline catalog projection
   knowledge-pipelines publish ID Publish one KnowledgePipeline release with digest concurrency
   knowledge-documents create Create one KnowledgeDocument from canonical A3S ACL
+  knowledge-documents list KNOWLEDGE_BASE_ID List bounded KnowledgeDocument lifecycle projections
   knowledge-documents get ID Get one KnowledgeDocument lifecycle projection
   knowledge-chunks create DOCUMENT_ID Create one KnowledgeChunk from canonical A3S ACL
+  knowledge-chunks list DOCUMENT_ID List bounded KnowledgeChunk lifecycle projections
   knowledge-chunks get ID Get one KnowledgeChunk lifecycle projection
   secrets list          List Secret metadata in the selected environment
   secrets get ID        Get Secret metadata and version states

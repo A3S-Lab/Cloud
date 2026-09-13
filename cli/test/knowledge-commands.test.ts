@@ -312,7 +312,17 @@ describe('a3s-cloud KnowledgeDocument/Chunk lifecycle commands', () => {
         if (path === knowledgeDocumentBase() && method === 'POST') {
           return envelope({ knowledgeDocument: knowledgeDocument(), replayed: false }, 201);
         }
-        if (path.includes(`/knowledge-documents/${DOCUMENT_ID}`)) {
+        if (
+          path.startsWith(`${knowledgeDocumentBase()}?`) &&
+          path.includes('knowledgeBaseId=') &&
+          method === 'GET'
+        ) {
+          return envelope([knowledgeDocument()]);
+        }
+        if (path.includes(`/knowledge-documents/${DOCUMENT_ID}/chunks`) && method === 'GET') {
+          return envelope([knowledgeChunk()]);
+        }
+        if (path.includes(`/knowledge-documents/${DOCUMENT_ID}`) && method === 'GET') {
           return envelope(knowledgeDocument());
         }
         if (path.includes(`/knowledge-chunks/${CHUNK_ID}`)) {
@@ -353,12 +363,23 @@ describe('a3s-cloud KnowledgeDocument/Chunk lifecycle commands', () => {
     expect(await runCli(['knowledge-chunks', 'get', CHUNK_ID, '--output=json'], runtime)).toBe(
       ExitCode.Success
     );
+    expect(
+      await runCli(
+        ['knowledge-documents', 'list', KNOWLEDGE_BASE_ID, '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(['knowledge-chunks', 'list', DOCUMENT_ID, '--output=json'], runtime)
+    ).toBe(ExitCode.Success);
 
     expect(calls.map(([input]) => String(input))).toEqual([
       knowledgeDocumentBase(),
       `${knowledgeDocumentBase()}/${DOCUMENT_ID}`,
       `${knowledgeDocumentBase()}/${DOCUMENT_ID}/chunks`,
       `${knowledgeChunkBase()}/${CHUNK_ID}`,
+      `${knowledgeDocumentBase()}?knowledgeBaseId=${encodeURIComponent(KNOWLEDGE_BASE_ID)}&limit=50`,
+      `${knowledgeDocumentBase()}/${DOCUMENT_ID}/chunks?limit=50`,
     ]);
     expect(calls[0]?.[1]).toEqual(
       expect.objectContaining({

@@ -1,7 +1,8 @@
 use crate::modules::knowledge::{
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 use serde_json::{json, Map, Value};
 
@@ -22,11 +23,13 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
         "KnowledgePipelineMutation",
     ),
     ("KnowledgeDocumentSuccessResponse", "KnowledgeDocument"),
+    ("KnowledgeDocumentListSuccessResponse", "KnowledgeDocumentList"),
     (
         "KnowledgeDocumentMutationSuccessResponse",
         "KnowledgeDocumentMutation",
     ),
     ("KnowledgeChunkSuccessResponse", "KnowledgeChunk"),
+    ("KnowledgeChunkListSuccessResponse", "KnowledgeChunkList"),
     (
         "KnowledgeChunkMutationSuccessResponse",
         "KnowledgeChunkMutation",
@@ -80,6 +83,11 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         "KnowledgeDocumentSuccessResponse",
     ),
     (
+        "KnowledgeDocumentListSuccess200",
+        200,
+        "KnowledgeDocumentListSuccessResponse",
+    ),
+    (
         "KnowledgeDocumentMutationSuccess200",
         200,
         "KnowledgeDocumentMutationSuccessResponse",
@@ -93,6 +101,11 @@ pub(super) const KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS: &[(&str, u16, &str)] = &[
         "KnowledgeChunkSuccess200",
         200,
         "KnowledgeChunkSuccessResponse",
+    ),
+    (
+        "KnowledgeChunkListSuccess200",
+        200,
+        "KnowledgeChunkListSuccessResponse",
     ),
     (
         "KnowledgeChunkMutationSuccess200",
@@ -118,11 +131,13 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
             knowledge_pipeline_mutation_schema(),
         ),
         ("KnowledgeDocument", knowledge_document_schema()),
+        ("KnowledgeDocumentList", knowledge_document_list_schema()),
         (
             "KnowledgeDocumentMutation",
             knowledge_document_mutation_schema(),
         ),
         ("KnowledgeChunk", knowledge_chunk_schema()),
+        ("KnowledgeChunkList", knowledge_chunk_list_schema()),
         ("KnowledgeChunkMutation", knowledge_chunk_mutation_schema()),
     ] {
         schemas.insert(name.into(), schema);
@@ -281,6 +296,22 @@ fn knowledge_document_schema() -> Value {
     )
 }
 
+fn knowledge_document_list_schema() -> Value {
+    json!({
+        "type": "array",
+        "maxItems": MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+        "items": schema_ref("KnowledgeDocument")
+    })
+}
+
+fn knowledge_chunk_list_schema() -> Value {
+    json!({
+        "type": "array",
+        "maxItems": MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+        "items": schema_ref("KnowledgeChunk")
+    })
+}
+
 fn knowledge_document_mutation_schema() -> Value {
     object_schema(
         &["knowledgeDocument", "replayed"],
@@ -394,6 +425,14 @@ mod tests {
         assert_eq!(
             schemas["KnowledgePipelineList"]["maxItems"],
             MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT
+        );
+        assert_eq!(
+            schemas["KnowledgeDocumentList"]["maxItems"],
+            MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT
+        );
+        assert_eq!(
+            schemas["KnowledgeChunkList"]["maxItems"],
+            MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT
         );
     }
 }

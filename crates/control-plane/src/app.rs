@@ -260,7 +260,8 @@ use crate::modules::knowledge::{
     IKnowledgeBaseRepository, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
     IKnowledgePipelineRepository, KnowledgeCatalogLifecycleService,
     KnowledgeDocumentLifecycleService, KnowledgeModule, ListKnowledgeBasesHandler,
-    ListKnowledgePipelinesHandler, PublishKnowledgePipelineHandler,
+    ListKnowledgeChunksHandler, ListKnowledgeDocumentsHandler, ListKnowledgePipelinesHandler,
+    PublishKnowledgePipelineHandler,
 };
 use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
@@ -4345,8 +4346,18 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::knowledge::GetKnowledgePipeline, _>(
                     GetKnowledgePipelineHandler::new(knowledge_lifecycle_service),
                 )
+                .query_handler::<crate::modules::knowledge::ListKnowledgeDocuments, _>(
+                    ListKnowledgeDocumentsHandler::new(Arc::clone(
+                        &knowledge_document_lifecycle_service,
+                    )),
+                )
                 .query_handler::<crate::modules::knowledge::GetKnowledgeDocument, _>(
                     GetKnowledgeDocumentHandler::new(Arc::clone(
+                        &knowledge_document_lifecycle_service,
+                    )),
+                )
+                .query_handler::<crate::modules::knowledge::ListKnowledgeChunks, _>(
+                    ListKnowledgeChunksHandler::new(Arc::clone(
                         &knowledge_document_lifecycle_service,
                     )),
                 )
