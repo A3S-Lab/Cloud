@@ -1,5 +1,6 @@
 use super::knowledge_operation::{
-    is_base_collection_path, is_knowledge_path, is_pipeline_collection_path,
+    is_base_collection_path, is_document_collection_path, is_knowledge_path,
+    is_pipeline_collection_path,
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
@@ -20,6 +21,18 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "KnowledgePipelineMutation" => Some(
             "KnowledgePipeline mutation result with explicit idempotent-replay state and the authoritative head projection.",
         ),
+        "KnowledgeDocument" => Some(
+            "Authoritative KnowledgeDocument projection binding the canonical document ACL, title, and digests.",
+        ),
+        "KnowledgeDocumentMutation" => Some(
+            "KnowledgeDocument mutation result with explicit idempotent-replay state and the authoritative document projection.",
+        ),
+        "KnowledgeChunk" => Some(
+            "Authoritative KnowledgeChunk projection binding the canonical chunk ACL, ordinal, and digests.",
+        ),
+        "KnowledgeChunkMutation" => Some(
+            "KnowledgeChunk mutation result with explicit idempotent-replay state and the authoritative chunk projection.",
+        ),
         _ => None,
     }
 }
@@ -39,6 +52,12 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         }
         "get" if is_pipeline_collection_path(path) => Some("List knowledge pipelines"),
         "get" if path.contains("/knowledge-pipelines/") => Some("Get a knowledge pipeline"),
+        "post" if is_document_collection_path(path) => Some("Create a knowledge document"),
+        "post" if path.ends_with("/chunks") && path.contains("/knowledge-documents/") => {
+            Some("Create a knowledge chunk")
+        }
+        "get" if path.contains("/knowledge-documents/") => Some("Get a knowledge document"),
+        "get" if path.contains("/knowledge-chunks/") => Some("Get a knowledge chunk"),
         _ => None,
     }
 }
@@ -72,6 +91,18 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
         "get" if path.contains("/knowledge-pipelines/") => {
             Some("Reads one authorized KnowledgePipeline head projection by immutable identity.")
         }
+        "post" if is_document_collection_path(path) => Some(
+            "Creates one KnowledgeDocument from a canonical A3S ACL contract. Audit, Outbox, and idempotency commit atomically through the authorized document lifecycle boundary. This surface does not claim live MinIO, scanner, or SEV ingestion.",
+        ),
+        "post" if path.ends_with("/chunks") && path.contains("/knowledge-documents/") => Some(
+            "Creates one KnowledgeChunk from a canonical A3S ACL contract under the URL document identity. Audit, Outbox, and idempotency commit atomically through the authorized document lifecycle boundary.",
+        ),
+        "get" if path.contains("/knowledge-documents/") => {
+            Some("Reads one authorized KnowledgeDocument projection by immutable identity.")
+        }
+        "get" if path.contains("/knowledge-chunks/") => {
+            Some("Reads one authorized KnowledgeChunk projection by immutable identity.")
+        }
         _ => None,
     }
 }
@@ -81,6 +112,12 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         return None;
     }
     match method {
+        "post" if path.contains("/knowledge-chunks") || path.ends_with("/chunks") => Some(
+            "The authoritative KnowledgeChunk after the mutation plus an idempotent-replay indicator.",
+        ),
+        "post" if path.contains("/knowledge-documents") => Some(
+            "The authoritative KnowledgeDocument after the mutation plus an idempotent-replay indicator.",
+        ),
         "post" if path.contains("/knowledge-pipelines") => Some(
             "The authoritative KnowledgePipeline head after the mutation plus an idempotent-replay indicator.",
         ),
@@ -92,6 +129,12 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         }
         "get" if is_pipeline_collection_path(path) => {
             Some("A bounded list of authorized KnowledgePipeline head projections.")
+        }
+        "get" if path.contains("/knowledge-chunks/") => {
+            Some("The authoritative KnowledgeChunk projection.")
+        }
+        "get" if path.contains("/knowledge-documents/") => {
+            Some("The authoritative KnowledgeDocument projection.")
         }
         "get" if path.contains("/knowledge-pipelines/") => {
             Some("The authoritative KnowledgePipeline head projection.")

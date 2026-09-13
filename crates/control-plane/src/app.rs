@@ -254,10 +254,13 @@ use crate::modules::integration_events::{
     IOutboxRepository, OutboxRelay, OutboxRelayConfig,
 };
 use crate::modules::knowledge::{
-    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgePipelineHandler,
-    GetKnowledgeBaseHandler, GetKnowledgePipelineHandler, IKnowledgeBaseRepository,
-    IKnowledgePipelineRepository, KnowledgeCatalogLifecycleService, KnowledgeModule,
-    ListKnowledgeBasesHandler, ListKnowledgePipelinesHandler, PublishKnowledgePipelineHandler,
+    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgeChunkHandler,
+    CreateKnowledgeDocumentHandler, CreateKnowledgePipelineHandler, GetKnowledgeBaseHandler,
+    GetKnowledgeChunkHandler, GetKnowledgeDocumentHandler, GetKnowledgePipelineHandler,
+    IKnowledgeBaseRepository, IKnowledgeChunkRepository, IKnowledgeDocumentRepository,
+    IKnowledgePipelineRepository, KnowledgeCatalogLifecycleService,
+    KnowledgeDocumentLifecycleService, KnowledgeModule, ListKnowledgeBasesHandler,
+    ListKnowledgePipelinesHandler, PublishKnowledgePipelineHandler,
 };
 use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
@@ -791,6 +794,8 @@ async fn build_api_worker_application(
     let user_files = adapters.user_files;
     let knowledge_bases = adapters.knowledge_bases;
     let knowledge_pipelines = adapters.knowledge_pipelines;
+    let knowledge_documents = adapters.knowledge_documents;
+    let knowledge_chunks = adapters.knowledge_chunks;
     let connector_profiles = adapters.connector_profiles;
     let connector_execution_adapters = postgres_adapters.connector_execution();
     let connector_attempts = connector_execution_adapters.attempts;
@@ -2121,6 +2126,8 @@ async fn build_api_worker_application(
                 user_file_objects,
                 knowledge_bases,
                 knowledge_pipelines,
+                knowledge_documents,
+                knowledge_chunks,
                 sources,
                 source_webhooks,
                 source_subscriptions,
@@ -2380,6 +2387,8 @@ struct ManagementApplicationDependencies {
     user_file_objects: Arc<dyn IUserFileObjectStore>,
     knowledge_bases: Arc<dyn IKnowledgeBaseRepository>,
     knowledge_pipelines: Arc<dyn IKnowledgePipelineRepository>,
+    knowledge_documents: Arc<dyn IKnowledgeDocumentRepository>,
+    knowledge_chunks: Arc<dyn IKnowledgeChunkRepository>,
     sources: Arc<dyn ISourceRevisionRepository>,
     source_webhooks: Arc<dyn ISourceWebhookRepository>,
     source_subscriptions: Arc<dyn ISourceSubscriptionRepository>,
@@ -2490,6 +2499,8 @@ fn build_management_application_with_health(
         user_file_objects,
         knowledge_bases,
         knowledge_pipelines,
+        knowledge_documents,
+        knowledge_chunks,
         sources,
         source_webhooks,
         source_subscriptions,
@@ -2544,6 +2555,10 @@ fn build_management_application_with_health(
     let knowledge_lifecycle_service = Arc::new(KnowledgeCatalogLifecycleService::new(
         knowledge_bases,
         knowledge_pipelines,
+    ));
+    let knowledge_document_lifecycle_service = Arc::new(KnowledgeDocumentLifecycleService::new(
+        knowledge_documents,
+        knowledge_chunks,
     ));
     let developer_workflow_environments: Arc<dyn IDeveloperWorkflowEnvironmentPort> = Arc::new(
         ProjectsDeveloperWorkflowEnvironmentAdapter::new(Arc::clone(&environments)),
@@ -3546,6 +3561,16 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::knowledge::PublishKnowledgePipelineCommand, _>(
                     PublishKnowledgePipelineHandler::new(Arc::clone(&knowledge_lifecycle_service)),
                 )
+                .command_handler::<crate::modules::knowledge::CreateKnowledgeDocumentCommand, _>(
+                    CreateKnowledgeDocumentHandler::new(Arc::clone(
+                        &knowledge_document_lifecycle_service,
+                    )),
+                )
+                .command_handler::<crate::modules::knowledge::CreateKnowledgeChunkCommand, _>(
+                    CreateKnowledgeChunkHandler::new(Arc::clone(
+                        &knowledge_document_lifecycle_service,
+                    )),
+                )
                 .command_handler::<crate::modules::durable_cells::CreateDurableCellApplication, _>(
                     CreateDurableCellApplicationHandler::new(
                         create_durable_cell_environments,
@@ -4319,6 +4344,14 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::knowledge::GetKnowledgePipeline, _>(
                     GetKnowledgePipelineHandler::new(knowledge_lifecycle_service),
+                )
+                .query_handler::<crate::modules::knowledge::GetKnowledgeDocument, _>(
+                    GetKnowledgeDocumentHandler::new(Arc::clone(
+                        &knowledge_document_lifecycle_service,
+                    )),
+                )
+                .query_handler::<crate::modules::knowledge::GetKnowledgeChunk, _>(
+                    GetKnowledgeChunkHandler::new(knowledge_document_lifecycle_service),
                 )
                 .query_handler::<crate::modules::durable_cells::ListDurableCellApplications, _>(
                     ListDurableCellApplicationsHandler::new(list_durable_cell_applications),

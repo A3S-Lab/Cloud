@@ -8,7 +8,8 @@ mod resource_access;
 
 pub use catalog::{KnowledgeBaseCatalogService, KnowledgePipelineCatalogService};
 pub use commands::{
-    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgePipelineHandler,
+    AppendKnowledgeBaseHandler, CreateKnowledgeBaseHandler, CreateKnowledgeChunkHandler,
+    CreateKnowledgeDocumentHandler, CreateKnowledgePipelineHandler,
     PublishKnowledgePipelineHandler,
 };
 pub use document_catalog::{KnowledgeChunkCatalogService, KnowledgeDocumentCatalogService};
@@ -25,7 +26,7 @@ pub use lifecycle::{
     MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
 };
 pub use queries::{
-    GetKnowledgeBaseHandler, GetKnowledgePipelineHandler, ListKnowledgeBasesHandler,
-    ListKnowledgePipelinesHandler,
+    GetKnowledgeBaseHandler, GetKnowledgeChunkHandler, GetKnowledgeDocumentHandler,
+    GetKnowledgePipelineHandler, ListKnowledgeBasesHandler, ListKnowledgePipelinesHandler,
 };
 pub use resource_access::KnowledgeAccess;

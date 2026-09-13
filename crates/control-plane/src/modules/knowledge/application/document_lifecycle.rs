@@ -30,6 +30,7 @@ pub struct CreateKnowledgeDocumentCommand {
 pub struct CreateKnowledgeChunkCommand {
     pub organization_id: OrganizationId,
     pub project_id: ProjectId,
+    pub document_id: Uuid,
     pub chunk_acl: String,
     pub actor_principal_id: PrincipalId,
     pub access: KnowledgeAccess,
@@ -142,7 +143,9 @@ impl KnowledgeDocumentLifecycleService {
         let chunk =
             KnowledgeChunkV1::parse_acl(&command.chunk_acl).map_err(ApplicationError::Invalid)?;
         let spec = chunk.spec();
-        if spec.organization_id != command.organization_id || spec.project_id != command.project_id
+        if spec.organization_id != command.organization_id
+            || spec.project_id != command.project_id
+            || spec.document_id.as_uuid() != command.document_id
         {
             return Err(ApplicationError::Invalid(
                 "KnowledgeChunk ACL is outside the requested tenant scope".into(),
@@ -151,6 +154,7 @@ impl KnowledgeDocumentLifecycleService {
         let canonical = serde_json::to_vec(&CanonicalCreateKnowledgeChunk {
             organization_id: command.organization_id,
             project_id: command.project_id,
+            document_id: command.document_id,
             chunk_id: spec.chunk_id.as_uuid(),
             chunk_digest: chunk.digest().as_str(),
         })
@@ -158,9 +162,7 @@ impl KnowledgeDocumentLifecycleService {
         let idempotency = IdempotencyRequest::new(
             format!(
                 "organizations/{}/projects/{}/knowledge-documents/{}/chunks",
-                command.organization_id,
-                command.project_id,
-                spec.document_id.as_uuid()
+                command.organization_id, command.project_id, command.document_id
             ),
             command.idempotency_key.clone(),
             &canonical,
@@ -249,6 +251,7 @@ fn create_chunk_replay_matches(
     let spec = record.chunk.spec();
     spec.organization_id == command.organization_id
         && spec.project_id == command.project_id
+        && spec.document_id.as_uuid() == command.document_id
         && record.chunk.digest().as_str() == chunk.digest().as_str()
 }
 
@@ -275,6 +278,7 @@ struct CanonicalCreateKnowledgeDocument<'a> {
 struct CanonicalCreateKnowledgeChunk<'a> {
     organization_id: OrganizationId,
     project_id: ProjectId,
+    document_id: Uuid,
     chunk_id: Uuid,
     chunk_digest: &'a str,
 }
@@ -342,6 +346,7 @@ mod tests {
         let command = CreateKnowledgeChunkCommand {
             organization_id: chunk.spec().organization_id,
             project_id: chunk.spec().project_id,
+            document_id: chunk.spec().document_id.as_uuid(),
             chunk_acl: CHUNK.to_owned(),
             actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
             access: KnowledgeAccess::restricted_projects([chunk.spec().project_id]),
@@ -358,6 +363,7 @@ mod tests {
             .create_chunk(CreateKnowledgeChunkCommand {
                 organization_id: chunk.spec().organization_id,
                 project_id: chunk.spec().project_id,
+                document_id: chunk.spec().document_id.as_uuid(),
                 chunk_acl: CHUNK.to_owned(),
                 actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
                 access: KnowledgeAccess::restricted_projects([ProjectId::new()]),

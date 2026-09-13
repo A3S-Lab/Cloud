@@ -1,8 +1,11 @@
 use super::{
-    GetKnowledgeBase, GetKnowledgePipeline, KnowledgeCatalogLifecycleService, ListKnowledgeBases,
+    GetKnowledgeBase, GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline,
+    KnowledgeCatalogLifecycleService, KnowledgeDocumentLifecycleService, ListKnowledgeBases,
     ListKnowledgePipelines,
 };
-use crate::modules::knowledge::domain::{KnowledgeBaseRecord, KnowledgePipelineRecord};
+use crate::modules::knowledge::domain::{
+    KnowledgeBaseRecord, KnowledgeChunkRecord, KnowledgeDocumentRecord, KnowledgePipelineRecord,
+};
 use crate::modules::shared_kernel::application::ApplicationResult;
 use a3s_boot::{Query, QueryHandler};
 use std::sync::Arc;
@@ -110,5 +113,57 @@ impl QueryHandler<ListKnowledgePipelines> for ListKnowledgePipelinesHandler {
     > {
         let service = Arc::clone(&self.service);
         Box::pin(async move { Ok(service.list_knowledge_pipelines(query).await) })
+    }
+}
+
+impl Query for GetKnowledgeDocument {
+    type Output = ApplicationResult<KnowledgeDocumentRecord>;
+}
+
+pub struct GetKnowledgeDocumentHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl GetKnowledgeDocumentHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<GetKnowledgeDocument> for GetKnowledgeDocumentHandler {
+    fn execute(
+        &self,
+        query: GetKnowledgeDocument,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<KnowledgeDocumentRecord>>>
+    {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.get_document(query).await) })
+    }
+}
+
+impl Query for GetKnowledgeChunk {
+    type Output = ApplicationResult<KnowledgeChunkRecord>;
+}
+
+pub struct GetKnowledgeChunkHandler {
+    service: Arc<KnowledgeDocumentLifecycleService>,
+}
+
+impl GetKnowledgeChunkHandler {
+    pub fn new(service: Arc<KnowledgeDocumentLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<GetKnowledgeChunk> for GetKnowledgeChunkHandler {
+    fn execute(
+        &self,
+        query: GetKnowledgeChunk,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<'static, a3s_boot::Result<ApplicationResult<KnowledgeChunkRecord>>>
+    {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.get_chunk(query).await) })
     }
 }

@@ -50,7 +50,8 @@ use crate::modules::identity::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort, InMemoryIdentityRepository,
 };
 use crate::modules::knowledge::{
-    InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
+    InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
+    InMemoryKnowledgeDocumentRepository, InMemoryKnowledgePipelineRepository,
 };
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
@@ -239,6 +240,7 @@ mod forms_tests;
 mod inference_key_tests;
 mod inference_route_tests;
 mod inference_usage_tests;
+mod knowledge_document_tests;
 mod knowledge_tests;
 mod management_mcp_tests;
 mod mcp_credential_tests;
@@ -735,6 +737,8 @@ struct TestRuntimeRepositories {
     user_file_objects: Option<Arc<dyn IUserFileObjectStore>>,
     knowledge_bases: Option<Arc<InMemoryKnowledgeBaseRepository>>,
     knowledge_pipelines: Option<Arc<InMemoryKnowledgePipelineRepository>>,
+    knowledge_documents: Option<Arc<InMemoryKnowledgeDocumentRepository>>,
+    knowledge_chunks: Option<Arc<InMemoryKnowledgeChunkRepository>>,
     inference_usage: Option<Arc<crate::modules::inference::InMemoryInferenceUsageRepository>>,
     inference_credentials:
         Option<Arc<crate::modules::identity::InMemoryInferenceCredentialRepository>>,
@@ -2102,6 +2106,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         user_file_objects,
         knowledge_bases,
         knowledge_pipelines,
+        knowledge_documents,
+        knowledge_chunks,
         inference_usage,
         inference_credentials,
     } = runtime_repositories;
@@ -2358,6 +2364,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 .unwrap_or_else(|| Arc::new(InMemoryKnowledgeBaseRepository::new())),
             knowledge_pipelines: knowledge_pipelines
                 .unwrap_or_else(|| Arc::new(InMemoryKnowledgePipelineRepository::new())),
+            knowledge_documents: knowledge_documents
+                .unwrap_or_else(|| Arc::new(InMemoryKnowledgeDocumentRepository::new())),
+            knowledge_chunks: knowledge_chunks
+                .unwrap_or_else(|| Arc::new(InMemoryKnowledgeChunkRepository::new())),
             sources,
             source_webhooks,
             source_subscriptions,

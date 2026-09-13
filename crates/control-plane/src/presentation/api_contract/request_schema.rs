@@ -127,6 +127,12 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/knowledge-pipelines/{pipeline_id}/releases" => {
             knowledge_pipeline_publish_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-documents" => {
+            knowledge_document_create_schema()
+        }
+        "/organizations/{organization_id}/projects/{project_id}/knowledge-documents/{document_id}/chunks" => {
+            knowledge_chunk_create_schema()
+        }
         "/organizations/{organization_id}/secrets/{secret_id}/versions" => {
             secret_value_schema()
         }
@@ -306,6 +312,36 @@ fn knowledge_pipeline_publish_schema() -> Value {
                 "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
                 "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
                 "description": "Canonical A3S ACL KnowledgePipeline release contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_document_create_schema() -> Value {
+    object(
+        &["documentAcl"],
+        json!({
+            "documentAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeDocument contract."
+            }
+        }),
+    )
+}
+
+fn knowledge_chunk_create_schema() -> Value {
+    object(
+        &["chunkAcl"],
+        json!({
+            "chunkAcl": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "x-a3s-max-canonical-bytes": KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
+                "description": "Canonical A3S ACL KnowledgeChunk contract."
             }
         }),
     )

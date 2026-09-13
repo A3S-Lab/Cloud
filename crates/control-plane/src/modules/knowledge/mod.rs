@@ -18,6 +18,9 @@
 //! client, CLI, or Management MCP surface.
 //! `K0.1-C7` adds authorized idempotent KnowledgeDocument/Chunk create writes
 //! with audit and Outbox side effects over the C5 repositories. No REST/MCP.
+//! `K0.1-C8` exposes that document/chunk mutation boundary over REST/OpenAPI
+//! with CQRS handlers and control-plane wiring. No client/CLI/MCP or live
+//! MinIO/scanner/SEV claims.
 
 mod application;
 mod domain;
@@ -26,11 +29,12 @@ mod presentation;
 
 pub use application::{
     AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateKnowledgeBaseCommand,
-    CreateKnowledgeBaseHandler, CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand,
-    CreateKnowledgePipelineCommand, CreateKnowledgePipelineHandler, GetKnowledgeBase,
-    GetKnowledgeBaseHandler, GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgePipeline,
-    GetKnowledgePipelineHandler, KnowledgeAccess, KnowledgeBaseCatalogService,
-    KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
+    CreateKnowledgeBaseHandler, CreateKnowledgeChunkCommand, CreateKnowledgeChunkHandler,
+    CreateKnowledgeDocumentCommand, CreateKnowledgeDocumentHandler, CreateKnowledgePipelineCommand,
+    CreateKnowledgePipelineHandler, GetKnowledgeBase, GetKnowledgeBaseHandler, GetKnowledgeChunk,
+    GetKnowledgeChunkHandler, GetKnowledgeDocument, GetKnowledgeDocumentHandler,
+    GetKnowledgePipeline, GetKnowledgePipelineHandler, KnowledgeAccess,
+    KnowledgeBaseCatalogService, KnowledgeCatalogLifecycleService, KnowledgeChunkCatalogService,
     KnowledgeDocumentCatalogService, KnowledgeDocumentLifecycleService, KnowledgeMutationResult,
     KnowledgePipelineCatalogService, ListKnowledgeBases, ListKnowledgeBasesHandler,
     ListKnowledgePipelines, ListKnowledgePipelinesHandler, PublishKnowledgePipelineCommand,
@@ -69,7 +73,9 @@ pub use infrastructure::{
 pub(crate) use presentation::{
     KnowledgeBaseMutationResponse, KnowledgeBaseResponse, KnowledgeModule,
     KnowledgePipelineMutationResponse, KnowledgePipelineResponse, KNOWLEDGE_BASE_COLLECTION_ROUTE,
-    KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CONTROLLER_PREFIX,
+    KNOWLEDGE_BASE_ITEM_ROUTE, KNOWLEDGE_BASE_REVISION_ROUTE, KNOWLEDGE_CHUNK_ITEM_ROUTE,
+    KNOWLEDGE_CONTROLLER_PREFIX, KNOWLEDGE_DOCUMENT_CHUNK_COLLECTION_ROUTE,
+    KNOWLEDGE_DOCUMENT_COLLECTION_ROUTE, KNOWLEDGE_DOCUMENT_ITEM_ROUTE,
     KNOWLEDGE_PIPELINE_COLLECTION_ROUTE, KNOWLEDGE_PIPELINE_ITEM_ROUTE,
     KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
 };
