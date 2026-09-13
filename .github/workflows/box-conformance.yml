@@ -141,6 +141,10 @@ jobs:
           echo "oci_runtime=$oci_runtime_revision" >>"$GITHUB_OUTPUT"
           echo "gateway=$gateway_revision" >>"$GITHUB_OUTPUT"
 
+      - name: Certify BX0.3 TEE isolation fail-closed binder
+        working-directory: apps/cloud
+        run: bash tools/box-conformance/run_bx0_tee_isolation_audit_ci.sh
+
       - name: Checkout A3S Box
         uses: actions/checkout@v4
         with:
@@ -719,7 +723,7 @@ jobs:
             >"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/agent-runtime-process-death-certification.txt")" -eq 1
           run_box_cargo test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane \
+              -p a3s-cloud-control-plane --lib \
               modules::edge::infrastructure::runtime_http_upstream::tests::real_box_health_replays_and_compiles_to_live_gateway_origin \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/cloud-service-health.log"
@@ -734,7 +738,7 @@ jobs:
             >"$EVIDENCE_DIR/runtime-health-consumer-certification.txt"
           test "$(wc -l <"$EVIDENCE_DIR/runtime-health-consumer-certification.txt")" -eq 1
           run_box_cargo test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane \
+              -p a3s-cloud-control-plane --lib \
               modules::workloads::infrastructure::deployment_flow::tests::box_cancellation::real_box_deployment_cancellation_removes_runtime_before_claim_release \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/cloud-cleanup-interruption.log"
@@ -857,7 +861,7 @@ jobs:
           sudo chmod 0700 "$A3S_HOME/runtime-secrets"
           set +e
           bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_published_agent_release_runs_recovers_and_cleans_through_real_box \
               -- --ignored --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-runtime-release.log"
@@ -1060,7 +1064,7 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_agent_code_recovery_survives_retention_runtime_and_control_plane_restarts \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-code-postgres-recovery.log"
@@ -1079,7 +1083,7 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_non_code_provider_recovery_fails_closed_across_control_plane_restart \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-non-code-postgres-fallback.log"
@@ -1098,7 +1102,7 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_agent_approval_resume_and_fail_closed_paths_survive_control_plane_restarts \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-approval-postgres-recovery.log"
@@ -1117,7 +1121,7 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_agent_checkpoint_and_fork_recover_across_process_death \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$EVIDENCE_DIR/agent-checkpoint-postgres-recovery.log"
@@ -1244,26 +1248,19 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             A3S_HOME="$A3S_HOME" \
             crates/box/src/target/debug/a3s-box pull "$image"
-          cargo_bin=$(command -v cargo)
-          cargo_home=${CARGO_HOME:-$(dirname "$(dirname "$cargo_bin")")}
-          rustup_home=$(rustup show home)
+          # Same Sandbox identity as Skill/Agent gates: euid 0 / non-root ruid
+          # for OCI rootless device-policy bootstrap (UID 0/0 is refused).
+          test -n "${A3S_BOX_CI_SANDBOX_UID:-}"
+          test -n "${A3S_BOX_CI_SANDBOX_GID:-}"
+          sudo chown -R "${A3S_BOX_CI_SANDBOX_UID}:${A3S_BOX_CI_SANDBOX_GID}" "$A3S_HOME"
+          if test -d "$A3S_HOME/runtime-secrets"; then
+            sudo chown root:root "$A3S_HOME/runtime-secrets"
+            sudo chmod 0700 "$A3S_HOME/runtime-secrets"
+          fi
           set +e
-          sudo env \
-            PATH="$PATH" \
-            HOME="$HOME" \
-            CARGO_HOME="$cargo_home" \
-            CARGO_TARGET_DIR="$RUNNER_TEMP/cloud-box-target" \
-            RUSTUP_HOME="$rustup_home" \
-            A3S_HOME="$A3S_HOME" \
-            A3S_BOX_OCI_AGENT_PATH="$A3S_BOX_OCI_AGENT_PATH" \
-            A3S_BOX_OCI_RUNTIME_PATH="$A3S_BOX_OCI_RUNTIME_PATH" \
-            A3S_BOX_SANDBOX_OCI_LAUNCHER="$A3S_BOX_SANDBOX_OCI_LAUNCHER" \
-            A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT="$A3S_BOX_SANDBOX_DELEGATED_CGROUP_ROOT" \
-            A3S_CLOUD_TEST_CELL_PROVIDER="$A3S_CLOUD_TEST_CELL_PROVIDER" \
-            A3S_CLOUD_TEST_CELL_PROVIDER_IMAGE="$image" \
-            A3S_DEPS_STUB="$A3S_DEPS_STUB" \
-            RUST_MIN_STACK=33554432 \
-            "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
+          A3S_CLOUD_TEST_CELL_PROVIDER=1 \
+          A3S_CLOUD_TEST_CELL_PROVIDER_IMAGE="$image" \
+          bash "$GITHUB_WORKSPACE/apps/cloud/tools/box-conformance/run_box_cargo_under_setpriv.sh" test --manifest-path apps/cloud/Cargo.toml --locked \
               -p a3s-cloud-node-agent --lib \
               box_runtime::tests::durable_cell_provider::real_celld_release_uses_the_existing_box_runtime_and_fleet_journal \
               -- --ignored --exact --nocapture --test-threads=1 \
@@ -1444,7 +1441,7 @@ jobs:
             A3S_DEPS_STUB="$A3S_DEPS_STUB" \
             RUST_MIN_STACK=33554432 \
             "$cargo_bin" test --manifest-path apps/cloud/Cargo.toml --locked \
-              -p a3s-cloud-control-plane --test postgres_integration \
+              -p a3s-cloud-control-plane --features persistence-conformance --test postgres_integration \
               postgres_build_flow_survives_process_death_at_every_fleet_completion_boundary \
               -- --exact --nocapture --test-threads=1 \
               2>&1 | tee "$A3S_CLOUD_TEST_G0_EVIDENCE_DIR/fleet-flow-process-death.log"

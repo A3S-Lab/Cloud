@@ -221,7 +221,7 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 
 | Gate | Product outcome | State |
 | --- | --- | --- |
-| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress |
+| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress; retained Box provider conformance evidence on [34737151481](https://github.com/A3S-Lab/Cloud/actions/runs/34737151481); TEE isolation blocked on physical SEV capacity; PW0/EXIT skipped until TEE binds (not Verified) |
 | `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
 | `R0` — Universal Runtime | General Task and Service contracts, unified consumer-profile admission, durable identity, capability matching, and real Box provider conformance | Historical baseline; unified consumer contract and Box re-certification in progress |
 | `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API | Verified; the [2026-08-19 `main` PostgreSQL 17 plus local/NATS provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175) passes the exact Flow `1.0.0`, Boot `0.2.0`, and ORM `0.3.1` composition, including tenancy, idempotency, one-run reconciliation, lost-Outbox-ack recovery, API envelopes, and migration apply/checksum/rollback/concurrency authority |
@@ -601,10 +601,34 @@ evidence to the existing projection. No scheduler, retry engine, provider
 client, node-run table, or second history is introduced, and Plan v1-v3 plus
 Run v1-v6 replay remain explicit.
 
-`BX0.3` remains in progress only for complete Sandbox plus hardware-backed
-MicroVM/TEE isolation certification.
+`BX0.3` retained GitHub Box provider conformance is green on evidence tip
+[`dbe34158`](https://github.com/A3S-Lab/Cloud/actions/runs/34737151481)
+(Box `0ce44d4` / OCI `931def0`), including Skill lifecycle, published Agent
+release, celld provider runtime, G0 Box-native build, allocation/health/
+secrets/artifacts, Fleet/Flow replay, cleanup, and uploaded evidence artifact
+`box-provider-conformance-34737151481-1` (artifact id `10312158124`, not expired); logs retain `A3S_CLOUD_G0_BOX_BUILD_CERTIFIED` for tip `dbe34158` / Box `0ce44d4`. The tip includes Track A Access fixture
+alignment and Box `postgres_integration` gates under
+`--features persistence-conformance`. `BX0.3` remains in progress only for
+complete hardware-backed MicroVM/TEE isolation certification. That evidence is
+the Box pin's `Integration (hardware SEV-SNP)` job
+(`box_runtime_sev_snp_hardware_passes_all_advertised_profiles`) on a trusted
+runner labeled `self-hosted, linux, kvm, sev-snp`, armed per
+[A3S-Lab/Box `docs/ci-kvm-runner.md`](https://github.com/A3S-Lab/Box/blob/0ce44d4dcf572fc473512deadf9e69b05ea69a16/docs/ci-kvm-runner.md)
+with `SEV_SNP_CI=true`, generation `milan|genoa`, and a digest-bound
+`SEV_SNP_CI_EXPECTED_MEASUREMENT`, plus Node Agent
+`box.sev_snp.simulate = false` and `require_no_debug = true`. As of this tip,
+recent Box CI runs still **skip** that job (variable not armed / no
+`sev-snp` runner); the pinned tip run `34723450680` also skips
+`Integration (real microVM, KVM)` (`KVM_CI` unarmed). A skipped job is not
+certification. Hardware SEV remains the release-blocking MicroVM/TEE gate. **Physical-capacity stop:** with zero `sev-snp` runners and no `/dev/sev` on available hosts, do **not** start `PW0`, I0 Track B, clean-host product EXIT, or other post-TEE features until an online AMD SEV-SNP runner exists and Cloud TEE isolation binds. Skipping those slices is required (not optional deferral theater); it is not Verified. WSL2 and ordinary
+GitHub-hosted runners have KVM at best and cannot supply `/dev/sev`. ACL-native
+simulation stays distinct from hardware evidence. Do not promote PW0 or EXIT
+until that isolation evidence exists. Cloud binds that evidence only through
+`tools/box-conformance/run_bx0_tee_isolation_audit.sh`, which fail-closes with
+`A3S_CLOUD_BX0_TEE_ISOLATION_BLOCKED` until an operator-bound
+`simulate=false` certification line cites a green Box hardware SEV run. Prefer `collect_bx0_tee_isolation_evidence.sh` / `verify_bx0_tee_box_hardware_run.sh`, which re-check the Box job remotely (`success` on the pinned `box-revision`) and reject hand-edited skipped-run certs. Operator sequence: `tools/box-conformance/OPERATOR_TEE.md`. Sandbox re-cert tip remains `dbe34158` / run `34737151481`; later TEE-binder commits on this branch do not invent Verified.
 
-`PW0.1` follows the required `BX0.3` isolation and evidence capabilities. It
+`PW0.1` follows the required `BX0.3` isolation and evidence capabilities and remains **unstarted** under the physical-capacity stop (no online `sev-snp` runner); do not implement it to simulate roadmap motion. It
 makes the immutable ACL-native A3S Power profile the first local I0 backend and
 proves Box-hosted health, bounded streaming and non-streaming inference,
 attestation, process/VM recovery, update, rollback, and cleanup.

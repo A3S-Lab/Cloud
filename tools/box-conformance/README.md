@@ -93,6 +93,20 @@ Fleet/Flow stores, or published-Workload evidence required to close `G0`.
 Real MicroVM and TEE profiles remain hardware-qualified in A3S Box. Cloud does
 not reimplement those provider tests.
 
+`run_bx0_tee_isolation_audit.sh` fail-closes BX0.3 hardware TEE binding until an
+operator supplies `A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFICATION` with
+`A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFIED ... simulate=false` bound to the exact
+Cloud tip and `box-revision`, citing a green Box
+`Integration (hardware SEV-SNP)` Actions run URL. Missing evidence prints
+`A3S_CLOUD_BX0_TEE_ISOLATION_BLOCKED` and exits 2. Simulated SEV-SNP and skipped
+Box SEV jobs are rejected. This audit never invents Verified. `bx0-tee-isolation-certification.example.txt` is documentation-only (PLACEHOLDER_* fails closed).
+
+See `OPERATOR_TEE.md` for the org arming + Cloud bind sequence. `preflight_bx0_sev_org_arming.sh` fail-closes until an online `sev-snp` runner exists and never sets `SEV_SNP_CI`. Prefer `collect_bx0_tee_isolation_evidence.sh` over hand-edited cert files: it
+calls GitHub and refuses to write `TEE_ISOLATION_CERTIFIED` unless Box job
+`Integration (hardware SEV-SNP)` is `success` on the pinned `box-revision`.
+Skipped SEV jobs and SHA-mismatched runs fail closed.
+`run_bx0_tee_isolation_audit_ci.sh` is the repository-policy CI harness: it proves BLOCKED-without-evidence and rejects `simulate=true` / placeholders without claiming Verified.
+
 `install_box_release.sh` installs checksum-pinned Linux x86_64 Box host
 libraries and companion artifacts, then builds the Box CLI, A3S OCI CLI, and
 A3S OCI Agent from the exact Cloud-pinned revisions. Disposable PostgreSQL,

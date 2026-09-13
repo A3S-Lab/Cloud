@@ -1,0 +1,18 @@
+# Example operator certification for BX0.3 hardware TEE isolation evidence.
+# This file MUST NOT unlock the TEE audit. Validation rejects PLACEHOLDER_*
+# values and requires simulate=false bound to the exact Cloud tip and
+# tools/box-conformance/box-revision, citing a green Box
+# Integration (hardware SEV-SNP) Actions run URL.
+#
+# Produce a real line only via collect_bx0_tee_isolation_evidence.sh after that
+# Box hardware job is green on the pinned Box revision (arm via Box
+# docs/ci-kvm-runner.md). Hand-edited URLs that point at skipped runs are
+# rejected by the collector. Then:
+#   export A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFICATION=/path/to/real-cert.txt
+#   bash tools/box-conformance/run_bx0_tee_isolation_audit.sh
+#
+# Required non-comment line shape:
+#   A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFIED cloud_revision=<40hex> box_revision=<40hex> box_hardware_sev_run=https://github.com/A3S-Lab/Box/actions/runs/<id> generation=milan|genoa expected_measurement=<96hex> simulate=false
+#
+# Documentation-only example (PLACEHOLDER_* → FAIL when used as gate input):
+A3S_CLOUD_BX0_TEE_ISOLATION_CERTIFIED cloud_revision=PLACEHOLDER_CLOUD_REVISION box_revision=PLACEHOLDER_BOX_REVISION box_hardware_sev_run=PLACEHOLDER_BOX_HARDWARE_SEV_RUN generation=PLACEHOLDER_GENERATION expected_measurement=PLACEHOLDER_EXPECTED_MEASUREMENT simulate=false
