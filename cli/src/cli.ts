@@ -235,6 +235,7 @@ Commands:
   user-files list        List bounded UserFile lifecycle projections in the selected project
   user-files get ID      Get one UserFile lifecycle projection
   user-files tombstone ID Tombstone one UserFile with optimistic concurrency
+  user-files put-content ID Put reserved UserFile bytes from --file
   user-file-quota get    Get the organization-wide UserFile quota ledger
   knowledge-bases create Create one KnowledgeBase from canonical A3S ACL
   knowledge-bases list   List bounded KnowledgeBase catalog projections in the selected project

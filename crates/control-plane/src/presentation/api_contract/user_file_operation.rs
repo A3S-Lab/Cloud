@@ -1,12 +1,16 @@
 use crate::modules::files::{DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT};
 use crate::modules::files::{
-    USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_ITEM_ROUTE,
-    USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
+    USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE, USER_FILE_ITEM_ROUTE,
+    USER_FILE_QUOTA_ROUTE, USER_FILE_TOMBSTONE_ROUTE, USER_FILES_CONTROLLER_PREFIX,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn is_user_file_path(path: &str) -> bool {
-    is_collection_path(path) || is_item_path(path) || is_tombstone_path(path) || is_quota_path(path)
+    is_collection_path(path)
+        || is_item_path(path)
+        || is_content_path(path)
+        || is_tombstone_path(path)
+        || is_quota_path(path)
 }
 
 pub(super) fn is_collection_path(path: &str) -> bool {
@@ -15,6 +19,10 @@ pub(super) fn is_collection_path(path: &str) -> bool {
 
 fn is_item_path(path: &str) -> bool {
     path == full_route(USER_FILE_ITEM_ROUTE)
+}
+
+pub(super) fn is_content_path(path: &str) -> bool {
+    path == full_route(USER_FILE_CONTENT_ROUTE)
 }
 
 fn is_tombstone_path(path: &str) -> bool {
@@ -54,6 +62,7 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         } else {
             "UserFileMutationSuccess200"
         }),
+        ("put", 200) if is_content_path(path) => Some("UserFileMutationSuccess200"),
         ("post", 200) if is_tombstone_path(path) => Some("UserFileMutationSuccess200"),
         _ => None,
     }
@@ -71,12 +80,18 @@ mod tests {
     fn user_file_routes_have_exact_bounded_contract_bindings() {
         let collection = full_route(USER_FILE_COLLECTION_ROUTE);
         let item = full_route(USER_FILE_ITEM_ROUTE);
+        let content = full_route(USER_FILE_CONTENT_ROUTE);
         let quota = full_route(USER_FILE_QUOTA_ROUTE);
         assert!(is_user_file_path(&collection));
+        assert!(is_content_path(&content));
         assert_eq!(query_parameters("get", &collection).len(), 1);
         assert_eq!(
             success_component("post", &collection, 201),
             Some("UserFileMutationSuccess201")
+        );
+        assert_eq!(
+            success_component("put", &content, 200),
+            Some("UserFileMutationSuccess200")
         );
         assert_eq!(
             success_component("get", &item, 200),

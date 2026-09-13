@@ -3,6 +3,7 @@ import {
   encodeUserFileListOptions,
   type UserFileListOptions,
   USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES,
+  USER_FILE_MAX_BYTES,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand } from './acl-file';
 import type { ParsedArguments } from './arguments';
@@ -14,6 +15,8 @@ import {
   rejectGatewayRolloutOptions,
   rejectIdempotencyOption,
   requireArity,
+  requireExpectedVersion,
+  requireIdempotencyKey,
   requireReadCommand,
   requireVersionedMutationCommand,
 } from './command-options';
@@ -90,6 +93,35 @@ export async function executeUserFileCommand(
           positionalUuid(arguments_.positionals, 2, 'UserFile ID'),
           mutation.expectedVersion,
           mutation.idempotencyKey
+        )
+      );
+    }
+    case 'user-files put-content': {
+      requireArity(arguments_.positionals, 3, 'user-files put-content <user-file-id>');
+      rejectAgentProviderKindOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      if (arguments_.cursor !== undefined || arguments_.stream !== undefined) {
+        throw usageError('cursor and stream options are valid only for log commands');
+      }
+      const filePath = arguments_.file;
+      if (filePath === undefined || filePath.length === 0) {
+        throw usageError('--file is required for user-files put-content');
+      }
+      const expectedVersion = requireExpectedVersion(arguments_, 'UserFile');
+      const idempotencyKey = requireIdempotencyKey(arguments_);
+      const readFile = dependencies.readFile ?? ((path: string) => Bun.file(path).bytes());
+      const content = await readFile(filePath);
+      if (content.byteLength === 0 || content.byteLength > USER_FILE_MAX_BYTES) {
+        throw usageError(`UserFile content must be between 1 and ${USER_FILE_MAX_BYTES} bytes`);
+      }
+      return userFileMutationResult(
+        await cloudApi().putUserFileContent(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'UserFile ID'),
+          content,
+          expectedVersion,
+          idempotencyKey
         )
       );
     }

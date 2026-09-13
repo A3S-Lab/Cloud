@@ -1,4 +1,4 @@
-use super::user_file_operation::{is_collection_path, is_user_file_path};
+use super::user_file_operation::{is_collection_path, is_content_path, is_user_file_path};
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
     match name {
@@ -22,6 +22,7 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
     }
     match method {
         "post" if is_collection_path(path) => Some("Reserve a user file"),
+        "put" if is_content_path(path) => Some("Put user file content"),
         "post" if path.ends_with("/tombstone") => Some("Tombstone a user file"),
         "get" if is_collection_path(path) => Some("List user files"),
         "get" if path.ends_with("/user-file-quota") => Some("Get the user file quota"),
@@ -36,7 +37,10 @@ pub(super) fn operation_description(method: &str, path: &str) -> Option<&'static
     }
     match method {
         "post" if is_collection_path(path) => Some(
-            "Reserves one bounded UserFile from a canonical A3S ACL admission contract. Metadata, quota allocation, audit, Outbox, and idempotency commit atomically; byte transfer remains behind the internal streaming immutable-object port.",
+            "Reserves one bounded UserFile from a canonical A3S ACL admission contract. Metadata, quota allocation, audit, Outbox, and idempotency commit atomically. Exact byte transfer uses the authorized PUT content route over the same streaming immutable-object port.",
+        ),
+        "put" if is_content_path(path) => Some(
+            "Uploads exact reserved UserFile bytes as application/octet-stream through the existing upload command and streaming object port. Optimistic concurrency uses x-a3s-expected-version; successful writes transition awaiting_upload to awaiting_scan. Live object-provider scan and cleanup execution remain separate open work.",
         ),
         "post" if path.ends_with("/tombstone") => Some(
             "Tombstones one UserFile using optimistic concurrency. Any reserved quota is released in the same transaction and one lifecycle cleanup intent is emitted; no independent deletion queue is created.",
@@ -59,7 +63,7 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         return None;
     }
     match method {
-        "post" => Some(
+        "post" | "put" => Some(
             "The authoritative UserFile aggregate after the mutation plus an idempotent-replay indicator.",
         ),
         "get" if is_collection_path(path) => {

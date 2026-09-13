@@ -1,8 +1,10 @@
 use super::*;
 use crate::modules::files::{
-    UserFileAdmissionContract, UserFileAdmissionContractSpec, UserFileScanPolicy,
+    SharedUserFileObjectStore, UserFileAdmissionContract, UserFileAdmissionContractSpec,
+    UserFileScanPolicy,
 };
 use crate::modules::shared_kernel::domain::{Sha256Digest, UserFileId, UserFileUploadId};
+use a3s_boot::HttpMethod;
 use chrono::TimeDelta;
 
 const RESTRICTED_FILE_TOKEN: &str =
@@ -367,6 +369,80 @@ async fn restricted_user_files_authorize_before_replay_and_conceal_quota() -> Re
     Ok(())
 }
 
+#[tokio::test]
+async fn user_file_rest_puts_content_through_local_object_store() -> Result<()> {
+    let directory = tempfile::tempdir().map_err(|error| BootError::Internal(error.to_string()))?;
+    let objects = Arc::new(
+        SharedUserFileObjectStore::local(directory.path())
+            .map_err(|error| BootError::Internal(error.to_string()))?,
+    );
+    let files = Arc::new(InMemoryUserFileRepository::default());
+    let app = build_test_application_with_user_files(
+        Arc::new(InMemoryIdentityRepository::new()),
+        Arc::new(InMemoryProjectsRepository::new()),
+        files.clone(),
+        objects,
+    )?;
+    let organization = bootstrap_organization(&app, "files-content", "Files content").await?;
+    let project = create_project(&app, &organization, "files-content-project", "Files").await?;
+    let content = b"knowledge-content-bytes";
+    let (admission_acl, user_file_id, size_bytes) =
+        admission_acl_for_content(&organization, &project, content)?;
+    let collection = format!("/api/v1/organizations/{organization}/projects/{project}/user-files");
+
+    let reserved = app
+        .call(post_json(
+            &collection,
+            "files-content-reserve",
+            json!({"admissionAcl": admission_acl}),
+        ))
+        .await?;
+    assert_eq!(reserved.status(), 201);
+    let reserved_body = response_json(&reserved)?;
+    assert_eq!(reserved_body["data"]["file"]["state"], "awaiting_upload");
+    assert_eq!(reserved_body["data"]["file"]["sizeBytes"], size_bytes);
+    assert_eq!(reserved_body["data"]["file"]["aggregateVersion"], 1);
+
+    let uploaded = app
+        .call(put_user_file_content(
+            format!("{collection}/{user_file_id}/content"),
+            "files-content-put",
+            1,
+            content,
+        ))
+        .await?;
+    assert_eq!(uploaded.status(), 200);
+    let uploaded_body = response_json(&uploaded)?;
+    assert_eq!(uploaded_body["data"]["file"]["state"], "awaiting_scan");
+    assert_eq!(uploaded_body["data"]["replayed"], false);
+    assert_eq!(uploaded_body["data"]["file"]["aggregateVersion"], 2);
+
+    let replay = app
+        .call(put_user_file_content(
+            format!("{collection}/{user_file_id}/content"),
+            "files-content-put",
+            1,
+            b"",
+        ))
+        .await?;
+    assert_eq!(replay.status(), 200);
+    let replay_body = response_json(&replay)?;
+    assert_eq!(replay_body["data"]["replayed"], true);
+    assert_eq!(replay_body["data"]["file"]["state"], "awaiting_scan");
+    assert_eq!(replay_body["data"]["file"]["aggregateVersion"], 2);
+
+    let imaginary_buffered_upload = app
+        .call(post_json(
+            format!("{collection}/{user_file_id}/upload"),
+            "files-no-buffered-upload-after-content",
+            json!({"bytes": "forbidden"}),
+        ))
+        .await?;
+    assert_eq!(imaginary_buffered_upload.status(), 404);
+    assert_eq!(files.event_count().await, 2);
+    Ok(())
+}
+
 fn admission_acl(
     organization: &str,
     project: &str,
@@ -428,4 +504,60 @@ fn admission_acl_document(
     })
     .map_err(BootError::Internal)?;
     Ok(contract.canonical_acl().to_owned())
+}
+
+fn admission_acl_for_content(
+    organization: &str,
+    project: &str,
+    content: &[u8],
+) -> Result<(String, UserFileId, u64)> {
+    let (organization_id, project_id) = user_file_scope(organization, project)?;
+    let user_file_id = UserFileId::new();
+    let size_bytes = content.len() as u64;
+    Ok((
+        admission_acl_document_for_content(organization_id, project_id, user_file_id, content)?,
+        user_file_id,
+        size_bytes,
+    ))
+}
+
+fn admission_acl_document_for_content(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    user_file_id: UserFileId,
+    content: &[u8],
+) -> Result<String> {
+    let now = Utc::now();
+    let contract = UserFileAdmissionContract::from_spec(UserFileAdmissionContractSpec {
+        original_name: "knowledge.bin".into(),
+        upload_expires_at: now + TimeDelta::hours(1),
+        retention_until: now + TimeDelta::days(30),
+        scan_policy: UserFileScanPolicy::Required,
+        content: UserFileContentReference::new(
+            organization_id,
+            project_id,
+            user_file_id,
+            UserFileUploadId::new(),
+            Sha256Digest::from_bytes(content),
+            content.len() as u64,
+            "application/octet-stream",
+        )
+        .map_err(BootError::Internal)?,
+    })
+    .map_err(BootError::Internal)?;
+    Ok(contract.canonical_acl().to_owned())
+}
+
+fn put_user_file_content(
+    path: impl Into<String>,
+    idempotency_key: &str,
+    expected_version: u64,
+    body: &[u8],
+) -> BootRequest {
+    BootRequest::new(HttpMethod::Put, path.into())
+        .with_header("content-type", "application/octet-stream")
+        .with_header("idempotency-key", idempotency_key)
+        .with_header("authorization", format!("Bearer {ADMIN_TOKEN}"))
+        .with_header("x-a3s-expected-version", expected_version.to_string())
+        .with_body(body.to_vec())
 }

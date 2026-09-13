@@ -1,3 +1,4 @@
+use super::OPENAPI_CONTRACT_VERSION;
 use super::components::response_ref;
 use super::developer_workflow_operation::{
     is_build_plan_detection_path, is_developer_workflow_creation_path, is_developer_workflow_path,
@@ -24,11 +25,11 @@ use super::source_discovery_operation::{
     success_component as source_discovery_success_component,
 };
 use super::user_file_operation::{
-    is_collection_path as is_user_file_collection_path, is_user_file_path,
+    is_collection_path as is_user_file_collection_path,
+    is_content_path as is_user_file_content_path, is_user_file_path,
     query_parameters as user_file_query_parameters,
     success_component as user_file_success_component,
 };
-use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
@@ -52,8 +53,8 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::{
     DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
-use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
@@ -73,7 +74,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn describe_operation(
     operation: &mut Value,
@@ -270,6 +271,18 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
                 "in": "header",
                 "required": true,
                 "description": "Current Agent approval checkpoint version used for optimistic concurrency.",
+                "schema": { "type": "integer", "minimum": 1 }
+            }),
+        );
+    }
+    if method == "put" && is_user_file_content_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "x-a3s-expected-version",
+                "in": "header",
+                "required": true,
+                "description": "Current UserFile aggregate version used for optimistic concurrency.",
                 "schema": { "type": "integer", "minimum": 1 }
             }),
         );
@@ -811,6 +824,21 @@ fn describe_request_body(
     method: &str,
     path: &str,
 ) -> Result<()> {
+    if method == "put" && is_user_file_content_path(path) {
+        let mut content = Map::new();
+        content.insert(
+            "application/octet-stream".into(),
+            json!({ "schema": { "type": "string", "format": "binary" } }),
+        );
+        operation.insert(
+            "requestBody".into(),
+            json!({
+                "required": true,
+                "content": content
+            }),
+        );
+        return Ok(());
+    }
     if method != "post" || request_has_no_body(path) {
         return Ok(());
     }
@@ -1336,6 +1364,7 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
     }
     let mut error_statuses = vec![400, 404, 409, 422, 429, 500, 503];
     if asset_git_request_media_type(path).is_some()
+        || (method == "put" && is_user_file_content_path(path))
         || (method == "post"
             && (is_ontology_mutation_path(path)
                 || is_workflow_mutation_path(path)
@@ -1389,6 +1418,9 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     }
     if method == "post" && is_user_file_collection_path(path) {
         return vec![200, 201];
+    }
+    if method == "put" && is_user_file_content_path(path) {
+        return vec![200];
     }
     if method == "post"
         && (is_knowledge_base_collection_path(path) || is_knowledge_pipeline_collection_path(path))
@@ -1702,8 +1734,7 @@ fn is_recipient_contact_item_path(path: &str) -> bool {
 }
 
 fn is_recipient_contact_verification_path(path: &str) -> bool {
-    path
-        == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
+    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
 }
 
 fn is_recipient_contact_revocation_path(path: &str) -> bool {

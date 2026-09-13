@@ -158,6 +158,51 @@ describe('a3s-cloud UserFile commands', () => {
     expect(output.stderr()).toContain('--expected-version');
     expect(called).toBe(false);
   });
+  it('puts reserved content bytes through the exact /content route', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const content = new Uint8Array([9, 8, 7, 6]);
+    const exitCode = await runCli(
+      [
+        'user-files',
+        'put-content',
+        USER_FILE_ID,
+        '--file=payload.bin',
+        '--expected-version=1',
+        '--idempotency-key=cli:files:content',
+        '--output=json',
+      ],
+      {
+        ...output.runtime,
+        environment: completeEnvironment(),
+        readFile: async (path) => {
+          expect(path).toBe('payload.bin');
+          return content;
+        },
+        fetch: async (...args) => {
+          calls.push(args);
+          return envelope({ file: { ...userFile(), state: 'awaiting_scan' }, replayed: false });
+        },
+      }
+    );
+
+    expect(exitCode).toBe(ExitCode.Success);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[0]).toBe(`${userFileBase()}/${USER_FILE_ID}/content`);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'PUT',
+        body: content,
+        headers: expect.objectContaining({
+          'Content-Type': 'application/octet-stream',
+          'Idempotency-Key': 'cli:files:content',
+          'x-a3s-expected-version': '1',
+        }),
+      })
+    );
+    expect(String(calls[0]?.[0])).not.toContain('upload');
+    expect(output.stderr()).toBe('');
+  });
 });
 
 function completeEnvironment(): Record<string, string> {
