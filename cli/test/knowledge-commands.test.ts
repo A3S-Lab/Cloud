@@ -439,3 +439,230 @@ function knowledgeChunkBase(): string {
     `/projects/${PROJECT_ID}/knowledge-chunks`
   );
 }
+
+
+const INDEX_REVISION_ID = '018f0000-0000-7000-8000-000000000401';
+const POLICY_REVISION_ID = '018f0000-0000-7000-8000-000000000402';
+const BINDING_ID = '018f0000-0000-7000-8000-000000000403';
+const INDEX_ACL = `knowledge_index_revision {
+  schema = "cloud.knowledge-index-revision.v1"
+}
+`;
+const POLICY_ACL = `knowledge_retrieval_policy_revision {
+  schema = "cloud.knowledge-retrieval-policy-revision.v1"
+}
+`;
+const BINDING_ACL = `external_knowledge_binding {
+  schema = "cloud.external-knowledge-binding.v1"
+}
+`;
+
+describe('a3s-cloud Knowledge index/policy/binding lifecycle commands', () => {
+  it('creates and gets index, policy, and binding through exact lifecycle routes', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async (path: string) => {
+        if (path === 'knowledge-index.acl') {
+          return new TextEncoder().encode(INDEX_ACL);
+        }
+        if (path === 'knowledge-policy.acl') {
+          return new TextEncoder().encode(POLICY_ACL);
+        }
+        expect(path).toBe('knowledge-binding.acl');
+        return new TextEncoder().encode(BINDING_ACL);
+      },
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const path = String(args[0]);
+        const method = String(args[1]?.method ?? 'GET');
+        if (path === knowledgeIndexRevisionBase() && method === 'POST') {
+          return envelope(
+            { knowledgeIndexRevision: knowledgeIndexRevision(), replayed: false },
+            201
+          );
+        }
+        if (path === knowledgeRetrievalPolicyRevisionBase() && method === 'POST') {
+          return envelope(
+            {
+              knowledgeRetrievalPolicyRevision: knowledgeRetrievalPolicyRevision(),
+              replayed: false,
+            },
+            201
+          );
+        }
+        if (path === externalKnowledgeBindingBase() && method === 'POST') {
+          return envelope(
+            { externalKnowledgeBinding: externalKnowledgeBinding(), replayed: false },
+            201
+          );
+        }
+        if (path.includes(`/knowledge-index-revisions/${INDEX_REVISION_ID}`)) {
+          return envelope(knowledgeIndexRevision());
+        }
+        if (path.includes(`/knowledge-retrieval-policy-revisions/${POLICY_REVISION_ID}`)) {
+          return envelope(knowledgeRetrievalPolicyRevision());
+        }
+        if (path.includes(`/external-knowledge-bindings/${BINDING_ID}`)) {
+          return envelope(externalKnowledgeBinding());
+        }
+        throw new Error(`unexpected fetch ${method} ${path}`);
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'knowledge-index-revisions',
+          'create',
+          '--file=knowledge-index.acl',
+          '--idempotency-key=cli:knowledge:create-index',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        ['knowledge-index-revisions', 'get', INDEX_REVISION_ID, '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'knowledge-retrieval-policy-revisions',
+          'create',
+          '--file=knowledge-policy.acl',
+          '--idempotency-key=cli:knowledge:create-policy',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'knowledge-retrieval-policy-revisions',
+          'get',
+          POLICY_REVISION_ID,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'external-knowledge-bindings',
+          'create',
+          '--file=knowledge-binding.acl',
+          '--idempotency-key=cli:knowledge:create-binding',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        ['external-knowledge-bindings', 'get', BINDING_ID, '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([input]) => String(input))).toEqual([
+      knowledgeIndexRevisionBase(),
+      `${knowledgeIndexRevisionBase()}/${INDEX_REVISION_ID}`,
+      knowledgeRetrievalPolicyRevisionBase(),
+      `${knowledgeRetrievalPolicyRevisionBase()}/${POLICY_REVISION_ID}`,
+      externalKnowledgeBindingBase(),
+      `${externalKnowledgeBindingBase()}/${BINDING_ID}`,
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ indexAcl: INDEX_ACL }),
+      })
+    );
+    expect(calls[2]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ policyAcl: POLICY_ACL }),
+      })
+    );
+    expect(calls[4]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ bindingAcl: BINDING_ACL }),
+      })
+    );
+    expect(output.stderr()).toBe('');
+  });
+});
+
+function knowledgeIndexRevision() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    knowledgeBaseRevisionId: REVISION_ID,
+    indexRevisionId: INDEX_REVISION_ID,
+    strategy: 'hnsw',
+    embeddingDimension: 1536,
+    contractSchema: 'cloud.knowledge-index-revision.v1',
+    indexAcl: INDEX_ACL,
+    indexDigest: DIGEST,
+    createdAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+function knowledgeRetrievalPolicyRevision() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    knowledgeBaseRevisionId: REVISION_ID,
+    policyRevisionId: POLICY_REVISION_ID,
+    searchMode: 'hybrid',
+    topK: 8,
+    contractSchema: 'cloud.knowledge-retrieval-policy-revision.v1',
+    policyAcl: POLICY_ACL,
+    policyDigest: DIGEST,
+    createdAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+function externalKnowledgeBinding() {
+  return {
+    organizationId: ORGANIZATION_ID,
+    projectId: PROJECT_ID,
+    knowledgeBaseId: KNOWLEDGE_BASE_ID,
+    bindingId: BINDING_ID,
+    displayName: 'External docs',
+    contractSchema: 'cloud.external-knowledge-binding.v1',
+    bindingAcl: BINDING_ACL,
+    bindingDigest: DIGEST,
+    createdAt: '2026-08-28T00:00:00.000Z',
+  };
+}
+
+function knowledgeIndexRevisionBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/knowledge-index-revisions`
+  );
+}
+
+function knowledgeRetrievalPolicyRevisionBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/knowledge-retrieval-policy-revisions`
+  );
+}
+
+function externalKnowledgeBindingBase(): string {
+  return (
+    `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}` +
+    `/projects/${PROJECT_ID}/external-knowledge-bindings`
+  );
+}

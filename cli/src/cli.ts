@@ -254,6 +254,12 @@ Commands:
   knowledge-chunks create DOCUMENT_ID Create one KnowledgeChunk from canonical A3S ACL
   knowledge-chunks list DOCUMENT_ID List bounded KnowledgeChunk lifecycle projections
   knowledge-chunks get ID Get one KnowledgeChunk lifecycle projection
+  knowledge-index-revisions create Create one KnowledgeIndexRevision from canonical A3S ACL
+  knowledge-index-revisions get ID Get one KnowledgeIndexRevision lifecycle projection
+  knowledge-retrieval-policy-revisions create Create one KnowledgeRetrievalPolicyRevision from canonical A3S ACL
+  knowledge-retrieval-policy-revisions get ID Get one KnowledgeRetrievalPolicyRevision lifecycle projection
+  external-knowledge-bindings create Create one ExternalKnowledgeBinding from canonical A3S ACL
+  external-knowledge-bindings get ID Get one ExternalKnowledgeBinding lifecycle projection
   secrets list          List Secret metadata in the selected environment
   secrets get ID        Get Secret metadata and version states
   secrets create NAME   Create a Secret from standard input idempotently

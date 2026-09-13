@@ -1,12 +1,18 @@
 import type {
+  ExternalKnowledgeBinding,
+  ExternalKnowledgeBindingMutationResult,
   KnowledgeBase,
   KnowledgeBaseMutationResult,
   KnowledgeChunk,
   KnowledgeChunkMutationResult,
   KnowledgeDocument,
   KnowledgeDocumentMutationResult,
+  KnowledgeIndexRevision,
+  KnowledgeIndexRevisionMutationResult,
   KnowledgePipeline,
   KnowledgePipelineMutationResult,
+  KnowledgeRetrievalPolicyRevision,
+  KnowledgeRetrievalPolicyRevisionMutationResult,
 } from '@a3s/cloud-client';
 import { renderTable, type TableColumn } from './output';
 import type { CommandResult } from './results';
@@ -116,6 +122,85 @@ export function knowledgeChunkMutationResult(result: KnowledgeChunkMutationResul
     table: renderTable(
       [row],
       [...KNOWLEDGE_CHUNK_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const KNOWLEDGE_INDEX_COLUMNS: readonly TableColumn<KnowledgeIndexRevision>[] = [
+  { header: 'ID', value: (row) => row.indexRevisionId },
+  { header: 'STRATEGY', value: (row) => row.strategy },
+  { header: 'DIMENSION', value: (row) => row.embeddingDimension },
+  { header: 'BASE REVISION', value: (row) => row.knowledgeBaseRevisionId },
+  { header: 'DIGEST', value: (row) => row.indexDigest },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+const KNOWLEDGE_POLICY_COLUMNS: readonly TableColumn<KnowledgeRetrievalPolicyRevision>[] = [
+  { header: 'ID', value: (row) => row.policyRevisionId },
+  { header: 'MODE', value: (row) => row.searchMode },
+  { header: 'TOP K', value: (row) => row.topK },
+  { header: 'BASE REVISION', value: (row) => row.knowledgeBaseRevisionId },
+  { header: 'DIGEST', value: (row) => row.policyDigest },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+const EXTERNAL_BINDING_COLUMNS: readonly TableColumn<ExternalKnowledgeBinding>[] = [
+  { header: 'ID', value: (row) => row.bindingId },
+  { header: 'NAME', value: (row) => row.displayName },
+  { header: 'BASE', value: (row) => row.knowledgeBaseId },
+  { header: 'DIGEST', value: (row) => row.bindingDigest },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+export function knowledgeIndexRevisionResult(row: KnowledgeIndexRevision): CommandResult {
+  return { json: row, table: renderTable([row], KNOWLEDGE_INDEX_COLUMNS) };
+}
+
+export function knowledgeIndexRevisionMutationResult(
+  result: KnowledgeIndexRevisionMutationResult
+): CommandResult {
+  const row = { ...result.knowledgeIndexRevision, replayed: result.replayed };
+  return {
+    json: result,
+    table: renderTable(
+      [row],
+      [...KNOWLEDGE_INDEX_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+export function knowledgeRetrievalPolicyRevisionResult(
+  row: KnowledgeRetrievalPolicyRevision
+): CommandResult {
+  return { json: row, table: renderTable([row], KNOWLEDGE_POLICY_COLUMNS) };
+}
+
+export function knowledgeRetrievalPolicyRevisionMutationResult(
+  result: KnowledgeRetrievalPolicyRevisionMutationResult
+): CommandResult {
+  const row = { ...result.knowledgeRetrievalPolicyRevision, replayed: result.replayed };
+  return {
+    json: result,
+    table: renderTable(
+      [row],
+      [...KNOWLEDGE_POLICY_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+export function externalKnowledgeBindingResult(row: ExternalKnowledgeBinding): CommandResult {
+  return { json: row, table: renderTable([row], EXTERNAL_BINDING_COLUMNS) };
+}
+
+export function externalKnowledgeBindingMutationResult(
+  result: ExternalKnowledgeBindingMutationResult
+): CommandResult {
+  const row = { ...result.externalKnowledgeBinding, replayed: result.replayed };
+  return {
+    json: result,
+    table: renderTable(
+      [row],
+      [...EXTERNAL_BINDING_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
     ),
   };
 }

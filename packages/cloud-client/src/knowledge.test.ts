@@ -314,3 +314,89 @@ describe('KnowledgeDocument/Chunk lifecycle client surface', () => {
     );
   });
 });
+
+
+const INDEX_ACL = `knowledge_index_revision {
+  schema = "cloud.knowledge-index-revision.v1"
+}
+`;
+
+describe('Knowledge index/policy/binding client surface', () => {
+  it('uses the exact Knowledge index, policy, and binding lifecycle routes', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+
+    await api.createKnowledgeIndexRevision(
+      'organization / one',
+      'project / one',
+      { indexAcl: INDEX_ACL },
+      'knowledge:create-index'
+    );
+    await api.getKnowledgeIndexRevision('organization / one', 'project / one', 'index / one');
+    await api.createKnowledgeRetrievalPolicyRevision(
+      'organization / one',
+      'project / one',
+      { policyAcl: INDEX_ACL },
+      'knowledge:create-policy'
+    );
+    await api.getKnowledgeRetrievalPolicyRevision('organization / one', 'project / one', 'policy / one');
+    await api.createExternalKnowledgeBinding(
+      'organization / one',
+      'project / one',
+      { bindingAcl: INDEX_ACL },
+      'knowledge:create-binding'
+    );
+    await api.getExternalKnowledgeBinding('organization / one', 'project / one', 'binding / one');
+
+    expect(calls.map(([input]) => input)).toEqual([
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-index-revisions',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-index-revisions/index%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-retrieval-policy-revisions',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/knowledge-retrieval-policy-revisions/policy%20%2F%20one',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/external-knowledge-bindings',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/external-knowledge-bindings/binding%20%2F%20one',
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'knowledge:create-index' }),
+        body: JSON.stringify({ indexAcl: INDEX_ACL }),
+      })
+    );
+  });
+
+  it('rejects malformed index, policy, and binding ACL before issuing a request', () => {
+    let called = false;
+    const api = new CloudApi('caller-token', '/api/v1', {
+      fetch: async () => {
+        called = true;
+        return jsonResponse({});
+      },
+    });
+
+    expect(() =>
+      api.createKnowledgeIndexRevision('organization', 'project', { indexAcl: '' }, 'knowledge:create-index')
+    ).toThrow(TypeError);
+    expect(() =>
+      api.createKnowledgeRetrievalPolicyRevision(
+        'organization',
+        'project',
+        { policyAcl: '' },
+        'knowledge:create-policy'
+      )
+    ).toThrow(TypeError);
+    expect(() =>
+      api.createExternalKnowledgeBinding(
+        'organization',
+        'project',
+        { bindingAcl: '' },
+        'knowledge:create-binding'
+      )
+    ).toThrow(TypeError);
+    expect(called).toBe(false);
+  });
+});
