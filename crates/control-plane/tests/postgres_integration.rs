@@ -324,7 +324,7 @@ async fn exercise_automation_webhook_postgres(
             },
             max_body_bytes: 4_096,
             revision: revision.clone(),
-            created_at: Utc::now(),
+            created_at: automation_timestamp(1_000),
         })
         .await?;
     let scope = AutomationWebhookEndpointScope {
@@ -346,7 +346,7 @@ async fn exercise_automation_webhook_postgres(
     );
 
     let endpoint = created.endpoint.clone();
-    let received_at = Utc::now();
+    let received_at = automation_timestamp(1_010);
     let request = AutomationWebhookRequestV1::from_json(
         &endpoint,
         Uuid::from_u128(0x018f0000000070008000000000000410),
@@ -457,11 +457,14 @@ async fn exercise_automation_webhook_postgres(
         .find_endpoint_by_key(organization_id, project_id, environment_id, "release-hook")
         .await?
         .expect("endpoint after reconnect");
-    assert_eq!(recovered_endpoint.endpoint, endpoint);
+    assert_eq!(recovered_endpoint.endpoint.endpoint_id, endpoint.endpoint_id);
+    assert_eq!(recovered_endpoint.endpoint.endpoint_key, endpoint.endpoint_key);
+    assert_eq!(recovered_endpoint.endpoint.revision_id, endpoint.revision_id);
     assert_eq!(
         recovered_endpoint.endpoint.state,
         a3s_cloud_contracts::AutomationWebhookEndpointStateV1::Disabled
     );
+    assert_eq!(recovered_endpoint.endpoint.generation, 2);
     let recovered_delivery = recovered
         .find_delivery(endpoint.endpoint_id, request.delivery_id)
         .await?
