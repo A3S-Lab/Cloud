@@ -1,0 +1,10 @@
+external_knowledge_binding {
+  binding_id = "018f0000-0000-7000-8000-000000000307"
+  display_name = "Partner corpus"
+  external_corpus_digest = "sha256:2222222222222222222222222222222222222222222222222222222222222222"
+  external_corpus_ref = "partner-corpus-v3"
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.external-knowledge-binding.v1"
+}

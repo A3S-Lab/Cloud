@@ -1,0 +1,17 @@
+knowledge_document {
+  document_id = "018f0000-0000-7000-8000-000000000303"
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  provenance_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+  retention_until = "2027-08-21T00:00:00.000000Z"
+  schema = "cloud.knowledge-document.v1"
+  tags = ["returns"]
+  title = "Return policy"
+  source {
+    content_digest = "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    kind = "admitted_user_file"
+    user_file_id = "018f0000-0000-7000-8000-000000000203"
+  }
+}

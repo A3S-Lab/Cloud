@@ -28,6 +28,20 @@ quota remains an organization-wide view. REST/OpenAPI `1.77.0`, the maintained
 TypeScript client, CLI, and five Management MCP tools all dispatch the same
 commands and queries.
 
+`K0.1-C3` freezes the Knowledge and KnowledgePipeline contracts:
+
+- `knowledge-base-revision.acl` — immutable KnowledgeBase revision with chunk structure
+- `knowledge-document.acl` — document bound to an admitted UserFile or immutable object
+- `knowledge-chunk.acl` — typed chunk with content reference and optional parent
+- `knowledge-index-revision.acl` — rebuildable index strategy and modality declarations
+- `knowledge-retrieval-policy-revision.acl` — closed search/filter/rerank/citation policy
+- `external-knowledge-binding.acl` — opaque external corpus binding without credentials
+- `knowledge-pipeline-release.acl` — immutable pipeline release pinned to one Workflow revision
+
+These contracts intentionally exclude corpus indexes, provider clients, DAG engines,
+worker queues, persistence, and public surfaces. `K0.1-C4` remains the
+PostgreSQL/interface authority gate.
+
 The maintained surface is metadata-only. It does not expose a binary upload,
 download, object removal, scanner, or provider-configuration operation. Public
 byte transfer, live scan and cleanup execution, retained PostgreSQL
