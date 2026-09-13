@@ -523,6 +523,20 @@ jobs:
           postgres_audit_query_signed_export_and_retention_are_tenant_scoped_bounded_and_atomic
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Automation webhook PostgreSQL recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          automation_webhook_postgres_scope_replay_and_reconnect_are_durable
+          -- --exact --nocapture --test-threads=1
+
+      - name: Certify Automation schedule-state PostgreSQL recovery
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test postgres_integration
+          automation_schedule_state_postgres_fences_and_recovers
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Gateway Route policy security timeline persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane

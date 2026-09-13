@@ -324,7 +324,7 @@ async fn exercise_automation_webhook_postgres(
             },
             max_body_bytes: 4_096,
             revision: revision.clone(),
-            created_at: Utc::now(),
+            created_at: automation_timestamp(1_000),
         })
         .await?;
     let scope = AutomationWebhookEndpointScope {
@@ -346,7 +346,7 @@ async fn exercise_automation_webhook_postgres(
     );
 
     let endpoint = created.endpoint.clone();
-    let received_at = Utc::now();
+    let received_at = automation_timestamp(1_010);
     let request = AutomationWebhookRequestV1::from_json(
         &endpoint,
         Uuid::from_u128(0x018f0000000070008000000000000410),
