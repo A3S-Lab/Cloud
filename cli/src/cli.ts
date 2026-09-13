@@ -255,10 +255,13 @@ Commands:
   knowledge-chunks list DOCUMENT_ID List bounded KnowledgeChunk lifecycle projections
   knowledge-chunks get ID Get one KnowledgeChunk lifecycle projection
   knowledge-index-revisions create Create one KnowledgeIndexRevision from canonical A3S ACL
+  knowledge-index-revisions list REVISION_ID List bounded KnowledgeIndexRevision projections
   knowledge-index-revisions get ID Get one KnowledgeIndexRevision lifecycle projection
   knowledge-retrieval-policy-revisions create Create one KnowledgeRetrievalPolicyRevision from canonical A3S ACL
+  knowledge-retrieval-policy-revisions list REVISION_ID List bounded KnowledgeRetrievalPolicyRevision projections
   knowledge-retrieval-policy-revisions get ID Get one KnowledgeRetrievalPolicyRevision lifecycle projection
   external-knowledge-bindings create Create one ExternalKnowledgeBinding from canonical A3S ACL
+  external-knowledge-bindings list KNOWLEDGE_BASE_ID List bounded ExternalKnowledgeBinding projections
   external-knowledge-bindings get ID Get one ExternalKnowledgeBinding lifecycle projection
   secrets list          List Secret metadata in the selected environment
   secrets get ID        Get Secret metadata and version states

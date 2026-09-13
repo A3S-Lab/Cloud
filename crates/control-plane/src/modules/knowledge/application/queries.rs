@@ -2,8 +2,9 @@ use super::{
     GetExternalKnowledgeBinding, GetKnowledgeBase, GetKnowledgeChunk, GetKnowledgeDocument,
     GetKnowledgeIndexRevision, GetKnowledgePipeline, GetKnowledgeRetrievalPolicyRevision,
     KnowledgeCatalogLifecycleService, KnowledgeDocumentLifecycleService,
-    KnowledgeIndexLifecycleService, ListKnowledgeBases, ListKnowledgeChunks,
-    ListKnowledgeDocuments, ListKnowledgePipelines,
+    KnowledgeIndexLifecycleService, ListExternalKnowledgeBindings, ListKnowledgeBases,
+    ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgeIndexRevisions,
+    ListKnowledgePipelines, ListKnowledgeRetrievalPolicyRevisions,
 };
 use crate::modules::knowledge::domain::{
     ExternalKnowledgeBindingRecord, KnowledgeBaseRecord, KnowledgeChunkRecord,
@@ -310,5 +311,92 @@ impl QueryHandler<GetExternalKnowledgeBinding> for GetExternalKnowledgeBindingHa
     > {
         let service = Arc::clone(&self.service);
         Box::pin(async move { Ok(service.get_external_binding(query).await) })
+    }
+}
+
+
+impl Query for ListKnowledgeIndexRevisions {
+    type Output = ApplicationResult<Vec<KnowledgeIndexRevisionRecord>>;
+}
+
+pub struct ListKnowledgeIndexRevisionsHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl ListKnowledgeIndexRevisionsHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<ListKnowledgeIndexRevisions> for ListKnowledgeIndexRevisionsHandler {
+    fn execute(
+        &self,
+        query: ListKnowledgeIndexRevisions,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<KnowledgeIndexRevisionRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.list_index_revisions(query).await) })
+    }
+}
+
+impl Query for ListKnowledgeRetrievalPolicyRevisions {
+    type Output = ApplicationResult<Vec<KnowledgeRetrievalPolicyRevisionRecord>>;
+}
+
+pub struct ListKnowledgeRetrievalPolicyRevisionsHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl ListKnowledgeRetrievalPolicyRevisionsHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<ListKnowledgeRetrievalPolicyRevisions>
+    for ListKnowledgeRetrievalPolicyRevisionsHandler
+{
+    fn execute(
+        &self,
+        query: ListKnowledgeRetrievalPolicyRevisions,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<KnowledgeRetrievalPolicyRevisionRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.list_retrieval_policy_revisions(query).await) })
+    }
+}
+
+impl Query for ListExternalKnowledgeBindings {
+    type Output = ApplicationResult<Vec<ExternalKnowledgeBindingRecord>>;
+}
+
+pub struct ListExternalKnowledgeBindingsHandler {
+    service: Arc<KnowledgeIndexLifecycleService>,
+}
+
+impl ListExternalKnowledgeBindingsHandler {
+    pub fn new(service: Arc<KnowledgeIndexLifecycleService>) -> Self {
+        Self { service }
+    }
+}
+
+impl QueryHandler<ListExternalKnowledgeBindings> for ListExternalKnowledgeBindingsHandler {
+    fn execute(
+        &self,
+        query: ListExternalKnowledgeBindings,
+        _context: a3s_boot::CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<ExternalKnowledgeBindingRecord>>>,
+    > {
+        let service = Arc::clone(&self.service);
+        Box::pin(async move { Ok(service.list_external_bindings(query).await) })
     }
 }

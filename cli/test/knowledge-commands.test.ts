@@ -457,7 +457,7 @@ const BINDING_ACL = `external_knowledge_binding {
 }
 `;
 
-describe('a3s-cloud Knowledge index/policy/binding lifecycle commands', () => {
+describe('a3s-cloud Knowledge index/policy/binding lifecycle and list commands', () => {
   it('creates and gets index, policy, and binding through exact lifecycle routes', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const output = capture();
@@ -507,6 +507,27 @@ describe('a3s-cloud Knowledge index/policy/binding lifecycle commands', () => {
         }
         if (path.includes(`/external-knowledge-bindings/${BINDING_ID}`)) {
           return envelope(externalKnowledgeBinding());
+        }
+        if (
+          path.startsWith(`${knowledgeIndexRevisionBase()}?`) &&
+          path.includes('knowledgeBaseRevisionId=') &&
+          method === 'GET'
+        ) {
+          return envelope([knowledgeIndexRevision()]);
+        }
+        if (
+          path.startsWith(`${knowledgeRetrievalPolicyRevisionBase()}?`) &&
+          path.includes('knowledgeBaseRevisionId=') &&
+          method === 'GET'
+        ) {
+          return envelope([knowledgeRetrievalPolicyRevision()]);
+        }
+        if (
+          path.startsWith(`${externalKnowledgeBindingBase()}?`) &&
+          path.includes('knowledgeBaseId=') &&
+          method === 'GET'
+        ) {
+          return envelope([externalKnowledgeBinding()]);
         }
         throw new Error(`unexpected fetch ${method} ${path}`);
       },
@@ -571,6 +592,29 @@ describe('a3s-cloud Knowledge index/policy/binding lifecycle commands', () => {
         runtime
       )
     ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        ['knowledge-index-revisions', 'list', REVISION_ID, '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'knowledge-retrieval-policy-revisions',
+          'list',
+          REVISION_ID,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        ['external-knowledge-bindings', 'list', KNOWLEDGE_BASE_ID, '--output=json'],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
 
     expect(calls.map(([input]) => String(input))).toEqual([
       knowledgeIndexRevisionBase(),
@@ -579,6 +623,9 @@ describe('a3s-cloud Knowledge index/policy/binding lifecycle commands', () => {
       `${knowledgeRetrievalPolicyRevisionBase()}/${POLICY_REVISION_ID}`,
       externalKnowledgeBindingBase(),
       `${externalKnowledgeBindingBase()}/${BINDING_ID}`,
+      `${knowledgeIndexRevisionBase()}?knowledgeBaseRevisionId=${encodeURIComponent(REVISION_ID)}&limit=50`,
+      `${knowledgeRetrievalPolicyRevisionBase()}?knowledgeBaseRevisionId=${encodeURIComponent(REVISION_ID)}&limit=50`,
+      `${externalKnowledgeBindingBase()}?knowledgeBaseId=${encodeURIComponent(KNOWLEDGE_BASE_ID)}&limit=50`,
     ]);
     expect(calls[0]?.[1]).toEqual(
       expect.objectContaining({

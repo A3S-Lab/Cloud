@@ -12,8 +12,9 @@ use crate::modules::knowledge::{
     KnowledgeDocumentResponse, KnowledgeIndexRevisionMutationResponse,
     KnowledgeIndexRevisionResponse, KnowledgePipelineMutationResponse, KnowledgePipelineResponse,
     KnowledgeRetrievalPolicyRevisionMutationResponse, KnowledgeRetrievalPolicyRevisionResponse,
-    ListKnowledgeBases, ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgePipelines,
-    PublishKnowledgePipelineCommand,
+    ListExternalKnowledgeBindings, ListKnowledgeBases, ListKnowledgeChunks,
+    ListKnowledgeDocuments, ListKnowledgeIndexRevisions, ListKnowledgePipelines,
+    ListKnowledgeRetrievalPolicyRevisions, PublishKnowledgePipelineCommand,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId};
 use crate::presentation::knowledge_access;
@@ -528,6 +529,130 @@ pub async fn list_chunks(
             records
                 .into_iter()
                 .map(KnowledgeChunkResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListKnowledgeIndexRevisionsArguments {
+    project_id: Uuid,
+    knowledge_base_revision_id: Uuid,
+    #[serde(
+        default = "arguments::default_list_limit",
+        deserialize_with = "arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListKnowledgeRetrievalPolicyRevisionsArguments {
+    project_id: Uuid,
+    knowledge_base_revision_id: Uuid,
+    #[serde(
+        default = "arguments::default_list_limit",
+        deserialize_with = "arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListExternalKnowledgeBindingsArguments {
+    project_id: Uuid,
+    knowledge_base_id: Uuid,
+    #[serde(
+        default = "arguments::default_list_limit",
+        deserialize_with = "arguments::deserialize_list_limit"
+    )]
+    limit: usize,
+}
+
+pub async fn list_index_revisions(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListKnowledgeIndexRevisionsArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListKnowledgeIndexRevisions {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            knowledge_base_revision_id: arguments.knowledge_base_revision_id,
+            limit: Some(arguments.limit),
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(records) => tool_result::success(
+            200,
+            records
+                .into_iter()
+                .map(KnowledgeIndexRevisionResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_retrieval_policy_revisions(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListKnowledgeRetrievalPolicyRevisionsArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListKnowledgeRetrievalPolicyRevisions {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            knowledge_base_revision_id: arguments.knowledge_base_revision_id,
+            limit: Some(arguments.limit),
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(records) => tool_result::success(
+            200,
+            records
+                .into_iter()
+                .map(KnowledgeRetrievalPolicyRevisionResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_external_bindings(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListExternalKnowledgeBindingsArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListExternalKnowledgeBindings {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            knowledge_base_id: arguments.knowledge_base_id,
+            limit: Some(arguments.limit),
+            access: knowledge_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(records) => tool_result::success(
+            200,
+            records
+                .into_iter()
+                .map(ExternalKnowledgeBindingResponse::from)
                 .collect::<Vec<_>>(),
             request_id,
         ),

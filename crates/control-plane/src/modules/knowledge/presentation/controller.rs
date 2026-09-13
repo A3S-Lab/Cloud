@@ -24,12 +24,18 @@ use crate::modules::knowledge::application::{
     CreateKnowledgeIndexRevisionCommand, CreateKnowledgePipelineCommand,
     CreateKnowledgeRetrievalPolicyRevisionCommand, GetExternalKnowledgeBinding, GetKnowledgeBase,
     GetKnowledgeChunk, GetKnowledgeDocument, GetKnowledgeIndexRevision, GetKnowledgePipeline,
-    GetKnowledgeRetrievalPolicyRevision, ListKnowledgeBases, ListKnowledgeChunks,
-    ListKnowledgeDocuments, ListKnowledgePipelines, PublishKnowledgePipelineCommand,
+    GetKnowledgeRetrievalPolicyRevision, ListExternalKnowledgeBindings, ListKnowledgeBases,
+    ListKnowledgeChunks, ListKnowledgeDocuments, ListKnowledgeIndexRevisions,
+    ListKnowledgePipelines, ListKnowledgeRetrievalPolicyRevisions,
+    PublishKnowledgePipelineCommand, DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
     DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT, DEFAULT_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_DOCUMENT_LIST_LIMIT, DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT, MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT, MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use crate::presentation::{
@@ -378,8 +384,11 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
     let get_document_bus = Arc::clone(&bus);
     let list_chunks_bus = Arc::clone(&bus);
     let get_chunk_bus = Arc::clone(&bus);
+    let list_index_bus = Arc::clone(&bus);
     let get_index_bus = Arc::clone(&bus);
+    let list_policy_bus = Arc::clone(&bus);
     let get_policy_bus = Arc::clone(&bus);
+    let list_binding_bus = Arc::clone(&bus);
     let get_binding_bus = Arc::clone(&bus);
     let controller = ControllerDefinition::new(KNOWLEDGE_CONTROLLER_PREFIX)?
         .get(
@@ -619,6 +628,127 @@ pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                 }
             }
         })?
+
+        .get(
+            KNOWLEDGE_INDEX_REVISION_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_index_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let knowledge_base_revision_id = request
+                        .optional_query_value_as::<Uuid>("knowledgeBaseRevisionId")?
+                        .ok_or_else(|| {
+                            BootError::BadRequest(
+                                "knowledgeBaseRevisionId query parameter is required".into(),
+                            )
+                        })?;
+                    match bus
+                        .execute(ListKnowledgeIndexRevisions {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            knowledge_base_revision_id,
+                            limit: Some(index_revision_list_limit(&request)?),
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(records) => BootResponse::json(
+                            &records
+                                .into_iter()
+                                .map(KnowledgeIndexRevisionResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_policy_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let knowledge_base_revision_id = request
+                        .optional_query_value_as::<Uuid>("knowledgeBaseRevisionId")?
+                        .ok_or_else(|| {
+                            BootError::BadRequest(
+                                "knowledgeBaseRevisionId query parameter is required".into(),
+                            )
+                        })?;
+                    match bus
+                        .execute(ListKnowledgeRetrievalPolicyRevisions {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            knowledge_base_revision_id,
+                            limit: Some(retrieval_policy_revision_list_limit(&request)?),
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(records) => BootResponse::json(
+                            &records
+                                .into_iter()
+                                .map(KnowledgeRetrievalPolicyRevisionResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
+        .get(
+            EXTERNAL_KNOWLEDGE_BINDING_COLLECTION_ROUTE,
+            move |request: BootRequest| {
+                let bus = Arc::clone(&list_binding_bus);
+                async move {
+                    let request_id = request_id(&request)?;
+                    let knowledge_base_id = request
+                        .optional_query_value_as::<Uuid>("knowledgeBaseId")?
+                        .ok_or_else(|| {
+                            BootError::BadRequest(
+                                "knowledgeBaseId query parameter is required".into(),
+                            )
+                        })?;
+                    match bus
+                        .execute(ListExternalKnowledgeBindings {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            project_id: ProjectId::from_uuid(
+                                request.param_as::<Uuid>("project_id")?,
+                            ),
+                            knowledge_base_id,
+                            limit: Some(external_binding_list_limit(&request)?),
+                            access: knowledge_access(&resource_access_evaluator(
+                                &request.require_auth_principal()?,
+                            )?),
+                        })
+                        .await?
+                    {
+                        Ok(records) => BootResponse::json(
+                            &records
+                                .into_iter()
+                                .map(ExternalKnowledgeBindingResponse::from)
+                                .collect::<Vec<_>>(),
+                        ),
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?
         .get(
             KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE,
             move |request: BootRequest| {
@@ -757,3 +887,39 @@ fn chunk_list_limit(request: &BootRequest) -> Result<usize> {
     Ok(limit)
 }
 
+
+fn index_revision_list_limit(request: &BootRequest) -> Result<usize> {
+    let limit = request
+        .optional_query_value_as::<usize>("limit")?
+        .unwrap_or(DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT);
+    if limit == 0 || limit > MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT {
+        return Err(BootError::BadRequest(format!(
+            "limit must be between 1 and {MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}
+
+fn retrieval_policy_revision_list_limit(request: &BootRequest) -> Result<usize> {
+    let limit = request
+        .optional_query_value_as::<usize>("limit")?
+        .unwrap_or(DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT);
+    if limit == 0 || limit > MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT {
+        return Err(BootError::BadRequest(format!(
+            "limit must be between 1 and {MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}
+
+fn external_binding_list_limit(request: &BootRequest) -> Result<usize> {
+    let limit = request
+        .optional_query_value_as::<usize>("limit")?
+        .unwrap_or(DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT);
+    if limit == 0 || limit > MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT {
+        return Err(BootError::BadRequest(format!(
+            "limit must be between 1 and {MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT}"
+        )));
+    }
+    Ok(limit)
+}

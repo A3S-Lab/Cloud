@@ -24,7 +24,12 @@ pub use index_lifecycle::{
     CreateExternalKnowledgeBindingCommand, CreateKnowledgeIndexRevisionCommand,
     CreateKnowledgeRetrievalPolicyRevisionCommand, GetExternalKnowledgeBinding,
     GetKnowledgeIndexRevision, GetKnowledgeRetrievalPolicyRevision,
-    KnowledgeIndexLifecycleService,
+    KnowledgeIndexLifecycleService, ListExternalKnowledgeBindings, ListKnowledgeIndexRevisions,
+    ListKnowledgeRetrievalPolicyRevisions, DEFAULT_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    DEFAULT_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
 pub use document_lifecycle::{
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand, GetKnowledgeChunk,
@@ -44,7 +49,9 @@ pub use lifecycle::{
 pub use queries::{
     GetExternalKnowledgeBindingHandler, GetKnowledgeBaseHandler, GetKnowledgeChunkHandler,
     GetKnowledgeDocumentHandler, GetKnowledgeIndexRevisionHandler, GetKnowledgePipelineHandler,
-    GetKnowledgeRetrievalPolicyRevisionHandler, ListKnowledgeBasesHandler,
-    ListKnowledgeChunksHandler, ListKnowledgeDocumentsHandler, ListKnowledgePipelinesHandler,
+    GetKnowledgeRetrievalPolicyRevisionHandler, ListExternalKnowledgeBindingsHandler,
+    ListKnowledgeBasesHandler, ListKnowledgeChunksHandler, ListKnowledgeDocumentsHandler,
+    ListKnowledgeIndexRevisionsHandler, ListKnowledgePipelinesHandler,
+    ListKnowledgeRetrievalPolicyRevisionsHandler,
 };
 pub use resource_access::KnowledgeAccess;
