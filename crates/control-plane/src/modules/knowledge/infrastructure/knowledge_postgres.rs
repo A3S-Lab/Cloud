@@ -90,9 +90,53 @@ impl IKnowledgeBaseRepository for PostgresKnowledgeBaseRepository {
                     let rows = fetch_all::<KnowledgeBaseHeadRow, _>(
                         transaction,
                         sql_query::<KnowledgeBaseHeadRow>(SELECT_BASE_HEAD)
-                            .append(
-                                " order by organization_id asc, knowledge_base_id asc limit ",
-                            )
+                            .append(" order by organization_id asc, knowledge_base_id asc limit ")
+                            .bind(limit),
+                    )
+                    .await?;
+                    let mut records = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        let Some(record) = load_base_head(
+                            transaction,
+                            row.organization_id,
+                            row.knowledge_base_id,
+                            false,
+                        )
+                        .await?
+                        else {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "KnowledgeBase head disappeared during discovery".into(),
+                            ));
+                        };
+                        records.push(record);
+                    }
+                    Ok(records)
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn list_for_project(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeBaseRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let rows = fetch_all::<KnowledgeBaseHeadRow, _>(
+                        transaction,
+                        sql_query::<KnowledgeBaseHeadRow>(SELECT_BASE_HEAD)
+                            .append(" where organization_id = ")
+                            .bind(organization_id)
+                            .append(" and project_id = ")
+                            .bind(project_id)
+                            .append(" order by organization_id asc, knowledge_base_id asc limit ")
                             .bind(limit),
                     )
                     .await?;
@@ -312,15 +356,11 @@ impl IKnowledgeBaseRepository for PostgresKnowledgeBaseRepository {
                     let organization_id = write.record.revision.spec().organization_id.as_uuid();
                     let knowledge_base_id =
                         write.record.revision.spec().knowledge_base_id.as_uuid();
-                    let current = load_base_head(
-                        transaction,
-                        organization_id,
-                        knowledge_base_id,
-                        true,
-                    )
-                    .await?
-                    .ok_or(RepositoryError::NotFound)
-                    .map_err(PostgresPersistenceError::Repository)?;
+                    let current =
+                        load_base_head(transaction, organization_id, knowledge_base_id, true)
+                            .await?
+                            .ok_or(RepositoryError::NotFound)
+                            .map_err(PostgresPersistenceError::Repository)?;
                     let parent_revision_id = current.revision.spec().revision_id.as_uuid();
                     let parent_digest = current.revision.digest().as_str().to_string();
                     let updated = current
@@ -386,7 +426,8 @@ impl IKnowledgePipelineRepository for PostgresKnowledgePipelineRepository {
                     let record = KnowledgePipelineRecord::new(request.release, request.created_at)
                         .map_err(PostgresPersistenceError::Invariant)?;
                     insert_pipeline_head(transaction, &record).await?;
-                    insert_pipeline_release(transaction, &record.release, record.created_at).await?;
+                    insert_pipeline_release(transaction, &record.release, record.created_at)
+                        .await?;
                     Ok(record)
                 })
             })
@@ -403,6 +444,52 @@ impl IKnowledgePipelineRepository for PostgresKnowledgePipelineRepository {
             .transaction(move |transaction| {
                 Box::pin(async move {
                     load_pipeline_head(transaction, organization_id, pipeline_id, false).await
+                })
+            })
+            .await
+            .map_err(transaction_error)
+    }
+
+    async fn list(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgePipelineRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        self.executor
+            .transaction(move |transaction| {
+                Box::pin(async move {
+                    let rows = fetch_all::<KnowledgePipelineHeadRow, _>(
+                        transaction,
+                        sql_query::<KnowledgePipelineHeadRow>(SELECT_PIPELINE_HEAD)
+                            .append(" where organization_id = ")
+                            .bind(organization_id)
+                            .append(" and project_id = ")
+                            .bind(project_id)
+                            .append(" order by organization_id asc, pipeline_id asc limit ")
+                            .bind(limit),
+                    )
+                    .await?;
+                    let mut records = Vec::with_capacity(rows.len());
+                    for row in rows {
+                        let Some(record) = load_pipeline_head(
+                            transaction,
+                            row.organization_id,
+                            row.pipeline_id,
+                            false,
+                        )
+                        .await?
+                        else {
+                            return Err(PostgresPersistenceError::Invariant(
+                                "KnowledgePipeline head disappeared during discovery".into(),
+                            ));
+                        };
+                        records.push(record);
+                    }
+                    Ok(records)
                 })
             })
             .await
@@ -1128,7 +1215,6 @@ impl FromRow for KnowledgePipelineReleaseRow {
         })
     }
 }
-
 
 async fn persist_knowledge_base_side_effects(
     transaction: &PostgresTransaction,

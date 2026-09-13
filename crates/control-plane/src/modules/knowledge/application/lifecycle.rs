@@ -1,4 +1,4 @@
-use super::resource_access::{knowledge_not_found, project, KnowledgeAccess};
+use super::resource_access::{KnowledgeAccess, knowledge_not_found, project};
 use crate::modules::knowledge::domain::{
     AppendKnowledgeBaseWrite, CreateKnowledgeBaseWrite, CreateKnowledgePipelineWrite,
     IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseLifecycleChanged,
@@ -13,6 +13,11 @@ use chrono::Utc;
 use serde::Serialize;
 use std::sync::Arc;
 use uuid::Uuid;
+
+pub const DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT: usize = 200;
+pub const DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT: usize = 50;
+pub const MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT: usize = 200;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct KnowledgeMutationResult<T> {
@@ -68,11 +73,44 @@ pub struct PublishKnowledgePipelineCommand {
     pub request_id: Uuid,
 }
 
-/// Authorized Knowledge catalog mutation boundary.
+#[derive(Debug, Clone)]
+pub struct GetKnowledgeBase {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub knowledge_base_id: Uuid,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgeBases {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct GetKnowledgePipeline {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub pipeline_id: Uuid,
+    pub access: KnowledgeAccess,
+}
+
+#[derive(Debug, Clone)]
+pub struct ListKnowledgePipelines {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub limit: Option<usize>,
+    pub access: KnowledgeAccess,
+}
+
+/// Authorized Knowledge catalog lifecycle boundary.
 ///
 /// Authorization precedes replay. Creates/appends/publishes are exact digest-
 /// fenced writes with shared idempotency, audit, and Outbox side effects owned
-/// by the repository adapters. No public HTTP surface is introduced here.
+/// by the repository adapters. Authorized reads share the same KnowledgeAccess
+/// projection.
 #[derive(Clone)]
 pub struct KnowledgeCatalogLifecycleService {
     bases: Arc<dyn IKnowledgeBaseRepository>,
@@ -344,6 +382,80 @@ impl KnowledgeCatalogLifecycleService {
             replayed: written.replayed,
         })
     }
+
+    pub async fn get_knowledge_base(
+        &self,
+        query: GetKnowledgeBase,
+    ) -> ApplicationResult<KnowledgeBaseRecord> {
+        project(query.project_id, &query.access)?;
+        let record = self
+            .bases
+            .find(query.organization_id.as_uuid(), query.knowledge_base_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if record.revision.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        Ok(record)
+    }
+
+    pub async fn list_knowledge_bases(
+        &self,
+        query: ListKnowledgeBases,
+    ) -> ApplicationResult<Vec<KnowledgeBaseRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query.limit.unwrap_or(DEFAULT_KNOWLEDGE_BASE_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgeBase list limit must be between 1 and {MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT}"
+            )));
+        }
+        self.bases
+            .list_for_project(
+                query.organization_id.as_uuid(),
+                query.project_id.as_uuid(),
+                limit,
+            )
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn get_knowledge_pipeline(
+        &self,
+        query: GetKnowledgePipeline,
+    ) -> ApplicationResult<KnowledgePipelineRecord> {
+        project(query.project_id, &query.access)?;
+        let record = self
+            .pipelines
+            .find(query.organization_id.as_uuid(), query.pipeline_id)
+            .await?
+            .ok_or_else(knowledge_not_found)?;
+        if record.release.spec().project_id != query.project_id {
+            return Err(knowledge_not_found());
+        }
+        Ok(record)
+    }
+
+    pub async fn list_knowledge_pipelines(
+        &self,
+        query: ListKnowledgePipelines,
+    ) -> ApplicationResult<Vec<KnowledgePipelineRecord>> {
+        project(query.project_id, &query.access)?;
+        let limit = query.limit.unwrap_or(DEFAULT_KNOWLEDGE_PIPELINE_LIST_LIMIT);
+        if limit == 0 || limit > MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT {
+            return Err(ApplicationError::Invalid(format!(
+                "KnowledgePipeline list limit must be between 1 and {MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT}"
+            )));
+        }
+        self.pipelines
+            .list(
+                query.organization_id.as_uuid(),
+                query.project_id.as_uuid(),
+                limit,
+            )
+            .await
+            .map_err(Into::into)
+    }
 }
 
 fn create_base_replay_matches(
@@ -405,6 +517,9 @@ struct CanonicalPublishKnowledgePipeline<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modules::knowledge::domain::{
+        IKnowledgeBaseRepository, IKnowledgePipelineRepository, KnowledgeBaseRevisionV1,
+    };
     use crate::modules::knowledge::infrastructure::{
         InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
     };
@@ -450,6 +565,65 @@ mod tests {
                 access: KnowledgeAccess::restricted_projects([ProjectId::new()]),
                 idempotency_key: "create-2".into(),
                 request_id: Uuid::from_u128(0x89),
+            })
+            .await;
+        assert!(matches!(denied, Err(ApplicationError::NotFound(_))));
+    }
+
+    #[tokio::test]
+    async fn authorized_reads_require_project_visibility() {
+        let bases = Arc::new(InMemoryKnowledgeBaseRepository::new());
+        let pipelines = Arc::new(InMemoryKnowledgePipelineRepository::new());
+        let service = KnowledgeCatalogLifecycleService::new(
+            bases as Arc<dyn IKnowledgeBaseRepository>,
+            pipelines as Arc<dyn IKnowledgePipelineRepository>,
+        );
+        let revision = KnowledgeBaseRevisionV1::parse_acl(BASE).expect("revision");
+        let created = service
+            .create_knowledge_base(CreateKnowledgeBaseCommand {
+                organization_id: revision.spec().organization_id,
+                project_id: revision.spec().project_id,
+                revision_acl: BASE.to_owned(),
+                actor_principal_id: PrincipalId::from_uuid(Uuid::from_u128(0x77)),
+                access: KnowledgeAccess::restricted_projects([revision.spec().project_id]),
+                idempotency_key: "create-read-1".into(),
+                request_id: Uuid::from_u128(0x8a),
+            })
+            .await
+            .expect("create");
+
+        let listed = service
+            .list_knowledge_bases(ListKnowledgeBases {
+                organization_id: revision.spec().organization_id,
+                project_id: revision.spec().project_id,
+                limit: Some(10),
+                access: KnowledgeAccess::restricted_projects([revision.spec().project_id]),
+            })
+            .await
+            .expect("list");
+        assert_eq!(listed.len(), 1);
+        assert_eq!(
+            listed[0].revision.digest().as_str(),
+            created.record.revision.digest().as_str()
+        );
+
+        let fetched = service
+            .get_knowledge_base(GetKnowledgeBase {
+                organization_id: revision.spec().organization_id,
+                project_id: revision.spec().project_id,
+                knowledge_base_id: revision.spec().knowledge_base_id.as_uuid(),
+                access: KnowledgeAccess::restricted_projects([revision.spec().project_id]),
+            })
+            .await
+            .expect("get");
+        assert_eq!(fetched.revision, created.record.revision);
+
+        let denied = service
+            .get_knowledge_base(GetKnowledgeBase {
+                organization_id: revision.spec().organization_id,
+                project_id: revision.spec().project_id,
+                knowledge_base_id: revision.spec().knowledge_base_id.as_uuid(),
+                access: KnowledgeAccess::restricted_projects([ProjectId::new()]),
             })
             .await;
         assert!(matches!(denied, Err(ApplicationError::NotFound(_))));

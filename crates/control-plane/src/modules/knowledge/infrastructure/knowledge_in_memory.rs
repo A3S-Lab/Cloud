@@ -6,9 +6,7 @@ use crate::modules::knowledge::domain::{
     KnowledgePipelineReleaseV1, KnowledgePipelineWriteReference, PublishKnowledgePipelineRelease,
     PublishKnowledgePipelineWrite,
 };
-use crate::modules::shared_kernel::domain::{
-    IdempotencyRequest, IdempotentWrite, RepositoryError,
-};
+use crate::modules::shared_kernel::domain::{IdempotencyRequest, IdempotentWrite, RepositoryError};
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use tokio::sync::RwLock;
@@ -89,6 +87,29 @@ impl IKnowledgeBaseRepository for InMemoryKnowledgeBaseRepository {
             .read()
             .await
             .values()
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
+    async fn list_for_project(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgeBaseRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .heads
+            .read()
+            .await
+            .values()
+            .filter(|record| {
+                record.revision.spec().organization_id.as_uuid() == organization_id
+                    && record.revision.spec().project_id.as_uuid() == project_id
+            })
             .take(limit)
             .cloned()
             .collect())
@@ -284,6 +305,29 @@ impl IKnowledgePipelineRepository for InMemoryKnowledgePipelineRepository {
             .cloned())
     }
 
+    async fn list(
+        &self,
+        organization_id: Uuid,
+        project_id: Uuid,
+        limit: usize,
+    ) -> Result<Vec<KnowledgePipelineRecord>, RepositoryError> {
+        if limit == 0 {
+            return Ok(Vec::new());
+        }
+        Ok(self
+            .heads
+            .read()
+            .await
+            .values()
+            .filter(|record| {
+                record.release.spec().organization_id.as_uuid() == organization_id
+                    && record.release.spec().project_id.as_uuid() == project_id
+            })
+            .take(limit)
+            .cloned()
+            .collect())
+    }
+
     async fn find_release(
         &self,
         organization_id: Uuid,
@@ -440,9 +484,10 @@ mod tests {
 
         let mut next = revision.spec().clone();
         next.generation = 2;
-        next.revision_id = crate::modules::shared_kernel::domain::KnowledgeBaseRevisionId::from_uuid(
-            Uuid::from_u128(0x018f0000000070008000000000000303),
-        );
+        next.revision_id =
+            crate::modules::shared_kernel::domain::KnowledgeBaseRevisionId::from_uuid(
+                Uuid::from_u128(0x018f0000000070008000000000000303),
+            );
         next.name = "Product FAQ v2".into();
         let successor = KnowledgeBaseRevisionV1::from_spec(next).expect("successor");
         let append = AppendKnowledgeBaseRevision {

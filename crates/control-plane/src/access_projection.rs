@@ -20,6 +20,7 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::{IdentityAccess, IdentityAccessScope};
 use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
+use crate::modules::knowledge::KnowledgeAccess;
 use crate::modules::notifications::{NotificationAccess, NotificationAccessScope};
 use crate::modules::operations::{OperationAccess, OperationAccessScope};
 use crate::modules::plugins::{PluginAccess, PluginAccessScope};
@@ -175,6 +176,18 @@ pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> Use
         return UserFileAccess::organization_wide();
     }
     UserFileAccess::restricted_projects(resource_access.granted_scopes().filter_map(|scope| {
+        match scope {
+            ResourceGrantScope::Project { project_id } => Some(project_id),
+            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+        }
+    }))
+}
+
+pub(crate) fn knowledge_access(resource_access: &ResourceAccessEvaluator) -> KnowledgeAccess {
+    if resource_access.is_organization_wide() {
+        return KnowledgeAccess::organization_wide();
+    }
+    KnowledgeAccess::restricted_projects(resource_access.granted_scopes().filter_map(|scope| {
         match scope {
             ResourceGrantScope::Project { project_id } => Some(project_id),
             ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
@@ -501,9 +514,9 @@ mod tests {
     use super::{
         agent_access, application_access, artifact_access, asset_access, connector_access,
         developer_workflow_access, durable_cell_access, edge_access, execution_access,
-        fleet_access, form_access, identity_access, inference_access, notification_access,
-        operation_access, project_access, search_visibility, secret_access, user_file_access,
-        workflow_access, workload_access,
+        fleet_access, form_access, identity_access, inference_access, knowledge_access,
+        notification_access, operation_access, project_access, search_visibility, secret_access,
+        user_file_access, workflow_access, workload_access,
     };
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
@@ -512,25 +525,21 @@ mod tests {
 
     #[test]
     fn identity_access_is_narrowed_into_the_assets_owned_projection() {
-        assert!(
-            asset_access(&ResourceAccessEvaluator::organization_wide())
-                .organization_catalog_is_visible()
-        );
-        assert!(
-            !asset_access(&ResourceAccessEvaluator::restricted([
-                ResourceGrantScope::Project {
-                    project_id: ProjectId::new(),
-                },
-                ResourceGrantScope::Environment {
-                    project_id: ProjectId::new(),
-                    environment_id: EnvironmentId::new(),
-                },
-                ResourceGrantScope::Node {
-                    node_id: NodeId::new(),
-                },
-            ]))
-            .organization_catalog_is_visible()
-        );
+        assert!(asset_access(&ResourceAccessEvaluator::organization_wide())
+            .organization_catalog_is_visible());
+        assert!(!asset_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project {
+                project_id: ProjectId::new(),
+            },
+            ResourceGrantScope::Environment {
+                project_id: ProjectId::new(),
+                environment_id: EnvironmentId::new(),
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]))
+        .organization_catalog_is_visible());
     }
 
     #[test]
@@ -637,10 +646,8 @@ mod tests {
         assert!(!access.environment_is_visible(environment_project_id, EnvironmentId::new()));
         assert_eq!(access.granted_scopes().count(), 2);
 
-        assert!(
-            secret_access(&ResourceAccessEvaluator::organization_wide())
-                .environment_is_visible(ProjectId::new(), EnvironmentId::new())
-        );
+        assert!(secret_access(&ResourceAccessEvaluator::organization_wide())
+            .environment_is_visible(ProjectId::new(), EnvironmentId::new()));
     }
 
     #[test]
@@ -666,6 +673,29 @@ mod tests {
         let organization_wide = user_file_access(&ResourceAccessEvaluator::organization_wide());
         assert!(organization_wide.project_is_visible(ProjectId::new()));
         assert!(organization_wide.organization_quota_is_visible());
+    }
+
+    #[test]
+    fn identity_access_is_narrowed_into_the_knowledge_owned_projection() {
+        let project_id = ProjectId::new();
+        let environment_project_id = ProjectId::new();
+        let access = knowledge_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Project { project_id },
+            ResourceGrantScope::Environment {
+                project_id: environment_project_id,
+                environment_id: EnvironmentId::new(),
+            },
+            ResourceGrantScope::Node {
+                node_id: NodeId::new(),
+            },
+        ]));
+
+        assert!(access.project_is_visible(project_id));
+        assert!(!access.project_is_visible(environment_project_id));
+        assert!(!access.project_is_visible(ProjectId::new()));
+
+        let organization_wide = knowledge_access(&ResourceAccessEvaluator::organization_wide());
+        assert!(organization_wide.project_is_visible(ProjectId::new()));
     }
 
     #[test]
@@ -780,10 +810,8 @@ mod tests {
         assert!(access.environment_is_visible(project_id, environment_id));
         assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
         assert!(!access.environment_is_visible(ProjectId::new(), environment_id));
-        assert!(
-            agent_access(&ResourceAccessEvaluator::organization_wide())
-                .environment_is_visible(ProjectId::new(), EnvironmentId::new())
-        );
+        assert!(agent_access(&ResourceAccessEvaluator::organization_wide())
+            .environment_is_visible(ProjectId::new(), EnvironmentId::new()));
     }
 
     #[test]
@@ -861,10 +889,8 @@ mod tests {
         assert!(!access.node_is_visible(NodeId::new()));
         assert_eq!(access.granted_scopes().count(), 1);
         assert!(fleet_access(&ResourceAccessEvaluator::organization_wide()).is_organization_wide());
-        assert!(
-            fleet_access(&ResourceAccessEvaluator::organization_wide())
-                .node_is_visible(NodeId::new())
-        );
+        assert!(fleet_access(&ResourceAccessEvaluator::organization_wide())
+            .node_is_visible(NodeId::new()));
     }
 
     #[test]

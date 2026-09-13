@@ -49,6 +49,9 @@ use crate::modules::identity::domain::value_objects::{
 use crate::modules::identity::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort, InMemoryIdentityRepository,
 };
+use crate::modules::knowledge::{
+    InMemoryKnowledgeBaseRepository, InMemoryKnowledgePipelineRepository,
+};
 use crate::modules::operations::InMemoryOperationRepository;
 use crate::modules::plugins::domain::entities::PluginRegistry;
 use crate::modules::plugins::domain::services::{
@@ -234,6 +237,7 @@ mod durable_cell_tests;
 mod execution_tests;
 mod forms_tests;
 mod inference_key_tests;
+mod knowledge_tests;
 mod inference_route_tests;
 mod inference_usage_tests;
 mod management_mcp_tests;
@@ -720,6 +724,8 @@ struct TestRuntimeRepositories {
     connector_execution: Option<Arc<InMemoryConnectorExecutionRepository>>,
     user_files: Option<Arc<InMemoryUserFileRepository>>,
     user_file_objects: Option<Arc<dyn IUserFileObjectStore>>,
+    knowledge_bases: Option<Arc<InMemoryKnowledgeBaseRepository>>,
+    knowledge_pipelines: Option<Arc<InMemoryKnowledgePipelineRepository>>,
     inference_usage: Option<Arc<crate::modules::inference::InMemoryInferenceUsageRepository>>,
     inference_credentials:
         Option<Arc<crate::modules::identity::InMemoryInferenceCredentialRepository>>,
@@ -2085,6 +2091,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
         connector_execution,
         user_files,
         user_file_objects,
+        knowledge_bases,
+        knowledge_pipelines,
         inference_usage,
         inference_credentials,
     } = runtime_repositories;
@@ -2337,6 +2345,10 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
                 .unwrap_or_else(|| Arc::new(InMemoryUserFileRepository::default())),
             user_file_objects: user_file_objects
                 .unwrap_or_else(|| Arc::new(UnavailableUserFileObjectStore)),
+            knowledge_bases: knowledge_bases
+                .unwrap_or_else(|| Arc::new(InMemoryKnowledgeBaseRepository::new())),
+            knowledge_pipelines: knowledge_pipelines
+                .unwrap_or_else(|| Arc::new(InMemoryKnowledgePipelineRepository::new())),
             sources,
             source_webhooks,
             source_subscriptions,

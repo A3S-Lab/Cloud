@@ -29,6 +29,7 @@ impl ApiTokenScope {
     pub const CONNECTOR_WRITE: &'static str = "connector:write";
     pub const APPLICATION_WRITE: &'static str = "application:write";
     pub const FILE_WRITE: &'static str = "file:write";
+    pub const KNOWLEDGE_WRITE: &'static str = "knowledge:write";
     pub const PLUGIN_WRITE: &'static str = "plugin:write";
 
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
@@ -81,6 +82,7 @@ impl ApiTokenScope {
             Self::CONNECTOR_WRITE,
             Self::APPLICATION_WRITE,
             Self::FILE_WRITE,
+            Self::KNOWLEDGE_WRITE,
             Self::PLUGIN_WRITE,
         ]
         .into_iter()
