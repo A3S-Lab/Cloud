@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 202;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "202";
+pub const CLOUD_MIGRATION_COUNT: i64 = 203;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "203";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1823,6 +1823,14 @@ fn cloud_migrations() -> Vec<Migration> {
             include_str!(concat!(
                 env!("CARGO_MANIFEST_DIR"),
                 "/../../migrations/202_knowledge_documents_and_chunks.sql"
+            )),
+        ),
+        Migration::new(
+            "203",
+            "Knowledge index policy and bindings",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/203_knowledge_index_policy_and_bindings.sql"
             )),
         ),
     ]

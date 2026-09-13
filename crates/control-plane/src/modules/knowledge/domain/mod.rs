@@ -4,6 +4,7 @@ mod catalog;
 mod chunk;
 mod document;
 mod document_catalog;
+mod index_catalog;
 mod external_binding;
 mod index_revision;
 mod pipeline_release;
@@ -24,6 +25,13 @@ pub use chunk::{KnowledgeChunkSpecV1, KnowledgeChunkV1};
 pub use document::{
     KnowledgeContentReferenceV1, KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1,
     KnowledgeDocumentV1,
+};
+pub use index_catalog::{
+    CreateExternalKnowledgeBinding, CreateKnowledgeIndexRevision,
+    CreateKnowledgeRetrievalPolicyRevision, ExternalKnowledgeBindingRecord,
+    IExternalKnowledgeBindingRepository, IKnowledgeIndexRevisionRepository,
+    IKnowledgeRetrievalPolicyRevisionRepository, KnowledgeIndexRevisionRecord,
+    KnowledgeRetrievalPolicyRevisionRecord,
 };
 pub use document_catalog::{
     CreateKnowledgeChunk, CreateKnowledgeDocument, IKnowledgeChunkRepository,
