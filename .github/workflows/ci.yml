@@ -537,6 +537,13 @@ jobs:
           automation_schedule_state_postgres_fences_and_recovers
           -- --exact --nocapture --test-threads=1
 
+      - name: Certify Automation invocation PostgreSQL admission
+        run: >-
+          cargo test --locked -p a3s-cloud-control-plane
+          --test automation_postgres_integration
+          automation_invocation_postgres_replay_and_reconnect_are_durable
+          -- --exact --nocapture --test-threads=1
+
       - name: Certify Gateway Route policy security timeline persistence
         run: >-
           cargo test --locked -p a3s-cloud-control-plane
