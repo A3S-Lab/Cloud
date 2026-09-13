@@ -1,7 +1,8 @@
 use crate::modules::files::{DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT};
 use crate::modules::files::{
     USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE,
-    USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE, USER_FILE_TOMBSTONE_ROUTE,
+    USER_FILE_EXPIRE_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE,
+    USER_FILE_TOMBSTONE_ROUTE,
 };
 use serde_json::{json, Value};
 
@@ -10,6 +11,7 @@ pub(super) fn is_user_file_path(path: &str) -> bool {
         || is_item_path(path)
         || is_content_path(path)
         || is_scan_path(path)
+        || is_expire_path(path)
         || is_tombstone_path(path)
         || is_quota_path(path)
 }
@@ -28,6 +30,10 @@ pub(super) fn is_content_path(path: &str) -> bool {
 
 fn is_scan_path(path: &str) -> bool {
     path == full_route(USER_FILE_SCAN_ROUTE)
+}
+
+fn is_expire_path(path: &str) -> bool {
+    path == full_route(USER_FILE_EXPIRE_ROUTE)
 }
 
 fn is_tombstone_path(path: &str) -> bool {
@@ -70,6 +76,7 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         }),
         ("put", 200) if is_content_path(path) => Some("UserFileMutationSuccess200"),
         ("post", 200) if is_scan_path(path) => Some("UserFileMutationSuccess200"),
+        ("post", 200) if is_expire_path(path) => Some("UserFileMutationSuccess200"),
         ("post", 200) if is_tombstone_path(path) => Some("UserFileMutationSuccess200"),
         _ => None,
     }
@@ -89,10 +96,12 @@ mod tests {
         let item = full_route(USER_FILE_ITEM_ROUTE);
         let content = full_route(USER_FILE_CONTENT_ROUTE);
         let scan = full_route(USER_FILE_SCAN_ROUTE);
+        let expire = full_route(USER_FILE_EXPIRE_ROUTE);
         let quota = full_route(USER_FILE_QUOTA_ROUTE);
         assert!(is_user_file_path(&collection));
         assert!(is_content_path(&content));
         assert!(is_scan_path(&scan));
+        assert!(is_expire_path(&expire));
         assert_eq!(query_parameters("get", &collection).len(), 1);
         assert_eq!(
             success_component("post", &collection, 201),
@@ -108,6 +117,10 @@ mod tests {
         );
         assert_eq!(
             success_component("post", &scan, 200),
+            Some("UserFileMutationSuccess200")
+        );
+        assert_eq!(
+            success_component("post", &expire, 200),
             Some("UserFileMutationSuccess200")
         );
         assert_eq!(

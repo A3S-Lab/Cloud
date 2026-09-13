@@ -20,6 +20,12 @@ pub struct TombstoneUserFileRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExpireUserFileUploadRequest {
+    pub expected_version: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RecordUserFileScanRequest {
     pub expected_version: u64,
     pub evidence_digest: String,

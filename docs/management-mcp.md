@@ -923,17 +923,23 @@ audit, Outbox, and idempotency write. `a3s_cloud_user_files_scan` requires
 `evidenceDigest`, a metadata-only `decision` (`admitted` or `rejected` with
 `reasonCode`), and `idempotencyKey`. It requires `file:write`, is not
 destructive, and dispatches the same scan command as REST. It never accepts
-file bytes or scanner provider configuration. `a3s_cloud_user_file_quota_get`
+file bytes or scanner provider configuration.
+`a3s_cloud_user_files_expire` requires `projectId`, `userFileId`, a positive
+`expectedVersion`, and `idempotencyKey`. It requires `file:write`, is not
+destructive, and dispatches the same expire-upload command as REST for
+awaiting upload reservations only. It never deletes object bytes, starts a
+cleanup worker, or invents a second cleanup queue.
+`a3s_cloud_user_file_quota_get`
 accepts no arguments, requires `cloud:read`, and is read-only. Because quota is
 an Organization-wide ledger, that tool is concealed from restricted Memberships
 rather than exposing a partial allocation.
 
-All six tools dispatch one Files command/query authority. Their schemas carry
+All seven tools dispatch one Files command/query authority. Their schemas carry
 only canonical ACL, identities, bounds, evidence digests, scan decisions, and
 optimistic concurrency. They never accept file bytes, provider/bucket details,
 scanner configuration, multipart state, or a cleanup command. REST may transfer
 bytes through `PUT`/`GET .../content`; Management MCP stays metadata-only and
-never accepts or returns file bytes. Live scanner execution and cleanup workers
+never accepts or returns file bytes. Live scanner execution and live object cleanup execution
 remain unavailable.
 
 ## GitHub source discovery

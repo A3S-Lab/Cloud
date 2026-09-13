@@ -1,8 +1,8 @@
 use super::{arguments, tool_result};
 use crate::modules::files::{
-    GetUserFile, GetUserFileQuota, ListUserFiles, RecordUserFileScan, ReserveUserFile,
-    TombstoneUserFile, UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
-    UserFileScanDecision, UserFileTransition,
+    ExpireUserFileUpload, GetUserFile, GetUserFileQuota, ListUserFiles, RecordUserFileScan,
+    ReserveUserFile, TombstoneUserFile, UserFileMutationResponse, UserFileQuotaResponse,
+    UserFileResponse, UserFileScanDecision, UserFileTransition,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::domain::{OrganizationId, PrincipalId, ProjectId, UserFileId};
@@ -60,6 +60,17 @@ pub struct ScanUserFileArguments {
     expected_version: u64,
     evidence_digest: String,
     decision: ScanUserFileDecisionArguments,
+    #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ExpireUserFileUploadArguments {
+    project_id: Uuid,
+    user_file_id: Uuid,
+    #[serde(deserialize_with = "arguments::deserialize_expected_version")]
+    expected_version: u64,
     #[serde(deserialize_with = "arguments::deserialize_idempotency_key")]
     idempotency_key: String,
 }
@@ -212,6 +223,32 @@ pub async fn scan(
             evidence_digest: arguments.evidence_digest,
             decision: arguments.decision.into(),
         })
+        .await?
+    {
+        Ok(result) => tool_result::success(200, UserFileMutationResponse::from(result), request_id),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn expire(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ExpireUserFileUploadArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ExpireUserFileUpload(UserFileTransition {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            user_file_id: UserFileId::from_uuid(arguments.user_file_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            access: user_file_access(&resource_access),
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        }))
         .await?
     {
         Ok(result) => tool_result::success(200, UserFileMutationResponse::from(result), request_id),

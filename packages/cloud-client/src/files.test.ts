@@ -54,6 +54,13 @@ describe('UserFile client surface', () => {
       },
       'files:scan'
     );
+    await api.expireUserFileUpload(
+      'organization / one',
+      'project / one',
+      'file / one',
+      1,
+      'files:expire'
+    );
     await api.putUserFileContent(
       'organization / one',
       'project / one',
@@ -79,6 +86,7 @@ describe('UserFile client surface', () => {
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/tombstone',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/scan',
+      '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/expire',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/user-files/file%20%2F%20one/content',
       '/api/v1/organizations/organization%20%2F%20one/user-file-quota',
@@ -110,6 +118,13 @@ describe('UserFile client surface', () => {
     );
     expect(calls[5]?.[1]).toEqual(
       expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({ 'Idempotency-Key': 'files:expire' }),
+        body: JSON.stringify({ expectedVersion: 1 }),
+      })
+    );
+    expect(calls[6]?.[1]).toEqual(
+      expect.objectContaining({
         method: 'PUT',
         headers: expect.objectContaining({
           'Content-Type': 'application/octet-stream',
@@ -119,7 +134,7 @@ describe('UserFile client surface', () => {
         body: expect.any(Uint8Array),
       })
     );
-    expect(calls[6]?.[1]).toEqual(
+    expect(calls[7]?.[1]).toEqual(
       expect.objectContaining({
         method: 'GET',
         headers: expect.objectContaining({ Accept: '*/*' }),

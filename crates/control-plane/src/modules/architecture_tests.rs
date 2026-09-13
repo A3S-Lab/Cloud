@@ -4906,7 +4906,7 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         production_source(&management_mcp)
             .matches("access: user_file_access(&resource_access)")
             .count(),
-        6,
+        7,
         "Files Management MCP must translate every request through the one root ACL"
     );
 

@@ -739,6 +739,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_user_files_get",
             "a3s_cloud_user_files_tombstone",
             "a3s_cloud_user_files_scan",
+            "a3s_cloud_user_files_expire",
             "a3s_cloud_user_file_quota_get",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",

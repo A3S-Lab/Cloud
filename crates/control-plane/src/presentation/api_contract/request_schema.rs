@@ -109,6 +109,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/scan" => {
             user_file_scan_schema()
         }
+        "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/expire" => {
+            expected_version_schema("expectedVersion")
+        }
         "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone" => {
             expected_version_schema("expectedVersion")
         }

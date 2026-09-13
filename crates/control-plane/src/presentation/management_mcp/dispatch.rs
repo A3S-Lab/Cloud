@@ -42,8 +42,8 @@ use super::execution_templates::{
     ListExecutionTemplatesArguments,
 };
 use super::files::{
-    ListUserFilesArguments, ReserveUserFileArguments, ScanUserFileArguments,
-    TombstoneUserFileArguments, UserFileArguments,
+    ExpireUserFileUploadArguments, ListUserFilesArguments, ReserveUserFileArguments,
+    ScanUserFileArguments, TombstoneUserFileArguments, UserFileArguments,
 };
 use super::forms::{
     CreateFormDraftArguments, FormDraftArguments, FormReleaseArguments, ListFormDraftsArguments,
@@ -1665,6 +1665,18 @@ pub async fn execute(
         ManagementTool::UserFilesScan => {
             let arguments = arguments::parse::<ScanUserFileArguments>(arguments).ok()?;
             files::scan(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::UserFilesExpire => {
+            let arguments = arguments::parse::<ExpireUserFileUploadArguments>(arguments).ok()?;
+            files::expire(
                 command_bus,
                 organization_id,
                 actor_principal_id,

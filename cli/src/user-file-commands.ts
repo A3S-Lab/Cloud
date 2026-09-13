@@ -98,6 +98,23 @@ export async function executeUserFileCommand(
         )
       );
     }
+    case 'user-files expire': {
+      const mutation = requireVersionedMutationCommand(
+        arguments_,
+        3,
+        'user-files expire <user-file-id>',
+        'UserFile'
+      );
+      return userFileMutationResult(
+        await cloudApi().expireUserFileUpload(
+          organizationId(),
+          projectId(),
+          positionalUuid(arguments_.positionals, 2, 'UserFile ID'),
+          mutation.expectedVersion,
+          mutation.idempotencyKey
+        )
+      );
+    }
     case 'user-files scan': {
       requireArity(arguments_.positionals, 3, 'user-files scan <user-file-id>');
       rejectAgentProviderKindOption(arguments_);

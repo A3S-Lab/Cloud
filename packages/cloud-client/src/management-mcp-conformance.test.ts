@@ -27,7 +27,7 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(193);
+  expect(ADMIN_TOOLS).toHaveLength(194);
   expect(READ_ONLY_TOOLS).toHaveLength(110);
   for (const tool of [
     'a3s_cloud_platform_role_policy_current_get',
@@ -126,8 +126,12 @@ it('pins the current privileged-management, Files, Developer Workflows, source d
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_reserve');
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_tombstone');
   expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_scan');
+  expect(READ_ONLY_TOOLS).not.toContain('a3s_cloud_user_files_expire');
   expect(ADMIN_TOOLS.filter((candidate) => candidate === 'a3s_cloud_user_files_scan')).toEqual([
     'a3s_cloud_user_files_scan',
+  ]);
+  expect(ADMIN_TOOLS.filter((candidate) => candidate === 'a3s_cloud_user_files_expire')).toEqual([
+    'a3s_cloud_user_files_expire',
   ]);
   for (const tool of [
     'a3s_cloud_knowledge_bases_create',
