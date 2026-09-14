@@ -30,3 +30,9 @@ management boundary only:
 - Unauthorized projects, missing sessions/invocations, and Blocking/Streaming modes
   continue to fail closed through C46.
 - Public asynchronous delivery and SSE remain later APP0.2 slices.
+
+## Evidence
+
+- Merge commit: `72eb9fe8bc5101e256583fe5dfc2a82119f47ec3`
+- Verified commit: `ee707d49f334abe438175a4c1ca1a28878d72515`
+- OpenAPI contract version: `1.104.0`
