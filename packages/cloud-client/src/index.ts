@@ -56,6 +56,7 @@ export {
 export * from './applications';
 export * from './audit';
 export * from './connectors';
+export * from './automations';
 export * from './developer-workflows';
 export * from './diagnostics';
 export * from './durable-cells';

@@ -1,11 +1,12 @@
 //! Automations owns new-invocation admission state.
 //!
 //! This module exposes the AUT0.2 admission and AUT0.3 schedule/invocation
-//! component boundaries. It does not register an HTTP listener, Gateway route,
-//! production candidate provider, or public management surface. The schedule
-//! worker is an injectable timer boundary only; process registration and owner
-//! composition must consume these ports rather than copying webhook,
-//! invocation, cursor, or lease state into another context.
+//! component boundaries, plus authorized management lifecycle/catalog reads.
+//! It does not register a Gateway public receive listener or production
+//! schema-registry wiring by default. The schedule worker is an injectable
+//! timer boundary only; process registration and owner composition must consume
+//! these ports rather than copying webhook, invocation, cursor, or lease state
+//! into another context.
 
 pub mod application;
 pub mod domain;
@@ -13,7 +14,17 @@ pub mod infrastructure;
 pub mod presentation;
 
 pub use application::{
-    AdmitAutomationWebhookDelivery, AutomationDefinitionCatalogService,
+    AdmitAutomationWebhookDelivery, AutomationAccess, AutomationAccessScope,
+    AutomationDefinitionCatalogService, AutomationDefinitionQueryService,
+    AutomationWebhookLifecycleService,
+    ChangeAuthorizedAutomationWebhookEndpoint,
+    ChangeAuthorizedAutomationWebhookEndpointHandler,
+    CreateAuthorizedAutomationWebhookEndpoint,
+    CreateAuthorizedAutomationWebhookEndpointHandler,
+    GetAuthorizedAutomationDefinition, GetAuthorizedAutomationDefinitionHandler,
+    GetAuthorizedAutomationRevision, GetAuthorizedAutomationRevisionHandler,
+    GetAuthorizedAutomationWebhookEndpoint, GetAuthorizedAutomationWebhookEndpointHandler,
+    ListAuthorizedAutomationDefinitions, ListAuthorizedAutomationDefinitionsHandler,
     AutomationEventInvocationCandidate, AutomationEventInvocationCandidateOwned,
     AutomationEventInvocationDispatchService, AutomationEventInvocationEvaluationService,
     AutomationEventInvocationFanoutService, AutomationInvocationAdmissionOutcome,
@@ -29,6 +40,7 @@ pub use application::{
     IAutomationScheduleDispatchService, ReceiveAutomationWebhookDelivery,
     ReceiveAutomationWebhookDeliveryHandler, RepositoryAutomationScheduleCandidateProvider,
     ResolveAutomationWebhookEndpoint, AUTOMATION_MAX_EVENT_FANOUT_CANDIDATES,
+    DEFAULT_AUTOMATION_DEFINITION_LIST_LIMIT, MAXIMUM_AUTOMATION_DEFINITION_LIST_LIMIT,
 };
 pub use domain::{
     AppendAutomationRevision, AutomationConcurrencyDecision, AutomationConcurrencyEvaluator,
@@ -65,5 +77,7 @@ pub use infrastructure::{
     AUTOMATION_NORMALIZED_EVENT_SUBSCRIBER_ID, AUTOMATION_WEBHOOK_SCHEMA_MAX_BYTES,
 };
 pub use presentation::{
-    automation_webhooks_controller, AutomationWebhookTransportRequest, AutomationsModule,
+    automation_webhooks_controller, AutomationDefinitionResponse, AutomationRevisionResponse,
+    AutomationWebhookEndpointResponse, AutomationWebhookTransportRequest,
+    AutomationsManagementModule, AutomationsModule,
 };

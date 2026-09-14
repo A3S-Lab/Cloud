@@ -19,6 +19,7 @@ import {
   requireReadCommand,
   requireVersionedMutationCommand,
 } from './command-options';
+import { executeAutomationCommand } from './automation-commands';
 import { executeConnectorCommand } from './connector-commands';
 import type { CloudContext } from './context';
 import {
@@ -200,6 +201,15 @@ export async function executeCommand(
   });
   if (connectorResult !== undefined) {
     return connectorResult;
+  }
+  const automationResult = await executeAutomationCommand(
+    command,
+    arguments_,
+    context,
+    cloudApi
+  );
+  if (automationResult !== undefined) {
+    return automationResult;
   }
   const durableCellResult = await executeDurableCellCommand(command, arguments_, context, cloudApi, {
     readFile: dependencies.readFile,

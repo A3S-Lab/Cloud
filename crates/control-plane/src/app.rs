@@ -68,6 +68,17 @@ use crate::modules::audit::{
     GetAuditRetentionStatusHandler, IAuditExportSigner, IAuditRecordRepository,
     ListAuditRecordsHandler, VerifiedAuditExportSignature,
 };
+use crate::modules::automations::{
+    AutomationsManagementModule, AutomationDefinitionQueryService,
+    AutomationWebhookLifecycleService, ChangeAuthorizedAutomationWebhookEndpoint,
+    ChangeAuthorizedAutomationWebhookEndpointHandler, CreateAuthorizedAutomationWebhookEndpoint,
+    CreateAuthorizedAutomationWebhookEndpointHandler, GetAuthorizedAutomationDefinition,
+    GetAuthorizedAutomationDefinitionHandler, GetAuthorizedAutomationRevision,
+    GetAuthorizedAutomationRevisionHandler, GetAuthorizedAutomationWebhookEndpoint,
+    GetAuthorizedAutomationWebhookEndpointHandler, IAutomationDefinitionRepository,
+    IAutomationWebhookRepository, ListAuthorizedAutomationDefinitions,
+    ListAuthorizedAutomationDefinitionsHandler,
+};
 use crate::modules::connectors::{
     ConnectorExecutionApplicationService, ConnectorExecutionServiceOptions,
     ConnectorHttpExecutionPreparationPort, ConnectorHttpRevisionMaterializer,
@@ -672,8 +683,8 @@ async fn build_api_worker_application(
     // code from constructing concrete repositories or silently switching to an
     // in-memory implementation.
     let automation_adapters = adapters.automations;
-    let _automation_definitions = automation_adapters.definitions;
-    let _automation_webhooks = automation_adapters.webhooks;
+    let automation_definitions = automation_adapters.definitions;
+    let automation_webhooks = automation_adapters.webhooks;
     let _automation_invocations = automation_adapters.invocations;
     let _automation_invocation_reader = automation_adapters.invocation_reader;
     let _automation_schedule_state = automation_adapters.schedule_state;
@@ -2106,6 +2117,8 @@ async fn build_api_worker_application(
                 connector_attempts,
                 connector_attempt_resolutions,
                 connector_revocations,
+                automation_definitions,
+                automation_webhooks,
                 applications,
                 application_sessions,
                 developer_workflow_build_plans,
@@ -2370,6 +2383,8 @@ struct ManagementApplicationDependencies {
     connector_attempts: Arc<dyn IConnectorExecutionAttemptRepository>,
     connector_attempt_resolutions: Arc<dyn IConnectorExecutionAttemptResolutionRepository>,
     connector_revocations: Arc<dyn IConnectorRevisionRevocationRepository>,
+    automation_definitions: Arc<dyn IAutomationDefinitionRepository>,
+    automation_webhooks: Arc<dyn IAutomationWebhookRepository>,
     applications: Arc<dyn IApplicationRepository>,
     application_sessions: Arc<dyn IApplicationSessionRepository>,
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
@@ -2485,6 +2500,8 @@ fn build_management_application_with_health(
         connector_attempts,
         connector_attempt_resolutions,
         connector_revocations,
+        automation_definitions,
+        automation_webhooks,
         applications,
         application_sessions,
         developer_workflow_build_plans,
@@ -2570,6 +2587,13 @@ fn build_management_application_with_health(
     let user_file_service = Arc::new(UserFileApplicationService::new(
         user_files,
         user_file_objects,
+    ));
+    let automation_webhook_lifecycle_service = Arc::new(AutomationWebhookLifecycleService::new(
+        automation_webhooks,
+        Arc::clone(&automation_definitions),
+    ));
+    let automation_definition_query_service = Arc::new(AutomationDefinitionQueryService::new(
+        automation_definitions,
     ));
     let knowledge_lifecycle_service = Arc::new(KnowledgeCatalogLifecycleService::new(
         knowledge_bases,
@@ -3465,6 +3489,16 @@ fn build_management_application_with_health(
                         revoke_outbound_notification_subscriptions,
                     ),
                 )
+                .command_handler::<CreateAuthorizedAutomationWebhookEndpoint, _>(
+                    CreateAuthorizedAutomationWebhookEndpointHandler::new(std::sync::Arc::clone(
+                        &automation_webhook_lifecycle_service,
+                    )),
+                )
+                .command_handler::<ChangeAuthorizedAutomationWebhookEndpoint, _>(
+                    ChangeAuthorizedAutomationWebhookEndpointHandler::new(std::sync::Arc::clone(
+                        &automation_webhook_lifecycle_service,
+                    )),
+                )
                 .command_handler::<crate::modules::connectors::CreateConnectorProfile, _>(
                     CreateConnectorProfileHandler::new(
                         create_connector_environments,
@@ -4306,6 +4340,26 @@ fn build_management_application_with_health(
                         get_outbound_notification_subscriptions,
                     ),
                 )
+                .query_handler::<GetAuthorizedAutomationWebhookEndpoint, _>(
+                    GetAuthorizedAutomationWebhookEndpointHandler::new(std::sync::Arc::clone(
+                        &automation_webhook_lifecycle_service,
+                    )),
+                )
+                .query_handler::<ListAuthorizedAutomationDefinitions, _>(
+                    ListAuthorizedAutomationDefinitionsHandler::new(std::sync::Arc::clone(
+                        &automation_definition_query_service,
+                    )),
+                )
+                .query_handler::<GetAuthorizedAutomationDefinition, _>(
+                    GetAuthorizedAutomationDefinitionHandler::new(std::sync::Arc::clone(
+                        &automation_definition_query_service,
+                    )),
+                )
+                .query_handler::<GetAuthorizedAutomationRevision, _>(
+                    GetAuthorizedAutomationRevisionHandler::new(std::sync::Arc::clone(
+                        &automation_definition_query_service,
+                    )),
+                )
                 .query_handler::<crate::modules::connectors::ListConnectorProfiles, _>(
                     ListConnectorProfilesHandler::new(list_connector_profiles),
                 )
@@ -4771,6 +4825,7 @@ fn build_management_application_with_health(
         .import(SecurityModule)
         .import(NotificationsModule)
         .import(ConnectorsModule)
+        .import(AutomationsManagementModule)
         .import(ApplicationsModule)
         .import(FilesModule)
         .import(KnowledgeModule)

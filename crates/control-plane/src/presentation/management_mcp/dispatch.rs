@@ -15,6 +15,11 @@ use super::audit::{
     AuditRecordExportArguments, AuditRecordListArguments, AuditRecordManifestExportArguments,
 };
 use super::catalog::ManagementTool;
+use super::automations::{
+    AutomationDefinitionArguments, AutomationRevisionArguments,
+    AutomationWebhookEndpointArguments, ChangeAutomationWebhookEndpointArguments,
+    CreateAutomationWebhookEndpointArguments, ListAutomationDefinitionsArguments,
+};
 use super::connectors::{
     ConnectorProfileArguments, ConnectorRevisionArguments, CreateConnectorProfileArguments,
     ListConnectorProfilesArguments, ListConnectorRevisionsArguments,
@@ -118,8 +123,8 @@ use super::workloads::{
     CancelDeploymentArguments, RollbackWorkloadArguments, StopWorkloadArguments,
 };
 use super::{
-    applications, artifacts, audit, connectors, developer_workflows, durable_cells, edge,
-    execution_templates, files, forms, identity, knowledge, nodes, notifications, ontology,
+    applications, artifacts, audit, automations, connectors, developer_workflows, durable_cells,
+    edge, execution_templates, files, forms, identity, knowledge, nodes, notifications, ontology,
     operations, plugins, privileged_management, projects, search, security, sources, workflow,
     workloads,
 };
@@ -459,6 +464,100 @@ pub async fn execute(
         ManagementTool::ConnectorRevisionsGet => {
             let arguments = arguments::parse::<ConnectorRevisionArguments>(arguments).ok()?;
             connectors::get_revision(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationWebhookEndpointsCreate => {
+            let arguments =
+                arguments::parse::<CreateAutomationWebhookEndpointArguments>(arguments).ok()?;
+            automations::create_webhook_endpoint(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationWebhookEndpointsGet => {
+            let arguments =
+                arguments::parse::<AutomationWebhookEndpointArguments>(arguments).ok()?;
+            automations::get_webhook_endpoint(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationWebhookEndpointsDisable => {
+            let arguments =
+                arguments::parse::<ChangeAutomationWebhookEndpointArguments>(arguments).ok()?;
+            automations::disable_webhook_endpoint(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationWebhookEndpointsEnable => {
+            let arguments =
+                arguments::parse::<ChangeAutomationWebhookEndpointArguments>(arguments).ok()?;
+            automations::enable_webhook_endpoint(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationWebhookEndpointsRevoke => {
+            let arguments =
+                arguments::parse::<ChangeAutomationWebhookEndpointArguments>(arguments).ok()?;
+            automations::revoke_webhook_endpoint(
+                command_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationDefinitionsList => {
+            let arguments =
+                arguments::parse::<ListAutomationDefinitionsArguments>(arguments).ok()?;
+            automations::list_definitions(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationDefinitionsGet => {
+            let arguments = arguments::parse::<AutomationDefinitionArguments>(arguments).ok()?;
+            automations::get_definition(
+                query_bus,
+                organization_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::AutomationRevisionsGet => {
+            let arguments = arguments::parse::<AutomationRevisionArguments>(arguments).ok()?;
+            automations::get_revision(
                 query_bus,
                 organization_id,
                 arguments,

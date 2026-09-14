@@ -27,8 +27,8 @@ import { proveOntologyConformance } from './management-mcp-ontology-conformance'
 const conformanceIt = process.env.A3S_CLOUD_C0_MCP_CONFORMANCE === '1' ? it : it.skip;
 
 it('pins the current privileged-management, Files, Developer Workflows, source discovery, signed-audit, and retention management MCP catalogs', () => {
-  expect(ADMIN_TOOLS).toHaveLength(200);
-  expect(READ_ONLY_TOOLS).toHaveLength(114);
+  expect(ADMIN_TOOLS).toHaveLength(217);
+  expect(READ_ONLY_TOOLS).toHaveLength(124);
   for (const tool of [
     'a3s_cloud_platform_role_policy_current_get',
     'a3s_cloud_platform_role_policy_revisions_get',

@@ -65,6 +65,19 @@ import {
   validateConnectorRevisionRevocationReason,
 } from './connectors';
 import {
+  type AutomationDefinition,
+  type AutomationDefinitionListOptions,
+  type AutomationRevision,
+  type AutomationWebhookEndpoint,
+  type ChangeAutomationWebhookEndpointInput,
+  type CreateAutomationWebhookEndpointInput,
+  encodeAutomationDefinitionListOptions,
+  validateAutomationEndpointKey,
+  validateAutomationExpectedGeneration,
+  validateAutomationMaxBodyBytes,
+  validateAutomationWebhookSecretReference,
+} from './automations';
+import {
   type AcceptBuildPlanInput,
   type AcceptPullRequestPreviewPolicyInput,
   type AcceptWorkloadProfileInput,
@@ -459,7 +472,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.87.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.97.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -3195,6 +3208,119 @@ export class CloudApi {
     );
   }
 
+
+  createAutomationWebhookEndpoint(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    input: CreateAutomationWebhookEndpointInput,
+    signal?: AbortSignal
+  ): Promise<AutomationWebhookEndpoint> {
+    validateAutomationEndpointKey(input.endpointKey);
+    validateAutomationWebhookSecretReference(input.signingSecret);
+    validateAutomationMaxBodyBytes(input.maxBodyBytes);
+    return this.postQueryJson(
+      this.automationWebhookEndpointCollectionPath(organizationId, projectId, environmentId),
+      input,
+      signal
+    );
+  }
+
+  getAutomationWebhookEndpoint(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    endpointId: string,
+    signal?: AbortSignal
+  ): Promise<AutomationWebhookEndpoint> {
+    return this.get(
+      this.automationWebhookEndpointPath(organizationId, projectId, environmentId, endpointId),
+      signal
+    );
+  }
+
+  disableAutomationWebhookEndpoint(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    endpointId: string,
+    input: ChangeAutomationWebhookEndpointInput,
+    signal?: AbortSignal
+  ): Promise<AutomationWebhookEndpoint> {
+    validateAutomationExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.automationWebhookEndpointPath(organizationId, projectId, environmentId, endpointId)}/disable`,
+      input,
+      signal
+    );
+  }
+
+  enableAutomationWebhookEndpoint(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    endpointId: string,
+    input: ChangeAutomationWebhookEndpointInput,
+    signal?: AbortSignal
+  ): Promise<AutomationWebhookEndpoint> {
+    validateAutomationExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.automationWebhookEndpointPath(organizationId, projectId, environmentId, endpointId)}/enable`,
+      input,
+      signal
+    );
+  }
+
+  revokeAutomationWebhookEndpoint(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    endpointId: string,
+    input: ChangeAutomationWebhookEndpointInput,
+    signal?: AbortSignal
+  ): Promise<AutomationWebhookEndpoint> {
+    validateAutomationExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.automationWebhookEndpointPath(organizationId, projectId, environmentId, endpointId)}/revoke`,
+      input,
+      signal
+    );
+  }
+
+  listAutomationDefinitions(
+    organizationId: string,
+    options: AutomationDefinitionListOptions = {},
+    signal?: AbortSignal
+  ): Promise<AutomationDefinition[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/automation-definitions${encodeAutomationDefinitionListOptions(options)}`,
+      signal
+    );
+  }
+
+  getAutomationDefinition(
+    organizationId: string,
+    automationId: string,
+    signal?: AbortSignal
+  ): Promise<AutomationDefinition> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/automation-definitions/${encodeURIComponent(automationId)}`,
+      signal
+    );
+  }
+
+  getAutomationRevision(
+    organizationId: string,
+    automationId: string,
+    revisionId: string,
+    signal?: AbortSignal
+  ): Promise<AutomationRevision> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/automation-definitions/${encodeURIComponent(automationId)}/revisions/${encodeURIComponent(revisionId)}`,
+      signal
+    );
+  }
+
   createDurableCellApplication(
     organizationId: string,
     projectId: string,
@@ -5148,6 +5274,30 @@ export class CloudApi {
 
   private get<T>(path: string, signal?: AbortSignal): Promise<T> {
     return this.request('GET', path, { signal });
+  }
+
+  private automationWebhookEndpointCollectionPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string
+  ): string {
+    return (
+      `/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}` +
+      `/environments/${encodeURIComponent(environmentId)}/automation-webhook-endpoints`
+    );
+  }
+
+  private automationWebhookEndpointPath(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    endpointId: string
+  ): string {
+    return (
+      `${this.automationWebhookEndpointCollectionPath(organizationId, projectId, environmentId)}` +
+      `/${encodeURIComponent(endpointId)}`
+    );
   }
 
   private connectorProfilePath(

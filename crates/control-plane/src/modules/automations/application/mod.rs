@@ -1,5 +1,9 @@
+mod commands;
 mod composition;
 mod definition_catalog;
+mod queries;
+mod resource_access;
+mod webhook_lifecycle;
 mod endpoint_query;
 mod event_consumer;
 mod event_dispatch;
@@ -19,6 +23,22 @@ mod tests;
 pub use crate::modules::automations::domain::EndpointLifecycleAction;
 pub use composition::AutomationsDispatchServices;
 pub use definition_catalog::AutomationDefinitionCatalogService;
+pub use resource_access::{AutomationAccess, AutomationAccessScope};
+pub use commands::{
+    ChangeAuthorizedAutomationWebhookEndpointHandler,
+    CreateAuthorizedAutomationWebhookEndpointHandler,
+};
+pub use queries::{
+    GetAuthorizedAutomationDefinitionHandler, GetAuthorizedAutomationRevisionHandler,
+    GetAuthorizedAutomationWebhookEndpointHandler, ListAuthorizedAutomationDefinitionsHandler,
+};
+pub use webhook_lifecycle::{
+    AutomationDefinitionQueryService, AutomationWebhookLifecycleService,
+    ChangeAuthorizedAutomationWebhookEndpoint, CreateAuthorizedAutomationWebhookEndpoint,
+    GetAuthorizedAutomationDefinition, GetAuthorizedAutomationRevision,
+    GetAuthorizedAutomationWebhookEndpoint, ListAuthorizedAutomationDefinitions,
+    DEFAULT_AUTOMATION_DEFINITION_LIST_LIMIT, MAXIMUM_AUTOMATION_DEFINITION_LIST_LIMIT,
+};
 pub use endpoint_query::{
     AutomationWebhookEndpointQueryService, AutomationWebhookEndpointScope,
     ResolveAutomationWebhookEndpoint,

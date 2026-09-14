@@ -26,6 +26,14 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_connector_profiles_get',
   'a3s_cloud_connector_revisions_list',
   'a3s_cloud_connector_revisions_get',
+  'a3s_cloud_automation_webhook_endpoints_create',
+  'a3s_cloud_automation_webhook_endpoints_get',
+  'a3s_cloud_automation_webhook_endpoints_disable',
+  'a3s_cloud_automation_webhook_endpoints_enable',
+  'a3s_cloud_automation_webhook_endpoints_revoke',
+  'a3s_cloud_automation_definitions_list',
+  'a3s_cloud_automation_definitions_get',
+  'a3s_cloud_automation_revisions_get',
   'a3s_cloud_durable_cell_applications_create',
   'a3s_cloud_durable_cell_applications_revise',
   'a3s_cloud_durable_cell_applications_start',
@@ -146,6 +154,15 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_knowledge_chunks_create',
   'a3s_cloud_knowledge_chunks_list',
   'a3s_cloud_knowledge_chunks_get',
+  'a3s_cloud_knowledge_index_revisions_create',
+  'a3s_cloud_knowledge_index_revisions_list',
+  'a3s_cloud_knowledge_index_revisions_get',
+  'a3s_cloud_knowledge_retrieval_policy_revisions_create',
+  'a3s_cloud_knowledge_retrieval_policy_revisions_list',
+  'a3s_cloud_knowledge_retrieval_policy_revisions_get',
+  'a3s_cloud_external_knowledge_bindings_create',
+  'a3s_cloud_external_knowledge_bindings_list',
+  'a3s_cloud_external_knowledge_bindings_get',
   'a3s_cloud_plugin_registries_list',
   'a3s_cloud_plugin_registries_get',
   'a3s_cloud_plugin_assignments_list',
@@ -203,7 +220,7 @@ export const ADMIN_TOOLS = [
   'a3s_cloud_build_run_logs_get',
   'a3s_cloud_build_evidence_get',
   'a3s_cloud_build_runs_cancel',
-  'a3s_cloud_build_runs_retry',
+  'a3s_cloud_build_runs_retry'
 ] as const;
 
 export const READ_ONLY_TOOLS = [
@@ -216,6 +233,10 @@ export const READ_ONLY_TOOLS = [
   'a3s_cloud_connector_profiles_get',
   'a3s_cloud_connector_revisions_list',
   'a3s_cloud_connector_revisions_get',
+  'a3s_cloud_automation_webhook_endpoints_get',
+  'a3s_cloud_automation_definitions_list',
+  'a3s_cloud_automation_definitions_get',
+  'a3s_cloud_automation_revisions_get',
   'a3s_cloud_durable_cell_applications_list',
   'a3s_cloud_durable_cell_applications_get',
   'a3s_cloud_durable_cell_revisions_list',
@@ -278,6 +299,12 @@ export const READ_ONLY_TOOLS = [
   'a3s_cloud_knowledge_documents_get',
   'a3s_cloud_knowledge_chunks_list',
   'a3s_cloud_knowledge_chunks_get',
+  'a3s_cloud_knowledge_index_revisions_list',
+  'a3s_cloud_knowledge_index_revisions_get',
+  'a3s_cloud_knowledge_retrieval_policy_revisions_list',
+  'a3s_cloud_knowledge_retrieval_policy_revisions_get',
+  'a3s_cloud_external_knowledge_bindings_list',
+  'a3s_cloud_external_knowledge_bindings_get',
   'a3s_cloud_plugin_registries_list',
   'a3s_cloud_plugin_registries_get',
   'a3s_cloud_plugin_assignments_list',
@@ -320,7 +347,7 @@ export const READ_ONLY_TOOLS = [
   'a3s_cloud_build_runs_list',
   'a3s_cloud_build_runs_get',
   'a3s_cloud_build_run_logs_get',
-  'a3s_cloud_build_evidence_get',
+  'a3s_cloud_build_evidence_get'
 ] as const;
 
 export interface ConformanceEnvironment {

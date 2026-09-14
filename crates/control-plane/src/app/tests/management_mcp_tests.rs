@@ -384,6 +384,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_connector_profiles_get",
             "a3s_cloud_connector_revisions_list",
             "a3s_cloud_connector_revisions_get",
+            "a3s_cloud_automation_webhook_endpoints_get",
+            "a3s_cloud_automation_definitions_list",
+            "a3s_cloud_automation_definitions_get",
+            "a3s_cloud_automation_revisions_get",
             "a3s_cloud_durable_cell_applications_list",
             "a3s_cloud_durable_cell_applications_get",
             "a3s_cloud_durable_cell_revisions_list",
@@ -438,8 +442,25 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_user_files_list",
             "a3s_cloud_user_files_get",
             "a3s_cloud_user_file_quota_get",
+            "a3s_cloud_knowledge_bases_list",
+            "a3s_cloud_knowledge_bases_get",
+            "a3s_cloud_knowledge_pipelines_list",
+            "a3s_cloud_knowledge_pipelines_get",
+            "a3s_cloud_knowledge_documents_list",
+            "a3s_cloud_knowledge_documents_get",
+            "a3s_cloud_knowledge_chunks_list",
+            "a3s_cloud_knowledge_chunks_get",
+            "a3s_cloud_knowledge_index_revisions_list",
+            "a3s_cloud_knowledge_index_revisions_get",
+            "a3s_cloud_knowledge_retrieval_policy_revisions_list",
+            "a3s_cloud_knowledge_retrieval_policy_revisions_get",
+            "a3s_cloud_external_knowledge_bindings_list",
+            "a3s_cloud_external_knowledge_bindings_get",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
+            "a3s_cloud_plugin_assignments_list",
+            "a3s_cloud_plugin_assignments_get",
+            "a3s_cloud_plugin_plan_projections_get",
             "a3s_cloud_plugin_catalog_search",
             "a3s_cloud_plugin_catalog_search_cached",
             "a3s_cloud_plugin_catalog_inspect",
@@ -477,7 +498,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_runs_list",
             "a3s_cloud_build_runs_get",
             "a3s_cloud_build_run_logs_get",
-            "a3s_cloud_build_evidence_get",
+            "a3s_cloud_build_evidence_get"
         ]
     );
     assert!(read_only_tools["result"]["tools"]
@@ -635,6 +656,14 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_connector_profiles_get",
             "a3s_cloud_connector_revisions_list",
             "a3s_cloud_connector_revisions_get",
+            "a3s_cloud_automation_webhook_endpoints_create",
+            "a3s_cloud_automation_webhook_endpoints_get",
+            "a3s_cloud_automation_webhook_endpoints_disable",
+            "a3s_cloud_automation_webhook_endpoints_enable",
+            "a3s_cloud_automation_webhook_endpoints_revoke",
+            "a3s_cloud_automation_definitions_list",
+            "a3s_cloud_automation_definitions_get",
+            "a3s_cloud_automation_revisions_get",
             "a3s_cloud_durable_cell_applications_create",
             "a3s_cloud_durable_cell_applications_revise",
             "a3s_cloud_durable_cell_applications_start",
@@ -741,8 +770,36 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_user_files_scan",
             "a3s_cloud_user_files_expire",
             "a3s_cloud_user_file_quota_get",
+            "a3s_cloud_knowledge_bases_create",
+            "a3s_cloud_knowledge_bases_list",
+            "a3s_cloud_knowledge_bases_get",
+            "a3s_cloud_knowledge_bases_append",
+            "a3s_cloud_knowledge_pipelines_create",
+            "a3s_cloud_knowledge_pipelines_list",
+            "a3s_cloud_knowledge_pipelines_get",
+            "a3s_cloud_knowledge_pipelines_publish",
+            "a3s_cloud_knowledge_documents_create",
+            "a3s_cloud_knowledge_documents_list",
+            "a3s_cloud_knowledge_documents_get",
+            "a3s_cloud_knowledge_chunks_create",
+            "a3s_cloud_knowledge_chunks_list",
+            "a3s_cloud_knowledge_chunks_get",
+            "a3s_cloud_knowledge_index_revisions_create",
+            "a3s_cloud_knowledge_index_revisions_list",
+            "a3s_cloud_knowledge_index_revisions_get",
+            "a3s_cloud_knowledge_retrieval_policy_revisions_create",
+            "a3s_cloud_knowledge_retrieval_policy_revisions_list",
+            "a3s_cloud_knowledge_retrieval_policy_revisions_get",
+            "a3s_cloud_external_knowledge_bindings_create",
+            "a3s_cloud_external_knowledge_bindings_list",
+            "a3s_cloud_external_knowledge_bindings_get",
             "a3s_cloud_plugin_registries_list",
             "a3s_cloud_plugin_registries_get",
+            "a3s_cloud_plugin_assignments_list",
+            "a3s_cloud_plugin_assignments_get",
+            "a3s_cloud_plugin_assignments_set",
+            "a3s_cloud_plugin_plan_projections_get",
+            "a3s_cloud_plugin_plan_projections_confirm",
             "a3s_cloud_plugin_catalog_search",
             "a3s_cloud_plugin_catalog_search_cached",
             "a3s_cloud_plugin_catalog_inspect",
@@ -793,7 +850,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_run_logs_get",
             "a3s_cloud_build_evidence_get",
             "a3s_cloud_build_runs_cancel",
-            "a3s_cloud_build_runs_retry",
+            "a3s_cloud_build_runs_retry"
         ]
     );
     let create_form = administrator_tools["result"]["tools"]
@@ -937,6 +994,44 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
     );
     assert_eq!(list_connector_profiles["annotations"]["readOnlyHint"], true);
+    let create_automation_webhook = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_automation_webhook_endpoints_create",
+    )?;
+    assert_eq!(
+        create_automation_webhook["inputSchema"]["required"],
+        json!([
+            "projectId",
+            "environmentId",
+            "endpointId",
+            "endpointKey",
+            "signingSecret",
+            "maxBodyBytes",
+            "automationId",
+            "revisionId"
+        ])
+    );
+    assert_eq!(
+        create_automation_webhook["annotations"]["readOnlyHint"],
+        false
+    );
+    assert!(
+        create_automation_webhook["inputSchema"]["properties"]
+            .get("idempotencyKey")
+            .is_none()
+    );
+    let list_automation_definitions = listed_tool(
+        &administrator_tools,
+        "a3s_cloud_automation_definitions_list",
+    )?;
+    assert_eq!(
+        list_automation_definitions["inputSchema"]["properties"]["limit"],
+        json!({"type": "integer", "minimum": 1, "maximum": 200, "default": 50})
+    );
+    assert_eq!(
+        list_automation_definitions["annotations"]["readOnlyHint"],
+        true
+    );
     let deploy_durable_cell = listed_tool(
         &administrator_tools,
         "a3s_cloud_durable_cell_deployments_create",
