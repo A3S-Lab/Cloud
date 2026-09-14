@@ -32,3 +32,7 @@ session/invocation/message state.
   status from raw messages.
 - REST/OpenAPI/client/CLI/MCP, Gateway, SSE, streaming cursor advancement, and
   public availability stay later numbered gates.
+
+## Evidence
+
+- Merge commit: 3787e1f2e077544ca1087894b0271bab0c7adc67
