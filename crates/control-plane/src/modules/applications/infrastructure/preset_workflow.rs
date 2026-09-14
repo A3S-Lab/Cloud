@@ -11,7 +11,8 @@ use crate::modules::workflow::application::{
     WorkflowDefinitionPublicationRequest, WorkflowPayloadAcl, WorkflowSemanticContractAcls,
 };
 use crate::modules::workflow::domain::{
-    CapabilityOwner, CapabilityReference, CapabilityType, WorkflowContract, WorkflowDataSchema,
+    CapabilityOwner, CapabilityReference, CapabilityType,
+    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION, WorkflowContract, WorkflowDataSchema,
     WorkflowDataType, WorkflowEdgeSpec, WorkflowPayload, WorkflowPayloadContent,
     WorkflowRevisionSemanticContracts, WorkflowSpec, WorkflowStepBindingKind,
     WorkflowStepConfiguration, WorkflowStepDescriptorAdmission, WorkflowStepDescriptorBinding,
@@ -23,7 +24,6 @@ use crate::modules::workflow::domain::{
     WorkflowVariableContract, WorkflowVariableContractSpec, WorkflowVariableDeclaration,
     WorkflowVariableMutationMode, WorkflowVariableRead, WorkflowVariableReadMode,
     WorkflowVariableScope, WorkflowVariableStorageClass,
-    WORKFLOW_VARIABLE_CONTRACT_COMPILER_SCHEMA_VERSION,
 };
 use async_trait::async_trait;
 use std::sync::Arc;
@@ -297,7 +297,7 @@ impl TargetSemantics {
                 _ => {
                     return Err(ApplicationError::Invalid(
                         "Application preset experience and target do not match".into(),
-                    ))
+                    ));
                 }
             };
         capability.validate().map_err(ApplicationError::Invalid)?;

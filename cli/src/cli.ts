@@ -119,6 +119,12 @@ Commands:
   application-invocations get APP SESSION INVOCATION Get one caller-owned invocation
   application-invocations cancel APP SESSION INVOCATION Cancel one invocation with optimistic concurrency
   application-messages list APP SESSION List ordered channel messages after an optional sequence cursor
+  application-feedbacks create APP SESSION Create session feedback from JSON --file (content-digest replay)
+  application-feedbacks list APP SESSION List session feedback for the caller project
+  application-feedbacks get APP SESSION FEEDBACK Get one session feedback by id
+  application-annotations create APP SESSION Create session annotation from JSON --file (content-digest replay)
+  application-annotations list APP SESSION List session annotations for the caller project
+  application-annotations get APP SESSION ANNOTATION Get one session annotation by id
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision
   connector-profiles create NAME Create a Connector profile from A3S ACL

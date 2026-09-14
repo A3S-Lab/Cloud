@@ -10,7 +10,7 @@ use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
     Sha256Digest, WorkflowRunId,
 };
-use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, Row, SqlQuery};
+use a3s_orm::{DecodeError, FromRow, FromValue, Row, SqlQuery, sql_query};
 use chrono::{DateTime, Utc};
 use serde_json::Value;
 use uuid::Uuid;
@@ -272,8 +272,8 @@ pub(super) fn invocation_select() -> SqlQuery<ApplicationInvocationRow> {
     sql_query(SELECT_INVOCATIONS)
 }
 
-pub(super) fn invocation_workflow_authority_select(
-) -> SqlQuery<ApplicationInvocationWorkflowAuthorityRow> {
+pub(super) fn invocation_workflow_authority_select()
+-> SqlQuery<ApplicationInvocationWorkflowAuthorityRow> {
     sql_query(SELECT_INVOCATION_WORKFLOW_AUTHORITIES)
 }
 

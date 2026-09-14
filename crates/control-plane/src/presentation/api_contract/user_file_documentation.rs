@@ -81,9 +81,9 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
         "get" if is_collection_path(path) => {
             Some("A bounded list of authorized UserFile lifecycle projections.")
         }
-        "get" if is_content_path(path) => Some(
-            "Exact admitted UserFile bytes streamed with the admission-contract media type.",
-        ),
+        "get" if is_content_path(path) => {
+            Some("Exact admitted UserFile bytes streamed with the admission-contract media type.")
+        }
         "get" if path.ends_with("/user-file-quota") => Some(
             "The organization quota limit, transactional allocation, remaining availability, revision, and update time.",
         ),

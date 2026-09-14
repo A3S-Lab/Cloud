@@ -1,4 +1,4 @@
-use crate::infrastructure::{transaction_error, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, transaction_error};
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, ApplicationEndUser, ApplicationInvocation,

@@ -1,22 +1,28 @@
 use super::tool_result;
 use crate::access_projection::application_access;
 use crate::modules::applications::presentation::{
+    ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
+    ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationMutationResponse,
     ApplicationReleaseResponse, ApplicationResponse, ApplicationSessionMutationResponse,
     ApplicationSessionReplayResponse, ApplicationSessionResponse,
 };
 use crate::modules::applications::{
-    AdmitApplicationInvocation, AdmitApplicationSession, ApplicationResponseMode,
-    CancelApplicationInvocation, CloseApplicationSession, CreateApplication, GetApplication,
-    GetApplicationInvocation, GetApplicationRelease, GetApplicationSession,
-    ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
+    AdmitApplicationInvocation, AdmitApplicationSession, ApplicationFeedbackRating,
+    ApplicationResponseMode, CancelApplicationInvocation, CloseApplicationSession,
+    CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback, GetApplication,
+    GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
+    GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
+    ListApplicationFeedbackBySession, ListApplicationReleases, ListApplications,
+    PublishApplicationRelease, ReplayApplicationSession,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    ApplicationId, ApplicationInvocationId, ApplicationReleaseId, ApplicationSessionId,
-    EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
+    ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationInvocationId,
+    ApplicationMessageId, ApplicationReleaseId, ApplicationSessionId, EnvironmentId, OntologyId,
+    OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -176,6 +182,48 @@ pub struct ListApplicationMessagesArguments {
         deserialize_with = "super::arguments::deserialize_list_limit"
     )]
     limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationFeedbackArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    rating: String,
+    #[serde(default)]
+    comment: Option<String>,
+    #[serde(default)]
+    source_message_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationFeedbackArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    feedback_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationAnnotationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    content: Value,
+    #[serde(default)]
+    source_message_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationAnnotationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    annotation_id: Uuid,
 }
 
 pub async fn create(
@@ -606,6 +654,197 @@ pub async fn replay_session(
         Ok(result) => tool_result::success(
             200,
             ApplicationSessionReplayResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_feedback(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateApplicationFeedbackArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    let rating = match ApplicationFeedbackRating::parse(&arguments.rating) {
+        Ok(rating) => rating,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id);
+        }
+    };
+    match bus
+        .execute(CreateApplicationFeedback {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            source_message_id: arguments
+                .source_message_id
+                .map(ApplicationMessageId::from_uuid),
+            rating,
+            comment: arguments.comment,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationFeedbackMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_feedback(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationFeedbackBySession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationFeedbackResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_feedback(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationFeedbackArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationFeedback {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            feedback_id: ApplicationFeedbackId::from_uuid(arguments.feedback_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(feedback) => {
+            tool_result::success(200, ApplicationFeedbackResponse::from(feedback), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_annotation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateApplicationAnnotationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateApplicationAnnotation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            source_message_id: arguments
+                .source_message_id
+                .map(ApplicationMessageId::from_uuid),
+            content: arguments.content,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationAnnotationMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_annotations(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationAnnotationsBySession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationAnnotationResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_annotation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationAnnotationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationAnnotation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            annotation_id: ApplicationAnnotationId::from_uuid(arguments.annotation_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(annotation) => tool_result::success(
+            200,
+            ApplicationAnnotationResponse::from(annotation),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

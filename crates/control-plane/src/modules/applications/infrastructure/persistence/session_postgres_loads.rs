@@ -1,4 +1,4 @@
-use crate::infrastructure::{fetch_optional, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, fetch_optional};
 use crate::modules::applications::domain::{
     ApplicationEndUser, ApplicationInvocation, ApplicationInvocationWorkflowAuthority,
     ApplicationMessage, ApplicationSession, ApplicationWorkflowEffect,
@@ -8,7 +8,7 @@ use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationSessionId, OrganizationId, ProjectId,
     WorkflowRunId,
 };
-use a3s_orm::{sql_query, PostgresTransaction};
+use a3s_orm::{PostgresTransaction, sql_query};
 use uuid::Uuid;
 
 use super::session_postgres_records::{

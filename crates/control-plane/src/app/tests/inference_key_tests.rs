@@ -116,7 +116,9 @@ async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Resu
         .ok_or_else(|| BootError::Internal("inference key response has no id".into()))?;
     let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
         .as_u64()
-        .ok_or_else(|| BootError::Internal("inference key response has no aggregateVersion".into()))?;
+        .ok_or_else(|| {
+            BootError::Internal("inference key response has no aggregateVersion".into())
+        })?;
     let bearer = created_json["data"]["bearerCredential"]
         .as_str()
         .ok_or_else(|| BootError::Internal("inference key response has no bearer".into()))?;
@@ -131,10 +133,12 @@ async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Resu
     assert_metadata_hides_secret_material(&created_json["data"]["credential"]);
 
     let listed = app
-        .call(BootRequest::new(HttpMethod::Get, &collection_path).with_header(
-            "authorization",
-            format!("Bearer {INFERENCE_KEY_READ_TOKEN}"),
-        ))
+        .call(
+            BootRequest::new(HttpMethod::Get, &collection_path).with_header(
+                "authorization",
+                format!("Bearer {INFERENCE_KEY_READ_TOKEN}"),
+            ),
+        )
         .await?;
     assert_eq!(listed.status(), 200);
     let listed_json = response_json(&listed)?;
@@ -180,7 +184,10 @@ async fn inference_key_create_revoke_is_idempotent_cas_and_secret_safe() -> Resu
     assert_no_store(&revoked);
     assert_no_store(&replayed_revoke);
     let revoked_json = response_json(&revoked)?;
-    assert_eq!(revoked_json["data"]["credential"]["state"], json!("revoked"));
+    assert_eq!(
+        revoked_json["data"]["credential"]["state"],
+        json!("revoked")
+    );
     assert!(revoked_json["data"]["credential"]["revokedAt"].is_string());
     assert_eq!(
         revoked_json["data"]["credential"]["aggregateVersion"],
@@ -403,7 +410,10 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         "inference-key-rotate-scope-write",
         "inference-key-rotate-scope-write",
         INFERENCE_KEY_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -426,7 +436,9 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         .ok_or_else(|| BootError::Internal("inference key response has no id".into()))?;
     let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
         .as_u64()
-        .ok_or_else(|| BootError::Internal("inference key response has no aggregateVersion".into()))?;
+        .ok_or_else(|| {
+            BootError::Internal("inference key response has no aggregateVersion".into())
+        })?;
     let generation = created_json["data"]["credential"]["generation"]
         .as_u64()
         .ok_or_else(|| BootError::Internal("inference key response has no generation".into()))?;
@@ -456,9 +468,11 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         .await?;
     assert_eq!(rejected.status(), 404);
     assert_response_has_no_bearer(&rejected, &[&bearer]);
-    assert!(response_json(&rejected)?["data"]
-        .get("bearerCredential")
-        .is_none());
+    assert!(
+        response_json(&rejected)?["data"]
+            .get("bearerCredential")
+            .is_none()
+    );
 
     let missing_environment = Uuid::now_v7();
     let missing_path = format!(
@@ -474,9 +488,11 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         .await?;
     assert_eq!(missing.status(), 404);
     assert_response_has_no_bearer(&missing, &[&bearer]);
-    assert!(response_json(&missing)?["data"]
-        .get("bearerCredential")
-        .is_none());
+    assert!(
+        response_json(&missing)?["data"]
+            .get("bearerCredential")
+            .is_none()
+    );
 
     let fetched = app
         .call(
@@ -493,17 +509,20 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
     assert_eq!(fetched.status(), 200);
     let fetched_json = response_json(&fetched)?;
     assert_eq!(fetched_json["data"]["state"], json!("active"));
-    assert_eq!(fetched_json["data"]["aggregateVersion"], json!(aggregate_version));
+    assert_eq!(
+        fetched_json["data"]["aggregateVersion"],
+        json!(aggregate_version)
+    );
     assert_eq!(fetched_json["data"]["generation"], json!(generation));
     assert_eq!(fetched_json["data"]["prefix"], json!(prefix));
     Ok(())
 }
 
 #[tokio::test]
-async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer(
-) -> Result<()> {
-    use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
+async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer()
+-> Result<()> {
     use crate::modules::identity::InMemoryInferenceCredentialRepository;
+    use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
     use std::time::Duration as StdDuration;
 
     let identity = Arc::new(InMemoryIdentityRepository::new());
@@ -566,7 +585,9 @@ async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_confli
         .to_owned();
     let delivery_expires_at = created_json["data"]["deliveryExpiresAt"]
         .as_str()
-        .ok_or_else(|| BootError::Internal("inference key response has no deliveryExpiresAt".into()))?;
+        .ok_or_else(|| {
+            BootError::Internal("inference key response has no deliveryExpiresAt".into())
+        })?;
     let delivery_expires_at = chrono::DateTime::parse_from_rfc3339(delivery_expires_at)
         .map_err(|error| BootError::Internal(error.to_string()))?
         .with_timezone(&Utc);
@@ -751,9 +772,12 @@ async fn inference_key_create_missing_environment_fails_closed_as_not_found() ->
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
-    let organization =
-        bootstrap_organization(&app, "inference-key-missing-env", "Inference key missing env")
-            .await?;
+    let organization = bootstrap_organization(
+        &app,
+        "inference-key-missing-env",
+        "Inference key missing env",
+    )
+    .await?;
     let project = create_project(
         &app,
         &organization,
@@ -834,7 +858,10 @@ async fn inference_key_revoke_rejects_wrong_environment_path_as_not_found() -> R
         "inference-key-revoke-scope-write",
         "inference-key-revoke-scope-write",
         INFERENCE_KEY_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -857,7 +884,9 @@ async fn inference_key_revoke_rejects_wrong_environment_path_as_not_found() -> R
         .ok_or_else(|| BootError::Internal("inference key response has no id".into()))?;
     let aggregate_version = created_json["data"]["credential"]["aggregateVersion"]
         .as_u64()
-        .ok_or_else(|| BootError::Internal("inference key response has no aggregateVersion".into()))?;
+        .ok_or_else(|| {
+            BootError::Internal("inference key response has no aggregateVersion".into())
+        })?;
 
     let wrong_path = format!(
         "/api/v1/organizations/{organization}/projects/{project}/environments/{other_environment}/inference/keys/{credential_id}/revoke"
@@ -951,8 +980,8 @@ async fn inference_key_list_rejects_missing_environment_path_as_not_found() -> R
 
 #[tokio::test]
 async fn inference_key_get_rejects_missing_owning_environment_as_not_found() -> Result<()> {
-    use crate::modules::identity::domain::entities::InferenceCredential;
     use crate::modules::identity::InMemoryInferenceCredentialRepository;
+    use crate::modules::identity::domain::entities::InferenceCredential;
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
     };
@@ -1042,9 +1071,11 @@ fn assert_valid_inference_bearer(bearer: &str, prefix: &Value) -> Result<()> {
     assert!(prefix.starts_with("a3s_inf_"));
     assert_eq!(bearer.len(), 88);
     assert!(bearer.starts_with(prefix));
-    assert!(bearer[prefix.len()..]
-        .bytes()
-        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
+    assert!(
+        bearer[prefix.len()..]
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+    );
     Ok(())
 }
 

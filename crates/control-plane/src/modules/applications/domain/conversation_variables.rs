@@ -1,7 +1,7 @@
 use super::{ApplicationRelease, ApplicationWorkflowEffect};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, canonical_timestamp, ApplicationId, ApplicationReleaseId,
-    ApplicationSessionId, ConversationVariableRevisionId, OrganizationId, ProjectId, Sha256Digest,
+    ApplicationId, ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId,
+    OrganizationId, ProjectId, Sha256Digest, canonical_json_bounded, canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

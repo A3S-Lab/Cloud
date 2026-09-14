@@ -33,9 +33,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "AcceptedPullRequestPreviewPolicyRevisionListSuccessResponse" => Some(
             "Standard success envelope containing one bounded canonical Preview Policy revision history.",
         ),
-        "PullRequestPreviewPolicyMutationSuccessResponse" => Some(
-            "Standard success envelope containing Preview Policy acceptance and replay state.",
-        ),
+        "PullRequestPreviewPolicyMutationSuccessResponse" => {
+            Some("Standard success envelope containing Preview Policy acceptance and replay state.")
+        }
         "PullRequestPreviewSuccessResponse" => Some(
             "Standard success envelope containing one current pull-request Preview projection.",
         ),

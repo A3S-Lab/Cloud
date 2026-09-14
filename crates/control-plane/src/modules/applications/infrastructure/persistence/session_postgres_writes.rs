@@ -1,10 +1,10 @@
-use crate::infrastructure::{execute, require_one_row, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, execute, require_one_row};
 use crate::modules::applications::domain::{
     ApplicationEndUser, ApplicationInvocation, ApplicationInvocationWorkflowAuthority,
     ApplicationMessage, ApplicationMessageKind, ApplicationSession, ApplicationWorkflowEffect,
     ConversationVariableRevision,
 };
-use a3s_orm::{sql_query, PostgresTransaction};
+use a3s_orm::{PostgresTransaction, sql_query};
 use uuid::Uuid;
 
 pub(super) async fn insert_end_user(

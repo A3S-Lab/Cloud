@@ -1,13 +1,13 @@
 use super::source_components::build_recipe_response_schema;
 use super::workflow_components::{digest_schema, timestamp_schema, uuid_schema};
 use crate::modules::developer_workflows::{
-    BuildPlanDetectionDiagnosticCode, BuildPlanDetectorKind, BUILD_PLAN_DETECTOR_REVISION,
-    BUILD_PLAN_MAX_ACL_BYTES, BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, BUILD_PLAN_PROPOSAL_SCHEMA,
-    BUILD_PLAN_SCHEMA, MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAX_BUILD_PLAN_DIAGNOSTICS,
-    MAX_BUILD_PLAN_PROPOSALS, MAX_SOURCE_LAYOUT_PATH_BYTES,
+    BUILD_PLAN_DETECTOR_REVISION, BUILD_PLAN_MAX_ACL_BYTES, BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES,
+    BUILD_PLAN_PROPOSAL_SCHEMA, BUILD_PLAN_SCHEMA, BuildPlanDetectionDiagnosticCode,
+    BuildPlanDetectorKind, MAX_BUILD_PLAN_DIAGNOSTICS, MAX_BUILD_PLAN_PROPOSALS,
+    MAX_SOURCE_LAYOUT_PATH_BYTES, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
 };
 use crate::modules::sources::published::BuildRecipe;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const BUILD_PLAN_PROPOSAL_ACL_EXAMPLE: &str =
     include_str!("../../../../../contracts/p0.1/build-plan.acl");

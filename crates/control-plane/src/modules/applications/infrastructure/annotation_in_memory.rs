@@ -21,6 +21,12 @@ pub struct InMemoryApplicationAnnotationRepository {
     state: Arc<RwLock<State>>,
 }
 
+impl InMemoryApplicationAnnotationRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 #[async_trait]
 impl IApplicationAnnotationRepository for InMemoryApplicationAnnotationRepository {
     async fn create_annotation(

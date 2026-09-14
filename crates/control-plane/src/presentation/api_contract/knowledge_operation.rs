@@ -11,13 +11,12 @@ use crate::modules::knowledge::{
     KNOWLEDGE_INDEX_REVISION_ITEM_ROUTE, KNOWLEDGE_PIPELINE_COLLECTION_ROUTE,
     KNOWLEDGE_PIPELINE_ITEM_ROUTE, KNOWLEDGE_PIPELINE_RELEASE_ROUTE,
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_COLLECTION_ROUTE,
-    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE, MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT,
-    MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
+    KNOWLEDGE_RETRIEVAL_POLICY_REVISION_ITEM_ROUTE, MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn is_knowledge_path(path: &str) -> bool {
     is_base_collection_path(path)
@@ -279,10 +278,10 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         }),
         ("get", 200) if is_index_revision_collection_path(path) => {
             Some("KnowledgeIndexRevisionListSuccess200")
-        },
+        }
         ("get", 200) if is_index_revision_item_path(path) => {
             Some("KnowledgeIndexRevisionSuccess200")
-        },
+        }
         ("post", 200 | 201) if is_index_revision_collection_path(path) => Some(if status == 201 {
             "KnowledgeIndexRevisionMutationSuccess201"
         } else {
@@ -290,28 +289,30 @@ pub(super) fn success_component(method: &str, path: &str, status: u16) -> Option
         }),
         ("get", 200) if is_retrieval_policy_revision_collection_path(path) => {
             Some("KnowledgeRetrievalPolicyRevisionListSuccess200")
-        },
+        }
         ("get", 200) if is_retrieval_policy_revision_item_path(path) => {
             Some("KnowledgeRetrievalPolicyRevisionSuccess200")
-        },
-        ("post", 200 | 201) if is_retrieval_policy_revision_collection_path(path) => Some(
-            if status == 201 {
+        }
+        ("post", 200 | 201) if is_retrieval_policy_revision_collection_path(path) => {
+            Some(if status == 201 {
                 "KnowledgeRetrievalPolicyRevisionMutationSuccess201"
             } else {
                 "KnowledgeRetrievalPolicyRevisionMutationSuccess200"
-            },
-        ),
+            })
+        }
         ("get", 200) if is_external_binding_collection_path(path) => {
             Some("ExternalKnowledgeBindingListSuccess200")
-        },
+        }
         ("get", 200) if is_external_binding_item_path(path) => {
             Some("ExternalKnowledgeBindingSuccess200")
-        },
-        ("post", 200 | 201) if is_external_binding_collection_path(path) => Some(if status == 201 {
-            "ExternalKnowledgeBindingMutationSuccess201"
-        } else {
-            "ExternalKnowledgeBindingMutationSuccess200"
-        }),
+        }
+        ("post", 200 | 201) if is_external_binding_collection_path(path) => {
+            Some(if status == 201 {
+                "ExternalKnowledgeBindingMutationSuccess201"
+            } else {
+                "ExternalKnowledgeBindingMutationSuccess200"
+            })
+        }
         _ => None,
     }
 }

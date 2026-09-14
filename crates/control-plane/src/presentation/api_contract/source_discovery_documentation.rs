@@ -19,18 +19,18 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "GithubDiscoveredTag" => Some(
             "Transient GitHub tag projection with exact commit identity and an explicitly null protection state.",
         ),
-        "GithubDiscoveredReference" => Some(
-            "Closed branch-or-tag discovery projection discriminated by reference kind.",
-        ),
+        "GithubDiscoveredReference" => {
+            Some("Closed branch-or-tag discovery projection discriminated by reference kind.")
+        }
         "GithubRepositoryReferenceDiscoveryPage" => Some(
             "Bounded page of one repository's branches or tags admitted by the existing Sources reference rules.",
         ),
         "GithubRepositoryDiscoveryPageSuccessResponse" => Some(
             "Standard success envelope containing a policy-filtered GitHub repository discovery page.",
         ),
-        "GithubRepositoryReferenceDiscoveryPageSuccessResponse" => Some(
-            "Standard success envelope containing a GitHub branch or tag discovery page.",
-        ),
+        "GithubRepositoryReferenceDiscoveryPageSuccessResponse" => {
+            Some("Standard success envelope containing a GitHub branch or tag discovery page.")
+        }
         _ => None,
     }
 }
@@ -65,7 +65,9 @@ pub(super) fn response_data_description(method: &str, path: &str) -> Option<&'st
             "A bounded policy-filtered repository page and opaque scope-bound continuation cursor.",
         )
     } else if method == "get" && is_reference_discovery_path(path) {
-        Some("A bounded branch or tag page for the exact canonical repository and an opaque scope-bound continuation cursor.")
+        Some(
+            "A bounded branch or tag page for the exact canonical repository and an opaque scope-bound continuation cursor.",
+        )
     } else {
         None
     }

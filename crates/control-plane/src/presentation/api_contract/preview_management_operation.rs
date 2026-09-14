@@ -1,13 +1,13 @@
 use super::developer_workflow_route::is_developer_workflow_route;
 use super::preview_management_components::accept_preview_policy_request_schema;
 use crate::modules::developer_workflows::{
-    DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
-    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, PULL_REQUEST_PREVIEW_ITEM_ROUTE,
+    DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, PULL_REQUEST_PREVIEW_ITEM_ROUTE,
     PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE, PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
     PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE,
     PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn is_preview_management_path(path: &str) -> bool {
     is_preview_policy_collection_path(path)
@@ -112,7 +112,10 @@ mod tests {
             "/organizations/{organization_id}/pull-request-preview-policies",
             "/organizations/{organization_id}/projects/{project_id}/pull-request-previews/{source_subscription_id}",
         ] {
-            assert!(!is_preview_management_path(path), "accepted foreign route {path}");
+            assert!(
+                !is_preview_management_path(path),
+                "accepted foreign route {path}"
+            );
         }
     }
 

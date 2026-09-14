@@ -4,20 +4,28 @@ import {
   type ApplicationInvocation,
   type ApplicationInvocationCancellationResult,
   type ApplicationInvocationMutationResult,
+  type ApplicationAnnotation,
+  type ApplicationAnnotationMutationResult,
+  type ApplicationFeedback,
+  type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
   type ApplicationMutationResult,
   type ApplicationRelease,
   type ApplicationSession,
   type ApplicationSessionMutationResult,
   type ApplicationSessionReplay,
+  type CreateApplicationAnnotationInput,
+  type CreateApplicationFeedbackInput,
   type CreateApplicationInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
   type OpenApplicationSessionInput,
   type PublishApplicationReleaseInput,
   type RequestApplicationInvocationInput,
+  validateApplicationAnnotationInput,
   validateApplicationDescription,
   validateApplicationExpectedVersion,
+  validateApplicationFeedbackInput,
   validateApplicationInitialVariables,
   validateApplicationInvocationInput,
   validateApplicationInvocationTimeout,
@@ -472,7 +480,7 @@ export interface CloudApiClientOptions {
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 const MAX_REQUEST_TIMEOUT_MS = 300_000;
 export const CLOUD_API_MAJOR_VERSION = 1;
-export const CLOUD_API_CONTRACT_VERSION = '1.97.0';
+export const CLOUD_API_CONTRACT_VERSION = '1.98.0';
 export const DEFAULT_CLOUD_API_BASE_PATH = `/api/v${CLOUD_API_MAJOR_VERSION}`;
 export const A3S_ACL_MEDIA_TYPE = 'application/vnd.a3s.acl';
 export const MAX_WORKFLOW_RUN_TIMEOUT_SECONDS = 2_592_000;
@@ -2895,6 +2903,105 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/messages?afterSequence=${afterSequence}&limit=${limit}`,
+      signal
+    );
+  }
+
+  createApplicationFeedback(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CreateApplicationFeedbackInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationFeedbackMutationResult> {
+    validateApplicationFeedbackInput(input);
+    return this.postQueryJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/feedbacks`,
+      {
+        rating: input.rating,
+        ...(input.comment !== undefined ? { comment: input.comment } : {}),
+        ...(input.sourceMessageId !== undefined
+          ? { sourceMessageId: input.sourceMessageId }
+          : {}),
+      },
+      signal
+    );
+  }
+
+  listApplicationFeedback(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationFeedback[]> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/feedbacks`,
+      signal
+    );
+  }
+
+  getApplicationFeedback(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    feedbackId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationFeedback> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/feedbacks/${encodeURIComponent(feedbackId)}`,
+      signal
+    );
+  }
+
+  createApplicationAnnotation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CreateApplicationAnnotationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationAnnotationMutationResult> {
+    validateApplicationAnnotationInput(input);
+    return this.postQueryJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/annotations`,
+      {
+        content: input.content,
+        ...(input.sourceMessageId !== undefined
+          ? { sourceMessageId: input.sourceMessageId }
+          : {}),
+      },
+      signal
+    );
+  }
+
+  listApplicationAnnotations(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationAnnotation[]> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/annotations`,
+      signal
+    );
+  }
+
+  getApplicationAnnotation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    annotationId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationAnnotation> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/annotations/${encodeURIComponent(annotationId)}`,
       signal
     );
   }

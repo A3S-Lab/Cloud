@@ -1,13 +1,13 @@
-use crate::infrastructure::{fetch_optional, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, fetch_optional};
 use crate::modules::applications::domain::{
-    Application, ApplicationExperience, ApplicationRecord, ApplicationRelease,
-    ApplicationWriteReference, APPLICATION_RELEASE_CONTRACT_SCHEMA,
+    APPLICATION_RELEASE_CONTRACT_SCHEMA, Application, ApplicationExperience, ApplicationRecord,
+    ApplicationRelease, ApplicationWriteReference,
 };
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId, ProjectId, RepositoryError,
     ResourceName, Sha256Digest,
 };
-use a3s_orm::{sql_query, DecodeError, FromRow, FromValue, PostgresTransaction, Row, SqlQuery};
+use a3s_orm::{DecodeError, FromRow, FromValue, PostgresTransaction, Row, SqlQuery, sql_query};
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 

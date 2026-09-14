@@ -5,10 +5,9 @@ use crate::modules::knowledge::{
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1, MAXIMUM_EXTERNAL_KNOWLEDGE_BINDING_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_BASE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_CHUNK_LIST_LIMIT,
     MAXIMUM_KNOWLEDGE_DOCUMENT_LIST_LIMIT, MAXIMUM_KNOWLEDGE_INDEX_REVISION_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT,
-    MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_KNOWLEDGE_PIPELINE_LIST_LIMIT, MAXIMUM_KNOWLEDGE_RETRIEVAL_POLICY_REVISION_LIST_LIMIT,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     ("KnowledgeBaseSuccessResponse", "KnowledgeBase"),
@@ -27,7 +26,10 @@ pub(super) const KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
         "KnowledgePipelineMutation",
     ),
     ("KnowledgeDocumentSuccessResponse", "KnowledgeDocument"),
-    ("KnowledgeDocumentListSuccessResponse", "KnowledgeDocumentList"),
+    (
+        "KnowledgeDocumentListSuccessResponse",
+        "KnowledgeDocumentList",
+    ),
     (
         "KnowledgeDocumentMutationSuccessResponse",
         "KnowledgeDocumentMutation",
@@ -240,7 +242,10 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
         ("KnowledgeChunkList", knowledge_chunk_list_schema()),
         ("KnowledgeChunkMutation", knowledge_chunk_mutation_schema()),
         ("KnowledgeIndexRevision", knowledge_index_revision_schema()),
-        ("KnowledgeIndexRevisionList", knowledge_index_revision_list_schema()),
+        (
+            "KnowledgeIndexRevisionList",
+            knowledge_index_revision_list_schema(),
+        ),
         (
             "KnowledgeIndexRevisionMutation",
             knowledge_index_revision_mutation_schema(),
@@ -257,8 +262,14 @@ pub(super) fn install_knowledge_component_schemas(schemas: &mut Map<String, Valu
             "KnowledgeRetrievalPolicyRevisionMutation",
             knowledge_retrieval_policy_revision_mutation_schema(),
         ),
-        ("ExternalKnowledgeBinding", external_knowledge_binding_schema()),
-        ("ExternalKnowledgeBindingList", external_knowledge_binding_list_schema()),
+        (
+            "ExternalKnowledgeBinding",
+            external_knowledge_binding_schema(),
+        ),
+        (
+            "ExternalKnowledgeBindingList",
+            external_knowledge_binding_list_schema(),
+        ),
         (
             "ExternalKnowledgeBindingMutation",
             external_knowledge_binding_mutation_schema(),
@@ -524,7 +535,6 @@ fn object_schema(required: &[&str], properties: Value) -> Value {
         "properties": properties
     })
 }
-
 
 fn knowledge_index_revision_schema() -> Value {
     object_schema(

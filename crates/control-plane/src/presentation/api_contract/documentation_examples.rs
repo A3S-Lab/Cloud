@@ -1,4 +1,4 @@
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 
 pub(super) fn example_from_schema(schema: &Value, field_name: Option<&str>) -> Value {

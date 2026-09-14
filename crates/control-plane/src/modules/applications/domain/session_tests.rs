@@ -116,27 +116,31 @@ fn end_users_cannot_turn_caller_controlled_identity_into_workspace_authority() {
         ApplicationAudience::ProjectMembers,
         ApplicationInteractionMode::Conversation,
     );
-    assert!(ApplicationEndUser::create(
-        ApplicationEndUserId::new(),
-        &project,
-        None,
-        project.created_by,
-        project.created_at,
-    )
-    .is_err());
+    assert!(
+        ApplicationEndUser::create(
+            ApplicationEndUserId::new(),
+            &project,
+            None,
+            project.created_by,
+            project.created_at,
+        )
+        .is_err()
+    );
 
     let anonymous = make_release(
         ApplicationAudience::Anonymous,
         ApplicationInteractionMode::Conversation,
     );
-    assert!(ApplicationEndUser::create(
-        ApplicationEndUserId::new(),
-        &anonymous,
-        Some(PrincipalId::new()),
-        anonymous.created_by,
-        anonymous.created_at,
-    )
-    .is_err());
+    assert!(
+        ApplicationEndUser::create(
+            ApplicationEndUserId::new(),
+            &anonymous,
+            Some(PrincipalId::new()),
+            anonymous.created_by,
+            anonymous.created_at,
+        )
+        .is_err()
+    );
 
     let authenticated = make_release(
         ApplicationAudience::AuthenticatedEndUsers,
@@ -196,15 +200,17 @@ fn session_and_invocation_pin_one_exact_release_and_admitted_response_mode() {
         ApplicationAudience::ProjectMembers,
         ApplicationInteractionMode::Conversation,
     );
-    assert!(ApplicationInvocation::request(
-        ApplicationInvocationId::new(),
-        &session,
-        &foreign,
-        ApplicationResponseMode::Blocking,
-        json!({"query": "hello"}),
-        release.created_at,
-    )
-    .is_err());
+    assert!(
+        ApplicationInvocation::request(
+            ApplicationInvocationId::new(),
+            &session,
+            &foreign,
+            ApplicationResponseMode::Blocking,
+            json!({"query": "hello"}),
+            release.created_at,
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -297,13 +303,15 @@ fn conversation_variable_revisions_are_optimistic_and_effect_idempotent() {
     assert_eq!(advanced.current_variable_revision_number, 2);
     assert_eq!(advanced.current_variable_digest, successor.values_digest);
     assert!(session.advance_variables(2, &successor).is_err());
-    assert!(ConversationVariableRevision::successor(
-        &initial,
-        ApplicationWorkflowEffect::new(run_id, "noop", 1, 0).expect("effect"),
-        initial.values.clone(),
-        release.created_at + Duration::seconds(1),
-    )
-    .is_err());
+    assert!(
+        ConversationVariableRevision::successor(
+            &initial,
+            ApplicationWorkflowEffect::new(run_id, "noop", 1, 0).expect("effect"),
+            initial.values.clone(),
+            release.created_at + Duration::seconds(1),
+        )
+        .is_err()
+    );
 }
 
 #[test]
@@ -372,9 +380,11 @@ fn invocation_cancellation_and_terminal_observation_preserve_flow_authority() {
         .expect("cancelled invocation");
     assert_eq!(cancelled.aggregate_version, 3);
     assert!(cancelled.status.is_terminal());
-    assert!(cancelled
-        .request_cancellation(3, cancelled.updated_at)
-        .is_err());
+    assert!(
+        cancelled
+            .request_cancellation(3, cancelled.updated_at)
+            .is_err()
+    );
 
     let run_id = WorkflowRunId::new();
     let running = requested
@@ -388,15 +398,17 @@ fn invocation_cancellation_and_terminal_observation_preserve_flow_authority() {
         )
         .expect("failed invocation");
     assert_eq!(failed.aggregate_version, 3);
-    assert!(ApplicationMessage::workflow_frame(
-        &session,
-        &failed,
-        ApplicationMessageKind::FinalOutput,
-        ApplicationWorkflowEffect::new(run_id, "output", 1, 0).expect("effect"),
-        json!({"result": "invalid"}),
-        failed.updated_at,
-    )
-    .is_err());
+    assert!(
+        ApplicationMessage::workflow_frame(
+            &session,
+            &failed,
+            ApplicationMessageKind::FinalOutput,
+            ApplicationWorkflowEffect::new(run_id, "output", 1, 0).expect("effect"),
+            json!({"result": "invalid"}),
+            failed.updated_at,
+        )
+        .is_err()
+    );
 
     let mut corrupt = failed;
     corrupt.aggregate_version = 99;

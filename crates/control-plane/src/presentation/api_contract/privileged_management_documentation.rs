@@ -1,13 +1,13 @@
 use super::privileged_management_operation::{
-    PLATFORM_ROLE_BINDINGS_PATH, PLATFORM_ROLE_BINDING_PATH, PLATFORM_ROLE_BINDING_REVOCATION_PATH,
-    PLATFORM_ROLE_BINDING_ROLE_PATH, PLATFORM_ROLE_POLICY_PATH,
-    PLATFORM_ROLE_POLICY_REVISIONS_PATH, PLATFORM_ROLE_POLICY_REVISION_PATH,
-    PRINCIPAL_PLATFORM_ROLE_BINDING_PATH, TENANT_SUPPORT_GRANTS_PATH,
-    TENANT_SUPPORT_GRANT_APPROVALS_PATH, TENANT_SUPPORT_GRANT_PATH,
-    TENANT_SUPPORT_GRANT_REVOCATION_PATH, TRUST_DOMAIN_PATH, TRUST_DOMAIN_PROVIDER_INSPECTION_PATH,
-    TRUST_DOMAIN_REVISIONS_PATH, TRUST_DOMAIN_REVISION_PATH,
-    WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH, WORKLOAD_IDENTITY_POLICY_PATH,
-    WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH, WORKLOAD_IDENTITY_POLICY_REVISION_PATH,
+    PLATFORM_ROLE_BINDING_PATH, PLATFORM_ROLE_BINDING_REVOCATION_PATH,
+    PLATFORM_ROLE_BINDING_ROLE_PATH, PLATFORM_ROLE_BINDINGS_PATH, PLATFORM_ROLE_POLICY_PATH,
+    PLATFORM_ROLE_POLICY_REVISION_PATH, PLATFORM_ROLE_POLICY_REVISIONS_PATH,
+    PRINCIPAL_PLATFORM_ROLE_BINDING_PATH, TENANT_SUPPORT_GRANT_APPROVALS_PATH,
+    TENANT_SUPPORT_GRANT_PATH, TENANT_SUPPORT_GRANT_REVOCATION_PATH, TENANT_SUPPORT_GRANTS_PATH,
+    TRUST_DOMAIN_PATH, TRUST_DOMAIN_PROVIDER_INSPECTION_PATH, TRUST_DOMAIN_REVISION_PATH,
+    TRUST_DOMAIN_REVISIONS_PATH, WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH,
+    WORKLOAD_IDENTITY_POLICY_PATH, WORKLOAD_IDENTITY_POLICY_REVISION_PATH,
+    WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH,
 };
 
 pub(super) fn component_description(name: &str) -> Option<&'static str> {
@@ -45,36 +45,36 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "TenantSupportGrant" => Some(
             "Authoritative aggregate view of one support proposal, its immutable approvals, and optional accepted lifecycle.",
         ),
-        "TenantSupportGrantProposalMutation" => Some(
-            "Tenant-support proposal result plus caller-owned idempotency replay state.",
-        ),
+        "TenantSupportGrantProposalMutation" => {
+            Some("Tenant-support proposal result plus caller-owned idempotency replay state.")
+        }
         "TenantSupportGrantApprovalOutcome" => Some(
             "Approval outcome containing the proposal, immutable approval evidence, and optionally activated grant.",
         ),
-        "TenantSupportGrantApprovalMutation" => Some(
-            "Tenant-support approval outcome plus caller-owned idempotency replay state.",
-        ),
+        "TenantSupportGrantApprovalMutation" => {
+            Some("Tenant-support approval outcome plus caller-owned idempotency replay state.")
+        }
         "TenantSupportGrantMutation" => Some(
             "Tenant-support lifecycle mutation result plus caller-owned idempotency replay state.",
         ),
         "PlatformRolePolicySuccessResponse" => Some(
             "Standard success envelope containing one immutable platform RBAC policy revision.",
         ),
-        "PlatformRolePolicyMutationSuccessResponse" => Some(
-            "Standard success envelope containing policy acceptance and replay state.",
-        ),
-        "PlatformRoleBindingSuccessResponse" => Some(
-            "Standard success envelope containing one authoritative platform role binding.",
-        ),
+        "PlatformRolePolicyMutationSuccessResponse" => {
+            Some("Standard success envelope containing policy acceptance and replay state.")
+        }
+        "PlatformRoleBindingSuccessResponse" => {
+            Some("Standard success envelope containing one authoritative platform role binding.")
+        }
         "PlatformRoleBindingMutationSuccessResponse" => Some(
             "Standard success envelope containing a platform role binding mutation and replay state.",
         ),
         "TenantSupportGrantSuccessResponse" => Some(
             "Standard success envelope containing one authoritative tenant-support grant aggregate.",
         ),
-        "TenantSupportGrantProposalMutationSuccessResponse" => Some(
-            "Standard success envelope containing a tenant-support proposal and replay state.",
-        ),
+        "TenantSupportGrantProposalMutationSuccessResponse" => {
+            Some("Standard success envelope containing a tenant-support proposal and replay state.")
+        }
         "TenantSupportGrantApprovalMutationSuccessResponse" => Some(
             "Standard success envelope containing a tenant-support approval outcome and replay state.",
         ),
@@ -84,12 +84,12 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "TrustDomainRevision" => Some(
             "One immutable Identity-owned installation TrustDomain revision with canonical A3S ACL and digest.",
         ),
-        "TrustDomainRevisionList" => Some(
-            "Bounded reverse-ordered immutable revision history for one exact TrustDomain.",
-        ),
-        "TrustDomainRevisionMutation" => Some(
-            "Accepted TrustDomain revision plus caller-owned idempotency replay state.",
-        ),
+        "TrustDomainRevisionList" => {
+            Some("Bounded reverse-ordered immutable revision history for one exact TrustDomain.")
+        }
+        "TrustDomainRevisionMutation" => {
+            Some("Accepted TrustDomain revision plus caller-owned idempotency replay state.")
+        }
         "WorkloadIdentityProviderInspection" => Some(
             "One fresh read-only inspection that separates digest-bound provider-profile declarations from bundle-endpoint observations and proves their union compatible with the exact immutable TrustDomain revision returned beside it.",
         ),
@@ -102,15 +102,15 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "WorkloadIdentityPolicyRevisionMutation" => Some(
             "Accepted Workload Identity Policy revision plus caller-owned idempotency replay state.",
         ),
-        "TrustDomainRevisionSuccessResponse" => Some(
-            "Standard success envelope containing one immutable TrustDomain revision.",
-        ),
-        "TrustDomainRevisionListSuccessResponse" => Some(
-            "Standard success envelope containing bounded TrustDomain revision history.",
-        ),
-        "TrustDomainRevisionMutationSuccessResponse" => Some(
-            "Standard success envelope containing TrustDomain acceptance and replay state.",
-        ),
+        "TrustDomainRevisionSuccessResponse" => {
+            Some("Standard success envelope containing one immutable TrustDomain revision.")
+        }
+        "TrustDomainRevisionListSuccessResponse" => {
+            Some("Standard success envelope containing bounded TrustDomain revision history.")
+        }
+        "TrustDomainRevisionMutationSuccessResponse" => {
+            Some("Standard success envelope containing TrustDomain acceptance and replay state.")
+        }
         "WorkloadIdentityProviderInspectionSuccessResponse" => Some(
             "Standard success envelope containing an exact-revision-bound workload identity provider observation.",
         ),

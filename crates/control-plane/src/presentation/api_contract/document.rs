@@ -5,8 +5,8 @@ use super::route::openapi_info;
 use super::{
     API_MAJOR_VERSION, API_PREFIX, HTTP_METHODS, MINIMUM_DEPRECATION_DAYS, OPENAPI_CONTRACT_VERSION,
 };
-use a3s_boot::{BootApplication, BootError, Result, AUTH_PUBLIC_METADATA};
-use serde_json::{json, Map, Value};
+use a3s_boot::{AUTH_PUBLIC_METADATA, BootApplication, BootError, Result};
+use serde_json::{Map, Value, json};
 use std::collections::BTreeSet;
 
 pub fn generate_openapi_contract(application: &BootApplication) -> Result<Value> {

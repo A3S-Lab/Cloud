@@ -119,12 +119,12 @@ impl ApplicationPresetWorkflowRequest {
             (ApplicationExperience::Chatflow | ApplicationExperience::Workflow, _) => {
                 return Err(
                     "Chatflow and Workflow require an exact user-authored Workflow revision".into(),
-                )
+                );
             }
             _ => {
                 return Err(
                     "Application preset experience and exact target type do not match".into(),
-                )
+                );
             }
         }
         self.target.validate()

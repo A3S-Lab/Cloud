@@ -6,6 +6,8 @@ export const MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES = 256 * 1024;
 export const MAX_APPLICATION_INVOCATION_INPUT_BYTES = 64 * 1024;
 export const DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT = 100;
 export const MAX_APPLICATION_MESSAGE_LIST_LIMIT = 500;
+export const MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS = 4_096;
+export const MAX_APPLICATION_ANNOTATION_CONTENT_BYTES = 256 * 1024;
 export const DEFAULT_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 24 * 60 * 60;
 export const MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 
@@ -207,6 +209,60 @@ export interface ApplicationMessage {
   createdAt: string;
 }
 
+export type ApplicationFeedbackRating = 'positive' | 'negative';
+
+export interface CreateApplicationFeedbackInput {
+  rating: ApplicationFeedbackRating;
+  comment?: string;
+  sourceMessageId?: string;
+}
+
+export interface ApplicationFeedback {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  sourceMessageId: string | null;
+  feedbackId: string;
+  rating: ApplicationFeedbackRating;
+  comment: string | null;
+  contentDigest: string;
+  createdAt: string;
+}
+
+export interface ApplicationFeedbackMutationResult {
+  feedback: ApplicationFeedback;
+  replayed: boolean;
+}
+
+export interface CreateApplicationAnnotationInput {
+  content: unknown;
+  sourceMessageId?: string;
+}
+
+export interface ApplicationAnnotation {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  sourceMessageId: string | null;
+  annotationId: string;
+  content: unknown;
+  contentDigest: string;
+  createdAt: string;
+}
+
+export interface ApplicationAnnotationMutationResult {
+  annotation: ApplicationAnnotation;
+  replayed: boolean;
+}
+
 export interface ApplicationConversationVariables {
   organizationId: string;
   projectId: string;
@@ -320,6 +376,38 @@ export function validateApplicationMessageList(afterSequence: number, limit: num
     throw new RangeError(
       `Application message list limit must be between 1 and ${MAX_APPLICATION_MESSAGE_LIST_LIMIT}`
     );
+  }
+}
+
+export function validateApplicationFeedbackInput(input: CreateApplicationFeedbackInput): void {
+  if (input.rating !== 'positive' && input.rating !== 'negative') {
+    throw new RangeError('Application feedback rating must be positive or negative');
+  }
+  if (input.comment !== undefined) {
+    if (
+      typeof input.comment !== 'string' ||
+      Array.from(input.comment).length > MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS ||
+      input.comment.includes('\0') ||
+      input.comment.includes('\r')
+    ) {
+      throw new RangeError(
+        `Application feedback comment must contain at most ${MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS} characters without NUL or bare carriage returns`
+      );
+    }
+  }
+  if (input.sourceMessageId !== undefined && typeof input.sourceMessageId !== 'string') {
+    throw new TypeError('Application feedback sourceMessageId must be a string');
+  }
+}
+
+export function validateApplicationAnnotationInput(input: CreateApplicationAnnotationInput): void {
+  validateApplicationObject(
+    input.content,
+    'Application annotation content',
+    MAX_APPLICATION_ANNOTATION_CONTENT_BYTES
+  );
+  if (input.sourceMessageId !== undefined && typeof input.sourceMessageId !== 'string') {
+    throw new TypeError('Application annotation sourceMessageId must be a string');
   }
 }
 

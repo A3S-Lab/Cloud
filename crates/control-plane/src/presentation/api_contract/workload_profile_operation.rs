@@ -5,7 +5,7 @@ use crate::modules::developer_workflows::{
     WORKLOAD_PROFILE_COLLECTION_ROUTE, WORKLOAD_PROFILE_ITEM_ROUTE,
     WORKLOAD_PROFILE_REVISION_COLLECTION_ROUTE, WORKLOAD_PROFILE_REVISION_ITEM_ROUTE,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn is_workload_profile_path(path: &str) -> bool {
     is_workload_profile_collection_path(path)
@@ -98,7 +98,10 @@ mod tests {
             "/organizations/{organization_id}/projects/{project_id}/workload-profiles",
             "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles/{other_id}/revisions/{revision_id}",
         ] {
-            assert!(!is_workload_profile_path(path), "accepted foreign route {path}");
+            assert!(
+                !is_workload_profile_path(path),
+                "accepted foreign route {path}"
+            );
         }
     }
 

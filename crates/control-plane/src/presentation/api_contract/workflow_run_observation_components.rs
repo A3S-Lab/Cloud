@@ -6,7 +6,7 @@ use crate::modules::workflow::{
     WORKFLOW_RUN_DIAGNOSTICS_MAX_EVIDENCE_REFERENCES, WORKFLOW_RUN_DIAGNOSTICS_SCHEMA,
     WORKFLOW_RUN_HISTORY_MAX_LIMIT, WORKFLOW_RUN_VARIABLE_INSPECTION_SCHEMA,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn install_workflow_run_observation_component_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert(

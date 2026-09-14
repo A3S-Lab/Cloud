@@ -1,14 +1,14 @@
 use crate::infrastructure::{
-    execute, require_one_row, store_audit, store_idempotency, store_outbox, AuditWrite,
-    PostgresPersistenceError,
+    AuditWrite, PostgresPersistenceError, execute, require_one_row, store_audit, store_idempotency,
+    store_outbox,
 };
 use crate::modules::applications::domain::{
-    Application, ApplicationRecord, ApplicationRelease, ApplicationWriteReference,
-    APPLICATION_RELEASE_CONTRACT_SCHEMA,
+    APPLICATION_RELEASE_CONTRACT_SCHEMA, Application, ApplicationRecord, ApplicationRelease,
+    ApplicationWriteReference,
 };
 use crate::modules::shared_kernel::domain::{IdempotencyRequest, PrincipalId, Sha256Digest};
 use a3s_cloud_contracts::DomainEventEnvelope;
-use a3s_orm::{sql_query, PostgresTransaction};
+use a3s_orm::{PostgresTransaction, sql_query};
 use uuid::Uuid;
 
 pub(super) async fn insert_application(

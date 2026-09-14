@@ -31,7 +31,7 @@ use super::user_file_documentation::{
     response_data_description as user_file_response_data_description,
 };
 use a3s_boot::{BootError, Result};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const DOCUMENTATION_URL: &str = "https://github.com/A3S-Lab/Cloud/blob/main/docs/openapi.md";
 const REPOSITORY_URL: &str = "https://github.com/A3S-Lab/Cloud";
@@ -580,16 +580,16 @@ fn operation_summary(method: &str, path: &str) -> String {
         ("get", "/health/ready") => return "Check control-plane readiness".into(),
         ("get", "/platform") => return "Get platform diagnostics".into(),
         ("get", "/organizations/{organization_id}/audit-records/export") => {
-            return "Export a signed audit page".into()
+            return "Export a signed audit page".into();
         }
         ("get", "/organizations/{organization_id}/audit-records/export/manifest") => {
-            return "Export a complete signed audit manifest".into()
+            return "Export a complete signed audit manifest".into();
         }
         ("get", "/organizations/{organization_id}/audit-records/retention") => {
-            return "Get audit retention status".into()
+            return "Get audit retention status".into();
         }
         ("get", "/organizations/{organization_id}/inference-usage/retention") => {
-            return "Get inference usage retention status".into()
+            return "Get inference usage retention status".into();
         }
         (
             "get",
@@ -609,28 +609,28 @@ fn operation_summary(method: &str, path: &str) -> String {
         ) => return "Get an inference route".into(),
         ("post", "/node-control/enroll") => return "Enroll a node".into(),
         ("post", "/organizations/{organization_id}/plugin-registries") => {
-            return "Enroll a plugin registry".into()
+            return "Enroll a plugin registry".into();
         }
         ("post", "/webhooks/github") => return "Receive a GitHub webhook".into(),
         ("get", "/organizations/{organization_id}/search") => {
-            return "Search authorized organization resources".into()
+            return "Search authorized organization resources".into();
         }
         ("get", "/organizations/{organization_id}/source-connections/github") => {
-            return "Get the GitHub source connection".into()
+            return "Get the GitHub source connection".into();
         }
         ("post", "/organizations/{organization_id}/source-connections/github") => {
-            return "Start GitHub source connection setup".into()
+            return "Start GitHub source connection setup".into();
         }
         ("get", "/source-connections/github/setup") => return "Start GitHub App setup".into(),
         ("get", "/source-connections/github/callback") => {
-            return "Complete GitHub App setup".into()
+            return "Complete GitHub App setup".into();
         }
         ("get", "/identity/oidc/{provider_key}/login") => return "Start OIDC login".into(),
         ("get", "/identity/oidc/{provider_key}/callback") => {
-            return "Complete OIDC authentication".into()
+            return "Complete OIDC authentication".into();
         }
         ("post", "/organizations/{organization_id}/identity/oidc/{provider_key}/link") => {
-            return "Start OIDC identity linking".into()
+            return "Start OIDC identity linking".into();
         }
         _ => {}
     }
@@ -919,6 +919,8 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
         ("/releases", "Publish a release"),
         ("/sessions", "Open an application session"),
         ("/invocations", "Request an application invocation"),
+        ("/feedbacks", "Create application session feedback"),
+        ("/annotations", "Create an application session annotation"),
         ("/versions", "Create a secret version"),
         ("/executions", "Start an execution"),
         ("/deployments", "Create a deployment"),
@@ -1025,6 +1027,8 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "sessions" => ("application session", "application sessions"),
         "invocations" => ("application invocation", "application invocations"),
         "messages" => ("application message", "application messages"),
+        "feedbacks" => ("application feedback", "application feedback"),
+        "annotations" => ("application annotation", "application annotations"),
         "attribution-profiles" => (
             "project attribution profile",
             "project attribution profiles",

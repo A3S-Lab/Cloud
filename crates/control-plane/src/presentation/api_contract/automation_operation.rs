@@ -1,8 +1,8 @@
-use a3s_cloud_contracts::AUTOMATION_WEBHOOK_MAX_BODY_BYTES;
 use crate::modules::automations::{
     DEFAULT_AUTOMATION_DEFINITION_LIST_LIMIT, MAXIMUM_AUTOMATION_DEFINITION_LIST_LIMIT,
 };
-use serde_json::{json, Value};
+use a3s_cloud_contracts::AUTOMATION_WEBHOOK_MAX_BODY_BYTES;
+use serde_json::{Value, json};
 
 pub(super) fn is_automation_management_path(path: &str) -> bool {
     path.contains("automation-webhook-endpoints") || path.contains("automation-definitions")

@@ -19,6 +19,12 @@ pub struct InMemoryApplicationFeedbackRepository {
     state: Arc<RwLock<State>>,
 }
 
+impl InMemoryApplicationFeedbackRepository {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
 #[async_trait]
 impl IApplicationFeedbackRepository for InMemoryApplicationFeedbackRepository {
     async fn create_feedback(

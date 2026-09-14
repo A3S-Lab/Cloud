@@ -8,9 +8,9 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_boot::BootError;
 use a3s_cloud_contracts::{
-    AgentProtocolRunIdentityV1, AgentProviderCapabilityV1, HarnessAgentReleaseBindingV1,
-    HarnessInvocationProfileV1, HarnessProviderBindingV1, HarnessWorkspaceBindingV1,
-    AGENT_PROTOCOL_V1,
+    AGENT_PROTOCOL_V1, AgentProtocolRunIdentityV1, AgentProviderCapabilityV1,
+    HarnessAgentReleaseBindingV1, HarnessInvocationProfileV1, HarnessProviderBindingV1,
+    HarnessWorkspaceBindingV1,
 };
 use async_trait::async_trait;
 use std::collections::BTreeMap;

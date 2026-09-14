@@ -3,7 +3,7 @@ use crate::modules::files::{
     USER_FILE_ADMISSION_CONTRACT_SCHEMA, USER_FILE_MAX_BYTES, USER_FILE_PUBLIC_INTEGER_MAX,
     USER_FILE_REJECTION_REASON_MAX_BYTES,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const MAXIMUM_JSON_SAFE_INTEGER: u64 = USER_FILE_PUBLIC_INTEGER_MAX;
 

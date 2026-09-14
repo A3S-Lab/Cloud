@@ -11,7 +11,7 @@ use crate::modules::workflow::{
     WORKFLOW_VARIABLE_CONTRACT_SCHEMA, WORKFLOW_VARIABLE_DEFAULTS_MAX_ACL_BYTES,
     WORKFLOW_VARIABLE_DEFAULTS_SCHEMA,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const WORKFLOW_DEFINITION_MAX_ACL_BYTES: usize = 1024 * 1024;
 pub(super) const MAXIMUM_JSON_SAFE_INTEGER: u64 = 9_007_199_254_740_991;

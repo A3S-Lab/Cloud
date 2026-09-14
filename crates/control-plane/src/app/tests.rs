@@ -15,6 +15,9 @@ use crate::modules::audit::{
     AuditAttributionStatus, AuditExportSigningError, AuditExportSigningKey, AuditRecord,
     IAuditExportSigner, InMemoryAuditRecordRepository, VerifiedAuditExportSignature,
 };
+use crate::modules::automations::{
+    InMemoryAutomationDefinitionRepository, InMemoryAutomationWebhookRepository,
+};
 use crate::modules::connectors::{
     InMemoryConnectorExecutionRepository, InMemoryConnectorProfileRepository,
 };
@@ -23,10 +26,10 @@ use crate::modules::developer_workflows::{
     InMemoryBuildPlanRepository, InMemoryPullRequestPreviewPolicyRepository,
     InMemoryPullRequestPreviewProjectionRepository, InMemoryWorkloadProfileRepository,
 };
+use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::edge::domain::repositories::{
     IMcpRoutePolicyRepository, McpRoutePolicyWrite, MutateMcpRoutePolicyWrite,
 };
-use crate::modules::edge::domain::McpRoutePolicy;
 use crate::modules::executions::{
     InMemoryExecutionRepository, InMemoryExecutionTemplateRepository,
 };
@@ -49,12 +52,9 @@ use crate::modules::identity::domain::value_objects::{
 use crate::modules::identity::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort, InMemoryIdentityRepository,
 };
-use crate::modules::automations::{
-    InMemoryAutomationDefinitionRepository, InMemoryAutomationWebhookRepository,
-};
 use crate::modules::knowledge::{
-    InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
-    InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeDocumentRepository,
+    InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeBaseRepository,
+    InMemoryKnowledgeChunkRepository, InMemoryKnowledgeDocumentRepository,
     InMemoryKnowledgeIndexRevisionRepository, InMemoryKnowledgePipelineRepository,
     InMemoryKnowledgeRetrievalPolicyRevisionRepository,
 };
@@ -107,15 +107,15 @@ use a3s_flow::FlowEngine;
 use a3s_runtime::contract::RuntimeCapabilities;
 use a3s_use_core::PluginReleaseChannel;
 use a3s_use_extension::{
-    PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage, PluginCatalogSearch,
-    VerifiedRegistryMetadata, MAX_BOOTSTRAP_ROOT_BYTES,
+    MAX_BOOTSTRAP_ROOT_BYTES, PluginCatalogHost, PluginCatalogInspection, PluginCatalogPage,
+    PluginCatalogSearch, VerifiedRegistryMetadata,
 };
 use async_trait::async_trait;
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use base64::Engine as _;
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD};
 use chrono::{DateTime, Utc};
 use ring::signature::{Ed25519KeyPair, KeyPair};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -2333,6 +2333,12 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             application_sessions: Arc::new(
                 crate::modules::applications::InMemoryApplicationSessionRepository::new(),
             ),
+            application_feedbacks: Arc::new(
+                crate::modules::applications::InMemoryApplicationFeedbackRepository::new(),
+            ),
+            application_annotations: Arc::new(
+                crate::modules::applications::InMemoryApplicationAnnotationRepository::new(),
+            ),
             developer_workflow_build_plans: Arc::new(InMemoryBuildPlanRepository::new()),
             developer_workload_profiles: Arc::new(InMemoryWorkloadProfileRepository::new()),
             developer_preview_policies: Arc::new(InMemoryPullRequestPreviewPolicyRepository::new()),
@@ -2623,8 +2629,8 @@ fn runtime_capabilities() -> Value {
 }
 
 #[tokio::test]
-async fn privileged_management_routes_exist_and_fail_closed_without_postgres_authority(
-) -> Result<()> {
+async fn privileged_management_routes_exist_and_fail_closed_without_postgres_authority()
+-> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -2657,8 +2663,10 @@ async fn privileged_management_routes_exist_and_fail_closed_without_postgres_aut
     ] {
         let response = app.call(request).await?;
         assert_eq!(response.status(), 403);
-        assert!(String::from_utf8_lossy(response.body())
-            .contains("privileged management requires the PostgreSQL Identity authority"));
+        assert!(
+            String::from_utf8_lossy(response.body())
+                .contains("privileged management requires the PostgreSQL Identity authority")
+        );
     }
     Ok(())
 }
@@ -3513,12 +3521,8 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
     assert_eq!(visible_projects[0]["id"], granted_project_id.to_string());
 
     for path in [
-        format!(
-            "/api/v1/organizations/{organization}/workloads/{granted_workload_id}"
-        ),
-        format!(
-            "/api/v1/organizations/{organization}/deployments/{granted_deployment_id}"
-        ),
+        format!("/api/v1/organizations/{organization}/workloads/{granted_workload_id}"),
+        format!("/api/v1/organizations/{organization}/deployments/{granted_deployment_id}"),
         format!(
             "/api/v1/organizations/{organization}/workloads/{granted_workload_id}/revisions/{granted_revision_id}/logs?limit=1"
         ),
@@ -3529,18 +3533,14 @@ async fn memberships_are_idempotent_role_authorized_and_revoke_tokens_immediatel
 
     for (denied_path, missing_path) in [
         (
-            format!(
-                "/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}"
-            ),
+            format!("/api/v1/organizations/{organization}/workloads/{ungranted_workload_id}"),
             format!(
                 "/api/v1/organizations/{organization}/workloads/{}",
                 Uuid::now_v7()
             ),
         ),
         (
-            format!(
-                "/api/v1/organizations/{organization}/deployments/{ungranted_deployment_id}"
-            ),
+            format!("/api/v1/organizations/{organization}/deployments/{ungranted_deployment_id}"),
             format!(
                 "/api/v1/organizations/{organization}/deployments/{}",
                 Uuid::now_v7()

@@ -4,10 +4,10 @@ mod commands;
 mod delivery_access;
 mod delivery_commands;
 mod delivery_credential_commands;
-mod feedback_annotation_commands;
 mod delivery_identity;
 mod delivery_queries;
 mod environment_access;
+mod feedback_annotation_commands;
 mod invocation_commands;
 mod invocation_composition;
 mod ontology_revision_port;
@@ -45,14 +45,6 @@ pub use delivery_credential_commands::{
     RegisterApplicationDeliveryCredentialHandler, RevokeApplicationDeliveryCredential,
     RevokeApplicationDeliveryCredentialHandler,
 };
-pub use feedback_annotation_commands::{
-    ApplicationAnnotationMutationResult, ApplicationFeedbackMutationResult,
-    CreateApplicationAnnotation, CreateApplicationAnnotationHandler,
-    CreateApplicationFeedback, CreateApplicationFeedbackHandler, GetApplicationAnnotation,
-    GetApplicationAnnotationHandler, GetApplicationFeedback, GetApplicationFeedbackHandler,
-    ListApplicationAnnotationsBySession, ListApplicationAnnotationsBySessionHandler,
-    ListApplicationFeedbackBySession, ListApplicationFeedbackBySessionHandler,
-};
 pub use delivery_queries::{
     DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, GetApplicationInvocation,
     GetApplicationInvocationHandler, GetApplicationSession, GetApplicationSessionHandler,
@@ -60,6 +52,14 @@ pub use delivery_queries::{
     ReplayApplicationSession, ReplayApplicationSessionHandler, ReplayApplicationSessionResult,
 };
 pub use environment_access::{ApplicationsEnvironmentScope, IApplicationsEnvironmentAccess};
+pub use feedback_annotation_commands::{
+    ApplicationAnnotationMutationResult, ApplicationFeedbackMutationResult,
+    CreateApplicationAnnotation, CreateApplicationAnnotationHandler, CreateApplicationFeedback,
+    CreateApplicationFeedbackHandler, GetApplicationAnnotation, GetApplicationAnnotationHandler,
+    GetApplicationFeedback, GetApplicationFeedbackHandler, ListApplicationAnnotationsBySession,
+    ListApplicationAnnotationsBySessionHandler, ListApplicationFeedbackBySession,
+    ListApplicationFeedbackBySessionHandler,
+};
 pub use invocation_commands::{
     AdmitApplicationInvocation, AdmitApplicationInvocationHandler,
     ApplicationInvocationMutationResult,
@@ -108,9 +108,9 @@ mod anonymous_invocation_tests;
 #[cfg(test)]
 mod delivery_credential_tests;
 #[cfg(test)]
-mod feedback_annotation_tests;
-#[cfg(test)]
 mod delivery_tests;
+#[cfg(test)]
+mod feedback_annotation_tests;
 #[cfg(test)]
 mod invocation_composition_tests;
 #[cfg(test)]

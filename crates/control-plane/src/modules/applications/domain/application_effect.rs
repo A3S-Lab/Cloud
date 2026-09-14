@@ -1,4 +1,4 @@
-use crate::modules::shared_kernel::domain::{canonical_json_bounded, WorkflowRunId};
+use crate::modules::shared_kernel::domain::{WorkflowRunId, canonical_json_bounded};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 

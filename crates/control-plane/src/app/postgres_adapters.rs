@@ -1,6 +1,8 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
 use crate::modules::applications::{
-    IApplicationRepository, IApplicationSessionRepository, PostgresApplicationRepository,
+    IApplicationAnnotationRepository, IApplicationFeedbackRepository, IApplicationRepository,
+    IApplicationSessionRepository, PostgresApplicationAnnotationRepository,
+    PostgresApplicationFeedbackRepository, PostgresApplicationRepository,
     PostgresApplicationSessionRepository,
 };
 use crate::modules::artifacts::{
@@ -41,12 +43,12 @@ use crate::modules::executions::{
     PostgresExecutionTemplateRepository,
 };
 use crate::modules::files::{IUserFileRepository, PostgresUserFileRepository};
+use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::fleet::domain::repositories::{
     ILogRetentionRepository, INodeAvailabilityRepository, INodeControlRepository,
     INodeDrainRepository, INodePoolRepository, INodeProtocolSessionRepository, INodeRepository,
     INodeSchedulingRepository,
 };
-use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::forms::{IFormRepository, PostgresFormRepository};
 use crate::modules::identity::domain::repositories::{
     IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
@@ -62,20 +64,19 @@ use crate::modules::identity::{
     InferenceCredentialAclProjectionAdapter, PostgresIdentityRepository,
 };
 use crate::modules::inference::{
-    postgres_inference_worker_acl_projections, IInferenceRouteAclProjectionPort,
-    IInferenceRouteRepository, IInferenceUsageRepository, IInferenceWorkerAclProjectionPort,
-    InferenceRouteAclProjectionAdapter, PostgresInferenceRouteRepository,
-    PostgresInferenceUsageRepository,
+    IInferenceRouteAclProjectionPort, IInferenceRouteRepository, IInferenceUsageRepository,
+    IInferenceWorkerAclProjectionPort, InferenceRouteAclProjectionAdapter,
+    PostgresInferenceRouteRepository, PostgresInferenceUsageRepository,
+    postgres_inference_worker_acl_projections,
 };
 use crate::modules::integration_events::{IOutboxRepository, PostgresOutboxRepository};
 use crate::modules::knowledge::{
     IExternalKnowledgeBindingRepository, IKnowledgeBaseRepository, IKnowledgeChunkRepository,
-    IKnowledgeDocumentRepository, IKnowledgeIndexRevisionRepository,
-    IKnowledgePipelineRepository, IKnowledgeRetrievalPolicyRevisionRepository,
-    PostgresExternalKnowledgeBindingRepository, PostgresKnowledgeBaseRepository,
-    PostgresKnowledgeChunkRepository, PostgresKnowledgeDocumentRepository,
-    PostgresKnowledgeIndexRevisionRepository, PostgresKnowledgePipelineRepository,
-    PostgresKnowledgeRetrievalPolicyRevisionRepository,
+    IKnowledgeDocumentRepository, IKnowledgeIndexRevisionRepository, IKnowledgePipelineRepository,
+    IKnowledgeRetrievalPolicyRevisionRepository, PostgresExternalKnowledgeBindingRepository,
+    PostgresKnowledgeBaseRepository, PostgresKnowledgeChunkRepository,
+    PostgresKnowledgeDocumentRepository, PostgresKnowledgeIndexRevisionRepository,
+    PostgresKnowledgePipelineRepository, PostgresKnowledgeRetrievalPolicyRevisionRepository,
 };
 use crate::modules::notifications::{
     INotificationAlertPolicyRepository, INotificationRepository,
@@ -90,12 +91,12 @@ use crate::modules::plugins::{
     PostgresPluginAssignmentRepository, PostgresPluginPlanProjectionRepository,
     PostgresPluginRegistryRepository,
 };
-use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
 use crate::modules::projects::PostgresProjectsRepository;
-use crate::modules::search::{search_persistence_adapter, ISearchRepository};
+use crate::modules::projects::domain::repositories::{IEnvironmentRepository, IProjectRepository};
+use crate::modules::search::{ISearchRepository, search_persistence_adapter};
 use crate::modules::secrets::{ISecretRepository, PostgresSecretRepository};
 use crate::modules::security::{
-    security_persistence_adapter, IGatewayRoutePolicyTimelineRepository,
+    IGatewayRoutePolicyTimelineRepository, security_persistence_adapter,
 };
 use crate::modules::sources::domain::{
     IGithubConnectionRepository, ISourceRevisionRepository, ISourceSubscriptionRepository,
@@ -192,6 +193,12 @@ impl PostgresAdapterFactory {
             )),
             applications: Arc::new(PostgresApplicationRepository::new(self.executor.clone())),
             application_sessions: Arc::new(PostgresApplicationSessionRepository::new(
+                self.executor.clone(),
+            )),
+            application_feedbacks: Arc::new(PostgresApplicationFeedbackRepository::new(
+                self.executor.clone(),
+            )),
+            application_annotations: Arc::new(PostgresApplicationAnnotationRepository::new(
                 self.executor.clone(),
             )),
             durable_cell_applications: Arc::new(PostgresDurableCellApplicationRepository::new(
@@ -308,6 +315,8 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) connector_profiles: Arc<dyn IConnectorProfileRepository>,
     pub(super) applications: Arc<dyn IApplicationRepository>,
     pub(super) application_sessions: Arc<dyn IApplicationSessionRepository>,
+    pub(super) application_feedbacks: Arc<dyn IApplicationFeedbackRepository>,
+    pub(super) application_annotations: Arc<dyn IApplicationAnnotationRepository>,
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     pub(super) operations: Arc<dyn IOperationRepository>,

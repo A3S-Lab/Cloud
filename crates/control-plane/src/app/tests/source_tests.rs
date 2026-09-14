@@ -160,11 +160,13 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     }
     let persisted = connections.flows().await;
     assert!(!persisted[0].state_digest.contains(&oauth_state));
-    assert!(!persisted[0]
-        .pkce_verifier_digest
-        .as_deref()
-        .unwrap_or_default()
-        .contains(&pkce_verifier));
+    assert!(
+        !persisted[0]
+            .pkce_verifier_digest
+            .as_deref()
+            .unwrap_or_default()
+            .contains(&pkce_verifier)
+    );
 
     let setup_replay = app
         .call(BootRequest::new(
@@ -236,10 +238,12 @@ async fn github_installation_connection_is_tenant_scoped_user_verified_and_secre
     let response_text = String::from_utf8_lossy(connected.body());
     assert!(!response_text.contains("valid-code"));
     assert!(!response_text.contains(&pkce_verifier));
-    assert!(connected
-        .header_values("set-cookie")
-        .iter()
-        .any(|value| value.contains("Max-Age=0")));
+    assert!(
+        connected
+            .header_values("set-cookie")
+            .iter()
+            .any(|value| value.contains("Max-Age=0"))
+    );
     assert_eq!(
         connections
             .outbox_events()

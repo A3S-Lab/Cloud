@@ -1,10 +1,10 @@
 use super::*;
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{DomainClaim, DomainNamePattern, GatewayScope};
-use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayScopeId, IdempotencyRequest, NodeId,
@@ -594,10 +594,12 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
         ))
         .await?;
     assert_eq!(listed_after_retire.status(), 200);
-    assert!(response_json(&listed_after_retire)?["data"]["items"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert!(
+        response_json(&listed_after_retire)?["data"]["items"]
+            .as_array()
+            .unwrap()
+            .is_empty()
+    );
 
     let fetched_retired = app
         .call(BootRequest::new(HttpMethod::Get, &route_path).with_header(
@@ -843,7 +845,10 @@ async fn inference_route_revise_rejects_stale_grant_credential_generation() -> R
         "inference-route-revise-grant-write-token",
         "inference-route-revise-grant-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -968,7 +973,10 @@ async fn inference_route_revise_rejects_unverified_edge_binding() -> Result<()> 
         "inference-route-revise-binding-write-token",
         "inference-route-revise-binding-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1284,7 +1292,10 @@ async fn inference_route_retire_rejects_wrong_environment_path_as_not_found() ->
         "inference-route-retire-scope-write-token",
         "inference-route-retire-scope-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1371,7 +1382,10 @@ async fn inference_route_retire_rejects_wrong_environment_path_as_not_found() ->
         .await?;
     assert_eq!(fetched.status(), 200);
     let fetched_json = response_json(&fetched)?;
-    assert_eq!(fetched_json["data"]["aggregateVersion"], json!(aggregate_version));
+    assert_eq!(
+        fetched_json["data"]["aggregateVersion"],
+        json!(aggregate_version)
+    );
     assert!(fetched_json["data"]["retiredAt"].is_null());
     Ok(())
 }
@@ -1417,7 +1431,10 @@ async fn inference_route_revise_rejects_wrong_environment_path_as_not_found() ->
         "inference-route-revise-scope-write-token",
         "inference-route-revise-scope-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1526,8 +1543,14 @@ async fn inference_route_revise_rejects_wrong_environment_path_as_not_found() ->
         .await?;
     assert_eq!(fetched.status(), 200);
     let fetched_json = response_json(&fetched)?;
-    assert_eq!(fetched_json["data"]["aggregateVersion"], json!(aggregate_version));
-    assert_eq!(fetched_json["data"]["policyRevision"], json!(policy_revision));
+    assert_eq!(
+        fetched_json["data"]["aggregateVersion"],
+        json!(aggregate_version)
+    );
+    assert_eq!(
+        fetched_json["data"]["policyRevision"],
+        json!(policy_revision)
+    );
     Ok(())
 }
 
@@ -1564,7 +1587,10 @@ async fn inference_route_publish_rejects_missing_environment_path_as_not_found()
         "inference-route-publish-missing-env-write",
         "inference-route-publish-missing-env-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1669,7 +1695,10 @@ async fn inference_route_get_rejects_wrong_environment_path_as_not_found() -> Re
         "inference-route-get-scope-write-token",
         "inference-route-get-scope-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1762,7 +1791,10 @@ async fn inference_route_list_rejects_missing_environment_path_as_not_found() ->
         "inference-route-list-missing-env-write",
         "inference-route-list-missing-env-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;
@@ -1813,7 +1845,10 @@ async fn inference_route_get_rejects_missing_environment_path_as_not_found() -> 
         "inference-route-get-missing-env-write",
         "inference-route-get-missing-env-write",
         INFERENCE_ROUTE_WRITE_TOKEN,
-        &[ApiTokenScope::INFERENCE_WRITE, ApiTokenScope::INFERENCE_READ],
+        &[
+            ApiTokenScope::INFERENCE_WRITE,
+            ApiTokenScope::INFERENCE_READ,
+        ],
         None,
     )
     .await?;

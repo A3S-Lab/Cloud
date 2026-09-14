@@ -18,8 +18,8 @@ const APPLICATION_ONTOLOGY_ACL: &str = include_str!(concat!(
 ));
 
 #[tokio::test]
-async fn applications_are_release_versioned_across_rest_client_contract_and_management_mcp(
-) -> Result<()> {
+async fn applications_are_release_versioned_across_rest_client_contract_and_management_mcp()
+-> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;

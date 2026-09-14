@@ -1,6 +1,7 @@
 use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMUM_LOG_LIMIT};
 use crate::modules::applications::{
-    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
+    APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
     DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
     MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
@@ -16,8 +17,8 @@ use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
     DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
-    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
-    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
+    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
     PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
@@ -32,8 +33,8 @@ use crate::modules::files::{
     DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
     USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES, USER_FILE_REJECTION_REASON_MAX_BYTES,
 };
-use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::identity::domain::repositories::{
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
@@ -76,7 +77,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
 pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
@@ -118,6 +119,12 @@ pub const APPLICATION_INVOCATIONS_REQUEST: &str = "a3s_cloud_application_invocat
 pub const APPLICATION_INVOCATIONS_GET: &str = "a3s_cloud_application_invocations_get";
 pub const APPLICATION_INVOCATIONS_CANCEL: &str = "a3s_cloud_application_invocations_cancel";
 pub const APPLICATION_MESSAGES_LIST: &str = "a3s_cloud_application_messages_list";
+pub const APPLICATION_FEEDBACKS_CREATE: &str = "a3s_cloud_application_feedbacks_create";
+pub const APPLICATION_FEEDBACKS_LIST: &str = "a3s_cloud_application_feedbacks_list";
+pub const APPLICATION_FEEDBACKS_GET: &str = "a3s_cloud_application_feedbacks_get";
+pub const APPLICATION_ANNOTATIONS_CREATE: &str = "a3s_cloud_application_annotations_create";
+pub const APPLICATION_ANNOTATIONS_LIST: &str = "a3s_cloud_application_annotations_list";
+pub const APPLICATION_ANNOTATIONS_GET: &str = "a3s_cloud_application_annotations_get";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -337,6 +344,12 @@ pub enum ManagementTool {
     ApplicationInvocationsGet,
     ApplicationInvocationsCancel,
     ApplicationMessagesList,
+    ApplicationFeedbacksCreate,
+    ApplicationFeedbacksList,
+    ApplicationFeedbacksGet,
+    ApplicationAnnotationsCreate,
+    ApplicationAnnotationsList,
+    ApplicationAnnotationsGet,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -556,7 +569,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 217] = [
+    const ALL: [Self; 223] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -573,6 +586,12 @@ impl ManagementTool {
         Self::ApplicationInvocationsGet,
         Self::ApplicationInvocationsCancel,
         Self::ApplicationMessagesList,
+        Self::ApplicationFeedbacksCreate,
+        Self::ApplicationFeedbacksList,
+        Self::ApplicationFeedbacksGet,
+        Self::ApplicationAnnotationsCreate,
+        Self::ApplicationAnnotationsList,
+        Self::ApplicationAnnotationsGet,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -817,6 +836,12 @@ impl ManagementTool {
             Self::ApplicationInvocationsGet => APPLICATION_INVOCATIONS_GET,
             Self::ApplicationInvocationsCancel => APPLICATION_INVOCATIONS_CANCEL,
             Self::ApplicationMessagesList => APPLICATION_MESSAGES_LIST,
+            Self::ApplicationFeedbacksCreate => APPLICATION_FEEDBACKS_CREATE,
+            Self::ApplicationFeedbacksList => APPLICATION_FEEDBACKS_LIST,
+            Self::ApplicationFeedbacksGet => APPLICATION_FEEDBACKS_GET,
+            Self::ApplicationAnnotationsCreate => APPLICATION_ANNOTATIONS_CREATE,
+            Self::ApplicationAnnotationsList => APPLICATION_ANNOTATIONS_LIST,
+            Self::ApplicationAnnotationsGet => APPLICATION_ANNOTATIONS_GET,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -959,7 +984,9 @@ impl ManagementTool {
             Self::KnowledgeRetrievalPolicyRevisionsCreate => {
                 KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_CREATE
             }
-            Self::KnowledgeRetrievalPolicyRevisionsList => KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_LIST,
+            Self::KnowledgeRetrievalPolicyRevisionsList => {
+                KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_LIST
+            }
             Self::KnowledgeRetrievalPolicyRevisionsGet => KNOWLEDGE_RETRIEVAL_POLICY_REVISIONS_GET,
             Self::ExternalKnowledgeBindingsCreate => EXTERNAL_KNOWLEDGE_BINDINGS_CREATE,
             Self::ExternalKnowledgeBindingsList => EXTERNAL_KNOWLEDGE_BINDINGS_LIST,
@@ -1045,7 +1072,13 @@ impl ManagementTool {
             | Self::ApplicationInvocationsRequest
             | Self::ApplicationInvocationsGet
             | Self::ApplicationInvocationsCancel
-            | Self::ApplicationMessagesList => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationMessagesList
+            | Self::ApplicationFeedbacksCreate
+            | Self::ApplicationFeedbacksList
+            | Self::ApplicationFeedbacksGet
+            | Self::ApplicationAnnotationsCreate
+            | Self::ApplicationAnnotationsList
+            | Self::ApplicationAnnotationsGet => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1358,7 +1391,9 @@ impl ManagementTool {
             | Self::KnowledgeRetrievalPolicyRevisionsGet
             | Self::ExternalKnowledgeBindingsCreate
             | Self::ExternalKnowledgeBindingsList
-            | Self::ExternalKnowledgeBindingsGet => Some(ManagementResourceBinding::ProjectArgument),
+            | Self::ExternalKnowledgeBindingsGet => {
+                Some(ManagementResourceBinding::ProjectArgument)
+            }
             Self::ConnectorProfilesCreate
             | Self::ConnectorProfilesRevise
             | Self::ConnectorProfilesList
@@ -1413,6 +1448,12 @@ impl ManagementTool {
             | Self::ApplicationInvocationsGet
             | Self::ApplicationInvocationsCancel
             | Self::ApplicationMessagesList
+            | Self::ApplicationFeedbacksCreate
+            | Self::ApplicationFeedbacksList
+            | Self::ApplicationFeedbacksGet
+            | Self::ApplicationAnnotationsCreate
+            | Self::ApplicationAnnotationsList
+            | Self::ApplicationAnnotationsGet
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1605,6 +1646,42 @@ impl ManagementTool {
                 "List Application messages",
                 "List bounded ordered channel messages after one session sequence.",
                 list_application_messages_schema(),
+                true,
+            ),
+            Self::ApplicationFeedbacksCreate => (
+                "Create Application feedback",
+                "Create or replay one immutable Application feedback record for an active session.",
+                create_application_feedback_schema(),
+                false,
+            ),
+            Self::ApplicationFeedbacksList => (
+                "List Application feedback",
+                "List Application feedback records for one session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationFeedbacksGet => (
+                "Get Application feedback",
+                "Get one Application feedback record by session and feedback identity.",
+                application_feedback_schema(),
+                true,
+            ),
+            Self::ApplicationAnnotationsCreate => (
+                "Create Application annotation",
+                "Create or replay one immutable Application annotation for an active session.",
+                create_application_annotation_schema(),
+                false,
+            ),
+            Self::ApplicationAnnotationsList => (
+                "List Application annotations",
+                "List Application annotations for one session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationAnnotationsGet => (
+                "Get Application annotation",
+                "Get one Application annotation by session and annotation identity.",
+                application_annotation_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -4166,6 +4243,68 @@ fn list_application_messages_schema() -> Value {
     })
 }
 
+fn create_application_feedback_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "rating": {"type": "string", "enum": ["positive", "negative"]},
+            "comment": {"type": "string", "maxLength": APPLICATION_FEEDBACK_COMMENT_MAX_CHARS},
+            "sourceMessageId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "rating"],
+        "additionalProperties": false
+    })
+}
+
+fn application_feedback_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "feedbackId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "feedbackId"],
+        "additionalProperties": false
+    })
+}
+
+fn create_application_annotation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "content": {
+                "type": "object",
+                "x-a3s-max-canonical-bytes": APPLICATION_ANNOTATION_CONTENT_MAX_BYTES
+            },
+            "sourceMessageId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "content"],
+        "additionalProperties": false
+    })
+}
+
+fn application_annotation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "annotationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "annotationId"],
+        "additionalProperties": false
+    })
+}
+
 fn create_connector_profile_schema() -> Value {
     json!({
         "type": "object",
@@ -4366,7 +4505,6 @@ fn automation_revision_schema() -> Value {
         "additionalProperties": false
     })
 }
-
 
 fn create_durable_cell_application_schema() -> Value {
     json!({
@@ -5427,7 +5565,6 @@ fn list_knowledge_chunks_schema() -> Value {
     })
 }
 
-
 fn create_knowledge_index_revision_schema() -> Value {
     json!({
         "type": "object",
@@ -5512,7 +5649,6 @@ fn list_external_knowledge_bindings_schema() -> Value {
         "additionalProperties": false
     })
 }
-
 
 fn create_knowledge_retrieval_policy_revision_schema() -> Value {
     json!({
@@ -5835,17 +5971,19 @@ mod tests {
             policy_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
         );
-        assert!(policy_acceptance["inputSchema"]["properties"]
-            .get("organizationId")
-            .is_none());
+        assert!(
+            policy_acceptance["inputSchema"]["properties"]
+                .get("organizationId")
+                .is_none()
+        );
         let support_proposal = ManagementTool::TenantSupportGrantsPropose.definition();
         assert_eq!(
             support_proposal["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
         );
         assert_eq!(
-            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]
-                ["expectedContractDigest"]["pattern"],
+            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]["expectedContractDigest"]
+                ["pattern"],
             "^sha256:[0-9a-f]{64}$"
         );
         let trust_acceptance = ManagementTool::TrustDomainRevisionsAccept.definition();
@@ -5861,8 +5999,7 @@ mod tests {
         let workload_acceptance =
             ManagementTool::WorkloadIdentityPolicyRevisionsAccept.definition();
         assert_eq!(
-            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]
-                ["x-a3s-max-utf8-bytes"],
+            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
         );
         for tool in [

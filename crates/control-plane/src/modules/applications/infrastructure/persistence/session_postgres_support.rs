@@ -1,5 +1,5 @@
 use crate::infrastructure::{
-    is_foreign_key_violation, is_unique_violation, PostgresPersistenceError,
+    PostgresPersistenceError, is_foreign_key_violation, is_unique_violation,
 };
 use crate::modules::applications::domain::{
     ApplicationWorkflowEffect, OpenApplicationSessionWrite,

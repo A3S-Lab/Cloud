@@ -198,12 +198,16 @@ async fn oidc_link_and_login_are_cookie_bound_replay_safe_and_secretless() -> Re
     let scopes = login_body["data"]["token"]["scopes"]
         .as_array()
         .ok_or_else(|| BootError::Internal("OIDC token response has no scopes".into()))?;
-    assert!(scopes
-        .iter()
-        .any(|scope| scope == ApiTokenScope::CLOUD_READ));
-    assert!(!scopes
-        .iter()
-        .any(|scope| scope == ApiTokenScope::TOKEN_WRITE));
+    assert!(
+        scopes
+            .iter()
+            .any(|scope| scope == ApiTokenScope::CLOUD_READ)
+    );
+    assert!(
+        !scopes
+            .iter()
+            .any(|scope| scope == ApiTokenScope::TOKEN_WRITE)
+    );
     let credential = login_body["data"]["credential"]
         .as_str()
         .ok_or_else(|| BootError::Internal("OIDC login response has no credential".into()))?;

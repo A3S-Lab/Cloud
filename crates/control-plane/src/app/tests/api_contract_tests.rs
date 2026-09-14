@@ -487,8 +487,8 @@ fn user_file_contract_is_acl_first_metadata_only_and_bound_to_one_lifecycle_proj
         "#/components/responses/UserFileContentSuccess200"
     );
     assert_eq!(
-        document["components"]["responses"]["UserFileContentSuccess200"]["content"]
-            ["application/octet-stream"]["schema"]["format"],
+        document["components"]["responses"]["UserFileContentSuccess200"]["content"]["application/octet-stream"]
+            ["schema"]["format"],
         "binary"
     );
     assert_eq!(

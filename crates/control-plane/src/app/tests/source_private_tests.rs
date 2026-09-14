@@ -1,6 +1,6 @@
 use super::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 const COMMIT: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const PRIVATE_SOURCE_TOKEN: &str = "fixture-private-source-installation-token";
@@ -100,8 +100,8 @@ impl IGithubInstallationTokenService for TestGithubInstallationTokens {
 }
 
 #[tokio::test]
-async fn private_source_uses_verified_installation_authority_without_persisting_the_token(
-) -> Result<()> {
+async fn private_source_uses_verified_installation_authority_without_persisting_the_token()
+-> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let sources = Arc::new(InMemorySourceRevisionRepository::new());

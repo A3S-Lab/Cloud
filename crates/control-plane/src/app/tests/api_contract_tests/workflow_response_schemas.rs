@@ -39,8 +39,7 @@ fn workflow_definition_and_revision_responses_are_closed_and_typed() -> Result<(
         ])
     );
 
-    let definition_collection = &document["paths"]
-        ["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
+    let definition_collection = &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-definitions"];
     assert_eq!(
         definition_collection["get"]["responses"]["200"]["$ref"],
         "#/components/responses/WorkflowDefinitionListSuccess200"
@@ -52,14 +51,13 @@ fn workflow_definition_and_revision_responses_are_closed_and_typed() -> Result<(
         );
     }
 
-    let definition = &document["paths"]
-        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}"]["get"];
+    let definition = &document["paths"]["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}"]
+        ["get"];
     assert_eq!(
         definition["responses"]["200"]["$ref"],
         "#/components/responses/WorkflowDefinitionSuccess200"
     );
-    let revision_collection = &document["paths"]
-        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"];
+    let revision_collection = &document["paths"]["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions"];
     assert_eq!(
         revision_collection["get"]["responses"]["200"]["$ref"],
         "#/components/responses/WorkflowRevisionSummaryListSuccess200"
@@ -70,8 +68,8 @@ fn workflow_definition_and_revision_responses_are_closed_and_typed() -> Result<(
             format!("#/components/responses/WorkflowDefinitionMutationSuccess{status}")
         );
     }
-    let revision = &document["paths"]
-        ["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions/{workflow_revision_id}"]["get"];
+    let revision = &document["paths"]["/organizations/{organization_id}/workflow-definitions/{workflow_definition_id}/revisions/{workflow_revision_id}"]
+        ["get"];
     assert_eq!(
         revision["responses"]["200"]["$ref"],
         "#/components/responses/WorkflowRevisionSuccess200"
@@ -116,9 +114,11 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
         schemas["WorkflowPlan"]["properties"]["steps"]["items"]["$ref"],
         "#/components/schemas/WorkflowPlanStep"
     );
-    assert!(schemas["WorkflowPlan"]["properties"]["schema"]["enum"]
-        .as_array()
-        .is_some_and(|values| values.contains(&json!("cloud.workflow.plan.v12"))));
+    assert!(
+        schemas["WorkflowPlan"]["properties"]["schema"]["enum"]
+            .as_array()
+            .is_some_and(|values| values.contains(&json!("cloud.workflow.plan.v12")))
+    );
     assert!(
         schemas["WorkflowPlan"]["properties"]["compilerRevision"]["enum"]
             .as_array()
@@ -255,8 +255,8 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
     }
     let run_collection =
         &document["paths"]["/organizations/{organization_id}/projects/{project_id}/workflow-runs"];
-    let timeout = &run_collection["post"]["requestBody"]["content"]["application/json"]["schema"]
-        ["properties"]["timeoutSeconds"];
+    let timeout = &run_collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+        ["timeoutSeconds"];
     assert_eq!(timeout["minimum"], 1);
     assert_eq!(
         timeout["maximum"],
@@ -266,8 +266,7 @@ fn workflow_goal_catalog_run_and_observation_responses_are_closed_and_typed() ->
         timeout["default"],
         crate::modules::workflow::WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
     );
-    let run_cancellation = &document["paths"]
-        ["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/cancel"];
+    let run_cancellation = &document["paths"]["/organizations/{organization_id}/workflow-runs/{workflow_run_id}/cancel"];
     for status in ["200", "202"] {
         let expected = format!("#/components/responses/WorkflowRunMutationSuccess{status}");
         assert_eq!(

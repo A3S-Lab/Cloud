@@ -1,15 +1,15 @@
 use crate::modules::applications::domain::{
+    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_MESSAGE_MAX_BYTES,
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, ApplicationInvocation, ApplicationInvocationStatus,
     ApplicationMessage, ApplicationMessageKind, ApplicationSession, ApplicationWorkflowEffect,
     ConversationVariableRevision, IApplicationSessionRepository,
-    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_MESSAGE_MAX_BYTES,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    canonical_json_bounded, canonical_timestamp, ApplicationId, ApplicationInvocationId,
-    ApplicationReleaseId, ApplicationSessionId, ConversationVariableRevisionId, IdempotentWrite,
-    OrganizationId, ProjectId, RepositoryError, Sha256Digest, WorkflowRunId,
+    ApplicationId, ApplicationInvocationId, ApplicationReleaseId, ApplicationSessionId,
+    ConversationVariableRevisionId, IdempotentWrite, OrganizationId, ProjectId, RepositoryError,
+    Sha256Digest, WorkflowRunId, canonical_json_bounded, canonical_timestamp,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
@@ -585,10 +585,7 @@ impl IWorkflowApplicationEffectsPort for WorkflowApplicationEffectsService {
             )),
             Err(write_error) => match self
                 .sessions
-                .find_invocation_for_workflow_run(
-                    request.organization_id,
-                    request.workflow_run_id,
-                )
+                .find_invocation_for_workflow_run(request.organization_id, request.workflow_run_id)
                 .await
             {
                 Ok(Some(current)) if current == binding.invocation => Err(write_error.into()),

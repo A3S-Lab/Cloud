@@ -1,7 +1,7 @@
 use super::{ApplicationExperience, ApplicationReleaseContract};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId,
-    ProjectId, ResourceName, Sha256Digest,
+    ApplicationId, ApplicationReleaseId, OrganizationId, PrincipalId, ProjectId, ResourceName,
+    Sha256Digest, canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

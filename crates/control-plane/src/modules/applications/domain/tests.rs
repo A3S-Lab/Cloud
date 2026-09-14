@@ -188,12 +188,16 @@ fn workflow_admission_requires_exact_scope_identity_and_all_digests() {
 
     let mut changed = evidence.clone();
     changed.binding.workflow_payload_set_digest = digest('8');
-    assert!(value
-        .validate_workflow_evidence(organization_id, project_id, &changed)
-        .is_err());
-    assert!(value
-        .validate_workflow_evidence(organization_id, ProjectId::new(), &evidence)
-        .is_err());
+    assert!(
+        value
+            .validate_workflow_evidence(organization_id, project_id, &changed)
+            .is_err()
+    );
+    assert!(
+        value
+            .validate_workflow_evidence(organization_id, ProjectId::new(), &evidence)
+            .is_err()
+    );
 }
 
 #[test]
@@ -212,22 +216,26 @@ fn release_lineage_keeps_application_experience_immutable() {
     assert_eq!(second.parent_release_id, Some(first.id));
     assert_eq!(second.parent_digest.as_ref(), Some(first.contract.digest()));
 
-    assert!(ApplicationRelease::successor(
-        &first,
-        ApplicationReleaseId::new(),
-        contract(ApplicationExperience::NewAgent, '9'),
-        first.created_by,
-        first.created_at + chrono::Duration::seconds(1),
-    )
-    .is_err());
-    assert!(ApplicationRelease::successor(
-        &first,
-        ApplicationReleaseId::new(),
-        first.contract.clone(),
-        first.created_by,
-        first.created_at + chrono::Duration::seconds(1),
-    )
-    .is_err());
+    assert!(
+        ApplicationRelease::successor(
+            &first,
+            ApplicationReleaseId::new(),
+            contract(ApplicationExperience::NewAgent, '9'),
+            first.created_by,
+            first.created_at + chrono::Duration::seconds(1),
+        )
+        .is_err()
+    );
+    assert!(
+        ApplicationRelease::successor(
+            &first,
+            ApplicationReleaseId::new(),
+            first.contract.clone(),
+            first.created_by,
+            first.created_at + chrono::Duration::seconds(1),
+        )
+        .is_err()
+    );
 }
 
 #[test]
