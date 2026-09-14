@@ -20,7 +20,7 @@ pub use git_commit_sha::GitCommitSha;
 pub use idempotency::{IdempotencyRequest, IdempotentWrite};
 pub use identifiers::{
     AgentApprovalCheckpointId, AgentApprovalDecisionId, AgentConversationId,
-    AgentExecutionCheckpointId, AgentExecutionId, ApiTokenId, ApplicationEndUserId, ApplicationId,
+    AgentExecutionCheckpointId, AgentExecutionId, ApiTokenId, ApplicationDeliveryCredentialId, ApplicationEndUserId, ApplicationId,
     ApplicationInvocationId, ApplicationMessageId, ApplicationReleaseId, ApplicationSessionId,
     AssetId, AssetReleaseId, BuildPlanId, BuildRunId, ConnectorProfileId, ConnectorRevisionId,
     ConversationVariableRevisionId, DeploymentId, DomainClaimId, DurableCellApplicationId,

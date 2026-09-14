@@ -64,6 +64,7 @@ identifier!(NotificationId);
 identifier!(NotificationAlertPolicyId);
 identifier!(NotificationSubscriptionId);
 identifier!(ApplicationEndUserId);
+identifier!(ApplicationDeliveryCredentialId);
 identifier!(ApplicationId);
 identifier!(ApplicationInvocationId);
 identifier!(ApplicationMessageId);

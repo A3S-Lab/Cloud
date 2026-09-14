@@ -1,4 +1,5 @@
 mod application;
+mod application_delivery_credential;
 mod application_effect;
 mod application_end_user;
 mod application_invocation;
@@ -13,6 +14,7 @@ mod session_repository;
 mod workflow_binding;
 
 pub use application::{Application, ApplicationRelease, APPLICATION_DESCRIPTION_MAX_CHARS};
+pub use application_delivery_credential::{ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus};
 pub use application_effect::ApplicationWorkflowEffect;
 pub use application_end_user::ApplicationEndUser;
 pub use application_invocation::{
