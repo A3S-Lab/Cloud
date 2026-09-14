@@ -4,6 +4,7 @@ mod commands;
 mod delivery_access;
 mod delivery_commands;
 mod delivery_credential_commands;
+mod feedback_annotation_commands;
 mod delivery_identity;
 mod delivery_queries;
 mod environment_access;
@@ -43,6 +44,14 @@ pub use delivery_credential_commands::{
     EnableApplicationDeliveryCredentialHandler, RegisterApplicationDeliveryCredential,
     RegisterApplicationDeliveryCredentialHandler, RevokeApplicationDeliveryCredential,
     RevokeApplicationDeliveryCredentialHandler,
+};
+pub use feedback_annotation_commands::{
+    ApplicationAnnotationMutationResult, ApplicationFeedbackMutationResult,
+    CreateApplicationAnnotation, CreateApplicationAnnotationHandler,
+    CreateApplicationFeedback, CreateApplicationFeedbackHandler, GetApplicationAnnotation,
+    GetApplicationAnnotationHandler, GetApplicationFeedback, GetApplicationFeedbackHandler,
+    ListApplicationAnnotationsBySession, ListApplicationAnnotationsBySessionHandler,
+    ListApplicationFeedbackBySession, ListApplicationFeedbackBySessionHandler,
 };
 pub use delivery_queries::{
     DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, GetApplicationInvocation,
@@ -98,6 +107,8 @@ mod anonymous_delivery_tests;
 mod anonymous_invocation_tests;
 #[cfg(test)]
 mod delivery_credential_tests;
+#[cfg(test)]
+mod feedback_annotation_tests;
 #[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
