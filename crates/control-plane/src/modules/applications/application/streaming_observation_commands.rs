@@ -2,7 +2,8 @@
 //!
 //! `APP0.2-C43` authorizes one exact session/invocation, pages the existing
 //! Applications-owned message sequence, and projects `ApplicationStreamingObservation`
-//! without a second run history, migration, streaming delivery surface, or SSE route.
+//! without a second run history, migration, or SSE route. Management delivery is
+//! `APP0.2-C44`.
 
 use super::delivery_access::{invocation_not_found, project_member_session};
 use super::delivery_queries::MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT;

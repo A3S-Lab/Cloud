@@ -228,6 +228,31 @@ export interface ApplicationBlockingObservation {
   observedAt: string;
 }
 
+export interface ApplicationStreamingObservationFrame {
+  messageId: string;
+  sequence: number;
+  kind: string;
+}
+
+export interface ApplicationStreamingObservation {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  invocationId: string;
+  responseMode: string;
+  invocationStatus: string;
+  streamStatus: string;
+  afterSequence: number;
+  frames: ApplicationStreamingObservationFrame[];
+  nextSequence: number;
+  hasMore: boolean;
+  observedAt: string;
+}
+
 export interface ApplicationMessageCitation {
   organizationId: string;
   projectId: string;
