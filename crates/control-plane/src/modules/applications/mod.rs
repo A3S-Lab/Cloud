@@ -8,6 +8,8 @@ pub use domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, Application, ApplicationAnnotation, ApplicationAudience,
     ApplicationBlockingObservation, ApplicationBlockingWaitStatus, ApplicationDeliveryCredential,
+    ApplicationStreamingObservation, ApplicationStreamingObservationFrame,
+    ApplicationStreamingObservationStatus,
     ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy, ApplicationEndUser,
     ApplicationExperience, ApplicationFeedback, ApplicationFeedbackRating,
     ApplicationInteractionMode, ApplicationInvocation, ApplicationInvocationStatus,
