@@ -95,6 +95,7 @@ AI application platform parity manifest.
 | [0088](0088-application-delivery-credential-binding.md) | Freeze Applications-owned anonymous delivery credential bindings without Identity issuance or public routes |
 | [0089](0089-application-delivery-credential-persistence.md) | Persist Applications-owned anonymous delivery credential bindings through migration `204` and one ORM/in-memory owner |
 | [0090](0090-anonymous-delivery-session-admission.md) | Admit anonymous ApplicationSession open over persisted delivery credential bindings without Identity secret verification or public routes |
+| [0091](0091-anonymous-delivery-invocation-admission.md) | Admit anonymous ApplicationInvocation request over C18 sessions with issuer Workflow authority and no Identity secret verification or public routes |
 
 Every registered decision is normative for `APP0`, `K0`, `AUT0`, and the
 remaining `W0` application-platform work. A later change requires a superseding

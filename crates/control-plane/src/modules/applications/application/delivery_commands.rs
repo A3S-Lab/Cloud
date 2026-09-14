@@ -1030,7 +1030,7 @@ async fn recover_open_session_after_write_error(
     }
 }
 
-async fn load_release(
+pub(super) async fn load_release(
     applications: &dyn IApplicationRepository,
     organization_id: OrganizationId,
     project_id: ProjectId,
@@ -1047,7 +1047,7 @@ async fn load_release(
     }
 }
 
-async fn validate_invocation_replay(
+pub(super) async fn validate_invocation_replay(
     sessions: &dyn IApplicationSessionRepository,
     release: &ApplicationRelease,
     session: &ApplicationSession,
@@ -1098,7 +1098,7 @@ async fn validate_invocation_replay(
     Ok(())
 }
 
-fn same_invocation_request(
+pub(super) fn same_invocation_request(
     current: &ApplicationInvocation,
     expected: &ApplicationInvocation,
 ) -> bool {
