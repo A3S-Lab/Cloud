@@ -6,6 +6,8 @@ mod commands;
 mod delivery_access;
 mod delivery_commands;
 mod delivery_credential_commands;
+mod delivery_credential_issuance_commands;
+mod delivery_credential_material_port;
 mod delivery_identity;
 mod delivery_queries;
 mod environment_access;
@@ -45,6 +47,13 @@ pub use delivery_commands::{
     CloseApplicationSessionResult, OpenApplicationSession, OpenApplicationSessionHandler,
     OpenApplicationSessionResult, RequestApplicationInvocation,
     RequestApplicationInvocationHandler, RequestApplicationInvocationResult,
+};
+pub use delivery_credential_issuance_commands::{
+    ApplicationDeliveryCredentialIssuance, IssueApplicationDeliveryCredential,
+    IssueApplicationDeliveryCredentialHandler,
+};
+pub use delivery_credential_material_port::{
+    ApplicationDeliveryCredentialMaterial, IApplicationDeliveryCredentialMaterialPort,
 };
 pub use delivery_credential_commands::{
     ApplicationDeliveryCredentialMutationResult, DisableApplicationDeliveryCredential,
@@ -121,6 +130,8 @@ mod authoring_profile_tests;
 mod anonymous_delivery_tests;
 #[cfg(test)]
 mod anonymous_invocation_tests;
+#[cfg(test)]
+mod delivery_credential_issuance_tests;
 #[cfg(test)]
 mod delivery_credential_tests;
 #[cfg(test)]
