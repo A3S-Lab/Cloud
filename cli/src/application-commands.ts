@@ -3,6 +3,7 @@ import {
   type CloudApi,
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
+  type CreateApplicationMessageFileReferenceInput,
   type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
   MAX_APPLICATION_ANNOTATION_CONTENT_BYTES,
@@ -15,6 +16,7 @@ import {
   type RequestApplicationInvocationInput,
   validateApplicationAnnotationInput,
   validateApplicationFeedbackInput,
+  validateApplicationMessageFileReferenceInput,
   validateApplicationMessageVariantInput,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand, requireVersionedAclMutationCommand } from './acl-file';
@@ -29,6 +31,9 @@ import {
   applicationFeedbackMutationResult,
   applicationFeedbackResult,
   applicationFeedbacksResult,
+  applicationMessageFileReferenceMutationResult,
+  applicationMessageFileReferenceResult,
+  applicationMessageFileReferencesResult,
   applicationMessageVariantMutationResult,
   applicationMessageVariantResult,
   applicationMessageVariantsResult,
@@ -405,6 +410,58 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 4, 'Application annotation ID')
         )
       );
+    case 'application-message-file-references create': {
+      const mutation = requireFeedbackAnnotationCreate(
+        arguments_,
+        'application-message-file-references create <application-id> <session-id>'
+      );
+      const body = await readApplicationObject(
+        mutation.file,
+        'Application message file reference',
+        4096,
+        dependencies.readFile
+      );
+      const input = applicationMessageFileReferenceInput(body);
+      validateApplicationMessageFileReferenceInput(input);
+      return applicationMessageFileReferenceMutationResult(
+        await cloudApi().createApplicationMessageFileReference(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          input
+        )
+      );
+    }
+    case 'application-message-file-references list':
+      requireReadCommand(
+        arguments_,
+        'application-message-file-references list <application-id> <session-id>',
+        4
+      );
+      return applicationMessageFileReferencesResult(
+        await cloudApi().listApplicationMessageFileReferences(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID')
+        )
+      );
+    case 'application-message-file-references get':
+      requireReadCommand(
+        arguments_,
+        'application-message-file-references get <application-id> <session-id> <reference-id>',
+        5
+      );
+      return applicationMessageFileReferenceResult(
+        await cloudApi().getApplicationMessageFileReference(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application message file reference ID')
+        )
+      );
     case 'application-message-variants create': {
       const mutation = requireFeedbackAnnotationCreate(
         arguments_,
@@ -478,6 +535,31 @@ function requireFeedbackAnnotationCreate(
     throw usageError(`--file is required for ${usage}`);
   }
   return { file: arguments_.file };
+}
+
+function applicationMessageFileReferenceInput(
+  value: Record<string, unknown>
+): CreateApplicationMessageFileReferenceInput {
+  const allowed = new Set(['messageId', 'userFileId', 'contentDigest']);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw usageError(`Application message file reference field '${key}' is not supported`);
+    }
+  }
+  if (typeof value.messageId !== 'string') {
+    throw usageError('Application message file reference messageId must be a string');
+  }
+  if (typeof value.userFileId !== 'string') {
+    throw usageError('Application message file reference userFileId must be a string');
+  }
+  if (typeof value.contentDigest !== 'string') {
+    throw usageError('Application message file reference contentDigest must be a string');
+  }
+  return {
+    messageId: value.messageId,
+    userFileId: value.userFileId,
+    contentDigest: value.contentDigest,
+  };
 }
 
 function applicationMessageVariantInput(

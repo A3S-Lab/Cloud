@@ -5,6 +5,7 @@ use crate::modules::applications::presentation::{
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse,
+    ApplicationMessageFileReferenceMutationResponse, ApplicationMessageFileReferenceResponse,
     ApplicationMessageVariantMutationResponse, ApplicationMessageVariantResponse,
     ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
     ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
@@ -14,17 +15,20 @@ use crate::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationSession, ApplicationFeedbackRating,
     ApplicationResponseMode, CancelApplicationInvocation, CloseApplicationSession,
     CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback,
-    CreateApplicationMessageVariant, GetApplication, GetApplicationAnnotation,
-    GetApplicationFeedback, GetApplicationInvocation, GetApplicationMessageVariant,
+    CreateApplicationMessageFileReference, CreateApplicationMessageVariant, GetApplication,
+    GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
+    GetApplicationMessageFileReference, GetApplicationMessageVariant,
     GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
-    ListApplicationFeedbackBySession, ListApplicationMessageVariantsBySession,
+    ListApplicationFeedbackBySession, ListApplicationMessageFileReferencesBySession,
+    ListApplicationMessageVariantsBySession,
     ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationInvocationId,
-    ApplicationMessageId, ApplicationMessageVariantId, ApplicationReleaseId, ApplicationSessionId,
+    ApplicationMessageFileReferenceId, ApplicationMessageId, ApplicationMessageVariantId,
+    ApplicationReleaseId, ApplicationSessionId, Sha256Digest, UserFileId,
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
@@ -238,6 +242,26 @@ pub struct CreateApplicationMessageVariantArguments {
     source_message_id: Uuid,
     #[serde(default)]
     instruction: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationMessageFileReferenceArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    message_id: Uuid,
+    user_file_id: Uuid,
+    content_digest: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationMessageFileReferenceArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    reference_id: Uuid,
 }
 
 #[derive(Debug, Deserialize)]
@@ -868,6 +892,107 @@ pub async fn get_annotation(
         Ok(annotation) => tool_result::success(
             200,
             ApplicationAnnotationResponse::from(annotation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_message_file_reference(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateApplicationMessageFileReferenceArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    let content_digest = match Sha256Digest::parse(arguments.content_digest) {
+        Ok(value) => value,
+        Err(error) => {
+            return tool_result::application_error(
+                crate::modules::shared_kernel::application::ApplicationError::Invalid(error),
+                request_id,
+            );
+        }
+    };
+    match bus
+        .execute(CreateApplicationMessageFileReference {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            message_id: ApplicationMessageId::from_uuid(arguments.message_id),
+            user_file_id: UserFileId::from_uuid(arguments.user_file_id),
+            content_digest,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationMessageFileReferenceMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_message_file_references(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationMessageFileReferencesBySession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationMessageFileReferenceResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_message_file_reference(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationMessageFileReferenceArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationMessageFileReference {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            reference_id: ApplicationMessageFileReferenceId::from_uuid(arguments.reference_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(reference) => tool_result::success(
+            200,
+            ApplicationMessageFileReferenceResponse::from(reference),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

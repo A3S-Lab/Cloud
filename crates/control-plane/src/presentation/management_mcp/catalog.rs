@@ -130,6 +130,12 @@ pub const APPLICATION_MESSAGE_VARIANTS_CREATE: &str =
     "a3s_cloud_application_message_variants_create";
 pub const APPLICATION_MESSAGE_VARIANTS_LIST: &str = "a3s_cloud_application_message_variants_list";
 pub const APPLICATION_MESSAGE_VARIANTS_GET: &str = "a3s_cloud_application_message_variants_get";
+pub const APPLICATION_MESSAGE_FILE_REFERENCES_CREATE: &str =
+    "a3s_cloud_application_message_file_references_create";
+pub const APPLICATION_MESSAGE_FILE_REFERENCES_LIST: &str =
+    "a3s_cloud_application_message_file_references_list";
+pub const APPLICATION_MESSAGE_FILE_REFERENCES_GET: &str =
+    "a3s_cloud_application_message_file_references_get";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -358,6 +364,9 @@ pub enum ManagementTool {
     ApplicationMessageVariantsCreate,
     ApplicationMessageVariantsList,
     ApplicationMessageVariantsGet,
+    ApplicationMessageFileReferencesCreate,
+    ApplicationMessageFileReferencesList,
+    ApplicationMessageFileReferencesGet,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -577,7 +586,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 226] = [
+    const ALL: [Self; 229] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -603,6 +612,9 @@ impl ManagementTool {
         Self::ApplicationMessageVariantsCreate,
         Self::ApplicationMessageVariantsList,
         Self::ApplicationMessageVariantsGet,
+        Self::ApplicationMessageFileReferencesCreate,
+        Self::ApplicationMessageFileReferencesList,
+        Self::ApplicationMessageFileReferencesGet,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -856,6 +868,9 @@ impl ManagementTool {
             Self::ApplicationMessageVariantsCreate => APPLICATION_MESSAGE_VARIANTS_CREATE,
             Self::ApplicationMessageVariantsList => APPLICATION_MESSAGE_VARIANTS_LIST,
             Self::ApplicationMessageVariantsGet => APPLICATION_MESSAGE_VARIANTS_GET,
+            Self::ApplicationMessageFileReferencesCreate => APPLICATION_MESSAGE_FILE_REFERENCES_CREATE,
+            Self::ApplicationMessageFileReferencesList => APPLICATION_MESSAGE_FILE_REFERENCES_LIST,
+            Self::ApplicationMessageFileReferencesGet => APPLICATION_MESSAGE_FILE_REFERENCES_GET,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1095,7 +1110,10 @@ impl ManagementTool {
             | Self::ApplicationAnnotationsGet
             | Self::ApplicationMessageVariantsCreate
             | Self::ApplicationMessageVariantsList
-            | Self::ApplicationMessageVariantsGet => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationMessageVariantsGet
+            | Self::ApplicationMessageFileReferencesCreate
+            | Self::ApplicationMessageFileReferencesList
+            | Self::ApplicationMessageFileReferencesGet => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1474,6 +1492,9 @@ impl ManagementTool {
             | Self::ApplicationMessageVariantsCreate
             | Self::ApplicationMessageVariantsList
             | Self::ApplicationMessageVariantsGet
+            | Self::ApplicationMessageFileReferencesCreate
+            | Self::ApplicationMessageFileReferencesList
+            | Self::ApplicationMessageFileReferencesGet
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1720,6 +1741,24 @@ impl ManagementTool {
                 "Get Application message variant",
                 "Get one Application message variant by session and variant identity.",
                 application_message_variant_schema(),
+                true,
+            ),
+            Self::ApplicationMessageFileReferencesCreate => (
+                "Create Application message file reference",
+                "Create or replay one immutable Application Input message file reference for an active session.",
+                create_application_message_file_reference_schema(),
+                false,
+            ),
+            Self::ApplicationMessageFileReferencesList => (
+                "List Application message file references",
+                "List Application message file references for one session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationMessageFileReferencesGet => (
+                "Get Application message file reference",
+                "Get one Application message file reference by session and reference identity.",
+                application_message_file_reference_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -4325,6 +4364,43 @@ fn create_application_annotation_schema() -> Value {
             "sourceMessageId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "applicationId", "sessionId", "content"],
+        "additionalProperties": false
+    })
+}
+
+fn create_application_message_file_reference_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "messageId": {"type": "string", "format": "uuid"},
+            "userFileId": {"type": "string", "format": "uuid"},
+            "contentDigest": {"type": "string", "minLength": 1}
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "messageId",
+            "userFileId",
+            "contentDigest"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn application_message_file_reference_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "referenceId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "referenceId"],
         "additionalProperties": false
     })
 }

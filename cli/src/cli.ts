@@ -125,6 +125,9 @@ Commands:
   application-annotations create APP SESSION Create session annotation from JSON --file (content-digest replay)
   application-annotations list APP SESSION List session annotations for the caller project
   application-annotations get APP SESSION ANNOTATION Get one session annotation by id
+  application-message-file-references create APP SESSION Create session message file reference from JSON --file
+  application-message-file-references list APP SESSION List session message file references for the caller project
+  application-message-file-references get APP SESSION REFERENCE Get one session message file reference by id
   application-message-variants create APP SESSION Create session message variant from JSON --file
   application-message-variants list APP SESSION List session message variants for the caller project
   application-message-variants get APP SESSION VARIANT Get one session message variant by id
