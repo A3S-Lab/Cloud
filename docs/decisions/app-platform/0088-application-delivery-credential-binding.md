@@ -21,8 +21,8 @@ Applications owns one anonymous delivery credential *binding*:
 - monotonic generation for disable/enable/revoke
 - stable Principal-free `ApplicationEndUser` identity derived from the credential
 
-`APP0.2-C16` is component-only. Identity issuance, PostgreSQL, REST/MCP,
-Gateway, SSE, and availability remain later slices (`APP0.3` and follow-ons).
+`APP0.2-C16` is component-only. Persistence is `APP0.2-C17`. Identity issuance,
+REST/MCP, Gateway, SSE, and availability remain later slices (`APP0.3` and follow-ons).
 
 ## Consequences
 

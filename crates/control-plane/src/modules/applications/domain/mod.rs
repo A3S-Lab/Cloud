@@ -8,32 +8,36 @@ mod application_message;
 mod application_release_contract;
 mod application_session;
 mod conversation_variables;
+mod delivery_credential_repository;
 mod events;
 mod repository;
 mod session_repository;
 mod workflow_binding;
 
-pub use application::{Application, ApplicationRelease, APPLICATION_DESCRIPTION_MAX_CHARS};
-pub use application_delivery_credential::{ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus};
+pub use application::{APPLICATION_DESCRIPTION_MAX_CHARS, Application, ApplicationRelease};
+pub use application_delivery_credential::{
+    ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus,
+};
 pub use application_effect::ApplicationWorkflowEffect;
 pub use application_end_user::ApplicationEndUser;
 pub use application_invocation::{
-    ApplicationInvocation, ApplicationInvocationStatus, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, ApplicationInvocation, ApplicationInvocationStatus,
 };
 pub use application_invocation_workflow_authority::ApplicationInvocationWorkflowAuthority;
 pub use application_message::{
-    digest_json, ApplicationMessage, ApplicationMessageKind, APPLICATION_MESSAGE_MAX_BYTES,
+    APPLICATION_MESSAGE_MAX_BYTES, ApplicationMessage, ApplicationMessageKind, digest_json,
 };
 pub use application_release_contract::{
+    APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, APPLICATION_RELEASE_CONTRACT_SCHEMA,
     ApplicationAudience, ApplicationDeliveryPolicy, ApplicationExperience,
     ApplicationInteractionMode, ApplicationReleaseContract, ApplicationReleaseContractSpec,
-    ApplicationResponseMode, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    APPLICATION_RELEASE_CONTRACT_SCHEMA,
+    ApplicationResponseMode,
 };
 pub use application_session::{ApplicationSession, ApplicationSessionStatus};
 pub use conversation_variables::{
-    ConversationVariableRevision, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, ConversationVariableRevision,
 };
+pub use delivery_credential_repository::IApplicationDeliveryCredentialRepository;
 pub use events::ApplicationReleasePublished;
 pub(crate) use repository::ApplicationWriteReference;
 pub use repository::{

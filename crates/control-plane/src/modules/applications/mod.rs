@@ -5,30 +5,32 @@ pub mod presentation;
 
 pub use application::*;
 pub use domain::{
+    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_MAX_BYTES,
+    APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, APPLICATION_RELEASE_CONTRACT_SCHEMA,
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
-    AppendApplicationMessageWrite, Application, ApplicationAudience, ApplicationDeliveryPolicy,
-    ApplicationEndUser, ApplicationExperience, ApplicationInteractionMode, ApplicationInvocation,
+    AppendApplicationMessageWrite, Application, ApplicationAudience, ApplicationDeliveryCredential,
+    ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy, ApplicationEndUser,
+    ApplicationExperience, ApplicationInteractionMode, ApplicationInvocation,
     ApplicationInvocationStatus, ApplicationInvocationWorkflowAuthority, ApplicationMessage,
     ApplicationMessageKind, ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
     ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
     ApplicationSession, ApplicationSessionStatus, ApplicationWorkflowBinding,
     ApplicationWorkflowEffect, ApplicationWorkflowRevisionEvidence, CloseApplicationSessionWrite,
-    ConversationVariableRevision, CreateApplicationWrite, IApplicationRepository,
-    IApplicationSessionRepository, OpenApplicationSessionWrite, PublishApplicationReleaseWrite,
-    RequestApplicationInvocationWrite, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
-    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_INVOCATION_INPUT_MAX_BYTES,
-    APPLICATION_MESSAGE_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    APPLICATION_RELEASE_CONTRACT_SCHEMA,
+    ConversationVariableRevision, CreateApplicationWrite, IApplicationDeliveryCredentialRepository,
+    IApplicationRepository, IApplicationSessionRepository, OpenApplicationSessionWrite,
+    PublishApplicationReleaseWrite, RequestApplicationInvocationWrite,
 };
+pub use infrastructure::InMemoryApplicationDeliveryCredentialRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
-    PostgresApplicationRepository, PostgresApplicationSessionRepository,
-    ProjectsApplicationsEnvironmentAccessAdapter, WorkflowApplicationOntologyRevisionReader,
-    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
-    WorkflowApplicationRunService,
+    PostgresApplicationDeliveryCredentialRepository, PostgresApplicationRepository,
+    PostgresApplicationSessionRepository, ProjectsApplicationsEnvironmentAccessAdapter,
+    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
+    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 pub use presentation::{
     ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,

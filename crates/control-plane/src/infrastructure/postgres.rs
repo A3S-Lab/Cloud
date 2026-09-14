@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 203;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "203";
+pub const CLOUD_MIGRATION_COUNT: i64 = 204;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "204";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1833,12 +1833,24 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/203_knowledge_index_policy_and_bindings.sql"
             )),
         ),
+        Migration::new(
+            "204",
+            "Application delivery credentials",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/204_application_delivery_credentials.sql"
+            )),
+        ),
     ]
 }
 
 #[cfg(test)]
 #[path = "postgres_tests/workflow_transform_failure_migration.rs"]
 mod workflow_transform_failure_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/application_delivery_credential_migration.rs"]
+mod application_delivery_credential_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
