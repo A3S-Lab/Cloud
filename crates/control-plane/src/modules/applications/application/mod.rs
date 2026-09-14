@@ -1,3 +1,5 @@
+mod authoring_profile;
+mod authoring_profile_commands;
 mod anonymous_delivery_commands;
 mod anonymous_invocation_commands;
 mod commands;
@@ -22,6 +24,11 @@ mod workflow_effects;
 mod workflow_revision_port;
 mod workflow_run_port;
 
+pub use authoring_profile::ApplicationAuthoringProfile;
+pub use authoring_profile_commands::{
+    ApplicationAuthoringProfilePublication, PublishApplicationAuthoringProfile,
+    PublishApplicationAuthoringProfileHandler,
+};
 pub use anonymous_delivery_commands::{
     OpenAnonymousApplicationSession, OpenAnonymousApplicationSessionHandler,
 };
@@ -108,6 +115,8 @@ pub use workflow_run_port::{
     ApplicationWorkflowRunEvidence, ApplicationWorkflowRunRequest, IApplicationWorkflowRunPort,
 };
 
+#[cfg(test)]
+mod authoring_profile_tests;
 #[cfg(test)]
 mod anonymous_delivery_tests;
 #[cfg(test)]
