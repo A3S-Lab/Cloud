@@ -1,6 +1,7 @@
 mod annotation_repository;
 mod application;
 mod application_annotation;
+mod application_blocking_observation;
 mod application_delivery_credential;
 mod application_effect;
 mod application_end_user;
@@ -27,6 +28,9 @@ mod workflow_binding;
 pub use annotation_repository::IApplicationAnnotationRepository;
 pub use application::{APPLICATION_DESCRIPTION_MAX_CHARS, Application, ApplicationRelease};
 pub use application_annotation::{APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, ApplicationAnnotation};
+pub use application_blocking_observation::{
+    ApplicationBlockingObservation, ApplicationBlockingWaitStatus,
+};
 pub use application_delivery_credential::{
     ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus,
 };
