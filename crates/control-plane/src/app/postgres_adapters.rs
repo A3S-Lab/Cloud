@@ -1,8 +1,10 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
 use crate::modules::applications::{
     IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    IApplicationMessageVariantRepository, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository,
+    IApplicationRepository, IApplicationSessionRepository,
     PostgresApplicationAnnotationRepository, PostgresApplicationFeedbackRepository,
+    PostgresApplicationMessageFileReferenceRepository,
     PostgresApplicationMessageVariantRepository, PostgresApplicationRepository,
     PostgresApplicationSessionRepository,
 };
@@ -205,6 +207,9 @@ impl PostgresAdapterFactory {
             application_message_variants: Arc::new(
                 PostgresApplicationMessageVariantRepository::new(self.executor.clone()),
             ),
+            application_message_file_references: Arc::new(
+                PostgresApplicationMessageFileReferenceRepository::new(self.executor.clone()),
+            ),
             durable_cell_applications: Arc::new(PostgresDurableCellApplicationRepository::new(
                 self.executor.clone(),
             )),
@@ -322,6 +327,8 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) application_feedbacks: Arc<dyn IApplicationFeedbackRepository>,
     pub(super) application_annotations: Arc<dyn IApplicationAnnotationRepository>,
     pub(super) application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
+    pub(super) application_message_file_references:
+        Arc<dyn IApplicationMessageFileReferenceRepository>,
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     pub(super) operations: Arc<dyn IOperationRepository>,

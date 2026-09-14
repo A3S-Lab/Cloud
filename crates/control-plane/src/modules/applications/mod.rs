@@ -10,14 +10,14 @@ pub use domain::{
     ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy,
     ApplicationEndUser, ApplicationExperience, ApplicationFeedback, ApplicationFeedbackRating,
     ApplicationInteractionMode, ApplicationInvocation, ApplicationInvocationStatus,
-    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageKind,
+    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageFileReference, ApplicationMessageKind,
     ApplicationMessageVariant, ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
     ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
     ApplicationSession, ApplicationSessionStatus, ApplicationWorkflowBinding,
     ApplicationWorkflowEffect, ApplicationWorkflowRevisionEvidence, CloseApplicationSessionWrite,
     ConversationVariableRevision, CreateApplicationWrite, IApplicationAnnotationRepository,
     IApplicationDeliveryCredentialRepository, IApplicationFeedbackRepository,
-    IApplicationMessageVariantRepository, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository, IApplicationRepository, IApplicationSessionRepository,
     OpenApplicationSessionWrite, PublishApplicationReleaseWrite, RequestApplicationInvocationWrite,
     APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
     APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
@@ -28,6 +28,7 @@ pub use domain::{
 pub use infrastructure::InMemoryApplicationAnnotationRepository;
 pub use infrastructure::InMemoryApplicationDeliveryCredentialRepository;
 pub use infrastructure::InMemoryApplicationFeedbackRepository;
+pub use infrastructure::InMemoryApplicationMessageFileReferenceRepository;
 pub use infrastructure::InMemoryApplicationMessageVariantRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationRepository;
@@ -35,7 +36,8 @@ pub use infrastructure::InMemoryApplicationRepository;
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
     PostgresApplicationAnnotationRepository, PostgresApplicationDeliveryCredentialRepository,
-    PostgresApplicationFeedbackRepository, PostgresApplicationMessageVariantRepository,
+    PostgresApplicationFeedbackRepository, PostgresApplicationMessageFileReferenceRepository,
+    PostgresApplicationMessageVariantRepository,
     PostgresApplicationRepository, PostgresApplicationSessionRepository,
     ProjectsApplicationsEnvironmentAccessAdapter, WorkflowApplicationOntologyRevisionReader,
     WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,

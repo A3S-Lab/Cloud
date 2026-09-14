@@ -26,8 +26,9 @@ pub use message_variant_in_memory::InMemoryApplicationMessageVariantRepository;
 pub use ontology_revision::WorkflowApplicationOntologyRevisionReader;
 pub use persistence::{
     PostgresApplicationAnnotationRepository, PostgresApplicationDeliveryCredentialRepository,
-    PostgresApplicationFeedbackRepository, PostgresApplicationMessageVariantRepository,
-    PostgresApplicationRepository, PostgresApplicationSessionRepository,
+    PostgresApplicationFeedbackRepository, PostgresApplicationMessageFileReferenceRepository,
+    PostgresApplicationMessageVariantRepository, PostgresApplicationRepository,
+    PostgresApplicationSessionRepository,
 };
 pub use preset_workflow::WorkflowApplicationPresetCompiler;
 pub use project_environment_access::ProjectsApplicationsEnvironmentAccessAdapter;
