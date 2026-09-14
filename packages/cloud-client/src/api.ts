@@ -11,6 +11,7 @@ import {
   type ApplicationMessage,
   type ApplicationBlockingObservation,
   type ApplicationStreamingObservation,
+  type ApplicationAsynchronousObservation,
   type ApplicationMessageCitation,
   type ApplicationMessageCitationMutationResult,
   type ApplicationMessageFileReference,
@@ -2916,6 +2917,21 @@ export class CloudApi {
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/invocations/${encodeURIComponent(invocationId)}/streaming-observation` +
         encodeQueryParameters(parameters),
+      signal,
+    );
+  }
+
+  observeApplicationAsynchronousInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    signal?: AbortSignal,
+  ): Promise<ApplicationAsynchronousObservation> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/asynchronous-observation`,
       signal,
     );
   }

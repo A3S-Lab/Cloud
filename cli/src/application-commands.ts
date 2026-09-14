@@ -35,6 +35,7 @@ import {
   applicationFeedbacksResult,
   applicationBlockingObservationResult,
   applicationStreamingObservationResult,
+  applicationAsynchronousObservationResult,
   applicationMessageCitationMutationResult,
   applicationMessageCitationResult,
   applicationMessageCitationsResult,
@@ -499,6 +500,22 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 3, 'Application session ID'),
           positionalUuid(positionals, 4, 'Application invocation ID'),
           streamingObservationAfterSequence(arguments_)
+        )
+      );
+
+    case 'application-asynchronous-observation observe':
+      requireReadCommand(
+        arguments_,
+        'application-asynchronous-observation observe <application-id> <session-id> <invocation-id>',
+        5
+      );
+      return applicationAsynchronousObservationResult(
+        await cloudApi().observeApplicationAsynchronousInvocation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application invocation ID')
         )
       );
 

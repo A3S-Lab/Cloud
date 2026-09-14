@@ -5,7 +5,7 @@
 //! Answer, and FinalOutput messages until the invocation is terminal. This is
 //! not a second run history, timer worker, SSE stream, or Gateway route.
 //! Persistence is not required: observation projects existing session state.
-//! CQRS polling is `APP0.2-C46`. Management delivery is a later slice.
+//! CQRS polling is `APP0.2-C46`. Management delivery is `APP0.2-C47`.
 //! Gateway, SSE, and public availability stay later gates.
 
 use super::{

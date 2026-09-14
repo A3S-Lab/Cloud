@@ -553,6 +553,19 @@ pub async fn execute(
             )
             .await
         }
+        ManagementTool::ApplicationAsynchronousObservationObserve => {
+            let arguments =
+                arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
+            applications::observe_asynchronous_invocation(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
         ManagementTool::ApplicationMessageVariantsCreate => {
             let arguments =
                 arguments::parse::<CreateApplicationMessageVariantArguments>(arguments).ok()?;

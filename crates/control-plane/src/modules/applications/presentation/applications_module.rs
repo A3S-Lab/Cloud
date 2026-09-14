@@ -7,6 +7,7 @@ use super::feedback_delivery_controller::{
 };
 use super::blocking_observation_delivery_controller::application_blocking_observation_queries_controller;
 use super::streaming_observation_delivery_controller::application_streaming_observation_queries_controller;
+use super::asynchronous_observation_delivery_controller::application_asynchronous_observation_queries_controller;
 use super::message_citation_delivery_controller::{
     application_message_citation_commands_controller,
     application_message_citation_queries_controller,
@@ -44,6 +45,7 @@ impl Module for ApplicationsModule {
             application_message_citation_queries_controller(module_ref.get::<QueryBus>()?)?,
             application_blocking_observation_queries_controller(module_ref.get::<QueryBus>()?)?,
             application_streaming_observation_queries_controller(module_ref.get::<QueryBus>()?)?,
+            application_asynchronous_observation_queries_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }
 }

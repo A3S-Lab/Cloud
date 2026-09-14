@@ -146,6 +146,8 @@ pub const APPLICATION_BLOCKING_OBSERVATION_OBSERVE: &str =
     "a3s_cloud_application_blocking_observation_observe";
 pub const APPLICATION_STREAMING_OBSERVATION_OBSERVE: &str =
     "a3s_cloud_application_streaming_observation_observe";
+pub const APPLICATION_ASYNCHRONOUS_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_asynchronous_observation_observe";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -382,6 +384,7 @@ pub enum ManagementTool {
     ApplicationMessageCitationsGet,
     ApplicationBlockingObservationObserve,
     ApplicationStreamingObservationObserve,
+    ApplicationAsynchronousObservationObserve,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -601,7 +604,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 234] = [
+    const ALL: [Self; 235] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -635,6 +638,7 @@ impl ManagementTool {
         Self::ApplicationMessageCitationsGet,
         Self::ApplicationBlockingObservationObserve,
         Self::ApplicationStreamingObservationObserve,
+        Self::ApplicationAsynchronousObservationObserve,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -896,6 +900,7 @@ impl ManagementTool {
             Self::ApplicationMessageCitationsGet => APPLICATION_MESSAGE_CITATIONS_GET,
             Self::ApplicationBlockingObservationObserve => APPLICATION_BLOCKING_OBSERVATION_OBSERVE,
             Self::ApplicationStreamingObservationObserve => APPLICATION_STREAMING_OBSERVATION_OBSERVE,
+            Self::ApplicationAsynchronousObservationObserve => APPLICATION_ASYNCHRONOUS_OBSERVATION_OBSERVE,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1143,7 +1148,8 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsList
             | Self::ApplicationMessageCitationsGet
             | Self::ApplicationBlockingObservationObserve
-            | Self::ApplicationStreamingObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationStreamingObservationObserve
+            | Self::ApplicationAsynchronousObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1530,6 +1536,7 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsGet
             | Self::ApplicationBlockingObservationObserve
             | Self::ApplicationStreamingObservationObserve
+            | Self::ApplicationAsynchronousObservationObserve
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1824,6 +1831,12 @@ impl ManagementTool {
                 "Observe Application streaming invocation",
                 "Poll one Application Streaming-mode invocation observation for an authorized session with an optional afterSequence cursor.",
                 application_streaming_observation_schema(),
+                true,
+            ),
+            Self::ApplicationAsynchronousObservationObserve => (
+                "Observe Application asynchronous invocation",
+                "Poll one Application Asynchronous-mode invocation observation for an authorized session.",
+                application_invocation_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (

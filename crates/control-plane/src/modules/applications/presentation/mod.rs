@@ -6,6 +6,7 @@ mod dto;
 mod feedback_delivery_controller;
 mod blocking_observation_delivery_controller;
 mod streaming_observation_delivery_controller;
+mod asynchronous_observation_delivery_controller;
 mod message_citation_delivery_controller;
 mod message_file_reference_delivery_controller;
 mod message_variant_delivery_controller;
@@ -14,6 +15,7 @@ pub use applications_module::ApplicationsModule;
 pub use delivery_dto::{
     ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
     ApplicationBlockingObservationResponse,
+    ApplicationAsynchronousObservationResponse,
     ApplicationStreamingObservationFrameResponse,
     ApplicationStreamingObservationResponse,
     ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,
