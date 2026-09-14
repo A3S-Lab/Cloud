@@ -59,7 +59,8 @@ pub use presentation::{
     ApplicationResponse, ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
     ApplicationSessionResponse, ApplicationWorkflowEffectResponse,
     ApplicationWorkflowRunEvidenceResponse, ApplicationsModule, CreateApplicationAnnotationRequest,
-    CreateApplicationFeedbackRequest, CreateApplicationMessageVariantRequest,
+    CreateApplicationFeedbackRequest, CreateApplicationMessageCitationRequest,
+    CreateApplicationMessageVariantRequest,
     CreateApplicationRequest, OpenApplicationSessionRequest, PublishApplicationReleaseRequest,
     RequestApplicationInvocationRequest,
 };

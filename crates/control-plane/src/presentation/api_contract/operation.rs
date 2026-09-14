@@ -1629,6 +1629,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_application_feedback_collection_path(path)
             && !is_application_message_variant_collection_path(path)
             && !is_application_message_file_reference_collection_path(path)
+            && !is_application_message_citation_collection_path(path)
             && !is_application_annotation_collection_path(path))
 }
 
@@ -1978,6 +1979,7 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_feedback_collection_path(path)
         || is_application_message_variant_collection_path(path)
         || is_application_message_file_reference_collection_path(path)
+        || is_application_message_citation_collection_path(path)
         || is_application_annotation_collection_path(path)
 }
 
@@ -2118,6 +2120,11 @@ fn is_application_message_variant_collection_path(path: &str) -> bool {
 fn is_application_message_file_reference_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/message-file-references")
+}
+
+fn is_application_message_citation_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/message-citations")
 }
 
 fn is_application_session_close_path(path: &str) -> bool {
@@ -2280,6 +2287,27 @@ fn application_request_schema(path: &str) -> Value {
                 "messageId": {"type": "string", "format": "uuid"},
                 "userFileId": {"type": "string", "format": "uuid"},
                 "contentDigest": {"type": "string", "minLength": 1}
+            }
+        });
+    }
+    if is_application_message_citation_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "messageId",
+                "knowledgeBaseId",
+                "knowledgeBaseRevisionId",
+                "knowledgeDocumentId",
+                "knowledgeChunkId"
+            ],
+            "properties": {
+                "messageId": {"type": "string", "format": "uuid"},
+                "knowledgeBaseId": {"type": "string", "format": "uuid"},
+                "knowledgeBaseRevisionId": {"type": "string", "format": "uuid"},
+                "knowledgeDocumentId": {"type": "string", "format": "uuid"},
+                "knowledgeChunkId": {"type": "string", "format": "uuid"},
+                "excerpt": {"type": "string", "nullable": true, "maxLength": 8192}
             }
         });
     }

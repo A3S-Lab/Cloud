@@ -136,6 +136,12 @@ pub const APPLICATION_MESSAGE_FILE_REFERENCES_LIST: &str =
     "a3s_cloud_application_message_file_references_list";
 pub const APPLICATION_MESSAGE_FILE_REFERENCES_GET: &str =
     "a3s_cloud_application_message_file_references_get";
+pub const APPLICATION_MESSAGE_CITATIONS_CREATE: &str =
+    "a3s_cloud_application_message_citations_create";
+pub const APPLICATION_MESSAGE_CITATIONS_LIST: &str =
+    "a3s_cloud_application_message_citations_list";
+pub const APPLICATION_MESSAGE_CITATIONS_GET: &str =
+    "a3s_cloud_application_message_citations_get";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -367,6 +373,9 @@ pub enum ManagementTool {
     ApplicationMessageFileReferencesCreate,
     ApplicationMessageFileReferencesList,
     ApplicationMessageFileReferencesGet,
+    ApplicationMessageCitationsCreate,
+    ApplicationMessageCitationsList,
+    ApplicationMessageCitationsGet,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -586,7 +595,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 229] = [
+    const ALL: [Self; 232] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -615,6 +624,9 @@ impl ManagementTool {
         Self::ApplicationMessageFileReferencesCreate,
         Self::ApplicationMessageFileReferencesList,
         Self::ApplicationMessageFileReferencesGet,
+        Self::ApplicationMessageCitationsCreate,
+        Self::ApplicationMessageCitationsList,
+        Self::ApplicationMessageCitationsGet,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -871,6 +883,9 @@ impl ManagementTool {
             Self::ApplicationMessageFileReferencesCreate => APPLICATION_MESSAGE_FILE_REFERENCES_CREATE,
             Self::ApplicationMessageFileReferencesList => APPLICATION_MESSAGE_FILE_REFERENCES_LIST,
             Self::ApplicationMessageFileReferencesGet => APPLICATION_MESSAGE_FILE_REFERENCES_GET,
+            Self::ApplicationMessageCitationsCreate => APPLICATION_MESSAGE_CITATIONS_CREATE,
+            Self::ApplicationMessageCitationsList => APPLICATION_MESSAGE_CITATIONS_LIST,
+            Self::ApplicationMessageCitationsGet => APPLICATION_MESSAGE_CITATIONS_GET,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1113,7 +1128,10 @@ impl ManagementTool {
             | Self::ApplicationMessageVariantsGet
             | Self::ApplicationMessageFileReferencesCreate
             | Self::ApplicationMessageFileReferencesList
-            | Self::ApplicationMessageFileReferencesGet => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationMessageFileReferencesGet
+            | Self::ApplicationMessageCitationsCreate
+            | Self::ApplicationMessageCitationsList
+            | Self::ApplicationMessageCitationsGet => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1495,6 +1513,9 @@ impl ManagementTool {
             | Self::ApplicationMessageFileReferencesCreate
             | Self::ApplicationMessageFileReferencesList
             | Self::ApplicationMessageFileReferencesGet
+            | Self::ApplicationMessageCitationsCreate
+            | Self::ApplicationMessageCitationsList
+            | Self::ApplicationMessageCitationsGet
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1759,6 +1780,24 @@ impl ManagementTool {
                 "Get Application message file reference",
                 "Get one Application message file reference by session and reference identity.",
                 application_message_file_reference_schema(),
+                true,
+            ),
+            Self::ApplicationMessageCitationsCreate => (
+                "Create Application message citation",
+                "Create or replay one immutable Application Answer/FinalOutput message citation for an active session.",
+                create_application_message_citation_schema(),
+                false,
+            ),
+            Self::ApplicationMessageCitationsList => (
+                "List Application message citations",
+                "List Application message citations for one session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationMessageCitationsGet => (
+                "Get Application message citation",
+                "Get one Application message citation by session and citation identity.",
+                application_message_citation_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -4364,6 +4403,49 @@ fn create_application_annotation_schema() -> Value {
             "sourceMessageId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "applicationId", "sessionId", "content"],
+        "additionalProperties": false
+    })
+}
+
+
+fn create_application_message_citation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "messageId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseId": {"type": "string", "format": "uuid"},
+            "knowledgeBaseRevisionId": {"type": "string", "format": "uuid"},
+            "knowledgeDocumentId": {"type": "string", "format": "uuid"},
+            "knowledgeChunkId": {"type": "string", "format": "uuid"},
+            "excerpt": {"type": "string"}
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "messageId",
+            "knowledgeBaseId",
+            "knowledgeBaseRevisionId",
+            "knowledgeDocumentId",
+            "knowledgeChunkId"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn application_message_citation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "citationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "citationId"],
         "additionalProperties": false
     })
 }

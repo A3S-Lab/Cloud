@@ -4,6 +4,7 @@ mod delivery_controller;
 mod delivery_dto;
 mod dto;
 mod feedback_delivery_controller;
+mod message_citation_delivery_controller;
 mod message_file_reference_delivery_controller;
 mod message_variant_delivery_controller;
 
@@ -14,12 +15,14 @@ pub use delivery_dto::{
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse,
+    ApplicationMessageCitationMutationResponse, ApplicationMessageCitationResponse,
     ApplicationMessageFileReferenceMutationResponse, ApplicationMessageFileReferenceResponse,
     ApplicationMessageVariantMutationResponse, ApplicationMessageVariantResponse,
     ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
     ApplicationSessionResponse, ApplicationWorkflowEffectResponse,
     ApplicationWorkflowRunEvidenceResponse, CreateApplicationAnnotationRequest,
-    CreateApplicationFeedbackRequest, CreateApplicationMessageFileReferenceRequest,
+    CreateApplicationFeedbackRequest, CreateApplicationMessageCitationRequest,
+    CreateApplicationMessageFileReferenceRequest,
     CreateApplicationMessageVariantRequest,
     OpenApplicationSessionRequest, RequestApplicationInvocationRequest,
 };

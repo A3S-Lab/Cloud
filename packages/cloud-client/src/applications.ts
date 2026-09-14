@@ -210,6 +210,41 @@ export interface ApplicationMessage {
   createdAt: string;
 }
 
+export interface ApplicationMessageCitation {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  invocationId: string;
+  messageId: string;
+  messageKind: string;
+  knowledgeBaseId: string;
+  knowledgeBaseRevisionId: string;
+  knowledgeDocumentId: string;
+  knowledgeChunkId: string;
+  excerpt?: string | null;
+  excerptDigest: string;
+  citationId: string;
+  createdAt: string;
+}
+
+export interface CreateApplicationMessageCitationInput {
+  messageId: string;
+  knowledgeBaseId: string;
+  knowledgeBaseRevisionId: string;
+  knowledgeDocumentId: string;
+  knowledgeChunkId: string;
+  excerpt?: string | null;
+}
+
+export interface ApplicationMessageCitationMutationResult {
+  citation: ApplicationMessageCitation;
+  replayed: boolean;
+}
+
 export interface ApplicationMessageFileReference {
   organizationId: string;
   projectId: string;
@@ -464,6 +499,27 @@ export function validateApplicationAnnotationInput(input: CreateApplicationAnnot
   );
   if (input.sourceMessageId !== undefined && typeof input.sourceMessageId !== 'string') {
     throw new TypeError('Application annotation sourceMessageId must be a string');
+  }
+}
+
+export function validateApplicationMessageCitationInput(
+  input: CreateApplicationMessageCitationInput
+): void {
+  if (typeof input.messageId !== 'string' || input.messageId.length === 0) {
+    throw new TypeError('Application message citation messageId must be a non-empty string');
+  }
+  for (const [key, value] of [
+    ['knowledgeBaseId', input.knowledgeBaseId],
+    ['knowledgeBaseRevisionId', input.knowledgeBaseRevisionId],
+    ['knowledgeDocumentId', input.knowledgeDocumentId],
+    ['knowledgeChunkId', input.knowledgeChunkId],
+  ] as const) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new TypeError(`Application message citation ${key} must be a non-empty string`);
+    }
+  }
+  if (input.excerpt !== undefined && input.excerpt !== null && typeof input.excerpt !== 'string') {
+    throw new TypeError('Application message citation excerpt must be a string when provided');
   }
 }
 
