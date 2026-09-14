@@ -334,8 +334,6 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
     pub(super) application_message_file_references:
         Arc<dyn IApplicationMessageFileReferenceRepository>,
-    /// Wired for APP0.2-C36 persistence; CQRS consumption lands in APP0.2-C37.
-    #[allow(dead_code)]
     pub(super) application_message_citations: Arc<dyn IApplicationMessageCitationRepository>,
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,

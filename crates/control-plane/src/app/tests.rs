@@ -2345,6 +2345,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             application_message_file_references: Arc::new(
                 crate::modules::applications::InMemoryApplicationMessageFileReferenceRepository::new(),
             ),
+            application_message_citations: Arc::new(
+                crate::modules::applications::InMemoryApplicationMessageCitationRepository::new(),
+            ),
             developer_workflow_build_plans: Arc::new(InMemoryBuildPlanRepository::new()),
             developer_workload_profiles: Arc::new(InMemoryWorkloadProfileRepository::new()),
             developer_preview_policies: Arc::new(InMemoryPullRequestPreviewPolicyRepository::new()),
