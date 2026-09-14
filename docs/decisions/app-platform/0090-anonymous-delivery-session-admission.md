@@ -29,4 +29,5 @@ project-member releases, and foreign session identities fail closed.
 ## Consequences
 
 `APP0.2-C18` remains component-only. Identity issuance, REST/MCP, Gateway, SSE,
-and public availability stay deferred to later numbered gates.
+and public availability stay deferred to later numbered gates. Anonymous
+invocation admission continues in `APP0.2-C19`.

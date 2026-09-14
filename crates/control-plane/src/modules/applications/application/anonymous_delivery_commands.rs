@@ -79,11 +79,6 @@ impl CommandHandler<OpenAnonymousApplicationSession> for OpenAnonymousApplicatio
                     "Anonymous Application session request identity is invalid".into(),
                 )));
             }
-            if let Err(error) =
-                ApplicationDeliveryCredential::validate_lookup_key(&command.credential_lookup_key)
-            {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
             let release = match load_release(
                 applications.as_ref(),
                 command.organization_id,
@@ -101,20 +96,17 @@ impl CommandHandler<OpenAnonymousApplicationSession> for OpenAnonymousApplicatio
                     "anonymous delivery requires an anonymous Application release".into(),
                 )));
             }
-            let credential = match credentials
-                .find_delivery_credential_by_lookup_key(
-                    command.organization_id,
-                    command.project_id,
-                    command.application_id,
-                    &command.credential_lookup_key,
-                )
-                .await
+            let credential = match load_credential_by_lookup_key(
+                credentials.as_ref(),
+                command.organization_id,
+                command.project_id,
+                command.application_id,
+                &command.credential_lookup_key,
+            )
+            .await
             {
-                Ok(Some(value)) => value,
-                Ok(None) | Err(RepositoryError::NotFound) => {
-                    return Ok(Err(credential_not_found()));
-                }
-                Err(error) => return Ok(Err(error.into())),
+                Ok(value) => value,
+                Err(error) => return Ok(Err(error)),
             };
             match sessions
                 .find_session(
@@ -227,7 +219,7 @@ async fn admit_end_user(
     }
 }
 
-fn validate_anonymous_end_user(
+pub(super) fn validate_anonymous_end_user(
     end_user: &ApplicationEndUser,
     credential: &ApplicationDeliveryCredential,
     release: &ApplicationRelease,
@@ -398,6 +390,30 @@ async fn load_release(
     }
 }
 
-fn credential_not_found() -> ApplicationError {
+pub(super) fn credential_not_found() -> ApplicationError {
     ApplicationError::NotFound("Application delivery credential not found".into())
+}
+
+pub(super) async fn load_credential_by_lookup_key(
+    credentials: &dyn IApplicationDeliveryCredentialRepository,
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+    application_id: ApplicationId,
+    lookup_key: &str,
+) -> ApplicationResult<ApplicationDeliveryCredential> {
+    ApplicationDeliveryCredential::validate_lookup_key(lookup_key)
+        .map_err(ApplicationError::Invalid)?;
+    match credentials
+        .find_delivery_credential_by_lookup_key(
+            organization_id,
+            project_id,
+            application_id,
+            lookup_key,
+        )
+        .await
+    {
+        Ok(Some(value)) => Ok(value),
+        Ok(None) | Err(RepositoryError::NotFound) => Err(credential_not_found()),
+        Err(error) => Err(error.into()),
+    }
 }
