@@ -3,6 +3,7 @@ import {
   type CloudApi,
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
+  type CreateApplicationMessageCitationInput,
   type CreateApplicationMessageFileReferenceInput,
   type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
@@ -16,6 +17,7 @@ import {
   type RequestApplicationInvocationInput,
   validateApplicationAnnotationInput,
   validateApplicationFeedbackInput,
+  validateApplicationMessageCitationInput,
   validateApplicationMessageFileReferenceInput,
   validateApplicationMessageVariantInput,
 } from '@a3s/cloud-client';
@@ -31,6 +33,9 @@ import {
   applicationFeedbackMutationResult,
   applicationFeedbackResult,
   applicationFeedbacksResult,
+  applicationMessageCitationMutationResult,
+  applicationMessageCitationResult,
+  applicationMessageCitationsResult,
   applicationMessageFileReferenceMutationResult,
   applicationMessageFileReferenceResult,
   applicationMessageFileReferencesResult,
@@ -410,6 +415,58 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 4, 'Application annotation ID')
         )
       );
+    case 'application-message-citations create': {
+      const mutation = requireFeedbackAnnotationCreate(
+        arguments_,
+        'application-message-citations create <application-id> <session-id>'
+      );
+      const body = await readApplicationObject(
+        mutation.file,
+        'Application message citation',
+        8192,
+        dependencies.readFile
+      );
+      const input = applicationMessageCitationInput(body);
+      validateApplicationMessageCitationInput(input);
+      return applicationMessageCitationMutationResult(
+        await cloudApi().createApplicationMessageCitation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          input
+        )
+      );
+    }
+    case 'application-message-citations list':
+      requireReadCommand(
+        arguments_,
+        'application-message-citations list <application-id> <session-id>',
+        4
+      );
+      return applicationMessageCitationsResult(
+        await cloudApi().listApplicationMessageCitations(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID')
+        )
+      );
+    case 'application-message-citations get':
+      requireReadCommand(
+        arguments_,
+        'application-message-citations get <application-id> <session-id> <citation-id>',
+        5
+      );
+      return applicationMessageCitationResult(
+        await cloudApi().getApplicationMessageCitation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application message citation ID')
+        )
+      );
     case 'application-message-file-references create': {
       const mutation = requireFeedbackAnnotationCreate(
         arguments_,
@@ -535,6 +592,48 @@ function requireFeedbackAnnotationCreate(
     throw usageError(`--file is required for ${usage}`);
   }
   return { file: arguments_.file };
+}
+
+function applicationMessageCitationInput(
+  value: Record<string, unknown>
+): CreateApplicationMessageCitationInput {
+  const allowed = new Set([
+    'messageId',
+    'knowledgeBaseId',
+    'knowledgeBaseRevisionId',
+    'knowledgeDocumentId',
+    'knowledgeChunkId',
+    'excerpt',
+  ]);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw usageError(`Application message citation field '${key}' is not supported`);
+    }
+  }
+  if (typeof value.messageId !== 'string') {
+    throw usageError('Application message citation messageId must be a string');
+  }
+  for (const key of [
+    'knowledgeBaseId',
+    'knowledgeBaseRevisionId',
+    'knowledgeDocumentId',
+    'knowledgeChunkId',
+  ] as const) {
+    if (typeof value[key] !== 'string') {
+      throw usageError(`Application message citation ${key} must be a string`);
+    }
+  }
+  if (value.excerpt !== undefined && value.excerpt !== null && typeof value.excerpt !== 'string') {
+    throw usageError('Application message citation excerpt must be a string when provided');
+  }
+  return {
+    messageId: value.messageId,
+    knowledgeBaseId: value.knowledgeBaseId as string,
+    knowledgeBaseRevisionId: value.knowledgeBaseRevisionId as string,
+    knowledgeDocumentId: value.knowledgeDocumentId as string,
+    knowledgeChunkId: value.knowledgeChunkId as string,
+    excerpt: (value.excerpt as string | null | undefined) ?? undefined,
+  };
 }
 
 function applicationMessageFileReferenceInput(

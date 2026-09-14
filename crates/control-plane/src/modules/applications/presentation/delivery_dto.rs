@@ -628,3 +628,86 @@ impl From<crate::modules::applications::application::ApplicationMessageFileRefer
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateApplicationMessageCitationRequest {
+    pub message_id: Uuid,
+    pub knowledge_base_id: Uuid,
+    pub knowledge_base_revision_id: Uuid,
+    pub knowledge_document_id: Uuid,
+    pub knowledge_chunk_id: Uuid,
+    #[serde(default)]
+    pub excerpt: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageCitationResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub invocation_id: Uuid,
+    pub message_id: Uuid,
+    pub message_kind: String,
+    pub knowledge_base_id: Uuid,
+    pub knowledge_base_revision_id: Uuid,
+    pub knowledge_document_id: Uuid,
+    pub knowledge_chunk_id: Uuid,
+    pub excerpt: Option<String>,
+    pub excerpt_digest: String,
+    pub citation_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationMessageCitation>
+    for ApplicationMessageCitationResponse
+{
+    fn from(citation: crate::modules::applications::domain::ApplicationMessageCitation) -> Self {
+        Self {
+            organization_id: citation.organization_id.as_uuid(),
+            project_id: citation.project_id.as_uuid(),
+            application_id: citation.application_id.as_uuid(),
+            application_release_id: citation.application_release_id.as_uuid(),
+            application_release_digest: citation.application_release_digest.as_str().to_owned(),
+            session_id: citation.session_id.as_uuid(),
+            end_user_id: citation.end_user_id.as_uuid(),
+            invocation_id: citation.invocation_id.as_uuid(),
+            message_id: citation.message_id.as_uuid(),
+            message_kind: citation.message_kind.as_str().to_owned(),
+            knowledge_base_id: citation.knowledge_base_id.as_uuid(),
+            knowledge_base_revision_id: citation.knowledge_base_revision_id.as_uuid(),
+            knowledge_document_id: citation.knowledge_document_id.as_uuid(),
+            knowledge_chunk_id: citation.knowledge_chunk_id.as_uuid(),
+            excerpt: citation.excerpt,
+            excerpt_digest: citation.excerpt_digest.as_str().to_owned(),
+            citation_id: citation.id.as_uuid(),
+            created_at: citation.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageCitationMutationResponse {
+    pub citation: ApplicationMessageCitationResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationMessageCitationMutationResult>
+    for ApplicationMessageCitationMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationMessageCitationMutationResult,
+    ) -> Self {
+        Self {
+            citation: ApplicationMessageCitationResponse::from(result.citation),
+            replayed: result.replayed,
+        }
+    }
+}
+

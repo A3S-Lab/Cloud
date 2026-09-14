@@ -5,6 +5,7 @@ use crate::modules::applications::presentation::{
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse,
+    ApplicationMessageCitationMutationResponse, ApplicationMessageCitationResponse,
     ApplicationMessageFileReferenceMutationResponse, ApplicationMessageFileReferenceResponse,
     ApplicationMessageVariantMutationResponse, ApplicationMessageVariantResponse,
     ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
@@ -15,11 +16,14 @@ use crate::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationSession, ApplicationFeedbackRating,
     ApplicationResponseMode, CancelApplicationInvocation, CloseApplicationSession,
     CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback,
-    CreateApplicationMessageFileReference, CreateApplicationMessageVariant, GetApplication,
+    CreateApplicationMessageCitation, CreateApplicationMessageFileReference,
+    CreateApplicationMessageVariant, GetApplication,
     GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
-    GetApplicationMessageFileReference, GetApplicationMessageVariant,
+    GetApplicationMessageCitation, GetApplicationMessageFileReference,
+    GetApplicationMessageVariant,
     GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
-    ListApplicationFeedbackBySession, ListApplicationMessageFileReferencesBySession,
+    ListApplicationFeedbackBySession, ListApplicationMessageCitationsBySession,
+    ListApplicationMessageFileReferencesBySession,
     ListApplicationMessageVariantsBySession,
     ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
 };
@@ -27,8 +31,10 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationInvocationId,
-    ApplicationMessageFileReferenceId, ApplicationMessageId, ApplicationMessageVariantId,
-    ApplicationReleaseId, ApplicationSessionId, Sha256Digest, UserFileId,
+    ApplicationMessageCitationId, ApplicationMessageFileReferenceId, ApplicationMessageId,
+    ApplicationMessageVariantId,
+    ApplicationReleaseId, ApplicationSessionId, KnowledgeBaseId, KnowledgeBaseRevisionId,
+    KnowledgeChunkId, KnowledgeDocumentId, Sha256Digest, UserFileId,
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
@@ -263,6 +269,31 @@ pub struct ApplicationMessageFileReferenceArguments {
     session_id: Uuid,
     reference_id: Uuid,
 }
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationMessageCitationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    message_id: Uuid,
+    knowledge_base_id: Uuid,
+    knowledge_base_revision_id: Uuid,
+    knowledge_document_id: Uuid,
+    knowledge_chunk_id: Uuid,
+    #[serde(default)]
+    excerpt: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationMessageCitationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    citation_id: Uuid,
+}
+
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -993,6 +1024,103 @@ pub async fn get_message_file_reference(
         Ok(reference) => tool_result::success(
             200,
             ApplicationMessageFileReferenceResponse::from(reference),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_message_citation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateApplicationMessageCitationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateApplicationMessageCitation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            message_id: ApplicationMessageId::from_uuid(arguments.message_id),
+            knowledge_base_id: KnowledgeBaseId::from_uuid(arguments.knowledge_base_id),
+            knowledge_base_revision_id: KnowledgeBaseRevisionId::from_uuid(
+                arguments.knowledge_base_revision_id,
+            ),
+            knowledge_document_id: KnowledgeDocumentId::from_uuid(arguments.knowledge_document_id),
+            knowledge_chunk_id: KnowledgeChunkId::from_uuid(arguments.knowledge_chunk_id),
+            excerpt: arguments.excerpt,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationMessageCitationMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_message_citations(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationMessageCitationsBySession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationMessageCitationResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_message_citation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationMessageCitationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationMessageCitation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            citation_id: ApplicationMessageCitationId::from_uuid(arguments.citation_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(citation) => tool_result::success(
+            200,
+            ApplicationMessageCitationResponse::from(citation),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

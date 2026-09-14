@@ -9,6 +9,8 @@ import {
   type ApplicationFeedback,
   type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
+  type ApplicationMessageCitation,
+  type ApplicationMessageCitationMutationResult,
   type ApplicationMessageFileReference,
   type ApplicationMessageFileReferenceMutationResult,
   type ApplicationMessageVariant,
@@ -21,6 +23,7 @@ import {
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
   type CreateApplicationInput,
+  type CreateApplicationMessageCitationInput,
   type CreateApplicationMessageFileReferenceInput,
   type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
@@ -33,6 +36,7 @@ import {
   validateApplicationExpectedVersion,
   validateApplicationFeedbackInput,
   validateApplicationInitialVariables,
+  validateApplicationMessageCitationInput,
   validateApplicationMessageFileReferenceInput,
   validateApplicationMessageVariantInput,
   validateApplicationInvocationInput,
@@ -3044,6 +3048,44 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-file-references`,
       signal
+    );
+  }
+
+  createApplicationMessageCitation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CreateApplicationMessageCitationInput,
+  ): Promise<ApplicationMessageCitationMutationResult> {
+    validateApplicationMessageCitationInput(input);
+    return this.request(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-citations`,
+      { method: 'POST', body: input },
+    );
+  }
+
+  listApplicationMessageCitations(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+  ): Promise<ApplicationMessageCitation[]> {
+    return this.request(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-citations`,
+    );
+  }
+
+  getApplicationMessageCitation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    citationId: string,
+  ): Promise<ApplicationMessageCitation> {
+    return this.request(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/message-citations/${encodeURIComponent(citationId)}`,
     );
   }
 

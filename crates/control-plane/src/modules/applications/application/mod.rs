@@ -157,6 +157,7 @@ mod feedback_annotation_tests;
 mod invocation_composition_tests;
 #[cfg(test)]
 mod message_citation_tests;
+#[cfg(test)]
 mod message_file_reference_tests;
 #[cfg(test)]
 mod message_variant_tests;

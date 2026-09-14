@@ -1,11 +1,13 @@
 use super::applications::{
     ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
-    ApplicationInvocationArguments, ApplicationMessageFileReferenceArguments,
+    ApplicationInvocationArguments, ApplicationMessageCitationArguments,
+    ApplicationMessageFileReferenceArguments,
     ApplicationMessageVariantArguments,
     ApplicationReleaseArguments, ApplicationSessionArguments, CancelApplicationInvocationArguments,
     CloseApplicationSessionArguments, CreateApplicationAnnotationArguments,
     CreateApplicationArguments, CreateApplicationFeedbackArguments,
-    CreateApplicationMessageFileReferenceArguments, CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
+    CreateApplicationMessageCitationArguments, CreateApplicationMessageFileReferenceArguments,
+    CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
     ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
     PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
@@ -477,6 +479,44 @@ pub async fn execute(
             let arguments =
                 arguments::parse::<ApplicationMessageFileReferenceArguments>(arguments).ok()?;
             applications::get_message_file_reference(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageCitationsCreate => {
+            let arguments =
+                arguments::parse::<CreateApplicationMessageCitationArguments>(arguments).ok()?;
+            applications::create_message_citation(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageCitationsList => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::list_message_citations(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageCitationsGet => {
+            let arguments =
+                arguments::parse::<ApplicationMessageCitationArguments>(arguments).ok()?;
+            applications::get_message_citation(
                 query_bus,
                 organization_id,
                 actor_principal_id,

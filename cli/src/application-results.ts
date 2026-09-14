@@ -4,6 +4,8 @@ import type {
   ApplicationAnnotationMutationResult,
   ApplicationFeedback,
   ApplicationFeedbackMutationResult,
+  ApplicationMessageCitation,
+  ApplicationMessageCitationMutationResult,
   ApplicationMessageFileReference,
   ApplicationMessageFileReferenceMutationResult,
   ApplicationMessageVariant,
@@ -82,6 +84,14 @@ const APPLICATION_ANNOTATION_COLUMNS = [
   { header: 'SESSION', value: (row: ApplicationAnnotation) => row.sessionId },
   { header: 'DIGEST', value: (row: ApplicationAnnotation) => row.contentDigest },
   { header: 'CREATED AT', value: (row: ApplicationAnnotation) => row.createdAt },
+] as const;
+
+const APPLICATION_MESSAGE_CITATION_COLUMNS = [
+  { header: 'CITATION', value: (row: ApplicationMessageCitation) => row.citationId },
+  { header: 'MESSAGE', value: (row: ApplicationMessageCitation) => row.messageId },
+  { header: 'CHUNK', value: (row: ApplicationMessageCitation) => row.knowledgeChunkId },
+  { header: 'EXCERPT DIGEST', value: (row: ApplicationMessageCitation) => row.excerptDigest },
+  { header: 'CREATED AT', value: (row: ApplicationMessageCitation) => row.createdAt },
 ] as const;
 
 const APPLICATION_MESSAGE_FILE_REFERENCE_COLUMNS = [
@@ -217,6 +227,31 @@ export function applicationAnnotationMutationResult(
       {
         header: 'REPLAYED',
         value: (row: ApplicationAnnotation & { replayed: boolean }) => row.replayed,
+      },
+    ]),
+  };
+}
+
+export function applicationMessageCitationsResult(
+  rows: ApplicationMessageCitation[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_MESSAGE_CITATION_COLUMNS) };
+}
+
+export function applicationMessageCitationResult(row: ApplicationMessageCitation): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_MESSAGE_CITATION_COLUMNS) };
+}
+
+export function applicationMessageCitationMutationResult(
+  result: ApplicationMessageCitationMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.citation, replayed: result.replayed }], [
+      ...APPLICATION_MESSAGE_CITATION_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationMessageCitation & { replayed: boolean }) => row.replayed,
       },
     ]),
   };
