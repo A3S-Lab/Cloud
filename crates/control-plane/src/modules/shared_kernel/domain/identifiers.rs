@@ -70,6 +70,7 @@ identifier!(ApplicationInvocationId);
 identifier!(ApplicationMessageId);
 identifier!(ApplicationFeedbackId);
 identifier!(ApplicationAnnotationId);
+identifier!(ApplicationMessageVariantId);
 identifier!(ApplicationReleaseId);
 identifier!(ApplicationSessionId);
 identifier!(ConversationVariableRevisionId);
