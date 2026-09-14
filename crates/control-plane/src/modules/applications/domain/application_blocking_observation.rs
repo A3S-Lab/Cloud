@@ -4,7 +4,8 @@
 //! Blocking-mode invocation is observed against its session-owned Input,
 //! Answer, and FinalOutput messages until the invocation is terminal. This is
 //! not a second run history, timer worker, SSE stream, or Gateway route.
-//! Persistence, CQRS polling, streaming parity, REST/OpenAPI/client/CLI/MCP,
+//! Persistence is not required: observation projects existing session state.
+//! CQRS polling is `APP0.2-C40`. Streaming parity, REST/OpenAPI/client/CLI/MCP,
 //! and public availability stay later numbered gates.
 
 use super::{

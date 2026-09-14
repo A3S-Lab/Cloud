@@ -2,6 +2,7 @@ mod authoring_profile;
 mod authoring_profile_commands;
 mod anonymous_delivery_commands;
 mod anonymous_invocation_commands;
+mod blocking_observation_commands;
 mod commands;
 mod delivery_access;
 mod delivery_commands;
@@ -35,6 +36,9 @@ pub use authoring_profile_commands::{
 };
 pub use anonymous_delivery_commands::{
     OpenAnonymousApplicationSession, OpenAnonymousApplicationSessionHandler,
+};
+pub use blocking_observation_commands::{
+    ObserveApplicationBlockingInvocation, ObserveApplicationBlockingInvocationHandler,
 };
 pub use anonymous_invocation_commands::{
     RequestAnonymousApplicationInvocation, RequestAnonymousApplicationInvocationHandler,
@@ -143,6 +147,8 @@ pub use workflow_run_port::{
 mod authoring_profile_tests;
 #[cfg(test)]
 mod anonymous_delivery_tests;
+#[cfg(test)]
+mod blocking_observation_tests;
 #[cfg(test)]
 mod anonymous_invocation_tests;
 #[cfg(test)]
