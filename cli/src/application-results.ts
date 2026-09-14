@@ -6,6 +6,7 @@ import type {
   ApplicationFeedbackMutationResult,
   ApplicationBlockingObservation,
   ApplicationStreamingObservation,
+  ApplicationAsynchronousObservation,
   ApplicationMessageCitation,
   ApplicationMessageCitationMutationResult,
   ApplicationMessageFileReference,
@@ -107,6 +108,14 @@ const APPLICATION_STREAMING_OBSERVATION_COLUMNS = [
   { header: 'HAS MORE', value: (row: ApplicationStreamingObservation) => String(row.hasMore) },
   { header: 'FRAMES', value: (row: ApplicationStreamingObservation) => String(row.frames.length) },
   { header: 'OBSERVED AT', value: (row: ApplicationStreamingObservation) => row.observedAt },
+];
+
+const APPLICATION_ASYNCHRONOUS_OBSERVATION_COLUMNS = [
+  { header: 'INVOCATION', value: (row: ApplicationAsynchronousObservation) => row.invocationId },
+  { header: 'WAIT', value: (row: ApplicationAsynchronousObservation) => row.waitStatus },
+  { header: 'STATUS', value: (row: ApplicationAsynchronousObservation) => row.invocationStatus },
+  { header: 'MODE', value: (row: ApplicationAsynchronousObservation) => row.responseMode },
+  { header: 'OBSERVED AT', value: (row: ApplicationAsynchronousObservation) => row.observedAt },
 ];
 
 const APPLICATION_MESSAGE_CITATION_COLUMNS = [
@@ -342,4 +351,10 @@ export function applicationStreamingObservationResult(
   row: ApplicationStreamingObservation
 ): CommandResult {
   return { json: row, table: renderTable([row], APPLICATION_STREAMING_OBSERVATION_COLUMNS) };
+}
+
+export function applicationAsynchronousObservationResult(
+  row: ApplicationAsynchronousObservation
+): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_ASYNCHRONOUS_OBSERVATION_COLUMNS) };
 }

@@ -4,6 +4,7 @@ use crate::modules::applications::presentation::{
     ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
     ApplicationBlockingObservationResponse,
     ApplicationStreamingObservationResponse,
+    ApplicationAsynchronousObservationResponse,
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse,
@@ -23,6 +24,7 @@ use crate::modules::applications::{
     GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
     ObserveApplicationBlockingInvocation,
     ObserveApplicationStreamingInvocation,
+    ObserveApplicationAsynchronousInvocation,
     GetApplicationMessageCitation, GetApplicationMessageFileReference,
     GetApplicationMessageVariant,
     GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
@@ -1197,6 +1199,36 @@ pub async fn observe_streaming_invocation(
         Ok(observation) => tool_result::success(
             200,
             ApplicationStreamingObservationResponse::from(observation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn observe_asynchronous_invocation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationInvocationArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ObserveApplicationAsynchronousInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+            observed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(observation) => tool_result::success(
+            200,
+            ApplicationAsynchronousObservationResponse::from(observation),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

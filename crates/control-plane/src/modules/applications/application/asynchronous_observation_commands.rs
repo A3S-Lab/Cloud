@@ -2,7 +2,8 @@
 //!
 //! `APP0.2-C46` authorizes one exact session/invocation, pages the existing
 //! Applications-owned message sequence, and projects `ApplicationAsynchronousObservation`
-//! without a second run history, migration, streaming cursor, or delivery surface.
+//! without a second run history, migration, streaming cursor, or public delivery surface.
+//! Management delivery is `APP0.2-C47`.
 
 use super::delivery_access::{invocation_not_found, project_member_session};
 use super::delivery_queries::MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT;
