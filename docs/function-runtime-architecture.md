@@ -35,6 +35,7 @@ optional request route. Those concerns already have owners:
 | Finite invocation lifecycle and cleanup | Executions |
 | Warm stateless capacity, rollout and scaling | Workloads |
 | Durable wait/retry/cancellation/compensation | Operations + A3S Flow |
+| Stable side-effect / attempt identity (ADR 0120 D6) | Executions or Connectors owner ports; no second journal |
 | External endpoint, credential reference, egress and attempt evidence | Connectors |
 | Secret versions and JIT materialization | Secrets |
 | Public hostname/path, protocol policy and applied snapshot | Edge + Gateway |

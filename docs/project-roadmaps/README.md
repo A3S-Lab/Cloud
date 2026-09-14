@@ -40,6 +40,14 @@ This produces one durable authority per fact. Caches, queues, search indexes,
 Gateway snapshots, Doris tables, and node-local inventories are projections;
 none may become a second writer for product truth.
 
+Cloud ADR
+[0120](../decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md)
+extends that rule to durable-execution developer outcomes: step timelines,
+wait/awake DX, and invocation correlation are Cloud projections over Flow and
+product owners. Ecosystem crates (Flow, Runtime, Box, Gateway, Lane, Event)
+MUST NOT be reinterpreted as Restate-style hosts of Cloud product truth, and
+Cloud MUST NOT embed Restate/Temporal as a substitute for Flow.
+
 ## 2. Dependency architecture
 
 ```mermaid

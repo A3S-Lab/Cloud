@@ -18,6 +18,7 @@ plans.
 | [Platform completeness review](docs/platform-gap-analysis.md) | Structural gaps versus delivery gaps, priority, owner, and proposed closure gates |
 | [AI service platform architecture](docs/ai-service-platform-architecture.md) | Canonical AaaS, WaaS, FaaS, Durable Cell, Inference, Gateway, Runtime, and Box product boundary |
 | [Technical architecture](docs/architecture.md) | Stable component ownership, control paths, consistency boundaries, deployment profiles, and failure behavior |
+| [ADR 0120 durable execution developer surface](docs/decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) | First-principles rule that Restate-like durable DX outcomes are projections over Flow/Operations and product owners; not a product availability claim |
 | [Architecture audit](docs/architecture-audit.md) | Current DDD boundary debt, executable ratchets, ordered convergence waves, and the zero-debt release condition |
 | [DDD, AOP, and pattern architecture](docs/ddd-aop-and-pattern-architecture.md) | Layer rules, ordered aspect pipelines, design-pattern ownership, and architecture fitness gates |
 | [Cloud development plan](docs/development-plan.md) | Detailed implementation sequence, exit criteria, provider evidence, recovery gates, and definition of done |

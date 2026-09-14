@@ -2,6 +2,14 @@
 
 ## 1. Domain objective
 
+Durable-execution developer surfaces from ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) are **not** new aggregates: the durable step timeline and
+durable wait/awake handle vocabulary are authorized projections and ports over
+existing owners (Flow/Operations, Applications, Agents, Workflow HumanTask,
+Connectors). Durable Cell remains provider-owned named state, not a Cloud
+PostgreSQL aggregate. Domain models MUST NOT introduce a product-local journal
+entity, sleep queue, or code-as-workflow runtime aggregate.
+
 A3S Cloud manages the path from tenant intent to durable, reachable AI
 services on operator-owned CPU/GPU infrastructure. AaaS, WaaS, FaaS, and
 Durable Cell are first-class product capabilities; shared Inference, static Web

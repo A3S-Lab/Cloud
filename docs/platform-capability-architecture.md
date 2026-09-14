@@ -2,10 +2,12 @@
 
 ## 1. Decision and status
 
-A3S Cloud preserves the valuable **outcomes** of OpenShift and TokenHub while
-keeping A3S-native domain ownership, protocols, and execution paths. It does
-not embed either product, emulate Kubernetes, or add a TokenHub-shaped control
-plane.
+A3S Cloud preserves the valuable **outcomes** of OpenShift, TokenHub, and
+durable-execution runtimes such as Restate while keeping A3S-native domain
+ownership, protocols, and execution paths. It does not embed those products,
+emulate Kubernetes, host Restate/Temporal as Cloud's orchestration spine, or
+add a TokenHub-shaped control plane (ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md)).
 
 This is a target architecture. Rows are available only when every named
 roadmap gate has passed its real-provider, failure, recovery, cleanup, and
@@ -21,9 +23,11 @@ Two first-principles user needs drive the design:
    every request without exposing credentials or payloads.
 
 Those needs are already covered by A3S bounded contexts. Adding another API,
-controller, scheduler, gateway, identity store, usage ledger, catalog, or
-console-owned authority would duplicate a mechanism rather than add a
-capability.
+controller, scheduler, gateway, identity store, usage ledger, catalog,
+console-owned authority, or second durable journal would duplicate a mechanism
+rather than add a capability. Restate-like step journals, wait/awake DX, and
+key-scoped state are expressed as projections over Flow/Operations, product
+owners, and Durable Cells (architecture.md §2.3).
 
 ## 2. One abstraction stack
 

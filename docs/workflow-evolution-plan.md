@@ -49,7 +49,9 @@ ledger:
 
 | Concern | One reusable mechanism | Forbidden duplicate |
 | --- | --- | --- |
-| Durable orchestration | A3S Flow plus Operations | Workflow runner, Agent job queue, evaluation scheduler, or retry daemon |
+| Durable orchestration | A3S Flow plus Operations | Workflow runner, Agent job queue, evaluation scheduler, retry daemon, Restate/Temporal embed, or second durable journal (ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) D1) |
+| Developer-visible durable step timeline | Authorized projection over Flow history plus owning semantic sequences | Second write history, product-local journal store, or Dashboard-owned truth (ADR 0120 D2) |
+| Durable wait / awake | Flow wait/Hook interpretation plus semantic owner completion (HumanTask, Connector, Application answer, webhook) | Product-local sleep queues, wake tables, or Awakeable stores outside Flow (ADR 0120 D3) |
 | Portable DAG structure | A3S Flow `WorkflowDag`, constructed programmatically from Cloud ACL | Workflow compatibility parser, topology sorter, or authoring-tool runtime contract inside Cloud |
 | Placement and scaling | Workloads | Workflow, Harness, training, model, or MCP scheduler/autoscaler |
 | Node delivery | Fleet commands, leases, and the Node Agent journal | Provider-specific queue or direct Cloud-to-process channel |

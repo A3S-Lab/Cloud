@@ -12,6 +12,12 @@ product outcomes and bounded-context ownership.
 
 ## 1. Boundary
 
+ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md)
+is normative for this roadmap: Cloud improves Flow visibility, wait
+interpretation, schedules, and recovery over the single Operations+Flow spine.
+It MUST NOT embed Restate, Temporal, or a second durable journal as Cloud
+orchestration.
+
 ### A3S Flow owns
 
 - deterministic workflow decisions and replay;

@@ -42,6 +42,11 @@ The design follows seven invariants:
 6. Mutable state and immutable bytes are different authorities.
 7. A supporting capability may be shared, but it may not become a second
    scheduler, queue, credential store, object authority, or route publisher.
+8. Durable-execution developer outcomes (step timelines, wait/awake handles,
+   invocation correlation, harness-under-durability Agents, and key-scoped
+   Cell state) are projections and contracts over existing owners. They never
+   introduce a second durable journal, scheduler, or code-as-workflow runtime
+   (ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md)).
 
 ```mermaid
 flowchart LR
@@ -227,12 +232,15 @@ Assets/MCP and Gateway responsibilities.
 
 ## 9. Durable Cell
 
-Durable Cell is a first-class stateful collaboration service. One application
-replica is an ordinary Runtime Service on Box. A named Cell commonly represents
-one room, team, session, shared Agent blackboard, or another application-local
-coordination key. It may serialize human and Agent turns, retain shared values,
-deliver alarms, preserve hibernatable connections, and recover acknowledged
-state after process or node loss.
+Durable Cell is a first-class stateful collaboration service and Cloud's
+key-scoped serialized state primitive (the architectural outcome analogous to
+Restate Virtual Objects / Deno Durable Objects; ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) D4). One application replica is an ordinary Runtime Service on
+Box. A named Cell commonly represents one room, team, session, shared Agent
+blackboard, or another application-local coordination key. It may serialize
+human and Agent turns, retain shared values, deliver alarms, preserve
+hibernatable connections, and recover acknowledged state after process or node
+loss.
 
 A named Cell is provider-owned online state, not a Cloud aggregate or Runtime
 Unit. Data/S0 owns the namespace and recovery lifecycle; Durable Cells owns
@@ -281,6 +289,12 @@ owns immutable files, and Fleet owns only cache observations.
 
 ## 11. Shared invocation authority
 
+Long-running AaaS, WaaS, Application, and Delivery invocations MUST be able to
+project one authorized durable step timeline and correlate one product
+invocation identity across cursors, observation, wait/awake handles, and audit
+(ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) D2/D3/D7). The timeline is a rebuildable read model over
+Flow/Operations and product owners; it is not a second write history.
+
 Workflow nodes, Agent Tools, APIs, and Automations carry one conceptual
 invocation authority:
 
@@ -299,6 +313,8 @@ Source and review gates must reject:
 
 - product-specific Runtime unit classes or direct Cloud-to-Box lifecycle calls;
 - a Workflow Runtime Unit or a second Flow history;
+- a Restate/Temporal embed, product-local durable journal, or code-as-workflow
+  runtime that bypasses Operations+Flow (ADR 0120 D1);
 - Agent-, Function-, Cell-, model-, Web-, or MCP-specific schedulers,
   autoscalers, node journals, endpoint registries, object clients, Secret
   stores, audit stores, or Gateway publishers;

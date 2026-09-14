@@ -55,6 +55,7 @@ folders are not shipped claims.
 | Empty ports fail closed | Honest snapshots beat fake workers |
 | ACL-only configuration via `a3s-acl` | One config authority |
 | No Cloud Dashboard | API / CLI / MCP remain the ops surface |
+| Durable-execution DX as projections (ADR 0120) | No second journal/scheduler/code-as-workflow runtime |
 
 ## 3. Optimized authority map (execution view)
 
@@ -75,7 +76,7 @@ Inference routes ─────┼→ Edge snapshot compiler → Fleet → Node
 | Gateway desired traffic | Edge | Product-local publishers |
 | Placement / Claims / rollout | Workloads + Fleet | Per-product schedulers |
 | Provider lifecycle | Runtime + Box | Direct process calls from product domains |
-| Durable coordination | Operations + Flow | Product retry tables |
+| Durable coordination | Operations + Flow | Product retry tables; second journals; Restate/Temporal embeds |
 | Inference serving process | Power as Box-hosted Service (`PW0`) | Cloud-side fake worker inventories |
 
 ## 4. Execution waves

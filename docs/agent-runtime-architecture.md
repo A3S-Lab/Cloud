@@ -37,6 +37,14 @@ them into an `AgentRuntime` aggregate would create a second Workflow engine,
 Workload controller, Runtime lifecycle, object store, and credential system.
 The design therefore composes one owner for each concern.
 
+Harnesses run *under* Agents durability, not beside it (ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) D5). A3S Code and any external Harness reuse one
+`AgentExecution`, semantic event sequence, approval, checkpoint, and recovery
+contract. A Harness MUST NOT own a private durable scheduler, transcript store,
+approval authority, or retry daemon. Operator-facing Agent timelines compose
+Agents semantic facts with Flow/Operations orchestration facets as a
+projection only (ADR 0120 D2); Flow history is never the Agent transcript.
+
 ## 3. DDD context map
 
 ```mermaid

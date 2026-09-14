@@ -92,6 +92,7 @@ AI application platform parity manifest.
 | [0085](0085-one-atomic-privileged-authorization-authority.md) | Issue exact current-snapshot privileged allows through one revocation-fenced Identity/PostgreSQL authority and shared Audit |
 | [0086](0086-one-atomic-identity-bootstrap-authority.md) | Create the first tenant identity and matching PlatformOwner authority through one locked PostgreSQL transaction and shared fact rail |
 | [0087](0087-one-workload-runtime-evidence-authority.md) | Bind one exact policy, Claim, Node session, and Runtime/Box proof without copying lifecycles or prematurely authorizing credentials |
+| [0120](0120-first-principles-durable-execution-developer-surface.md) | Keep Flow/Operations as the only durable spine while requiring one developer-visible step timeline, one durable wait/awake vocabulary, Cell as key-scoped serialized state, harness-under-durability Agents, stable side-effect identities, and single invocation correlation |
 | [0088](0088-application-delivery-credential-binding.md) | Freeze Applications-owned anonymous delivery credential bindings without Identity issuance or public routes |
 | [0089](0089-application-delivery-credential-persistence.md) | Persist Applications-owned anonymous delivery credential bindings through migration `204` and one ORM/in-memory owner |
 | [0090](0090-anonymous-delivery-session-admission.md) | Admit anonymous ApplicationSession open over persisted delivery credential bindings without Identity secret verification or public routes |

@@ -197,7 +197,8 @@ normative.
 
 External products are references for useful outcomes, not authorities inside
 Cloud. This register was reconciled with the public TokenHub and Google AX
-capability inventories on 2026-08-06. A reference upgrade may add a candidate
+capability inventories on 2026-08-06, and with Restate durable-execution
+outcomes on 2026-09-14 (ADR 0120). A reference upgrade may add a candidate
 to this register, but it cannot silently import another API, controller,
 scheduler, event log, identity store, or data plane.
 
@@ -213,6 +214,7 @@ scheduler, event log, identity store, or data plane.
 | Google AX-style isolated distributed Harness execution and bring-your-own Harness | One Agents-owned `AgentExecutionProvider` contract selects immutable providers; Workloads, Fleet, Runtime, and Box provide placement, delivery, isolation, and lifecycle | `A1.1` is implemented; native Code `A1.2` start, run-scoped cancellation, event-page, retention-gap, and recovery orchestration is verified by retained clean Linux PostgreSQL 17 and real Box Runtime process-death evidence while consuming exact published Code Core `8.0.1` and Flow `1.1.0`; component-level `A1.3` adds closed backend selection, creation-time profile persistence, exact Flow registry recovery, fail-closed Node routing, and durable common event delivery for Code plus the deterministic non-Code reference Harness. A retained [PostgreSQL 17 and real Box gate](https://github.com/A3S-Lab/Cloud/actions/runs/33164609764/job/98827188366) verifies common-HTTP execution, restart handling, terminal unsupported-Recovery fallback with zero Recover commands, exact replay, and cleanup | AX server/controller deployment, AX configuration or wire compatibility, provider-specific schedulers, run stores, or direct clients |
 | Google AX-style single-writer execution history, reconnect replay, approvals, suspension/resumption, snapshots, forks, trajectories, and telemetry | Agents owns one PostgreSQL semantic sequence; shared SSE/cursors provide reconnect; `A1.5`/`A1.6` add governed pause, provider/Box recovery, checkpoints, forks, trajectories, and telemetry correlation | `A1.1` is implemented; component-level `A1.5` adds durable approval checkpoints and exact provider-neutral resume, while component-level `A1.6` adds immutable logical snapshots, fork lineage, bounded trajectory APIs, telemetry correlation, and migration `169`'s exact capture/inventory/cleanup fences. One S3-only supervised worker reuses the shared immutable-object authority for grace-delayed orphan cleanup. Retained PostgreSQL 17 and real Box evidence verifies approved, denied, expired, cancelled, and restart-fail-closed approval outcomes, exact Resume replay, digest-only audit, logical checkpoint adoption, fork replay, and fenced orphan cleanup through a process-shared object authority; retained checksum-pinned MinIO evidence exercises the production S3 client over real list/delete requests and verifies grace, cleanup leasing, replay, and empty namespace cleanup. Real-provider fork execution, external HTTPS S3-compatible evidence, and provider/Box private checkpoint certification remain pending, so broader product availability is not claimed | AX event-log authority, Flow history as transcript, Runtime logs as semantic state, or a second snapshot store |
 | Google AX-style per-execution customization of Harness, instructions, environment, model, Skills, MCP, and Tools | `A1.4` binds one immutable, closed `HarnessInvocationProfile` and exact release/Secret references before dispatch | Component-level `A1.4` persists and digest-binds the current Agent, provider, artifact-covered instructions, Runtime environment/security/workspace, Skill, MCP, and Secret-reference authorities before dispatch, and admits digest-only Tool events with shared audit correlation. The retained PostgreSQL/reference-provider gate verifies immutable Tool binding, exact replay, shared audit correlation, and absence of Tool payloads from audit. Production model and Tool binding producers and any additional independent MCP binding remain open | Mutable provider state as desired state, arbitrary environment injection, copied Secret material, or provider-owned authorization |
+| Restate-style durable execution runtime outcomes: developer-visible step journals, key-scoped serialized stateful entities, explicit durable wait/awake points, harness-agnostic agent durability, and single-invocation operations timelines | Cloud retains PostgreSQL owner aggregates plus Operations and A3S Flow as the only durable orchestration path; product owners project one authorized durable step timeline and one durable wait/awake vocabulary; Durable Cell remains the key-scoped serialized state primitive; Agents keep one harness-under-durability contract; side effects retain stable effect identities | ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) accepted; delivery remains gate-driven under `W0`, `A1`, `APP0`, `CELL0`, and `AUT0` | Restate Server, code-as-workflow as Cloud's primary product model, a second durable journal/scheduler/retry daemon, per-Cell state in PostgreSQL or Gateway, or collapsing Identity/Edge/Workloads/Fleet into a durable microservice runtime |
 | Security-operations correlation from Gateway policy, Agent semantics, Runtime/Box evidence, host signals, and audit | `C0.3` projects tenant-scoped investigation timelines over durable typed owner evidence and shared audit metadata; Identity, Edge/Gateway, Workloads, and owning contexts remain the only enforcement authorities | `C0.3-S1a` verifies one owner/admin Gateway MCP Route policy timeline over Edge Outbox facts and audit metadata; Gateway denials, Agent/Runtime/Box/host/AnySentry/OpenTelemetry correlation, signed export, and bounded detection lifecycle remain planned and owner-gated in `C0.3`/`H0.5` | A fourth product control plane, a security scheduler/node channel, telemetry-driven desired-state mutation, or a second audit store |
 
 For the Durable Cells row, REST/OpenAPI `1.39.0` adds the exact S0 profile as
@@ -270,6 +272,36 @@ The architecture also excludes:
 - parallel domain-specific implementations of idempotency, object storage,
   streaming cursors, audit, or integration events.
 
+
+### 2.3 Durable execution developer surface
+
+ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md)
+is normative for how Cloud absorbs durable-execution *outcomes* without
+importing a second runtime.
+
+First principles:
+
+1. Cloud's mission is a multi-tenant AI control plane, not a journaled
+   microservice SDK host.
+2. Durable coordination has exactly one spine: Operations + A3S Flow
+   (ADR [0001](decisions/app-platform/0001-flow-preservation.md)).
+3. Useful Restate-like outcomes are expressed as **projections and contracts
+   over existing owners**, never as a parallel engine.
+
+| Surface | Architectural rule | Owner |
+| --- | --- | --- |
+| Durable step timeline | Authorized ordered read model over orchestration and semantic facts; never a second write history | Product owners compose; Flow/Operations supply orchestration facets |
+| Durable wait / awake | One wait-handle vocabulary for human, webhook, connector, answer, and Flow timer completion; no product-local sleep queues | Semantic owner + Flow wait/Hook interpretation |
+| Key-scoped serialized state | Named single-writer hibernatable state for rooms and blackboards | Durable Cells + selected provider/S0 |
+| Agent durability | Every Harness runs under one Agents execution, approval, checkpoint, and recovery contract | Agents (`A1` / `AR0`) |
+| Side-effect identity | Connector, Tool, Execution, and Application effects keep stable IDs and ambiguous-commit recovery | Owning context ports |
+| Invocation correlation | One product invocation identity joins timeline, cursors, observation, and audit; Gateway request IDs stay transport-only | Applications / Workflow / Agents as applicable |
+
+This section adjusts target architecture language only. Public availability
+remains gate-driven in [`ROADMAP.md`](../ROADMAP.md) and the owning plans.
+
+
 ## 3. Fixed architecture principles
 
 1. **Intent is durable before work starts.** An accepted mutation commits
@@ -286,6 +318,10 @@ The architecture also excludes:
    sessions to Cloud; Cloud does not require an inbound node-management port.
 6. **Execution is provider-neutral above Runtime and Box-only below it.** Cloud
    expresses Task or Service intent; Box is the sole concrete local provider.
+7. **Durable-execution developer outcomes are projected, never forked.** Step
+   timelines, wait/awake handles, and invocation correlation reuse Operations,
+   Flow, and product owners (ADR 0120); Cloud does not host a second durable
+   journal, scheduler, or code-as-workflow runtime.
 7. **Identifiers and revisions are immutable.** Mutable source tags and
    manifests are resolved to exact digests before they become execution
    authority.

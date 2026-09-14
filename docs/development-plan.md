@@ -212,6 +212,11 @@ Management MCP, provider, recovery, and evidence contracts.
   website capabilities by extending their named authorities. Architecture
   tests must reject profile-specific Flow engines, schedulers, queues, event
   buses, registries, object clients, and rollout controllers.
+- Follow ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) for durable-execution developer outcomes: compose
+  step timelines, wait/awake handles, and invocation correlation from existing
+  owners; keep harnesses under Agents durability; require stable effect
+  identities for side effects; reject Restate/Temporal embeds and second
+  durable journals.
 
 ### 2.1 Architecture convergence before feature expansion
 

@@ -691,6 +691,14 @@ capability parity.
 
 ## 10. A3S Flow preservation and extension policy
 
+ADR [0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) applies to APP0/K0/AUT0 delivery surfaces: Application
+invocations project one durable step timeline and one invocation correlation
+identity across session cursors, blocking/streaming/async observation,
+wait/awake completion, and audit (D2/D3/D7). Side effects through Connectors,
+Tools, and semantic Application effects retain stable effect identities and
+ambiguous-commit recovery (D6). Applications MUST NOT add a second durable
+engine, journal, or sleep queue.
+
 The implementation starts with conformance tests against the currently pinned
 Flow revision. It must first express a feature with existing commands,
 deterministic Cloud planning, and owning ports. An upstream Flow change is

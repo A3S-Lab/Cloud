@@ -113,11 +113,14 @@ and recovery; alarms and WebSockets allow the space to remain live without a
 permanently resident process per room.
 
 That shared space is a data-plane collaboration primitive, not a second
-orchestrator. A3S Flow still owns durable graph ordering, waits, retries, and
-compensation. Agents still own conversation/execution history. Applications,
-Files, and Knowledge still own durable business records and documents. A Cell
-may project or coordinate a live view of those identities, but it cannot
-become their hidden source of truth.
+orchestrator. Architecturally it is Cloud's key-scoped single-writer state
+primitive (Restate Virtual Object / Deno Durable Object *outcome*; ADR
+[0120](decisions/app-platform/0120-first-principles-durable-execution-developer-surface.md) D4). A3S Flow still owns durable graph ordering, waits, retries,
+and compensation. Agents still own conversation/execution history.
+Applications, Files, and Knowledge still own durable business records and
+documents. A Cell may project or coordinate a live view of those identities,
+but it cannot become their hidden source of truth, absorb WorkflowRun history,
+or host a product-local sleep/wake queue (ADR 0120 D1/D3).
 
 The first production profile is a dedicated Cell fleet per application. A
 shared process may not host mutually untrusted applications until a later
