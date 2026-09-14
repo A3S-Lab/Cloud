@@ -3,6 +3,7 @@ mod anonymous_invocation_commands;
 mod commands;
 mod delivery_access;
 mod delivery_commands;
+mod delivery_credential_commands;
 mod delivery_identity;
 mod delivery_queries;
 mod environment_access;
@@ -35,6 +36,13 @@ pub use delivery_commands::{
     CloseApplicationSessionResult, OpenApplicationSession, OpenApplicationSessionHandler,
     OpenApplicationSessionResult, RequestApplicationInvocation,
     RequestApplicationInvocationHandler, RequestApplicationInvocationResult,
+};
+pub use delivery_credential_commands::{
+    ApplicationDeliveryCredentialMutationResult, DisableApplicationDeliveryCredential,
+    DisableApplicationDeliveryCredentialHandler, EnableApplicationDeliveryCredential,
+    EnableApplicationDeliveryCredentialHandler, RegisterApplicationDeliveryCredential,
+    RegisterApplicationDeliveryCredentialHandler, RevokeApplicationDeliveryCredential,
+    RevokeApplicationDeliveryCredentialHandler,
 };
 pub use delivery_queries::{
     DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, GetApplicationInvocation,
@@ -88,6 +96,8 @@ pub use workflow_run_port::{
 mod anonymous_delivery_tests;
 #[cfg(test)]
 mod anonymous_invocation_tests;
+#[cfg(test)]
+mod delivery_credential_tests;
 #[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
