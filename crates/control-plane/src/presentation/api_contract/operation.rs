@@ -1,4 +1,3 @@
-use super::OPENAPI_CONTRACT_VERSION;
 use super::automation_operation::{
     is_automation_management_path, is_automation_webhook_endpoint_collection_path,
     is_automation_webhook_endpoint_mutation_path, query_parameters as automation_query_parameters,
@@ -39,12 +38,14 @@ use super::user_file_operation::{
     query_parameters as user_file_query_parameters,
     success_component as user_file_success_component,
 };
+use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
     APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
     APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
-    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
-    MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES,
+    APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, DEFAULT_APPLICATION_LIST_LIMIT,
+    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+    MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 use crate::modules::audit::{
     DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
@@ -63,8 +64,8 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::{
     DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
-use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
@@ -84,7 +85,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub(super) fn describe_operation(
     operation: &mut Value,
@@ -1626,6 +1627,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_build_plan_detection_path(path)
             && !is_automation_webhook_endpoint_mutation_path(path)
             && !is_application_feedback_collection_path(path)
+            && !is_application_message_variant_collection_path(path)
             && !is_application_annotation_collection_path(path))
 }
 
@@ -1774,7 +1776,8 @@ fn is_recipient_contact_item_path(path: &str) -> bool {
 }
 
 fn is_recipient_contact_verification_path(path: &str) -> bool {
-    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
+    path
+        == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
 }
 
 fn is_recipient_contact_revocation_path(path: &str) -> bool {
@@ -1972,6 +1975,7 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_session_collection_path(path)
         || is_application_invocation_collection_path(path)
         || is_application_feedback_collection_path(path)
+        || is_application_message_variant_collection_path(path)
         || is_application_annotation_collection_path(path)
 }
 
@@ -2104,6 +2108,11 @@ fn is_application_annotation_collection_path(path: &str) -> bool {
         && path.ends_with("/annotations")
 }
 
+fn is_application_message_variant_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/message-variants")
+}
+
 fn is_application_session_close_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/close")
@@ -2233,6 +2242,24 @@ fn application_request_schema(path: &str) -> Value {
                     "type": "string",
                     "format": "uuid",
                     "nullable": true
+                }
+            }
+        });
+    }
+    if is_application_message_variant_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sourceMessageId"],
+            "properties": {
+                "sourceMessageId": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "instruction": {
+                    "type": "object",
+                    "nullable": true,
+                    "x-a3s-max-canonical-bytes": APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES
                 }
             }
         });

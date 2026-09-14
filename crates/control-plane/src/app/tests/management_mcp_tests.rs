@@ -501,28 +501,22 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_build_evidence_get"
         ]
     );
-    assert!(
-        read_only_tools["result"]["tools"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .all(|tool| tool["annotations"]["readOnlyHint"] == true)
-    );
+    assert!(read_only_tools["result"]["tools"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .all(|tool| tool["annotations"]["readOnlyHint"] == true));
     let audit_manifest = listed_tool(&read_only_tools, "a3s_cloud_audit_records_export_manifest")?;
     assert_eq!(
         audit_manifest["inputSchema"]["required"],
         json!(["from", "to"])
     );
-    assert!(
-        audit_manifest["inputSchema"]["properties"]
-            .get("cursor")
-            .is_none()
-    );
-    assert!(
-        audit_manifest["inputSchema"]["properties"]
-            .get("limit")
-            .is_none()
-    );
+    assert!(audit_manifest["inputSchema"]["properties"]
+        .get("cursor")
+        .is_none());
+    assert!(audit_manifest["inputSchema"]["properties"]
+        .get("limit")
+        .is_none());
     assert_eq!(
         audit_manifest["inputSchema"]["properties"]["pageSize"],
         json!({
@@ -556,9 +550,7 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
 
     let route_writer_tools = list_tools(&app, MCP_ROUTE_TOKEN, 4).await?;
     assert!(tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_routes_publish"));
-    assert!(
-        !tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_deployments_create")
-    );
+    assert!(!tool_names(&route_writer_tools).contains(&"a3s_cloud_durable_cell_deployments_create"));
 
     let build_writer_tools = list_tools(&app, MCP_BUILD_TOKEN, 5).await?;
     assert!(tool_names(&build_writer_tools).contains(&"a3s_cloud_build_plans_accept"));
@@ -664,6 +656,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
             "a3s_cloud_application_annotations_create",
             "a3s_cloud_application_annotations_list",
             "a3s_cloud_application_annotations_get",
+            "a3s_cloud_application_message_variants_create",
+            "a3s_cloud_application_message_variants_list",
+            "a3s_cloud_application_message_variants_get",
             "a3s_cloud_connector_profiles_create",
             "a3s_cloud_connector_profiles_revise",
             "a3s_cloud_connector_profiles_list",
@@ -1029,11 +1024,9 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         create_automation_webhook["annotations"]["readOnlyHint"],
         false
     );
-    assert!(
-        create_automation_webhook["inputSchema"]["properties"]
-            .get("idempotencyKey")
-            .is_none()
-    );
+    assert!(create_automation_webhook["inputSchema"]["properties"]
+        .get("idempotencyKey")
+        .is_none());
     let list_automation_definitions = listed_tool(
         &administrator_tools,
         "a3s_cloud_automation_definitions_list",
@@ -1071,12 +1064,10 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         deploy_durable_cell["inputSchema"]["properties"]["storageProviderProfileAcl"]["maxLength"],
         crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES
     );
-    assert!(
-        !deploy_durable_cell["inputSchema"]["required"]
-            .as_array()
-            .expect("required Durable Cell deployment fields")
-            .contains(&json!("storageProviderProfileAcl"))
-    );
+    assert!(!deploy_durable_cell["inputSchema"]["required"]
+        .as_array()
+        .expect("required Durable Cell deployment fields")
+        .contains(&json!("storageProviderProfileAcl")));
     assert_eq!(
         deploy_durable_cell["inputSchema"]["properties"]["providerWorkloadAcl"]["maxLength"],
         crate::modules::workloads::presentation::WORKLOAD_MANIFEST_MAX_BYTES
@@ -1223,7 +1214,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
         json!(["humanTaskId", "submission"])
     );
     assert_eq!(
-        submit_human_task["inputSchema"]["properties"]["submission"]["properties"]["apiVersion"]["enum"],
+        submit_human_task["inputSchema"]["properties"]["submission"]["properties"]["apiVersion"]
+            ["enum"],
         json!(["a3s.dev/form-interaction-submission/v1"])
     );
     assert_eq!(
@@ -1247,8 +1239,8 @@ async fn management_mcp_hides_and_denies_mutations_without_effective_scope() -> 
 }
 
 #[tokio::test]
-async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgres_authority()
--> Result<()> {
+async fn management_mcp_privileged_tools_dispatch_and_fail_closed_without_postgres_authority(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -1589,13 +1581,11 @@ async fn management_mcp_reuses_membership_commands_queries_and_idempotency() -> 
         ))
         .await?;
     let listed_body = response_json(&listed)?;
-    assert!(
-        listed_body["result"]["structuredContent"]["data"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|membership| membership["id"] == membership_id)
-    );
+    assert!(listed_body["result"]["structuredContent"]["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|membership| membership["id"] == membership_id));
 
     let fetched = app
         .call(mcp_request(
@@ -1786,13 +1776,11 @@ async fn management_mcp_reuses_principal_bound_membership_invitations() -> Resul
             tool_call(5, "a3s_cloud_my_membership_invitations_list", json!({})),
         ))
         .await?;
-    assert!(
-        response_json(&mine)?["result"]["structuredContent"]["data"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .any(|invitation| invitation["id"] == invitation_id)
-    );
+    assert!(response_json(&mine)?["result"]["structuredContent"]["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .any(|invitation| invitation["id"] == invitation_id));
 
     let invalid_version = app
         .call(mcp_request(

@@ -4,25 +4,28 @@ use crate::modules::applications::presentation::{
     ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
-    ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationMutationResponse,
-    ApplicationReleaseResponse, ApplicationResponse, ApplicationSessionMutationResponse,
-    ApplicationSessionReplayResponse, ApplicationSessionResponse,
+    ApplicationInvocationResponse, ApplicationMessageResponse,
+    ApplicationMessageVariantMutationResponse, ApplicationMessageVariantResponse,
+    ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
+    ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
+    ApplicationSessionResponse,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationSession, ApplicationFeedbackRating,
     ApplicationResponseMode, CancelApplicationInvocation, CloseApplicationSession,
-    CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback, GetApplication,
-    GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
+    CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback,
+    CreateApplicationMessageVariant, GetApplication, GetApplicationAnnotation,
+    GetApplicationFeedback, GetApplicationInvocation, GetApplicationMessageVariant,
     GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
-    ListApplicationFeedbackBySession, ListApplicationReleases, ListApplications,
-    PublishApplicationRelease, ReplayApplicationSession,
+    ListApplicationFeedbackBySession, ListApplicationMessageVariantsBySession,
+    ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationInvocationId,
-    ApplicationMessageId, ApplicationReleaseId, ApplicationSessionId, EnvironmentId, OntologyId,
-    OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
+    ApplicationMessageId, ApplicationMessageVariantId, ApplicationReleaseId, ApplicationSessionId,
+    EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -224,6 +227,26 @@ pub struct ApplicationAnnotationArguments {
     application_id: Uuid,
     session_id: Uuid,
     annotation_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationMessageVariantArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    source_message_id: Uuid,
+    #[serde(default)]
+    instruction: Option<Value>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationMessageVariantArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    variant_id: Uuid,
 }
 
 pub async fn create(
@@ -845,6 +868,97 @@ pub async fn get_annotation(
         Ok(annotation) => tool_result::success(
             200,
             ApplicationAnnotationResponse::from(annotation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_message_variant(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateApplicationMessageVariantArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CreateApplicationMessageVariant {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            source_message_id: ApplicationMessageId::from_uuid(arguments.source_message_id),
+            instruction: arguments.instruction,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationMessageVariantMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_message_variants(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationSessionArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationMessageVariantsBySession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationMessageVariantResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_message_variant(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationMessageVariantArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationMessageVariant {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            variant_id: ApplicationMessageVariantId::from_uuid(arguments.variant_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(variant) => tool_result::success(
+            200,
+            ApplicationMessageVariantResponse::from(variant),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

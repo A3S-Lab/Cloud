@@ -9,6 +9,8 @@ import {
   type ApplicationFeedback,
   type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
+  type ApplicationMessageVariant,
+  type ApplicationMessageVariantMutationResult,
   type ApplicationMutationResult,
   type ApplicationRelease,
   type ApplicationSession,
@@ -17,6 +19,7 @@ import {
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
   type CreateApplicationInput,
+  type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
   type OpenApplicationSessionInput,
@@ -27,6 +30,7 @@ import {
   validateApplicationExpectedVersion,
   validateApplicationFeedbackInput,
   validateApplicationInitialVariables,
+  validateApplicationMessageVariantInput,
   validateApplicationInvocationInput,
   validateApplicationInvocationTimeout,
   validateApplicationListLimit,
@@ -3002,6 +3006,53 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/annotations/${encodeURIComponent(annotationId)}`,
+      signal
+    );
+  }
+
+  createApplicationMessageVariant(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CreateApplicationMessageVariantInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageVariantMutationResult> {
+    validateApplicationMessageVariantInput(input);
+    return this.postQueryJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-variants`,
+      {
+        sourceMessageId: input.sourceMessageId,
+        ...(input.instruction !== undefined ? { instruction: input.instruction } : {}),
+      },
+      signal
+    );
+  }
+
+  listApplicationMessageVariants(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageVariant[]> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-variants`,
+      signal
+    );
+  }
+
+  getApplicationMessageVariant(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    variantId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageVariant> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/message-variants/${encodeURIComponent(variantId)}`,
       signal
     );
   }

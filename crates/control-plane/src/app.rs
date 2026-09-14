@@ -2,7 +2,6 @@ use crate::infrastructure::{
     ImmutableObjectClient, OperationResourceAccessResolver, S3ImmutableObjectOptions,
     SmtpCredentials, SmtpTlsPolicy, SmtpTransport, SmtpTransportOptions,
 };
-use crate::modules::PlatformModule;
 use crate::modules::agents::{
     AgentExecutionCheckpointObjectReconciler, AgentExecutionCheckpointObjectStore,
     AgentExecutionFlowRuntime, AgentExecutionFlowRuntimeDependencies,
@@ -27,13 +26,15 @@ use crate::modules::applications::{
     CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
     CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
     CreateApplicationAnnotationHandler, CreateApplicationFeedbackHandler, CreateApplicationHandler,
-    GetApplicationAnnotationHandler, GetApplicationFeedbackHandler, GetApplicationHandler,
-    GetApplicationInvocationHandler, GetApplicationReleaseHandler, GetApplicationSessionHandler,
-    IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    IApplicationOntologyRevisionPort, IApplicationPresetWorkflowPort, IApplicationRepository,
-    IApplicationSessionRepository, IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort,
-    IApplicationsEnvironmentAccess, IWorkflowApplicationEffectsPort,
-    ListApplicationAnnotationsBySessionHandler, ListApplicationFeedbackBySessionHandler,
+    CreateApplicationMessageVariantHandler, GetApplicationAnnotationHandler,
+    GetApplicationFeedbackHandler, GetApplicationHandler, GetApplicationInvocationHandler,
+    GetApplicationMessageVariantHandler, GetApplicationReleaseHandler,
+    GetApplicationSessionHandler, IApplicationAnnotationRepository, IApplicationFeedbackRepository,
+    IApplicationMessageVariantRepository, IApplicationOntologyRevisionPort,
+    IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess,
+    IWorkflowApplicationEffectsPort, ListApplicationAnnotationsBySessionHandler,
+    ListApplicationFeedbackBySessionHandler, ListApplicationMessageVariantsBySessionHandler,
     ListApplicationReleasesHandler, ListApplicationsHandler, OpenApplicationSessionHandler,
     ProjectsApplicationsEnvironmentAccessAdapter, PublishApplicationReleaseHandler,
     ReplayApplicationSessionHandler, RequestApplicationInvocationHandler,
@@ -257,13 +258,13 @@ use crate::modules::identity::{
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
     OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
     ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
-    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
     RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
     RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
     RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
     RevokeTenantSupportGrantHandler, RotateInferenceKeyHandler,
     SmtpRecipientContactVerificationDeliveryService,
     WorkloadRuntimeExecutionAuthorizationQueryService,
+    RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
 use crate::modules::integration_events::{
     A3sEventPublisher, EventPublishError, IEventPublisher, IIntegrationEventProjector,
@@ -297,10 +298,10 @@ use crate::modules::notifications::{
     IOutboundRecipientContactAccess, IdentityNotificationOutboxIdentityAccessAdapter,
     IdentityOutboundRecipientContactAccessAdapter, ListNotificationAlertPoliciesHandler,
     ListNotificationsHandler, ListOutboundNotificationSubscriptionsHandler,
-    MarkNotificationReadHandler, NotificationsModule, OUTBOUND_NOTIFICATION_EVENT_KEY,
-    OutboundNotificationDispatcher, OutboundNotificationSmtpDispatcher,
-    OutboxNotificationProjector, ProjectsNotificationsEnvironmentAccessAdapter,
-    RevokeNotificationAlertPolicyHandler, RevokeOutboundNotificationSubscriptionHandler,
+    MarkNotificationReadHandler, NotificationsModule, OutboundNotificationDispatcher,
+    OutboundNotificationSmtpDispatcher, OutboxNotificationProjector,
+    ProjectsNotificationsEnvironmentAccessAdapter, RevokeNotificationAlertPolicyHandler,
+    RevokeOutboundNotificationSubscriptionHandler, OUTBOUND_NOTIFICATION_EVENT_KEY,
 };
 use crate::modules::operations::{
     FlowOperationEngine, IOperationRepository, ListOperationsHandler, OperationReconciler,
@@ -417,26 +418,27 @@ use crate::modules::workloads::{
     WorkloadMcpActiveRevisionProjectionQueryService, WorkloadRuntimeReconciler,
     WorkloadSecretMaterializationAuthorizationQueryService, WorkloadsModule,
 };
+use crate::modules::PlatformModule;
 use crate::presentation::{
-    API_PREFIX, ApiContractModule, ApiErrorFilter, ApiResponseInterceptor, ManagementMcpModule,
-    RequestIdMiddleware,
+    ApiContractModule, ApiErrorFilter, ApiResponseInterceptor, ManagementMcpModule,
+    RequestIdMiddleware, API_PREFIX,
 };
 use crate::server::{ControlPlane, ControlPlaneWorkers};
 use crate::{
-    CloudConfig,
     config::{
         EventProviderKind, ObjectStorageProviderKind, ProcessRole, SecurityProfile,
         SecurityProviderKind, SmtpProviderKind, SmtpTlsMode,
     },
     infrastructure::{
-        FlowReadInfrastructure, FlowRuntimeRouter, InfrastructureBinding, PostgresBootstrapError,
-        bind_infrastructure, connect_postgres, postgres_health,
+        bind_infrastructure, connect_postgres, postgres_health, FlowReadInfrastructure,
+        FlowRuntimeRouter, InfrastructureBinding, PostgresBootstrapError,
     },
+    CloudConfig,
 };
 use a3s_boot::{
-    AUTH_PUBLIC_METADATA, AuthModule, BootApplication, BootError, CqrsModule,
-    HealthIndicatorResult, HealthModule, Module, ModuleRef, ProviderDefinition, ProviderToken,
-    QueueOptions, Result, RouteDefinition,
+    AuthModule, BootApplication, BootError, CqrsModule, HealthIndicatorResult, HealthModule,
+    Module, ModuleRef, ProviderDefinition, ProviderToken, QueueOptions, Result, RouteDefinition,
+    AUTH_PUBLIC_METADATA,
 };
 use a3s_event::{NatsConfig, StorageType};
 use a3s_orm::PostgresExecutor;
@@ -831,6 +833,7 @@ async fn build_api_worker_application(
     let application_sessions = adapters.application_sessions;
     let application_feedbacks = adapters.application_feedbacks;
     let application_annotations = adapters.application_annotations;
+    let application_message_variants = adapters.application_message_variants;
     let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
     let developer_workload_profiles = adapters.developer_workflows.workload_profiles;
     let developer_preview_policies = adapters.developer_workflows.preview_policies;
@@ -2130,6 +2133,7 @@ async fn build_api_worker_application(
                 application_sessions,
                 application_feedbacks,
                 application_annotations,
+                application_message_variants,
                 developer_workflow_build_plans,
                 developer_workload_profiles,
                 developer_preview_policies,
@@ -2398,6 +2402,7 @@ struct ManagementApplicationDependencies {
     application_sessions: Arc<dyn IApplicationSessionRepository>,
     application_feedbacks: Arc<dyn IApplicationFeedbackRepository>,
     application_annotations: Arc<dyn IApplicationAnnotationRepository>,
+    application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
     developer_workload_profiles: Arc<dyn IWorkloadProfileRepository>,
     developer_preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
@@ -2517,6 +2522,7 @@ fn build_management_application_with_health(
         application_sessions,
         application_feedbacks,
         application_annotations,
+        application_message_variants,
         developer_workflow_build_plans,
         developer_workload_profiles,
         developer_preview_policies,
@@ -2803,10 +2809,13 @@ fn build_management_application_with_health(
     let get_application_invocations = Arc::clone(&application_sessions);
     let create_application_feedback_sessions = Arc::clone(&application_sessions);
     let create_application_annotation_sessions = Arc::clone(&application_sessions);
+    let create_application_message_variant_sessions = Arc::clone(&application_sessions);
     let get_application_feedback_sessions = Arc::clone(&application_sessions);
     let list_application_feedback_sessions = Arc::clone(&application_sessions);
     let get_application_annotation_sessions = Arc::clone(&application_sessions);
     let list_application_annotation_sessions = Arc::clone(&application_sessions);
+    let get_application_message_variant_sessions = Arc::clone(&application_sessions);
+    let list_application_message_variant_sessions = Arc::clone(&application_sessions);
     let replay_application_sessions = application_sessions;
     let create_application_feedbacks = Arc::clone(&application_feedbacks);
     let get_application_feedbacks = Arc::clone(&application_feedbacks);
@@ -2814,6 +2823,9 @@ fn build_management_application_with_health(
     let create_application_annotations = Arc::clone(&application_annotations);
     let get_application_annotations = Arc::clone(&application_annotations);
     let list_application_annotations = application_annotations;
+    let create_application_message_variants = Arc::clone(&application_message_variants);
+    let get_application_message_variants = Arc::clone(&application_message_variants);
+    let list_application_message_variants = application_message_variants;
     let list_applications = Arc::clone(&applications);
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
@@ -3604,6 +3616,12 @@ fn build_management_application_with_health(
                     CreateApplicationAnnotationHandler::new(
                         create_application_annotation_sessions,
                         create_application_annotations,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CreateApplicationMessageVariant, _>(
+                    CreateApplicationMessageVariantHandler::new(
+                        create_application_message_variant_sessions,
+                        create_application_message_variants,
                     ),
                 )
                 .command_handler::<
@@ -4476,6 +4494,19 @@ fn build_management_application_with_health(
                 >(ListApplicationAnnotationsBySessionHandler::new(
                     list_application_annotation_sessions,
                     list_application_annotations,
+                ))
+                .query_handler::<crate::modules::applications::GetApplicationMessageVariant, _>(
+                    GetApplicationMessageVariantHandler::new(
+                        get_application_message_variant_sessions,
+                        get_application_message_variants,
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::applications::ListApplicationMessageVariantsBySession,
+                    _,
+                >(ListApplicationMessageVariantsBySessionHandler::new(
+                    list_application_message_variant_sessions,
+                    list_application_message_variants,
                 ))
                 .query_handler::<crate::modules::files::ListUserFiles, _>(
                     ListUserFilesHandler::new(Arc::clone(&user_file_service)),

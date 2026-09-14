@@ -1,4 +1,4 @@
-pub(super) const TAGS: [(&str, &str); 27] = [
+pub(super) const TAGS: [(&str, &str); 28] = [
     (
         "Platform",
         "Public diagnostics plus installation-scoped platform RBAC and tenant-support administration.",
@@ -6,6 +6,10 @@ pub(super) const TAGS: [(&str, &str); 27] = [
     (
         "Identity",
         "Bootstrap, authentication, credentials, memberships, invitations, and grants.",
+    ),
+    (
+        "Inference",
+        "Tenant-authorized inference routes, revisions, retirement, and usage showback.",
     ),
     (
         "Organizations",

@@ -1,9 +1,10 @@
 use super::applications::{
     ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
-    ApplicationInvocationArguments, ApplicationReleaseArguments, ApplicationSessionArguments,
-    CancelApplicationInvocationArguments, CloseApplicationSessionArguments,
-    CreateApplicationAnnotationArguments, CreateApplicationArguments,
-    CreateApplicationFeedbackArguments, ListApplicationMessagesArguments,
+    ApplicationInvocationArguments, ApplicationMessageVariantArguments,
+    ApplicationReleaseArguments, ApplicationSessionArguments, CancelApplicationInvocationArguments,
+    CloseApplicationSessionArguments, CreateApplicationAnnotationArguments,
+    CreateApplicationArguments, CreateApplicationFeedbackArguments,
+    CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
     ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
     PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
@@ -437,6 +438,44 @@ pub async fn execute(
         ManagementTool::ApplicationAnnotationsGet => {
             let arguments = arguments::parse::<ApplicationAnnotationArguments>(arguments).ok()?;
             applications::get_annotation(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageVariantsCreate => {
+            let arguments =
+                arguments::parse::<CreateApplicationMessageVariantArguments>(arguments).ok()?;
+            applications::create_message_variant(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageVariantsList => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::list_message_variants(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageVariantsGet => {
+            let arguments =
+                arguments::parse::<ApplicationMessageVariantArguments>(arguments).ok()?;
+            applications::get_message_variant(
                 query_bus,
                 organization_id,
                 actor_principal_id,
