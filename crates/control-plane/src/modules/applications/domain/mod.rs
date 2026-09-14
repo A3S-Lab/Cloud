@@ -8,6 +8,7 @@ mod application_feedback;
 mod application_invocation;
 mod application_invocation_workflow_authority;
 mod application_message;
+mod application_message_file_reference;
 mod application_message_variant;
 mod application_release_contract;
 mod application_session;
@@ -38,6 +39,7 @@ pub use application_invocation_workflow_authority::ApplicationInvocationWorkflow
 pub use application_message::{
     APPLICATION_MESSAGE_MAX_BYTES, ApplicationMessage, ApplicationMessageKind, digest_json,
 };
+pub use application_message_file_reference::ApplicationMessageFileReference;
 pub use application_message_variant::{
     APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES, ApplicationMessageVariant,
 };
