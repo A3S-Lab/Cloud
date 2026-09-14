@@ -5,7 +5,7 @@
 //! Answer, and FinalOutput messages with cursor-based paging. This is not a
 //! second run history, timer worker, SSE stream, or Gateway route. Persistence
 //! is not required: observation projects existing session state. CQRS polling
-//! is `APP0.2-C43`; management delivery is a later slice. Gate `APP0.2-C42`.
+//! is `APP0.2-C43`. Management delivery is `APP0.2-C44`. Gate `APP0.2-C42`.
 
 use super::{
     ApplicationInvocation, ApplicationInvocationStatus, ApplicationMessage, ApplicationMessageKind,

@@ -144,6 +144,8 @@ pub const APPLICATION_MESSAGE_CITATIONS_GET: &str =
     "a3s_cloud_application_message_citations_get";
 pub const APPLICATION_BLOCKING_OBSERVATION_OBSERVE: &str =
     "a3s_cloud_application_blocking_observation_observe";
+pub const APPLICATION_STREAMING_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_streaming_observation_observe";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -379,6 +381,7 @@ pub enum ManagementTool {
     ApplicationMessageCitationsList,
     ApplicationMessageCitationsGet,
     ApplicationBlockingObservationObserve,
+    ApplicationStreamingObservationObserve,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -598,7 +601,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 233] = [
+    const ALL: [Self; 234] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -631,6 +634,7 @@ impl ManagementTool {
         Self::ApplicationMessageCitationsList,
         Self::ApplicationMessageCitationsGet,
         Self::ApplicationBlockingObservationObserve,
+        Self::ApplicationStreamingObservationObserve,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -891,6 +895,7 @@ impl ManagementTool {
             Self::ApplicationMessageCitationsList => APPLICATION_MESSAGE_CITATIONS_LIST,
             Self::ApplicationMessageCitationsGet => APPLICATION_MESSAGE_CITATIONS_GET,
             Self::ApplicationBlockingObservationObserve => APPLICATION_BLOCKING_OBSERVATION_OBSERVE,
+            Self::ApplicationStreamingObservationObserve => APPLICATION_STREAMING_OBSERVATION_OBSERVE,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1137,7 +1142,8 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsCreate
             | Self::ApplicationMessageCitationsList
             | Self::ApplicationMessageCitationsGet
-            | Self::ApplicationBlockingObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationBlockingObservationObserve
+            | Self::ApplicationStreamingObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1523,6 +1529,7 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsList
             | Self::ApplicationMessageCitationsGet
             | Self::ApplicationBlockingObservationObserve
+            | Self::ApplicationStreamingObservationObserve
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1811,6 +1818,12 @@ impl ManagementTool {
                 "Observe Application blocking invocation",
                 "Poll one Application Blocking-mode invocation observation for an authorized session.",
                 application_invocation_schema(),
+                true,
+            ),
+            Self::ApplicationStreamingObservationObserve => (
+                "Observe Application streaming invocation",
+                "Poll one Application Streaming-mode invocation observation for an authorized session with an optional afterSequence cursor.",
+                application_streaming_observation_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -4323,6 +4336,21 @@ fn application_invocation_schema() -> Value {
             "applicationId": {"type": "string", "format": "uuid"},
             "sessionId": {"type": "string", "format": "uuid"},
             "invocationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "invocationId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_streaming_observation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "afterSequence": {"type": "integer", "minimum": 0}
         },
         "required": ["projectId", "applicationId", "sessionId", "invocationId"],
         "additionalProperties": false

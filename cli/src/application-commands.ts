@@ -34,6 +34,7 @@ import {
   applicationFeedbackResult,
   applicationFeedbacksResult,
   applicationBlockingObservationResult,
+  applicationStreamingObservationResult,
   applicationMessageCitationMutationResult,
   applicationMessageCitationResult,
   applicationMessageCitationsResult,
@@ -484,6 +485,23 @@ export async function executeApplicationCommand(
         )
       );
 
+    case 'application-streaming-observation observe':
+      requireReadCommand(
+        arguments_,
+        'application-streaming-observation observe <application-id> <session-id> <invocation-id>',
+        5
+      );
+      return applicationStreamingObservationResult(
+        await cloudApi().observeApplicationStreamingInvocation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application invocation ID'),
+          streamingObservationAfterSequence(arguments_)
+        )
+      );
+
     case 'application-message-file-references create': {
       const mutation = requireFeedbackAnnotationCreate(
         arguments_,
@@ -756,6 +774,19 @@ function applicationAnnotationInput(
     content: value.content,
     ...(value.sourceMessageId !== undefined ? { sourceMessageId: value.sourceMessageId } : {}),
   };
+}
+
+function streamingObservationAfterSequence(arguments_: ParsedArguments): number | undefined {
+  if (arguments_.afterSequence === undefined) {
+    return undefined;
+  }
+  return boundedApplicationMessageInteger(
+    arguments_.afterSequence,
+    'Application streaming observation after-sequence',
+    0,
+    Number.MAX_SAFE_INTEGER,
+    0
+  );
 }
 
 function applicationReplayPagination(

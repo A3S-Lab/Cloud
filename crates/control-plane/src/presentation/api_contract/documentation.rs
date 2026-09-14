@@ -822,6 +822,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Observe an application blocking invocation",
         ),
         (
+            "/invocations/{invocation_id}/streaming-observation",
+            "Observe an application streaming invocation",
+        ),
+        (
             "/workflow-runs/{workflow_run_id}/cancel",
             "Cancel a workflow run",
         ),

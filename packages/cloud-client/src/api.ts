@@ -10,6 +10,7 @@ import {
   type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
   type ApplicationBlockingObservation,
+  type ApplicationStreamingObservation,
   type ApplicationMessageCitation,
   type ApplicationMessageCitationMutationResult,
   type ApplicationMessageFileReference,
@@ -2894,6 +2895,27 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/invocations/${encodeURIComponent(invocationId)}/blocking-observation`,
+      signal,
+    );
+  }
+
+  observeApplicationStreamingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    afterSequence?: number,
+    signal?: AbortSignal,
+  ): Promise<ApplicationStreamingObservation> {
+    const parameters = new URLSearchParams();
+    if (afterSequence !== undefined && afterSequence !== 0) {
+      parameters.set('afterSequence', String(afterSequence));
+    }
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/streaming-observation` +
+        encodeQueryParameters(parameters),
       signal,
     );
   }

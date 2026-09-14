@@ -1,6 +1,7 @@
 use super::applications::{
     ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
     ApplicationInvocationArguments, ApplicationMessageCitationArguments,
+    ApplicationStreamingObservationArguments,
     ApplicationMessageFileReferenceArguments,
     ApplicationMessageVariantArguments,
     ApplicationReleaseArguments, ApplicationSessionArguments, CancelApplicationInvocationArguments,
@@ -530,6 +531,19 @@ pub async fn execute(
             let arguments =
                 arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
             applications::observe_blocking_invocation(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationStreamingObservationObserve => {
+            let arguments =
+                arguments::parse::<ApplicationStreamingObservationArguments>(arguments).ok()?;
+            applications::observe_streaming_invocation(
                 query_bus,
                 organization_id,
                 actor_principal_id,
