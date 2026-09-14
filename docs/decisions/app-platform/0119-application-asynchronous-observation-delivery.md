@@ -34,5 +34,5 @@ management boundary only:
 ## Evidence
 
 - Merge commit: `72eb9fe8bc5101e256583fe5dfc2a82119f47ec3`
-- Verified commit: `ee707d49f334abe438175a4c1ca1a28878d72515`
+- Verified commit: `0f87a09c592108184a3d28ccd608cc63935a6952`
 - OpenAPI contract version: `1.104.0`
