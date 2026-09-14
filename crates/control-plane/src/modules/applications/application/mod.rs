@@ -1,3 +1,4 @@
+mod anonymous_delivery_commands;
 mod commands;
 mod delivery_access;
 mod delivery_commands;
@@ -17,6 +18,9 @@ mod workflow_effects;
 mod workflow_revision_port;
 mod workflow_run_port;
 
+pub use anonymous_delivery_commands::{
+    OpenAnonymousApplicationSession, OpenAnonymousApplicationSessionHandler,
+};
 pub use commands::{
     CreateApplication, CreateApplicationHandler, PublishApplicationRelease,
     PublishApplicationReleaseHandler,
@@ -76,6 +80,8 @@ pub use workflow_run_port::{
     ApplicationWorkflowRunEvidence, ApplicationWorkflowRunRequest, IApplicationWorkflowRunPort,
 };
 
+#[cfg(test)]
+mod anonymous_delivery_tests;
 #[cfg(test)]
 mod delivery_tests;
 #[cfg(test)]
