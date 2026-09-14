@@ -1,13 +1,15 @@
 use super::{ApplicationAudience, ApplicationRelease};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ApplicationEndUserId, ApplicationId, OrganizationId, PrincipalId,
-    ProjectId,
+    canonical_timestamp, ApplicationDeliveryCredentialId, ApplicationEndUserId, ApplicationId,
+    OrganizationId, PrincipalId, ProjectId,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 const PROJECT_MEMBER_END_USER_IDENTITY: &[u8] = b"cloud.application.end-user.project-member.v1";
+const ANONYMOUS_CREDENTIAL_END_USER_IDENTITY: &[u8] =
+    b"cloud.application.end-user.anonymous-credential.v1";
 
 /// One Applications-owned delivery identity scoped to a single Application.
 ///
@@ -133,6 +135,42 @@ impl ApplicationEndUser {
             return Err("Application end user is outside the exact release audience".into());
         }
         Ok(())
+    }
+
+    /// Admit one Principal-free anonymous end user bound to an Applications
+    /// delivery credential identity. Callers must pass the credential-derived
+    /// end-user id so retries adopt the same delivery identity.
+    pub fn anonymous_credential(
+        id: ApplicationEndUserId,
+        release: &ApplicationRelease,
+        created_by: PrincipalId,
+        created_at: DateTime<Utc>,
+    ) -> Result<Self, String> {
+        release.validate()?;
+        if release.contract.spec().audience != ApplicationAudience::Anonymous {
+            return Err(
+                "anonymous Application delivery requires an anonymous-audience release".into(),
+            );
+        }
+        Self::create(id, release, None, created_by, created_at)
+    }
+
+    /// Derive the stable anonymous end-user id for one delivery credential.
+    pub fn anonymous_credential_id(
+        application_id: ApplicationId,
+        credential_id: ApplicationDeliveryCredentialId,
+    ) -> Result<ApplicationEndUserId, String> {
+        if application_id.as_uuid().is_nil() || credential_id.as_uuid().is_nil() {
+            return Err("Application anonymous credential end user identity is invalid".into());
+        }
+        let mut identity = Vec::with_capacity(ANONYMOUS_CREDENTIAL_END_USER_IDENTITY.len() + 17);
+        identity.extend_from_slice(ANONYMOUS_CREDENTIAL_END_USER_IDENTITY);
+        identity.push(0);
+        identity.extend_from_slice(credential_id.as_uuid().as_bytes());
+        Ok(ApplicationEndUserId::from_uuid(Uuid::new_v5(
+            &application_id.as_uuid(),
+            &identity,
+        )))
     }
 
     pub fn validate_project_member(
