@@ -1,7 +1,9 @@
 mod application;
+mod application_annotation;
 mod application_delivery_credential;
 mod application_effect;
 mod application_end_user;
+mod application_feedback;
 mod application_invocation;
 mod application_invocation_workflow_authority;
 mod application_message;
@@ -15,11 +17,15 @@ mod session_repository;
 mod workflow_binding;
 
 pub use application::{APPLICATION_DESCRIPTION_MAX_CHARS, Application, ApplicationRelease};
+pub use application_annotation::{APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, ApplicationAnnotation};
 pub use application_delivery_credential::{
     ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus,
 };
 pub use application_effect::ApplicationWorkflowEffect;
 pub use application_end_user::ApplicationEndUser;
+pub use application_feedback::{
+    APPLICATION_FEEDBACK_COMMENT_MAX_CHARS, ApplicationFeedback, ApplicationFeedbackRating,
+};
 pub use application_invocation::{
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, ApplicationInvocation, ApplicationInvocationStatus,
 };
