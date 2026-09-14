@@ -26,18 +26,22 @@ use crate::modules::applications::{
     CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
     CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
     CreateApplicationAnnotationHandler, CreateApplicationFeedbackHandler, CreateApplicationHandler,
-    CreateApplicationMessageFileReferenceHandler, CreateApplicationMessageVariantHandler,
+    CreateApplicationMessageCitationHandler, CreateApplicationMessageFileReferenceHandler,
+    CreateApplicationMessageVariantHandler,
     GetApplicationAnnotationHandler,
     GetApplicationFeedbackHandler, GetApplicationHandler, GetApplicationInvocationHandler,
-    GetApplicationMessageFileReferenceHandler, GetApplicationMessageVariantHandler,
+    GetApplicationMessageCitationHandler, GetApplicationMessageFileReferenceHandler,
+    GetApplicationMessageVariantHandler,
     GetApplicationReleaseHandler,
     GetApplicationSessionHandler, IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository,
+    IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
+    IApplicationMessageVariantRepository,
     IApplicationOntologyRevisionPort,
     IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
     IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess,
     IWorkflowApplicationEffectsPort, ListApplicationAnnotationsBySessionHandler,
     ListApplicationFeedbackBySessionHandler,
+    ListApplicationMessageCitationsBySessionHandler,
     ListApplicationMessageFileReferencesBySessionHandler,
     ListApplicationMessageVariantsBySessionHandler,
     ListApplicationReleasesHandler, ListApplicationsHandler, OpenApplicationSessionHandler,
@@ -840,6 +844,7 @@ async fn build_api_worker_application(
     let application_annotations = adapters.application_annotations;
     let application_message_variants = adapters.application_message_variants;
     let application_message_file_references = adapters.application_message_file_references;
+    let application_message_citations = adapters.application_message_citations;
     let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
     let developer_workload_profiles = adapters.developer_workflows.workload_profiles;
     let developer_preview_policies = adapters.developer_workflows.preview_policies;
@@ -2141,6 +2146,7 @@ async fn build_api_worker_application(
                 application_annotations,
                 application_message_variants,
                 application_message_file_references,
+                application_message_citations,
                 developer_workflow_build_plans,
                 developer_workload_profiles,
                 developer_preview_policies,
@@ -2411,6 +2417,7 @@ struct ManagementApplicationDependencies {
     application_annotations: Arc<dyn IApplicationAnnotationRepository>,
     application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
     application_message_file_references: Arc<dyn IApplicationMessageFileReferenceRepository>,
+    application_message_citations: Arc<dyn IApplicationMessageCitationRepository>,
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
     developer_workload_profiles: Arc<dyn IWorkloadProfileRepository>,
     developer_preview_policies: Arc<dyn IPullRequestPreviewPolicyRepository>,
@@ -2532,6 +2539,7 @@ fn build_management_application_with_health(
         application_annotations,
         application_message_variants,
         application_message_file_references,
+        application_message_citations,
         developer_workflow_build_plans,
         developer_workload_profiles,
         developer_preview_policies,
@@ -2831,6 +2839,9 @@ fn build_management_application_with_health(
         Arc::clone(&application_sessions);
     let list_application_message_file_reference_sessions =
         Arc::clone(&application_sessions);
+    let create_application_message_citation_sessions = Arc::clone(&application_sessions);
+    let get_application_message_citation_sessions = Arc::clone(&application_sessions);
+    let list_application_message_citation_sessions = Arc::clone(&application_sessions);
     let replay_application_sessions = application_sessions;
     let create_application_feedbacks = Arc::clone(&application_feedbacks);
     let get_application_feedbacks = Arc::clone(&application_feedbacks);
@@ -2846,6 +2857,9 @@ fn build_management_application_with_health(
     let get_application_message_file_references =
         Arc::clone(&application_message_file_references);
     let list_application_message_file_references = application_message_file_references;
+    let create_application_message_citations = Arc::clone(&application_message_citations);
+    let get_application_message_citations = Arc::clone(&application_message_citations);
+    let list_application_message_citations = application_message_citations;
     let list_applications = Arc::clone(&applications);
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
@@ -3648,6 +3662,12 @@ fn build_management_application_with_health(
                     CreateApplicationMessageFileReferenceHandler::new(
                         create_application_message_file_reference_sessions,
                         create_application_message_file_references,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CreateApplicationMessageCitation, _>(
+                    CreateApplicationMessageCitationHandler::new(
+                        create_application_message_citation_sessions,
+                        create_application_message_citations,
                     ),
                 )
                 .command_handler::<
@@ -4546,6 +4566,19 @@ fn build_management_application_with_health(
                 >(ListApplicationMessageFileReferencesBySessionHandler::new(
                     list_application_message_file_reference_sessions,
                     list_application_message_file_references,
+                ))
+                .query_handler::<crate::modules::applications::GetApplicationMessageCitation, _>(
+                    GetApplicationMessageCitationHandler::new(
+                        get_application_message_citation_sessions,
+                        get_application_message_citations,
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::applications::ListApplicationMessageCitationsBySession,
+                    _,
+                >(ListApplicationMessageCitationsBySessionHandler::new(
+                    list_application_message_citation_sessions,
+                    list_application_message_citations,
                 ))
                 .query_handler::<crate::modules::files::ListUserFiles, _>(
                     ListUserFilesHandler::new(Arc::clone(&user_file_service)),
