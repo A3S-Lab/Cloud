@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
-    use a3s_box_core::compose::{normalize_compose, ComposeSourceFormat};
+    use a3s_box_core::compose::{ComposeSourceFormat, normalize_compose};
 
     let source = include_str!("../../../../../deploy/production/compose.acl");
     let environment = std::collections::HashMap::from([
@@ -79,10 +79,12 @@ fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
                 .map(String::as_str),
             Some("A3S_CLOUD_POSTGRES_URL")
         );
-        assert!(!service
-            .secret_environment
-            .values()
-            .any(|source| source == "A3S_CLOUD_POSTGRES_MIGRATION_URL"));
+        assert!(
+            !service
+                .secret_environment
+                .values()
+                .any(|source| source == "A3S_CLOUD_POSTGRES_MIGRATION_URL")
+        );
     }
 
     let secret_names = |service_name: &str| {
@@ -260,7 +262,7 @@ async fn production_composition_revalidates_the_role_contract_before_io() -> Res
         Ok(_) => {
             return Err(BootError::Internal(
                 "invalid role contract was accepted".into(),
-            ))
+            ));
         }
         Err(error) => error,
     };
@@ -779,8 +781,11 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
     assert!(adapters.contains(
         "recipient_contact_verification_deliveries:\n        Arc<dyn IRecipientContactVerificationDeliveryRepository>"
     ));
-    assert!(adapters
-        .contains("outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>"));
+    assert!(
+        adapters.contains(
+            "outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>"
+        )
+    );
     assert_eq!(
         adapters
             .matches("recipient_contacts: repository.clone()")

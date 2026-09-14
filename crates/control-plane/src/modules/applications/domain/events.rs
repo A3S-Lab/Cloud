@@ -1,4 +1,4 @@
-use super::{Application, ApplicationRelease, APPLICATION_RELEASE_CONTRACT_SCHEMA};
+use super::{APPLICATION_RELEASE_CONTRACT_SCHEMA, Application, ApplicationRelease};
 use a3s_cloud_contracts::DomainEventEnvelope;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;

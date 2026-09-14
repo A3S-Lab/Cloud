@@ -1,7 +1,9 @@
 use super::applications::{
-    ApplicationArguments, ApplicationInvocationArguments, ApplicationReleaseArguments,
-    ApplicationSessionArguments, CancelApplicationInvocationArguments,
-    CloseApplicationSessionArguments, CreateApplicationArguments, ListApplicationMessagesArguments,
+    ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
+    ApplicationInvocationArguments, ApplicationReleaseArguments, ApplicationSessionArguments,
+    CancelApplicationInvocationArguments, CloseApplicationSessionArguments,
+    CreateApplicationAnnotationArguments, CreateApplicationArguments,
+    CreateApplicationFeedbackArguments, ListApplicationMessagesArguments,
     ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
     PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
@@ -14,12 +16,12 @@ use super::artifacts::BuildRunMutationArguments;
 use super::audit::{
     AuditRecordExportArguments, AuditRecordListArguments, AuditRecordManifestExportArguments,
 };
-use super::catalog::ManagementTool;
 use super::automations::{
-    AutomationDefinitionArguments, AutomationRevisionArguments,
-    AutomationWebhookEndpointArguments, ChangeAutomationWebhookEndpointArguments,
-    CreateAutomationWebhookEndpointArguments, ListAutomationDefinitionsArguments,
+    AutomationDefinitionArguments, AutomationRevisionArguments, AutomationWebhookEndpointArguments,
+    ChangeAutomationWebhookEndpointArguments, CreateAutomationWebhookEndpointArguments,
+    ListAutomationDefinitionsArguments,
 };
+use super::catalog::ManagementTool;
 use super::connectors::{
     ConnectorProfileArguments, ConnectorRevisionArguments, CreateConnectorProfileArguments,
     ListConnectorProfilesArguments, ListConnectorRevisionsArguments,
@@ -68,11 +70,10 @@ use super::knowledge::{
     CreateKnowledgeRetrievalPolicyRevisionArguments, ExternalKnowledgeBindingArguments,
     KnowledgeBaseArguments, KnowledgeChunkArguments, KnowledgeDocumentArguments,
     KnowledgeIndexRevisionArguments, KnowledgePipelineArguments,
-    KnowledgeRetrievalPolicyRevisionArguments, ListKnowledgeBasesArguments,
-    ListExternalKnowledgeBindingsArguments, ListKnowledgeChunksArguments,
-    ListKnowledgeDocumentsArguments, ListKnowledgeIndexRevisionsArguments,
-    ListKnowledgePipelinesArguments, ListKnowledgeRetrievalPolicyRevisionsArguments,
-    PublishKnowledgePipelineArguments,
+    KnowledgeRetrievalPolicyRevisionArguments, ListExternalKnowledgeBindingsArguments,
+    ListKnowledgeBasesArguments, ListKnowledgeChunksArguments, ListKnowledgeDocumentsArguments,
+    ListKnowledgeIndexRevisionsArguments, ListKnowledgePipelinesArguments,
+    ListKnowledgeRetrievalPolicyRevisionsArguments, PublishKnowledgePipelineArguments,
 };
 use super::notifications::{
     CreateNotificationAlertPolicyArguments, CreateOutboundNotificationSubscriptionArguments,
@@ -361,6 +362,81 @@ pub async fn execute(
         ManagementTool::ApplicationMessagesList => {
             let arguments = arguments::parse::<ListApplicationMessagesArguments>(arguments).ok()?;
             applications::list_messages(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+
+        ManagementTool::ApplicationFeedbacksCreate => {
+            let arguments =
+                arguments::parse::<CreateApplicationFeedbackArguments>(arguments).ok()?;
+            applications::create_feedback(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationFeedbacksList => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::list_feedback(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationFeedbacksGet => {
+            let arguments = arguments::parse::<ApplicationFeedbackArguments>(arguments).ok()?;
+            applications::get_feedback(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnnotationsCreate => {
+            let arguments =
+                arguments::parse::<CreateApplicationAnnotationArguments>(arguments).ok()?;
+            applications::create_annotation(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnnotationsList => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::list_annotations(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnnotationsGet => {
+            let arguments = arguments::parse::<ApplicationAnnotationArguments>(arguments).ok()?;
+            applications::get_annotation(
                 query_bus,
                 organization_id,
                 actor_principal_id,
@@ -1817,8 +1893,7 @@ pub async fn execute(
             .await
         }
         ManagementTool::KnowledgeIndexRevisionsGet => {
-            let arguments =
-                arguments::parse::<KnowledgeIndexRevisionArguments>(arguments).ok()?;
+            let arguments = arguments::parse::<KnowledgeIndexRevisionArguments>(arguments).ok()?;
             knowledge::get_index_revision(
                 query_bus,
                 organization_id,
@@ -1829,10 +1904,9 @@ pub async fn execute(
             .await
         }
         ManagementTool::KnowledgeRetrievalPolicyRevisionsList => {
-            let arguments = arguments::parse::<ListKnowledgeRetrievalPolicyRevisionsArguments>(
-                arguments,
-            )
-            .ok()?;
+            let arguments =
+                arguments::parse::<ListKnowledgeRetrievalPolicyRevisionsArguments>(arguments)
+                    .ok()?;
             knowledge::list_retrieval_policy_revisions(
                 query_bus,
                 organization_id,
@@ -1843,10 +1917,9 @@ pub async fn execute(
             .await
         }
         ManagementTool::KnowledgeRetrievalPolicyRevisionsCreate => {
-            let arguments = arguments::parse::<CreateKnowledgeRetrievalPolicyRevisionArguments>(
-                arguments,
-            )
-            .ok()?;
+            let arguments =
+                arguments::parse::<CreateKnowledgeRetrievalPolicyRevisionArguments>(arguments)
+                    .ok()?;
             knowledge::create_retrieval_policy_revision(
                 command_bus,
                 organization_id,

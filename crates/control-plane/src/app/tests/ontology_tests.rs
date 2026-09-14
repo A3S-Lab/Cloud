@@ -107,9 +107,11 @@ async fn ontology_lifecycle_is_versioned_idempotent_and_diffable() -> Result<()>
         ))
         .await?;
     assert_eq!(revision.status(), 200);
-    assert!(response_json(&revision)?["data"]["canonicalAcl"]
-        .as_str()
-        .is_some_and(|acl| acl.contains("Compatible description revision")));
+    assert!(
+        response_json(&revision)?["data"]["canonicalAcl"]
+            .as_str()
+            .is_some_and(|acl| acl.contains("Compatible description revision"))
+    );
 
     let diff = app
         .call(get_as(
@@ -186,8 +188,8 @@ async fn ontology_lifecycle_is_versioned_idempotent_and_diffable() -> Result<()>
 }
 
 #[tokio::test]
-async fn restricted_ontology_access_resolves_project_before_reads_revisions_and_replay(
-) -> Result<()> {
+async fn restricted_ontology_access_resolves_project_before_reads_revisions_and_replay()
+-> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;

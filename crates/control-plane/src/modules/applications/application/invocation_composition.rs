@@ -94,7 +94,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 Ok(None) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Application session not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -111,7 +111,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 Ok(None) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Application release not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -128,7 +128,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 Ok(None) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::NotFound(
                         "Application invocation not found".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -150,7 +150,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                 Ok(None) | Err(RepositoryError::NotFound) => {
                     return Ok(Err(ApplicationError::Conflict(
                         "Application invocation Workflow authority is missing".into(),
-                    )))
+                    )));
                 }
                 Err(error) => return Ok(Err(error.into())),
             };
@@ -262,9 +262,7 @@ impl CommandHandler<ComposeApplicationInvocationWorkflowRun>
                         )
                         .await;
                     match current {
-                        Ok(Some(current))
-                            if current.workflow_run_id == Some(expected_run_id) =>
-                        {
+                        Ok(Some(current)) if current.workflow_run_id == Some(expected_run_id) => {
                             Ok(Ok(ComposeApplicationInvocationWorkflowRunResult {
                                 invocation: current,
                                 workflow: evidence,

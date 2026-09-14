@@ -181,7 +181,7 @@ impl AdvanceApplicationInvocationWrite {
         }
         let expected = match self.invocation.status {
             ApplicationInvocationStatus::Requested => {
-                return Err("Application invocation cannot transition back to requested".into())
+                return Err("Application invocation cannot transition back to requested".into());
             }
             ApplicationInvocationStatus::Running => current.bind_workflow_run(
                 self.expected_version,

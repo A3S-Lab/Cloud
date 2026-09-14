@@ -1,6 +1,6 @@
 use super::workflow_components::{digest_schema, timestamp_schema, uuid_schema};
 use a3s_cloud_contracts::HARNESS_INVOCATION_PROFILE_MAX_BYTES;
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const MAXIMUM_JSON_SAFE_INTEGER: i64 = 9_007_199_254_740_991;
 

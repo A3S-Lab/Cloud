@@ -1,3 +1,9 @@
+use super::OPENAPI_CONTRACT_VERSION;
+use super::automation_operation::{
+    is_automation_management_path, is_automation_webhook_endpoint_collection_path,
+    is_automation_webhook_endpoint_mutation_path, query_parameters as automation_query_parameters,
+    request_schema as automation_request_schema, success_component as automation_success_component,
+};
 use super::components::response_ref;
 use super::developer_workflow_operation::{
     is_build_plan_detection_path, is_developer_workflow_creation_path, is_developer_workflow_path,
@@ -7,19 +13,12 @@ use super::developer_workflow_operation::{
     success_component as developer_workflow_success_component,
 };
 use super::documentation::describe_operation_documentation;
-use super::automation_operation::{
-    is_automation_management_path, is_automation_webhook_endpoint_collection_path,
-    is_automation_webhook_endpoint_mutation_path,
-    query_parameters as automation_query_parameters, request_schema as automation_request_schema,
-    success_component as automation_success_component,
-};
 use super::knowledge_operation::{
     is_base_collection_path as is_knowledge_base_collection_path,
     is_document_collection_path as is_knowledge_document_collection_path,
     is_external_binding_collection_path as is_external_knowledge_binding_collection_path,
     is_index_revision_collection_path as is_knowledge_index_revision_collection_path,
-    is_knowledge_path,
-    is_pipeline_collection_path as is_knowledge_pipeline_collection_path,
+    is_knowledge_path, is_pipeline_collection_path as is_knowledge_pipeline_collection_path,
     is_retrieval_policy_revision_collection_path as is_knowledge_retrieval_policy_revision_collection_path,
     query_parameters as knowledge_query_parameters,
     success_component as knowledge_success_component,
@@ -40,9 +39,9 @@ use super::user_file_operation::{
     query_parameters as user_file_query_parameters,
     success_component as user_file_success_component,
 };
-use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::applications::{
-    APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS,
+    APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
     DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
     MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
@@ -64,8 +63,8 @@ use crate::modules::durable_cells::domain::{
 use crate::modules::durable_cells::{
     DEFAULT_DURABLE_CELL_APPLICATION_LIST_LIMIT, MAXIMUM_DURABLE_CELL_APPLICATION_LIST_LIMIT,
 };
-use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
+use crate::modules::forms::presentation::form_interaction_submission_schema;
 use crate::modules::notifications::{
     DEFAULT_NOTIFICATION_LIMIT, MAXIMUM_NOTIFICATION_LIMIT,
     NOTIFICATION_ALERT_POLICY_MAX_ACL_BYTES, OUTBOUND_NOTIFICATION_SUBSCRIPTION_MAX_ACL_BYTES,
@@ -85,7 +84,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn describe_operation(
     operation: &mut Value,
@@ -1625,7 +1624,9 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_plugin_catalog_read_path(path)
             && !is_asset_git_path(path)
             && !is_build_plan_detection_path(path)
-            && !is_automation_webhook_endpoint_mutation_path(path))
+            && !is_automation_webhook_endpoint_mutation_path(path)
+            && !is_application_feedback_collection_path(path)
+            && !is_application_annotation_collection_path(path))
 }
 
 fn is_plugin_catalog_read_path(path: &str) -> bool {
@@ -1773,8 +1774,7 @@ fn is_recipient_contact_item_path(path: &str) -> bool {
 }
 
 fn is_recipient_contact_verification_path(path: &str) -> bool {
-    path
-        == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
+    path == "/organizations/{organization_id}/recipient-contacts/{recipient_contact_id}/verification"
 }
 
 fn is_recipient_contact_revocation_path(path: &str) -> bool {
@@ -1971,6 +1971,8 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_release_collection_path(path)
         || is_application_session_collection_path(path)
         || is_application_invocation_collection_path(path)
+        || is_application_feedback_collection_path(path)
+        || is_application_annotation_collection_path(path)
 }
 
 fn agent_success_component(method: &str, path: &str, status: u16) -> Option<String> {
@@ -2092,6 +2094,16 @@ fn is_application_message_collection_path(path: &str) -> bool {
         && path.ends_with("/messages")
 }
 
+fn is_application_feedback_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/feedbacks")
+}
+
+fn is_application_annotation_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/annotations")
+}
+
 fn is_application_session_close_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/close")
@@ -2181,6 +2193,46 @@ fn application_request_schema(path: &str) -> Value {
                     "minimum": 1,
                     "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
                     "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+                }
+            }
+        });
+    }
+    if is_application_feedback_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["rating"],
+            "properties": {
+                "rating": {
+                    "type": "string",
+                    "enum": ["positive", "negative"]
+                },
+                "comment": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": APPLICATION_FEEDBACK_COMMENT_MAX_CHARS
+                },
+                "sourceMessageId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                }
+            }
+        });
+    }
+    if is_application_annotation_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["content"],
+            "properties": {
+                "content": {
+                    "x-a3s-max-canonical-bytes": APPLICATION_ANNOTATION_CONTENT_MAX_BYTES
+                },
+                "sourceMessageId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
                 }
             }
         });

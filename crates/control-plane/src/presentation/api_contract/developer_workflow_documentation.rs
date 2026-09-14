@@ -22,42 +22,42 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         return Some(description);
     }
     match name {
-        "BuildPlanSource" => Some(
-            "Immutable source identity evidence acquired from the canonical Sources boundary.",
-        ),
+        "BuildPlanSource" => {
+            Some("Immutable source identity evidence acquired from the canonical Sources boundary.")
+        }
         "BuildRecipe" => Some(
             "Canonical Dockerfile build recipe published by Sources and embedded as typed evidence.",
         ),
         "BuildPlanProposal" => Some(
             "Deterministic reviewable BuildPlan proposal with canonical A3S ACL and detector evidence.",
         ),
-        "BuildPlanDetectionDiagnostic" => Some(
-            "Stable bounded diagnostic emitted while detecting BuildPlan proposals.",
-        ),
+        "BuildPlanDetectionDiagnostic" => {
+            Some("Stable bounded diagnostic emitted while detecting BuildPlan proposals.")
+        }
         "BuildPlanDetection" => Some(
             "Canonical bounded proposal and diagnostic set for one exact immutable source layout.",
         ),
         "AcceptedBuildPlan" => Some(
             "Immutable accepted BuildPlan contract owned by Developer Workflows, with canonical ACL and typed evidence.",
         ),
-        "AcceptedBuildPlanList" => Some(
-            "Canonical bounded list of accepted BuildPlans for one exact SourceRevision.",
-        ),
-        "BuildPlanMutation" => Some(
-            "Accepted immutable BuildPlan plus caller-owned idempotency replay state.",
-        ),
-        "BuildPlanDetectionSuccessResponse" => Some(
-            "Standard success envelope containing a deterministic BuildPlan detection result.",
-        ),
-        "AcceptedBuildPlanSuccessResponse" => Some(
-            "Standard success envelope containing one accepted immutable BuildPlan.",
-        ),
-        "AcceptedBuildPlanListSuccessResponse" => Some(
-            "Standard success envelope containing a canonical bounded BuildPlan list.",
-        ),
-        "BuildPlanMutationSuccessResponse" => Some(
-            "Standard success envelope containing BuildPlan acceptance and replay state.",
-        ),
+        "AcceptedBuildPlanList" => {
+            Some("Canonical bounded list of accepted BuildPlans for one exact SourceRevision.")
+        }
+        "BuildPlanMutation" => {
+            Some("Accepted immutable BuildPlan plus caller-owned idempotency replay state.")
+        }
+        "BuildPlanDetectionSuccessResponse" => {
+            Some("Standard success envelope containing a deterministic BuildPlan detection result.")
+        }
+        "AcceptedBuildPlanSuccessResponse" => {
+            Some("Standard success envelope containing one accepted immutable BuildPlan.")
+        }
+        "AcceptedBuildPlanListSuccessResponse" => {
+            Some("Standard success envelope containing a canonical bounded BuildPlan list.")
+        }
+        "BuildPlanMutationSuccessResponse" => {
+            Some("Standard success envelope containing BuildPlan acceptance and replay state.")
+        }
         _ => None,
     }
 }

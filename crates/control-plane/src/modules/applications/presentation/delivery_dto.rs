@@ -349,3 +349,139 @@ impl From<ReplayApplicationSessionResult> for ApplicationSessionReplayResponse {
 fn empty_object() -> Value {
     Value::Object(Map::new())
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationFeedbackRequest {
+    pub rating: String,
+    #[serde(default)]
+    pub comment: Option<String>,
+    #[serde(default)]
+    pub source_message_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationAnnotationRequest {
+    pub content: Value,
+    #[serde(default)]
+    pub source_message_id: Option<Uuid>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationFeedbackResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub source_message_id: Option<Uuid>,
+    pub feedback_id: Uuid,
+    pub rating: String,
+    pub comment: Option<String>,
+    pub content_digest: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationFeedback>
+    for ApplicationFeedbackResponse
+{
+    fn from(feedback: crate::modules::applications::domain::ApplicationFeedback) -> Self {
+        Self {
+            organization_id: feedback.organization_id.as_uuid(),
+            project_id: feedback.project_id.as_uuid(),
+            application_id: feedback.application_id.as_uuid(),
+            application_release_id: feedback.application_release_id.as_uuid(),
+            application_release_digest: feedback.application_release_digest.as_str().to_owned(),
+            session_id: feedback.session_id.as_uuid(),
+            end_user_id: feedback.end_user_id.as_uuid(),
+            source_message_id: feedback.source_message_id.map(|id| id.as_uuid()),
+            feedback_id: feedback.id.as_uuid(),
+            rating: feedback.rating.as_str().to_owned(),
+            comment: feedback.comment,
+            content_digest: feedback.content_digest.as_str().to_owned(),
+            created_at: feedback.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationFeedbackMutationResponse {
+    pub feedback: ApplicationFeedbackResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationFeedbackMutationResult>
+    for ApplicationFeedbackMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationFeedbackMutationResult,
+    ) -> Self {
+        Self {
+            feedback: result.feedback.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationAnnotationResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub source_message_id: Option<Uuid>,
+    pub annotation_id: Uuid,
+    pub content: Value,
+    pub content_digest: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationAnnotation>
+    for ApplicationAnnotationResponse
+{
+    fn from(annotation: crate::modules::applications::domain::ApplicationAnnotation) -> Self {
+        Self {
+            organization_id: annotation.organization_id.as_uuid(),
+            project_id: annotation.project_id.as_uuid(),
+            application_id: annotation.application_id.as_uuid(),
+            application_release_id: annotation.application_release_id.as_uuid(),
+            application_release_digest: annotation.application_release_digest.as_str().to_owned(),
+            session_id: annotation.session_id.as_uuid(),
+            end_user_id: annotation.end_user_id.as_uuid(),
+            source_message_id: annotation.source_message_id.map(|id| id.as_uuid()),
+            annotation_id: annotation.id.as_uuid(),
+            content: annotation.content,
+            content_digest: annotation.content_digest.as_str().to_owned(),
+            created_at: annotation.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationAnnotationMutationResponse {
+    pub annotation: ApplicationAnnotationResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationAnnotationMutationResult>
+    for ApplicationAnnotationMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationAnnotationMutationResult,
+    ) -> Self {
+        Self {
+            annotation: result.annotation.into(),
+            replayed: result.replayed,
+        }
+    }
+}

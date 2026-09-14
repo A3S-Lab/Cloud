@@ -39,13 +39,15 @@ pub use infrastructure::{
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 pub use presentation::{
+    ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
     ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,
+    ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationMutationResponse,
     ApplicationRecordResponse, ApplicationReleaseResponse, ApplicationResponse,
     ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
     ApplicationSessionResponse, ApplicationWorkflowEffectResponse,
-    ApplicationWorkflowRunEvidenceResponse, ApplicationsModule, CreateApplicationRequest,
-    OpenApplicationSessionRequest, PublishApplicationReleaseRequest,
-    RequestApplicationInvocationRequest,
+    ApplicationWorkflowRunEvidenceResponse, ApplicationsModule, CreateApplicationAnnotationRequest,
+    CreateApplicationFeedbackRequest, CreateApplicationRequest, OpenApplicationSessionRequest,
+    PublishApplicationReleaseRequest, RequestApplicationInvocationRequest,
 };

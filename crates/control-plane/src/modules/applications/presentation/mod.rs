@@ -3,14 +3,18 @@ mod controller;
 mod delivery_controller;
 mod delivery_dto;
 mod dto;
+mod feedback_delivery_controller;
 
 pub use applications_module::ApplicationsModule;
 pub use delivery_dto::{
+    ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
     ApplicationConversationVariablesResponse, ApplicationExpectedVersionRequest,
+    ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
     ApplicationInvocationResponse, ApplicationMessageResponse, ApplicationSessionMutationResponse,
     ApplicationSessionReplayResponse, ApplicationSessionResponse,
     ApplicationWorkflowEffectResponse, ApplicationWorkflowRunEvidenceResponse,
+    CreateApplicationAnnotationRequest, CreateApplicationFeedbackRequest,
     OpenApplicationSessionRequest, RequestApplicationInvocationRequest,
 };
 pub use dto::{

@@ -3,16 +3,17 @@ use super::workflow_components::{
     digest_schema, nullable_uuid_schema, revision_number_schema, timestamp_schema, uuid_schema,
 };
 use crate::modules::identity::domain::value_objects::{
-    PlatformPermission, PlatformRole, PlatformRolePolicyContract, TenantNotificationRequirement,
-    TenantSupportApprovalRequirement, TenantSupportGrantContract, TenantSupportGrantContractSpec,
-    TenantSupportGrantMode, TenantSupportPermission, TrustDomainContract, TrustDomainContractSpec,
-    TrustDomainName, WorkloadIdentityAudience, WorkloadIdentityFormat,
-    WorkloadIdentityPolicyContract, WorkloadIdentityPolicySpec, WorkloadIdentityRevocationMode,
-    WorkloadProductRole, MAX_WORKLOAD_IDENTITY_PROVIDER_ATTESTATION_PROFILES,
+    MAX_WORKLOAD_IDENTITY_PROVIDER_ATTESTATION_PROFILES,
     MAX_WORKLOAD_IDENTITY_PROVIDER_CREDENTIAL_LIFETIME_SECONDS,
     MIN_WORKLOAD_CREDENTIAL_LIFETIME_SECONDS, PLATFORM_ROLE_POLICY_MAX_ACL_BYTES,
+    PlatformPermission, PlatformRole, PlatformRolePolicyContract,
     TENANT_SUPPORT_GRANT_MAX_ACL_BYTES, TRUST_DOMAIN_CONTRACT_MAX_ACL_BYTES,
-    WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES,
+    TenantNotificationRequirement, TenantSupportApprovalRequirement, TenantSupportGrantContract,
+    TenantSupportGrantContractSpec, TenantSupportGrantMode, TenantSupportPermission,
+    TrustDomainContract, TrustDomainContractSpec, TrustDomainName,
+    WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES, WorkloadIdentityAudience, WorkloadIdentityFormat,
+    WorkloadIdentityPolicyContract, WorkloadIdentityPolicySpec, WorkloadIdentityRevocationMode,
+    WorkloadProductRole,
 };
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, InstallationId, NodePoolId, OrganizationId, PlatformRolePolicyId, PrincipalId,
@@ -21,7 +22,7 @@ use crate::modules::shared_kernel::domain::{
 };
 use a3s_cloud_contracts::{RuntimeIsolationLevel, RuntimeUnitClass};
 use chrono::{Duration, TimeZone, Utc};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 use uuid::Uuid;
 
 const MAXIMUM_JSON_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -924,8 +925,10 @@ fn workload_identity_policy_acl_example() -> String {
         rotate_before_expiry_seconds: 60,
         drain_on_rotation_failure: true,
         revoke_on_stop: true,
-        audiences: vec![WorkloadIdentityAudience::parse("model.internal")
-            .expect("fixed OpenAPI workload identity audience")],
+        audiences: vec![
+            WorkloadIdentityAudience::parse("model.internal")
+                .expect("fixed OpenAPI workload identity audience"),
+        ],
         service_names: vec![
             crate::modules::identity::domain::value_objects::PrivateServiceName::parse(
                 "agent.prod.a3s.internal",

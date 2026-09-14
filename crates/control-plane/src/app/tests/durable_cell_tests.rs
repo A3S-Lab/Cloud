@@ -4,14 +4,14 @@ use crate::modules::artifacts::domain::test_support::{
 };
 use crate::modules::data::ObjectNamespaceProviderProfile;
 use crate::modules::durable_cells::application::{
-    compose_pinned_celld_service_process, DurableCellStorageProviderProfileProjection,
+    DurableCellStorageProviderProfileProjection, compose_pinned_celld_service_process,
 };
 use crate::modules::durable_cells::domain::{
-    DurableCellApplicationDefinition, DurableCellApplicationDefinitionSpec, DurableCellClassSpec,
-    DurableCellDeploymentBinding, DurableCellDeploymentBindingSpec, DurableCellProjectionIdentity,
-    DurableCellPublisherProfile, DurableCellRetentionPolicySpec, DurableCellRollbackPolicy,
-    DurableCellServiceProfile, DurableCellServiceProfileSpec, DurableCellStateSchema,
-    DURABLE_CELL_BUNDLE_MEDIA_TYPE,
+    DURABLE_CELL_BUNDLE_MEDIA_TYPE, DurableCellApplicationDefinition,
+    DurableCellApplicationDefinitionSpec, DurableCellClassSpec, DurableCellDeploymentBinding,
+    DurableCellDeploymentBindingSpec, DurableCellProjectionIdentity, DurableCellPublisherProfile,
+    DurableCellRetentionPolicySpec, DurableCellRollbackPolicy, DurableCellServiceProfile,
+    DurableCellServiceProfileSpec, DurableCellStateSchema,
 };
 use crate::modules::secrets::domain::{CreateSecretWrite, Secret, SecretChanged};
 use crate::modules::shared_kernel::domain::{
@@ -285,9 +285,11 @@ async fn durable_cell_rest_surface_reuses_c2_and_acl_native_c3() -> Result<()> {
         profile.digest().as_str()
     );
     assert_eq!(deployed["data"]["workload"]["replayed"], false);
-    assert!(deployed["data"]["correlation"]
-        .get("secretAccessKey")
-        .is_none());
+    assert!(
+        deployed["data"]["correlation"]
+            .get("secretAccessKey")
+            .is_none()
+    );
 
     let replayed = app
         .call(post_json_as(

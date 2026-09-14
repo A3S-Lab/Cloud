@@ -1,6 +1,6 @@
 use super::workflow_components::{
-    digest_schema, nullable_digest_schema, nullable_uuid_schema, revision_number_schema,
-    timestamp_schema, uuid_schema, MAXIMUM_JSON_SAFE_INTEGER,
+    MAXIMUM_JSON_SAFE_INTEGER, digest_schema, nullable_digest_schema, nullable_uuid_schema,
+    revision_number_schema, timestamp_schema, uuid_schema,
 };
 use crate::modules::workflow::domain::{
     WORKFLOW_STEP_EVIDENCE_REFERENCE_MAX_BYTES, WORKFLOW_STEP_MAX_EVIDENCE_REFERENCES,
@@ -13,7 +13,7 @@ use crate::modules::workflow::{
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V7, WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V8,
     WORKFLOW_STEP_FAILURE_OUTPUT_SCHEMA_V9,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn install_workflow_run_component_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert("WorkflowRunStatus".into(), workflow_run_status_schema());

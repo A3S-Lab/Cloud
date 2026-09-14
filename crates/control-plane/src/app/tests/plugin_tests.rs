@@ -49,8 +49,8 @@ async fn plugin_registry_reads_are_tenant_guarded_and_catalog_posts_are_non_muta
 #[tokio::test]
 async fn plugin_registry_enrollment_is_idempotent_tenant_write_and_lists() -> Result<()> {
     use crate::modules::plugins::test_support::VALID_BOOTSTRAP_ROOT;
-    use base64::engine::general_purpose::STANDARD;
     use base64::Engine as _;
+    use base64::engine::general_purpose::STANDARD;
 
     let app = build_test_application(
         Arc::new(InMemoryIdentityRepository::new()),

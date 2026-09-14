@@ -1,12 +1,18 @@
 import {
   type ApplicationResponseMode,
   type CloudApi,
+  type CreateApplicationAnnotationInput,
+  type CreateApplicationFeedbackInput,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
+  MAX_APPLICATION_ANNOTATION_CONTENT_BYTES,
+  MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS,
   MAX_APPLICATION_MESSAGE_LIST_LIMIT,
   MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES,
   MAX_APPLICATION_INVOCATION_INPUT_BYTES,
   MAX_APPLICATION_RELEASE_ACL_BYTES,
   type RequestApplicationInvocationInput,
+  validateApplicationAnnotationInput,
+  validateApplicationFeedbackInput,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand, requireVersionedAclMutationCommand } from './acl-file';
 import {
@@ -14,6 +20,12 @@ import {
   applicationInvocationCancellationResult,
   applicationInvocationMutationResult,
   applicationInvocationResult,
+  applicationAnnotationMutationResult,
+  applicationAnnotationResult,
+  applicationAnnotationsResult,
+  applicationFeedbackMutationResult,
+  applicationFeedbackResult,
+  applicationFeedbacksResult,
   applicationMessagesResult,
   applicationResult,
   applicationReleaseResult,
@@ -283,9 +295,183 @@ export async function executeApplicationCommand(
         )
       );
     }
+    case 'application-feedbacks create': {
+      const mutation = requireFeedbackAnnotationCreate(
+        arguments_,
+        'application-feedbacks create <application-id> <session-id>'
+      );
+      const body = await readApplicationObject(
+        mutation.file,
+        'Application feedback',
+        8 * 1024,
+        dependencies.readFile
+      );
+      const input = applicationFeedbackInput(body);
+      validateApplicationFeedbackInput(input);
+      return applicationFeedbackMutationResult(
+        await cloudApi().createApplicationFeedback(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          input
+        )
+      );
+    }
+    case 'application-feedbacks list':
+      requireReadCommand(
+        arguments_,
+        'application-feedbacks list <application-id> <session-id>',
+        4
+      );
+      return applicationFeedbacksResult(
+        await cloudApi().listApplicationFeedback(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID')
+        )
+      );
+    case 'application-feedbacks get':
+      requireReadCommand(
+        arguments_,
+        'application-feedbacks get <application-id> <session-id> <feedback-id>',
+        5
+      );
+      return applicationFeedbackResult(
+        await cloudApi().getApplicationFeedback(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application feedback ID')
+        )
+      );
+    case 'application-annotations create': {
+      const mutation = requireFeedbackAnnotationCreate(
+        arguments_,
+        'application-annotations create <application-id> <session-id>'
+      );
+      const body = await readApplicationObject(
+        mutation.file,
+        'Application annotation',
+        MAX_APPLICATION_ANNOTATION_CONTENT_BYTES + 1024,
+        dependencies.readFile
+      );
+      const input = applicationAnnotationInput(body);
+      validateApplicationAnnotationInput(input);
+      return applicationAnnotationMutationResult(
+        await cloudApi().createApplicationAnnotation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          input
+        )
+      );
+    }
+    case 'application-annotations list':
+      requireReadCommand(
+        arguments_,
+        'application-annotations list <application-id> <session-id>',
+        4
+      );
+      return applicationAnnotationsResult(
+        await cloudApi().listApplicationAnnotations(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID')
+        )
+      );
+    case 'application-annotations get':
+      requireReadCommand(
+        arguments_,
+        'application-annotations get <application-id> <session-id> <annotation-id>',
+        5
+      );
+      return applicationAnnotationResult(
+        await cloudApi().getApplicationAnnotation(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application annotation ID')
+        )
+      );
     default:
       return undefined;
   }
+}
+
+function requireFeedbackAnnotationCreate(
+  arguments_: ParsedArguments,
+  usage: string
+): { file: string } {
+  requireArity(arguments_.positionals, 4, usage);
+  rejectIdempotencyOption(arguments_);
+  rejectExpectedVersionOption(arguments_);
+  rejectGatewayRolloutOptions(arguments_);
+  rejectLogOptions(arguments_);
+  if (arguments_.stream !== undefined) {
+    throw usageError('--stream is not valid for Application feedback/annotation creates');
+  }
+  if (arguments_.file === undefined) {
+    throw usageError(`--file is required for ${usage}`);
+  }
+  return { file: arguments_.file };
+}
+
+function applicationFeedbackInput(value: Record<string, unknown>): CreateApplicationFeedbackInput {
+  const allowed = new Set(['rating', 'comment', 'sourceMessageId']);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw usageError(`Application feedback field '${key}' is not supported`);
+    }
+  }
+  if (typeof value.rating !== 'string') {
+    throw usageError('Application feedback rating must be a string');
+  }
+  if (value.comment !== undefined && typeof value.comment !== 'string') {
+    throw usageError('Application feedback comment must be a string');
+  }
+  if (value.sourceMessageId !== undefined && typeof value.sourceMessageId !== 'string') {
+    throw usageError('Application feedback sourceMessageId must be a string');
+  }
+  if (
+    value.comment !== undefined &&
+    Array.from(value.comment).length > MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS
+  ) {
+    throw usageError(
+      `Application feedback comment must contain at most ${MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS} characters`
+    );
+  }
+  return {
+    rating: value.rating as CreateApplicationFeedbackInput['rating'],
+    ...(value.comment !== undefined ? { comment: value.comment } : {}),
+    ...(value.sourceMessageId !== undefined ? { sourceMessageId: value.sourceMessageId } : {}),
+  };
+}
+
+function applicationAnnotationInput(
+  value: Record<string, unknown>
+): CreateApplicationAnnotationInput {
+  const allowed = new Set(['content', 'sourceMessageId']);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw usageError(`Application annotation field '${key}' is not supported`);
+    }
+  }
+  if (!('content' in value)) {
+    throw usageError('Application annotation content is required');
+  }
+  if (value.sourceMessageId !== undefined && typeof value.sourceMessageId !== 'string') {
+    throw usageError('Application annotation sourceMessageId must be a string');
+  }
+  return {
+    content: value.content,
+    ...(value.sourceMessageId !== undefined ? { sourceMessageId: value.sourceMessageId } : {}),
+  };
 }
 
 function applicationReplayPagination(

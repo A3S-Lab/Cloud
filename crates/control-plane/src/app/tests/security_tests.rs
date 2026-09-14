@@ -3,7 +3,7 @@ use crate::modules::edge::domain::events::{
     MCP_ROUTE_POLICY_CREATED_EVENT_KEY, MCP_ROUTE_POLICY_REVISED_EVENT_KEY,
 };
 use crate::modules::security::{GatewayRoutePolicyTimelineEntry, SecurityAuditCorrelation};
-use crate::modules::shared_kernel::domain::{canonical_timestamp, Sha256Digest};
+use crate::modules::shared_kernel::domain::{Sha256Digest, canonical_timestamp};
 
 const SECURITY_ADMIN_TOKEN: &str =
     "a3s_3333333333333333333333333333333333333333333333333333333333333333";
@@ -174,9 +174,11 @@ async fn tenant_administrators_query_bounded_redacted_gateway_route_policy_timel
             .map(Vec::len),
         Some(1)
     );
-    assert!(mcp["result"]["structuredContent"]["data"]["entries"][0]
-        .get("details")
-        .is_none());
+    assert!(
+        mcp["result"]["structuredContent"]["data"]["entries"][0]
+            .get("details")
+            .is_none()
+    );
 
     let member_denied = app
         .call(get_as(

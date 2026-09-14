@@ -1,15 +1,15 @@
 use super::developer_workflow_components::{canonical_acl_schema, object_schema, schema_ref};
 use super::workflow_components::{digest_schema, timestamp_schema, uuid_schema};
 use crate::modules::developer_workflows::{
-    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAX_ACTIVE_PREVIEWS_PER_POLICY,
-    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAX_PREVIEW_ENVIRONMENT_NAME_BYTES,
-    MAX_PREVIEW_GIT_BRANCH_BYTES, MAX_PREVIEW_GIT_REPOSITORY_URL_BYTES,
-    MAX_PREVIEW_LIFETIME_SECONDS, MIN_PREVIEW_LIFETIME_SECONDS, PREVIEW_MAX_CPU_MILLIS,
-    PREVIEW_MAX_MEMORY_BYTES, PREVIEW_MAX_STORAGE_BYTES, PREVIEW_MAX_WORKLOADS,
-    PREVIEW_MIN_MEMORY_BYTES, PREVIEW_MIN_STORAGE_BYTES, PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES,
-    PULL_REQUEST_PREVIEW_POLICY_SCHEMA,
+    MAX_ACTIVE_PREVIEWS_PER_POLICY, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
+    MAX_PREVIEW_ENVIRONMENT_NAME_BYTES, MAX_PREVIEW_GIT_BRANCH_BYTES,
+    MAX_PREVIEW_GIT_REPOSITORY_URL_BYTES, MAX_PREVIEW_LIFETIME_SECONDS,
+    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MIN_PREVIEW_LIFETIME_SECONDS,
+    PREVIEW_MAX_CPU_MILLIS, PREVIEW_MAX_MEMORY_BYTES, PREVIEW_MAX_STORAGE_BYTES,
+    PREVIEW_MAX_WORKLOADS, PREVIEW_MIN_MEMORY_BYTES, PREVIEW_MIN_STORAGE_BYTES,
+    PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, PULL_REQUEST_PREVIEW_POLICY_SCHEMA,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const PREVIEW_POLICY_ACL_EXAMPLE: &str =
     include_str!("../../../../../contracts/p0.3/pull-request-preview-policy.acl");
@@ -356,8 +356,7 @@ mod tests {
             assert_eq!(schemas[name]["additionalProperties"], false, "{name}");
         }
         assert_eq!(
-            schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractAcl"]
-                ["maxLength"],
+            schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractAcl"]["maxLength"],
             PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES
         );
         assert_eq!(

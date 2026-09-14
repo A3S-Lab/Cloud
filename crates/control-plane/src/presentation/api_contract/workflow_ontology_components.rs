@@ -5,7 +5,7 @@ use super::workflow_components::{
 use crate::modules::workflow::{
     ONTOLOGY_COMPILER_SCHEMA_VERSION, ONTOLOGY_MAX_ACL_BYTES, ONTOLOGY_SCHEMA,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn install_workflow_ontology_component_schemas(schemas: &mut Map<String, Value>) {
     schemas.insert("Ontology".into(), ontology_schema());

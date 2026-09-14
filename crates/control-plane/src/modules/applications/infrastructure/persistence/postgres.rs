@@ -1,6 +1,6 @@
 use crate::infrastructure::{
-    execute, idempotency_replay, is_foreign_key_violation, is_unique_violation, transaction_error,
-    PostgresPersistenceError,
+    PostgresPersistenceError, execute, idempotency_replay, is_foreign_key_violation,
+    is_unique_violation, transaction_error,
 };
 use crate::modules::applications::domain::{
     Application, ApplicationRecord, ApplicationRelease, ApplicationWriteReference,
@@ -10,7 +10,7 @@ use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, IdempotencyRequest, IdempotentWrite, OrganizationId,
     ProjectId, RepositoryError,
 };
-use a3s_orm::{sql_query, Database, PostgresDialect, PostgresExecutor};
+use a3s_orm::{Database, PostgresDialect, PostgresExecutor, sql_query};
 use async_trait::async_trait;
 
 use super::postgres_records::{
@@ -85,10 +85,10 @@ impl IApplicationRepository for PostgresApplicationRepository {
                             return Err(RepositoryError::Conflict(
                                 "Application name or release identity is already in use".into(),
                             )
-                            .into())
+                            .into());
                         }
                         Err(error) if is_foreign_key_violation(&error) => {
-                            return Err(RepositoryError::NotFound.into())
+                            return Err(RepositoryError::NotFound.into());
                         }
                         Err(error) => return Err(error),
                     }
@@ -148,10 +148,10 @@ impl IApplicationRepository for PostgresApplicationRepository {
                             return Err(RepositoryError::Conflict(
                                 "Application release identity is already in use".into(),
                             )
-                            .into())
+                            .into());
                         }
                         Err(error) if is_foreign_key_violation(&error) => {
-                            return Err(RepositoryError::NotFound.into())
+                            return Err(RepositoryError::NotFound.into());
                         }
                         Err(error) => return Err(error),
                     }
@@ -183,12 +183,12 @@ impl IApplicationRepository for PostgresApplicationRepository {
                             return Err(RepositoryError::Conflict(
                                 "Application was revised from a stale aggregate version".into(),
                             )
-                            .into())
+                            .into());
                         }
                         rows => {
                             return Err(PostgresPersistenceError::Invariant(format!(
                                 "publishing Application release affected {rows} rows"
-                            )))
+                            )));
                         }
                     }
                     persist_write(

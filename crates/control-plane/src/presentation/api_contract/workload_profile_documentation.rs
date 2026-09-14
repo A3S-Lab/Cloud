@@ -14,9 +14,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "WorkloadSecretFileTarget" => Some(
             "Secret reference target that materializes a version-pinned Secret at one absolute path and file mode without exposing its value.",
         ),
-        "WorkloadSecretRegistryCredentialTarget" => Some(
-            "Secret reference target used only as an opaque registry credential binding.",
-        ),
+        "WorkloadSecretRegistryCredentialTarget" => {
+            Some("Secret reference target used only as an opaque registry credential binding.")
+        }
         "WorkloadSecretTarget" => Some(
             "Closed Secret target union discriminated by `kind`; it contains references and placement intent only.",
         ),
@@ -29,9 +29,9 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "WorkloadServicePort" => Some(
             "Named container port intent used by service health and optional public-port selection.",
         ),
-        "WorkloadHttpHealthCheck" => Some(
-            "Bounded HTTP health intent over one named WorkloadProfile service port.",
-        ),
+        "WorkloadHttpHealthCheck" => {
+            Some("Bounded HTTP health intent over one named WorkloadProfile service port.")
+        }
         "ScheduledTaskRetryPolicy" => Some(
             "Bounded retry intent for a scheduled Task; it is not a scheduler or retry lifecycle.",
         ),

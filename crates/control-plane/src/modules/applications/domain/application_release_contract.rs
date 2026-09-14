@@ -2,8 +2,8 @@ use super::{ApplicationWorkflowBinding, ApplicationWorkflowRevisionEvidence};
 use crate::modules::shared_kernel::domain::{
     OrganizationId, ProjectId, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
-use a3s_acl::builder::{list, string, BlockBuilder};
-use a3s_acl::{canonical_digest, generate_acl, parse_acl, Block, Document, Value};
+use a3s_acl::builder::{BlockBuilder, list, string};
+use a3s_acl::{Block, Document, Value, canonical_digest, generate_acl, parse_acl};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use uuid::Uuid;
@@ -315,17 +315,19 @@ fn contract_document(spec: &ApplicationReleaseContractSpec) -> Document {
         )
         .build();
     Document {
-        blocks: vec![BlockBuilder::new(APPLICATION_RELEASE_BLOCK)
-            .attr("audience", string(spec.audience.as_str()))
-            .attr("experience", string(spec.experience.as_str()))
-            .attr(
-                "presentation_digest",
-                string(spec.presentation_digest.as_str()),
-            )
-            .attr("schema", string(APPLICATION_RELEASE_CONTRACT_SCHEMA))
-            .nested_block(delivery_block)
-            .nested_block(workflow_block)
-            .build()],
+        blocks: vec![
+            BlockBuilder::new(APPLICATION_RELEASE_BLOCK)
+                .attr("audience", string(spec.audience.as_str()))
+                .attr("experience", string(spec.experience.as_str()))
+                .attr(
+                    "presentation_digest",
+                    string(spec.presentation_digest.as_str()),
+                )
+                .attr("schema", string(APPLICATION_RELEASE_CONTRACT_SCHEMA))
+                .nested_block(delivery_block)
+                .nested_block(workflow_block)
+                .build(),
+        ],
     }
 }
 

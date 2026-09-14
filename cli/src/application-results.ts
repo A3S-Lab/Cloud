@@ -1,5 +1,9 @@
 import type {
   Application,
+  ApplicationAnnotation,
+  ApplicationAnnotationMutationResult,
+  ApplicationFeedback,
+  ApplicationFeedbackMutationResult,
   ApplicationInvocation,
   ApplicationInvocationCancellationResult,
   ApplicationInvocationMutationResult,
@@ -59,6 +63,21 @@ const APPLICATION_MESSAGE_COLUMNS = [
   { header: 'MESSAGE', value: (row: ApplicationMessage) => row.messageId },
   { header: 'DIGEST', value: (row: ApplicationMessage) => row.contentDigest },
   { header: 'CREATED AT', value: (row: ApplicationMessage) => row.createdAt },
+] as const;
+
+const APPLICATION_FEEDBACK_COLUMNS = [
+  { header: 'FEEDBACK', value: (row: ApplicationFeedback) => row.feedbackId },
+  { header: 'SESSION', value: (row: ApplicationFeedback) => row.sessionId },
+  { header: 'RATING', value: (row: ApplicationFeedback) => row.rating },
+  { header: 'DIGEST', value: (row: ApplicationFeedback) => row.contentDigest },
+  { header: 'CREATED AT', value: (row: ApplicationFeedback) => row.createdAt },
+] as const;
+
+const APPLICATION_ANNOTATION_COLUMNS = [
+  { header: 'ANNOTATION', value: (row: ApplicationAnnotation) => row.annotationId },
+  { header: 'SESSION', value: (row: ApplicationAnnotation) => row.sessionId },
+  { header: 'DIGEST', value: (row: ApplicationAnnotation) => row.contentDigest },
+  { header: 'CREATED AT', value: (row: ApplicationAnnotation) => row.createdAt },
 ] as const;
 
 export function applicationsResult(rows: Application[]): CommandResult {
@@ -137,5 +156,48 @@ export function applicationSessionReplayResult(result: ApplicationSessionReplay)
   return {
     json: result,
     table: renderTable(result.messages, APPLICATION_MESSAGE_COLUMNS),
+  };
+}
+
+export function applicationFeedbacksResult(rows: ApplicationFeedback[]): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_FEEDBACK_COLUMNS) };
+}
+
+export function applicationFeedbackResult(row: ApplicationFeedback): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_FEEDBACK_COLUMNS) };
+}
+
+export function applicationFeedbackMutationResult(
+  result: ApplicationFeedbackMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.feedback, replayed: result.replayed }], [
+      ...APPLICATION_FEEDBACK_COLUMNS,
+      { header: 'REPLAYED', value: (row: ApplicationFeedback & { replayed: boolean }) => row.replayed },
+    ]),
+  };
+}
+
+export function applicationAnnotationsResult(rows: ApplicationAnnotation[]): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_ANNOTATION_COLUMNS) };
+}
+
+export function applicationAnnotationResult(row: ApplicationAnnotation): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_ANNOTATION_COLUMNS) };
+}
+
+export function applicationAnnotationMutationResult(
+  result: ApplicationAnnotationMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.annotation, replayed: result.replayed }], [
+      ...APPLICATION_ANNOTATION_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationAnnotation & { replayed: boolean }) => row.replayed,
+      },
+    ]),
   };
 }

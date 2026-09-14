@@ -6,6 +6,7 @@ use super::{
     OpenApplicationSessionHandler, ReplayApplicationSession, ReplayApplicationSessionHandler,
     RequestApplicationInvocation, RequestApplicationInvocationHandler,
 };
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, Application, ApplicationAudience, ApplicationDeliveryPolicy,
@@ -21,7 +22,6 @@ use crate::modules::applications::domain::{
 use crate::modules::applications::infrastructure::{
     InMemoryApplicationRepository, InMemoryApplicationSessionRepository,
 };
-use crate::modules::applications::ApplicationAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationEndUserId, ApplicationId, ApplicationInvocationId, ApplicationMessageId,

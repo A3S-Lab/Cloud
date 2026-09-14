@@ -72,11 +72,13 @@ mod tests {
         assert!(
             ApplicationsEnvironmentScope::new(organization_id, project_id, environment_id).is_ok()
         );
-        assert!(ApplicationsEnvironmentScope::new(
-            OrganizationId::from_uuid(Uuid::nil()),
-            project_id,
-            environment_id,
-        )
-        .is_err());
+        assert!(
+            ApplicationsEnvironmentScope::new(
+                OrganizationId::from_uuid(Uuid::nil()),
+                project_id,
+                environment_id,
+            )
+            .is_err()
+        );
     }
 }

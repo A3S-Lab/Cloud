@@ -3,7 +3,7 @@ use crate::modules::sources::published::BuildRecipe;
 use crate::modules::sources::{
     MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES, MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) const SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     (
@@ -285,14 +285,18 @@ mod tests {
         assert_eq!(request["additionalProperties"], false);
         assert_eq!(response["additionalProperties"], false);
         assert_eq!(request["properties"], response["properties"]);
-        assert!(!request["required"]
-            .as_array()
-            .expect("request required fields")
-            .contains(&json!("target")));
-        assert!(response["required"]
-            .as_array()
-            .expect("response required fields")
-            .contains(&json!("target")));
+        assert!(
+            !request["required"]
+                .as_array()
+                .expect("request required fields")
+                .contains(&json!("target"))
+        );
+        assert!(
+            response["required"]
+                .as_array()
+                .expect("response required fields")
+                .contains(&json!("target"))
+        );
         assert_eq!(properties["schema"]["enum"], json!([BuildRecipe::SCHEMA]));
         assert_eq!(
             properties["contextPath"]["maxLength"],
@@ -334,8 +338,7 @@ mod tests {
             MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE
         );
         assert_eq!(
-            schemas["GithubRepositoryReferenceDiscoveryPage"]["properties"]["nextCursor"]
-                ["maxLength"],
+            schemas["GithubRepositoryReferenceDiscoveryPage"]["properties"]["nextCursor"]["maxLength"],
             MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES
         );
         assert_eq!(

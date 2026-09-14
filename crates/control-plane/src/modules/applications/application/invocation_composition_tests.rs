@@ -354,13 +354,15 @@ async fn deterministic_workflow_identity_is_scoped_to_the_application_aggregate(
 
     let mut unsupported_timeout = fixture.workflow_authority;
     unsupported_timeout.timeout_seconds = u64::MAX;
-    assert!(ApplicationWorkflowRunRequest::from_invocation(
-        &fixture.release,
-        &fixture.session,
-        &fixture.invocation,
-        &unsupported_timeout,
-    )
-    .is_err());
+    assert!(
+        ApplicationWorkflowRunRequest::from_invocation(
+            &fixture.release,
+            &fixture.session,
+            &fixture.invocation,
+            &unsupported_timeout,
+        )
+        .is_err()
+    );
 }
 
 #[tokio::test]

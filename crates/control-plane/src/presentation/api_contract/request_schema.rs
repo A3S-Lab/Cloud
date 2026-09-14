@@ -7,7 +7,7 @@ use crate::modules::files::{
 use crate::modules::knowledge::KNOWLEDGE_CONTRACT_MAX_ACL_BYTES;
 use a3s_cloud_contracts::NodeEnrollmentRequest;
 use a3s_runtime::contract::RuntimeCapabilities;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
     if let Some(schema) = developer_workflow_request_schema(path) {
@@ -23,12 +23,8 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/webhooks/github" => github_webhook_schema(),
         "/organizations/{organization_id}/api-tokens" => api_token_schema(),
         "/organizations/{organization_id}/assets" => asset_schema(),
-        "/organizations/{organization_id}/assets/{asset_id}/releases" => {
-            asset_release_schema()
-        }
-        "/organizations/{organization_id}/domain-claims/{claim_id}/revoke" => {
-            reason_schema()
-        }
+        "/organizations/{organization_id}/assets/{asset_id}/releases" => asset_release_schema(),
+        "/organizations/{organization_id}/domain-claims/{claim_id}/revoke" => reason_schema(),
         "/organizations/{organization_id}/domain-claims/{claim_id}/verify" => proof_schema(),
         "/organizations/{organization_id}/enrollment-tokens" => enrollment_token_schema(),
         "/organizations/{organization_id}/plugin-registries" => enroll_plugin_registry_schema(),
@@ -142,24 +138,25 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         "/organizations/{organization_id}/projects/{project_id}/external-knowledge-bindings" => {
             external_knowledge_binding_create_schema()
         }
-        "/organizations/{organization_id}/secrets/{secret_id}/versions" => {
-            secret_value_schema()
-        }
-        "/organizations/{organization_id}/workloads/{workload_id}/rollback" => {
-            rollback_schema()
-        }
+        "/organizations/{organization_id}/secrets/{secret_id}/versions" => secret_value_schema(),
+        "/organizations/{organization_id}/workloads/{workload_id}/rollback" => rollback_schema(),
         _ if path.ends_with("/agent-conversations/{conversation_id}/executions") => {
             agent_execution_schema()
         }
         _ if path.ends_with("/agent-executions/{execution_id}/checkpoints") => {
             agent_execution_checkpoint_capture_schema()
         }
-        _ if path.ends_with(
-            "/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork",
-        ) => agent_execution_fork_schema(),
+        _ if path
+            .ends_with("/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork") =>
+        {
+            agent_execution_fork_schema()
+        }
         _ if path.ends_with(
             "/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
-        ) => agent_approval_decision_schema(),
+        ) =>
+        {
+            agent_approval_decision_schema()
+        }
         _ if path.ends_with("/nodes/{node_id}/actions/drain")
             || path.ends_with("/nodes/{node_id}/actions/ready")
             || path.ends_with("/nodes/{node_id}/actions/revoke") =>
@@ -174,12 +171,13 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
         _ if path.ends_with("/environments/{environment_id}/workloads") => {
             create_workload_schema(true)
         }
-        _ if path.ends_with("/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments") => {
+        _ if path.ends_with(
+            "/workloads/{workload_id}/assets/{asset_id}/releases/{asset_release_id}/deployments",
+        ) =>
+        {
             update_workload_schema(false)
         }
-        _ if path.ends_with("/workloads/{workload_id}/deployments") => {
-            update_workload_schema(true)
-        }
+        _ if path.ends_with("/workloads/{workload_id}/deployments") => update_workload_schema(true),
         _ => return None,
     };
     let mut schema = schema;
@@ -1218,18 +1216,25 @@ mod tests {
                 NodeEnrollmentRequest::LEGACY_RUNTIME_CAPABILITIES_SCHEMA
             ])
         );
-        assert!(schema["properties"]["schema"]["description"]
-            .as_str()
-            .is_some_and(|description| {
-                description.contains("v5 cannot advertise service_lifecycle")
-                    && description
-                        .contains("v4 cannot advertise identity_attachment or service_lifecycle")
-            }));
-        assert!(schema["properties"]["features"]["items"]["enum"]
-            .as_array()
-            .is_some_and(|features| features.contains(&json!("identity_attachment"))));
-        assert!(schema["properties"]["features"]["items"]["enum"]
-            .as_array()
-            .is_some_and(|features| features.contains(&json!("service_lifecycle"))));
+        assert!(
+            schema["properties"]["schema"]["description"]
+                .as_str()
+                .is_some_and(|description| {
+                    description.contains("v5 cannot advertise service_lifecycle")
+                        && description.contains(
+                            "v4 cannot advertise identity_attachment or service_lifecycle",
+                        )
+                })
+        );
+        assert!(
+            schema["properties"]["features"]["items"]["enum"]
+                .as_array()
+                .is_some_and(|features| features.contains(&json!("identity_attachment")))
+        );
+        assert!(
+            schema["properties"]["features"]["items"]["enum"]
+                .as_array()
+                .is_some_and(|features| features.contains(&json!("service_lifecycle")))
+        );
     }
 }

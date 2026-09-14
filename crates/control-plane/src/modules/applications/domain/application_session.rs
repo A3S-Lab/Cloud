@@ -3,8 +3,8 @@ use super::{
     ConversationVariableRevision,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ApplicationEndUserId, ApplicationId, ApplicationReleaseId,
-    ApplicationSessionId, ConversationVariableRevisionId, OrganizationId, ProjectId, Sha256Digest,
+    ApplicationEndUserId, ApplicationId, ApplicationReleaseId, ApplicationSessionId,
+    ConversationVariableRevisionId, OrganizationId, ProjectId, Sha256Digest, canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

@@ -8,7 +8,7 @@ use super::privileged_management_components::{
 use crate::modules::identity::domain::repositories::{
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) const PLATFORM_ROLE_POLICY_PATH: &str = "/platform/role-policy";
 pub(super) const PLATFORM_ROLE_POLICY_REVISIONS_PATH: &str = "/platform/role-policy/revisions";
@@ -39,8 +39,7 @@ pub(super) const WORKLOAD_IDENTITY_POLICY_PATH: &str =
     "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}";
 pub(super) const WORKLOAD_IDENTITY_POLICY_REVISIONS_PATH: &str =
     "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions";
-pub(super) const WORKLOAD_IDENTITY_POLICY_REVISION_PATH: &str =
-    "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions/{revision_id}";
+pub(super) const WORKLOAD_IDENTITY_POLICY_REVISION_PATH: &str = "/platform/organizations/{organization_id}/workload-identity-policies/{policy_id}/revisions/{revision_id}";
 pub(super) const WORKLOAD_IDENTITY_POLICY_FOR_WORKLOAD_PATH: &str =
     "/platform/organizations/{organization_id}/workloads/{workload_id}/identity-policy";
 
@@ -208,8 +207,7 @@ mod tests {
             json!(["role", "expectedVersion", "expectedPolicyRevisionId"])
         );
         assert_eq!(
-            request_schema(TENANT_SUPPORT_GRANT_APPROVALS_PATH).expect("approval request")
-                ["required"],
+            request_schema(TENANT_SUPPORT_GRANT_APPROVALS_PATH).expect("approval request")["required"],
             json!(["expectedContractDigest"])
         );
         assert!(request_schema(PLATFORM_ROLE_POLICY_PATH).is_none());

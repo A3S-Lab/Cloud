@@ -62,10 +62,12 @@ async fn personal_inbox_is_recipient_bound_paginated_and_idempotently_read() -> 
         2,
     );
     for notification in [&older, &newer, &foreign] {
-        assert!(notifications
-            .project(notification.clone())
-            .await
-            .map_err(|error| BootError::Internal(error.to_string()))?);
+        assert!(
+            notifications
+                .project(notification.clone())
+                .await
+                .map_err(|error| BootError::Internal(error.to_string()))?
+        );
     }
 
     let root = format!("/api/v1/organizations/{organization}/notifications");
@@ -82,9 +84,11 @@ async fn personal_inbox_is_recipient_bound_paginated_and_idempotently_read() -> 
         first_page["data"]["notifications"][0]["id"],
         newer.id.to_string()
     );
-    assert!(first_page["data"]["notifications"][0]
-        .get("recipientPrincipalId")
-        .is_none());
+    assert!(
+        first_page["data"]["notifications"][0]
+            .get("recipientPrincipalId")
+            .is_none()
+    );
     let cursor = first_page["data"]["nextCursor"]
         .as_str()
         .ok_or_else(|| BootError::Internal("notification cursor is missing".into()))?;
@@ -363,8 +367,8 @@ async fn restricted_inbox_reuses_resource_grants_for_rest_and_mcp() -> Result<()
 }
 
 #[tokio::test]
-async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cross_surface(
-) -> Result<()> {
+async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cross_surface()
+-> Result<()> {
     let notifications =
         Arc::new(crate::modules::notifications::InMemoryNotificationRepository::new());
     let app = build_test_application_with_notifications(
@@ -481,9 +485,11 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         created["data"]["subscription"]["suppressBefore"],
         Value::Null
     );
-    assert!(created["data"]["subscription"]
-        .get("recipientPrincipalId")
-        .is_none());
+    assert!(
+        created["data"]["subscription"]
+            .get("recipientPrincipalId")
+            .is_none()
+    );
     assert!(!created.to_string().contains("hooks.example.test"));
     let subscription_id = created["data"]["subscription"]["subscriptionId"]
         .as_str()
@@ -536,8 +542,7 @@ async fn outbound_subscription_management_is_acl_native_recipient_bound_and_cros
         "cloud.notification.outbound-subscription.v2"
     );
     assert_eq!(
-        mcp_create["result"]["structuredContent"]["data"]["subscription"]
-            ["maximumProviderAttempts"],
+        mcp_create["result"]["structuredContent"]["data"]["subscription"]["maximumProviderAttempts"],
         3
     );
     assert_eq!(
@@ -799,9 +804,11 @@ async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface
         })
     );
     assert_eq!(created["data"]["policy"]["definitionAcl"], definition_acl);
-    assert!(created["data"]["policy"]
-        .get("recipientPrincipalId")
-        .is_none());
+    assert!(
+        created["data"]["policy"]
+            .get("recipientPrincipalId")
+            .is_none()
+    );
     let policy_id = created["data"]["policy"]["policyId"]
         .as_str()
         .ok_or_else(|| BootError::Internal("notification alert policy ID is missing".into()))?
@@ -891,9 +898,11 @@ async fn alert_policy_management_is_acl_native_recipient_bound_and_cross_surface
     );
     let foreign_list = app.call(get_as(&root, NOTIFICATION_FOREIGN_TOKEN)).await?;
     assert_eq!(foreign_list.status(), 200);
-    assert!(response_json(&foreign_list)?["data"]["policies"]
-        .as_array()
-        .is_some_and(Vec::is_empty));
+    assert!(
+        response_json(&foreign_list)?["data"]["policies"]
+            .as_array()
+            .is_some_and(Vec::is_empty)
+    );
 
     let revoke = || {
         post_json_as(

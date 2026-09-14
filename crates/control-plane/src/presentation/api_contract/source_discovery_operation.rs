@@ -5,7 +5,7 @@ use crate::modules::sources::{
     MAXIMUM_GITHUB_SOURCE_DISCOVERY_CURSOR_BYTES, MAXIMUM_GITHUB_SOURCE_DISCOVERY_PAGE_SIZE,
     SOURCES_CONTROLLER_PREFIX,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 pub(super) fn is_repository_discovery_path(path: &str) -> bool {
     is_sources_route(path, GITHUB_REPOSITORY_DISCOVERY_ROUTE)

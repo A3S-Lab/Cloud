@@ -1,4 +1,4 @@
-use crate::infrastructure::{transaction_error, PostgresPersistenceError};
+use crate::infrastructure::{PostgresPersistenceError, transaction_error};
 use crate::modules::applications::domain::{
     ApplicationInvocation, ApplicationSession, OpenApplicationSessionWrite,
     RequestApplicationInvocationWrite,
@@ -78,7 +78,7 @@ pub(super) async fn open_session(
                         return Err(RepositoryError::Conflict(
                             "Application end-user identity is already in use".into(),
                         )
-                        .into())
+                        .into());
                     }
                     Some(_) => {}
                     None => insert_end_user(transaction, &write.end_user)

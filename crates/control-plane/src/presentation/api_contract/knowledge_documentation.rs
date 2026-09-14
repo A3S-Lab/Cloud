@@ -28,18 +28,18 @@ pub(super) fn component_description(name: &str) -> Option<&'static str> {
         "KnowledgeDocumentMutation" => Some(
             "KnowledgeDocument mutation result with explicit idempotent-replay state and the authoritative document projection.",
         ),
-        "KnowledgeDocumentList" => Some(
-            "Bounded list of authorized KnowledgeDocument projections for one KnowledgeBase.",
-        ),
+        "KnowledgeDocumentList" => {
+            Some("Bounded list of authorized KnowledgeDocument projections for one KnowledgeBase.")
+        }
         "KnowledgeChunk" => Some(
             "Authoritative KnowledgeChunk projection binding the canonical chunk ACL, ordinal, and digests.",
         ),
         "KnowledgeChunkMutation" => Some(
             "KnowledgeChunk mutation result with explicit idempotent-replay state and the authoritative chunk projection.",
         ),
-        "KnowledgeChunkList" => Some(
-            "Bounded list of authorized KnowledgeChunk projections for one KnowledgeDocument.",
-        ),
+        "KnowledgeChunkList" => {
+            Some("Bounded list of authorized KnowledgeChunk projections for one KnowledgeDocument.")
+        }
         "KnowledgeIndexRevision" => Some(
             "Authoritative KnowledgeIndexRevision projection binding the canonical index ACL, strategy, embedding dimension, and digests.",
         ),
@@ -97,9 +97,7 @@ pub(super) fn operation_summary(method: &str, path: &str) -> Option<&'static str
         "post" if is_index_revision_collection_path(path) => {
             Some("Create a knowledge index revision")
         }
-        "get" if is_index_revision_collection_path(path) => {
-            Some("List knowledge index revisions")
-        }
+        "get" if is_index_revision_collection_path(path) => Some("List knowledge index revisions"),
         "get" if path.contains("/knowledge-index-revisions/") => {
             Some("Get a knowledge index revision")
         }

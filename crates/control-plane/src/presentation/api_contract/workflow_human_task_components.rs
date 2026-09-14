@@ -5,7 +5,7 @@ use a3s_form_core::{
     DEFAULT_INTERACTION_MAX_VALUE_BYTES, FORM_INTERACTION_REQUEST_API_VERSION,
     FORM_RELEASE_REF_API_VERSION,
 };
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 const MAX_EXTERNAL_IDENTITY_BYTES: usize = 512;
 const MAX_INTERACTION_MESSAGE_BYTES: usize = 4_096;

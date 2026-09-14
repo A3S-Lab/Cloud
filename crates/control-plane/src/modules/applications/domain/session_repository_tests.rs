@@ -514,16 +514,18 @@ async fn stale_or_closed_session_writes_leave_no_partial_state() {
             .await,
         Err(RepositoryError::Conflict(_))
     ));
-    assert!(repository
-        .find_invocation(
-            invocation.organization_id,
-            invocation.project_id,
-            invocation.application_id,
-            invocation.id,
-        )
-        .await
-        .expect("find invocation")
-        .is_none());
+    assert!(
+        repository
+            .find_invocation(
+                invocation.organization_id,
+                invocation.project_id,
+                invocation.application_id,
+                invocation.id,
+            )
+            .await
+            .expect("find invocation")
+            .is_none()
+    );
     assert_eq!(
         repository
             .find_session(

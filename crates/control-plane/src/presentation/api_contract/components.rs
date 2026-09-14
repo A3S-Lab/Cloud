@@ -1,31 +1,32 @@
+use super::OPENAPI_CONTRACT_VERSION;
 use super::agent_components::install_agent_component_schemas;
-use super::developer_workflow_components::{
-    install_developer_workflow_component_schemas, BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS,
-    BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
-};
 use super::automation_components::{
-    install_automation_component_schemas, AUTOMATION_SUCCESS_RESPONSE_BINDINGS,
-    AUTOMATION_SUCCESS_SCHEMA_BINDINGS,
+    AUTOMATION_SUCCESS_RESPONSE_BINDINGS, AUTOMATION_SUCCESS_SCHEMA_BINDINGS,
+    install_automation_component_schemas,
+};
+use super::developer_workflow_components::{
+    BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS, BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
+    install_developer_workflow_component_schemas,
 };
 use super::knowledge_components::{
-    install_knowledge_component_schemas, KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS,
-    KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS,
+    KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS, KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS,
+    install_knowledge_component_schemas,
 };
 use super::preview_management_components::{
-    install_preview_management_component_schemas, PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS,
-    PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
+    PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
+    install_preview_management_component_schemas,
 };
 use super::privileged_management_components::{
-    install_privileged_management_component_schemas,
     PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
+    install_privileged_management_component_schemas,
 };
 use super::source_components::{
-    install_source_discovery_component_schemas, SOURCE_DISCOVERY_SUCCESS_RESPONSE_BINDINGS,
-    SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS,
+    SOURCE_DISCOVERY_SUCCESS_RESPONSE_BINDINGS, SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS,
+    install_source_discovery_component_schemas,
 };
 use super::user_file_components::{
-    install_user_file_component_schemas, USER_FILE_SUCCESS_RESPONSE_BINDINGS,
-    USER_FILE_SUCCESS_SCHEMA_BINDINGS,
+    USER_FILE_SUCCESS_RESPONSE_BINDINGS, USER_FILE_SUCCESS_SCHEMA_BINDINGS,
+    install_user_file_component_schemas,
 };
 use super::workflow_components::install_workflow_component_schemas;
 use super::workflow_goal_components::install_workflow_goal_component_schemas;
@@ -34,10 +35,9 @@ use super::workflow_ontology_components::install_workflow_ontology_component_sch
 use super::workflow_run_components::install_workflow_run_component_schemas;
 use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::workload_profile_components::{
-    install_workload_profile_component_schemas, WORKLOAD_PROFILE_SUCCESS_RESPONSE_BINDINGS,
-    WORKLOAD_PROFILE_SUCCESS_SCHEMA_BINDINGS,
+    WORKLOAD_PROFILE_SUCCESS_RESPONSE_BINDINGS, WORKLOAD_PROFILE_SUCCESS_SCHEMA_BINDINGS,
+    install_workload_profile_component_schemas,
 };
-use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::connectors::{
     CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
@@ -52,7 +52,7 @@ use crate::modules::notifications::{
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
 };
 use a3s_boot::{BootError, Result};
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) fn install_components(document: &mut Value) -> Result<()> {
     let document = document

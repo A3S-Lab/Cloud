@@ -1,11 +1,14 @@
-use serde_json::{json, Map, Value};
+use serde_json::{Map, Value, json};
 
 pub(super) const AUTOMATION_SUCCESS_SCHEMA_BINDINGS: &[(&str, &str)] = &[
     (
         "AutomationWebhookEndpointSuccessResponse",
         "AutomationWebhookEndpoint",
     ),
-    ("AutomationDefinitionSuccessResponse", "AutomationDefinition"),
+    (
+        "AutomationDefinitionSuccessResponse",
+        "AutomationDefinition",
+    ),
     (
         "AutomationDefinitionListSuccessResponse",
         "AutomationDefinitionList",

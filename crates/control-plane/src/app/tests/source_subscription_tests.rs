@@ -165,11 +165,13 @@ async fn github_repository_subscriptions_are_tenant_owned_and_fan_out_exact_even
     assert_eq!(accepted_replay.status(), 202);
     let after_first_push = response_json(&app.call(get_as(&revisions_path, ADMIN_TOKEN)).await?)?;
     assert_eq!(after_first_push["data"].as_array().map(Vec::len), Some(2));
-    assert!(after_first_push["data"]
-        .as_array()
-        .is_some_and(|revisions| revisions.iter().all(|revision| {
-            revision["commitSha"] == COMMIT_A && revision.get("reference").is_none()
-        })));
+    assert!(
+        after_first_push["data"]
+            .as_array()
+            .is_some_and(|revisions| revisions.iter().all(|revision| {
+                revision["commitSha"] == COMMIT_A && revision.get("reference").is_none()
+            }))
+    );
     let changed_replay = app
         .call(github_webhook_request(
             "push",

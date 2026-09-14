@@ -281,10 +281,12 @@ async fn secret_api_encrypts_versions_and_never_returns_or_events_values() -> Re
         )
         .await
         .map_err(|error| BootError::Internal(error.to_string()))?;
-    assert!(!first_version
-        .encrypted_value
-        .ciphertext()
-        .contains(first_plaintext));
+    assert!(
+        !first_version
+            .encrypted_value
+            .ciphertext()
+            .contains(first_plaintext)
+    );
     Ok(())
 }
 

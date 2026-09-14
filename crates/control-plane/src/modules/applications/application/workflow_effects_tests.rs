@@ -25,8 +25,8 @@ use crate::modules::shared_kernel::domain::{
 use async_trait::async_trait;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 struct Fixture {
     sessions: Arc<InMemoryApplicationSessionRepository>,
