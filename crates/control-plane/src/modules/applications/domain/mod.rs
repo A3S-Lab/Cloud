@@ -1,3 +1,4 @@
+mod annotation_repository;
 mod application;
 mod application_annotation;
 mod application_delivery_credential;
@@ -12,10 +13,12 @@ mod application_session;
 mod conversation_variables;
 mod delivery_credential_repository;
 mod events;
+mod feedback_repository;
 mod repository;
 mod session_repository;
 mod workflow_binding;
 
+pub use annotation_repository::IApplicationAnnotationRepository;
 pub use application::{APPLICATION_DESCRIPTION_MAX_CHARS, Application, ApplicationRelease};
 pub use application_annotation::{APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, ApplicationAnnotation};
 pub use application_delivery_credential::{
@@ -45,6 +48,7 @@ pub use conversation_variables::{
 };
 pub use delivery_credential_repository::IApplicationDeliveryCredentialRepository;
 pub use events::ApplicationReleasePublished;
+pub use feedback_repository::IApplicationFeedbackRepository;
 pub(crate) use repository::ApplicationWriteReference;
 pub use repository::{
     ApplicationRecord, CreateApplicationWrite, IApplicationRepository,

@@ -5,7 +5,8 @@ pub mod presentation;
 
 pub use application::*;
 pub use domain::{
-    APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES, APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
+    APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+    APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_MAX_BYTES,
     APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, APPLICATION_RELEASE_CONTRACT_SCHEMA,
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
@@ -18,17 +19,21 @@ pub use domain::{
     ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
     ApplicationSession, ApplicationSessionStatus, ApplicationWorkflowBinding,
     ApplicationWorkflowEffect, ApplicationWorkflowRevisionEvidence, CloseApplicationSessionWrite,
-    ConversationVariableRevision, CreateApplicationWrite, IApplicationDeliveryCredentialRepository,
+    ConversationVariableRevision, CreateApplicationWrite, IApplicationAnnotationRepository,
+    IApplicationDeliveryCredentialRepository, IApplicationFeedbackRepository,
     IApplicationRepository, IApplicationSessionRepository, OpenApplicationSessionWrite,
     PublishApplicationReleaseWrite, RequestApplicationInvocationWrite,
 };
+pub use infrastructure::InMemoryApplicationAnnotationRepository;
 pub use infrastructure::InMemoryApplicationDeliveryCredentialRepository;
+pub use infrastructure::InMemoryApplicationFeedbackRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationRepository;
 #[cfg(test)]
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
-    PostgresApplicationDeliveryCredentialRepository, PostgresApplicationRepository,
+    PostgresApplicationAnnotationRepository, PostgresApplicationDeliveryCredentialRepository,
+    PostgresApplicationFeedbackRepository, PostgresApplicationRepository,
     PostgresApplicationSessionRepository, ProjectsApplicationsEnvironmentAccessAdapter,
     WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
     WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
