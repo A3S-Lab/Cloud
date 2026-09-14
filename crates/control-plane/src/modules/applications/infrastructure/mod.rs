@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod application_in_memory;
+mod delivery_credential_in_memory;
 mod ontology_revision;
 mod persistence;
 mod preset_workflow;
@@ -13,8 +14,12 @@ mod workflow_run;
 
 #[cfg(test)]
 pub use application_in_memory::InMemoryApplicationRepository;
+pub use delivery_credential_in_memory::InMemoryApplicationDeliveryCredentialRepository;
 pub use ontology_revision::WorkflowApplicationOntologyRevisionReader;
-pub use persistence::{PostgresApplicationRepository, PostgresApplicationSessionRepository};
+pub use persistence::{
+    PostgresApplicationDeliveryCredentialRepository, PostgresApplicationRepository,
+    PostgresApplicationSessionRepository,
+};
 pub use preset_workflow::WorkflowApplicationPresetCompiler;
 pub use project_environment_access::ProjectsApplicationsEnvironmentAccessAdapter;
 #[cfg(test)]

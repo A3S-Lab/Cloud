@@ -6,8 +6,8 @@
 
 use super::{ApplicationAudience, ApplicationEndUser, ApplicationRelease};
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, ApplicationDeliveryCredentialId, ApplicationEndUserId, ApplicationId,
-    OrganizationId, PrincipalId, ProjectId, SecretVersionReference,
+    ApplicationDeliveryCredentialId, ApplicationEndUserId, ApplicationId, OrganizationId,
+    PrincipalId, ProjectId, SecretVersionReference, canonical_timestamp,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -252,6 +252,46 @@ impl ApplicationDeliveryCredential {
         )
     }
 
+    /// Repository CAS helper for generation-fenced lifecycle updates.
+    pub fn validate_transition_from(
+        &self,
+        existing: &Self,
+        expected_generation: u64,
+    ) -> Result<(), String> {
+        existing.validate()?;
+        self.validate()?;
+        if expected_generation != existing.generation {
+            return Err("Application delivery credential generation is stale".into());
+        }
+        if existing.status == ApplicationDeliveryCredentialStatus::Revoked {
+            return Err("revoked Application delivery credential is immutable".into());
+        }
+        if self.organization_id != existing.organization_id
+            || self.project_id != existing.project_id
+            || self.application_id != existing.application_id
+            || self.id != existing.id
+            || self.audience != existing.audience
+            || self.lookup_key != existing.lookup_key
+            || self.secret != existing.secret
+            || self.created_by != existing.created_by
+            || self.created_at != existing.created_at
+        {
+            return Err("Application delivery credential identity is immutable".into());
+        }
+        if self.generation != existing.generation.saturating_add(1)
+            || self.generation > MAX_SAFE_GENERATION
+            || self.updated_at < existing.updated_at
+        {
+            return Err("Application delivery credential generation transition is invalid".into());
+        }
+        if self.status == ApplicationDeliveryCredentialStatus::Active
+            && existing.status == ApplicationDeliveryCredentialStatus::Revoked
+        {
+            return Err("revoked Application delivery credential cannot be enabled".into());
+        }
+        Ok(())
+    }
+
     fn transition(
         &mut self,
         expected_generation: u64,
@@ -421,22 +461,26 @@ mod tests {
             credential.status,
             ApplicationDeliveryCredentialStatus::Disabled
         );
-        assert!(credential
-            .admit_anonymous_end_user(
-                &anonymous_release(),
-                Utc.with_ymd_and_hms(2026, 9, 14, 9, 6, 0)
-                    .single()
-                    .expect("timestamp"),
-            )
-            .is_err());
-        assert!(credential
-            .enable(
-                1,
-                Utc.with_ymd_and_hms(2026, 9, 14, 9, 7, 0)
-                    .single()
-                    .expect("timestamp"),
-            )
-            .is_err());
+        assert!(
+            credential
+                .admit_anonymous_end_user(
+                    &anonymous_release(),
+                    Utc.with_ymd_and_hms(2026, 9, 14, 9, 6, 0)
+                        .single()
+                        .expect("timestamp"),
+                )
+                .is_err()
+        );
+        assert!(
+            credential
+                .enable(
+                    1,
+                    Utc.with_ymd_and_hms(2026, 9, 14, 9, 7, 0)
+                        .single()
+                        .expect("timestamp"),
+                )
+                .is_err()
+        );
         credential
             .enable(
                 2,
@@ -457,14 +501,16 @@ mod tests {
             credential.status,
             ApplicationDeliveryCredentialStatus::Revoked
         );
-        assert!(credential
-            .enable(
-                4,
-                Utc.with_ymd_and_hms(2026, 9, 14, 9, 9, 0)
-                    .single()
-                    .expect("timestamp"),
-            )
-            .is_err());
+        assert!(
+            credential
+                .enable(
+                    4,
+                    Utc.with_ymd_and_hms(2026, 9, 14, 9, 9, 0)
+                        .single()
+                        .expect("timestamp"),
+                )
+                .is_err()
+        );
     }
 
     #[test]
