@@ -33,3 +33,9 @@ invocation:
 streaming cursor advancement, REST/OpenAPI/client/CLI/MCP, Gateway, SSE, or
 public availability is added. Later numbered gates may poll this observation
 over existing session/invocation reads.
+
+## Evidence
+
+- Merge commit: `26f710d15b5d44cfe83c7b350682f58bd135c356`
+- Verified commit: `d9499d030e28c446e50c7bbaa9b659d18da6f953`
+- Focused test: `cargo test -p a3s-cloud-control-plane --lib application_asynchronous_observation` (5 passed)
