@@ -555,3 +555,76 @@ impl From<crate::modules::applications::application::ApplicationMessageVariantMu
         }
     }
 }
+
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateApplicationMessageFileReferenceRequest {
+    pub message_id: Uuid,
+    pub user_file_id: Uuid,
+    pub content_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageFileReferenceResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub invocation_id: Uuid,
+    pub message_id: Uuid,
+    pub message_kind: String,
+    pub user_file_id: Uuid,
+    pub content_digest: String,
+    pub reference_id: Uuid,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationMessageFileReference>
+    for ApplicationMessageFileReferenceResponse
+{
+    fn from(
+        reference: crate::modules::applications::domain::ApplicationMessageFileReference,
+    ) -> Self {
+        Self {
+            organization_id: reference.organization_id.as_uuid(),
+            project_id: reference.project_id.as_uuid(),
+            application_id: reference.application_id.as_uuid(),
+            application_release_id: reference.application_release_id.as_uuid(),
+            application_release_digest: reference.application_release_digest.as_str().to_owned(),
+            session_id: reference.session_id.as_uuid(),
+            end_user_id: reference.end_user_id.as_uuid(),
+            invocation_id: reference.invocation_id.as_uuid(),
+            message_id: reference.message_id.as_uuid(),
+            message_kind: reference.message_kind.as_str().to_owned(),
+            user_file_id: reference.user_file_id.as_uuid(),
+            content_digest: reference.content_digest.as_str().to_owned(),
+            reference_id: reference.id.as_uuid(),
+            created_at: reference.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageFileReferenceMutationResponse {
+    pub reference: ApplicationMessageFileReferenceResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationMessageFileReferenceMutationResult>
+    for ApplicationMessageFileReferenceMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationMessageFileReferenceMutationResult,
+    ) -> Self {
+        Self {
+            reference: ApplicationMessageFileReferenceResponse::from(result.reference),
+            replayed: result.replayed,
+        }
+    }
+}

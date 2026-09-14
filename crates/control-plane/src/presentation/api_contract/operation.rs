@@ -1628,6 +1628,7 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_automation_webhook_endpoint_mutation_path(path)
             && !is_application_feedback_collection_path(path)
             && !is_application_message_variant_collection_path(path)
+            && !is_application_message_file_reference_collection_path(path)
             && !is_application_annotation_collection_path(path))
 }
 
@@ -1976,6 +1977,7 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_invocation_collection_path(path)
         || is_application_feedback_collection_path(path)
         || is_application_message_variant_collection_path(path)
+        || is_application_message_file_reference_collection_path(path)
         || is_application_annotation_collection_path(path)
 }
 
@@ -2111,6 +2113,11 @@ fn is_application_annotation_collection_path(path: &str) -> bool {
 fn is_application_message_variant_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/message-variants")
+}
+
+fn is_application_message_file_reference_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/message-file-references")
 }
 
 fn is_application_session_close_path(path: &str) -> bool {
@@ -2261,6 +2268,18 @@ fn application_request_schema(path: &str) -> Value {
                     "nullable": true,
                     "x-a3s-max-canonical-bytes": APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES
                 }
+            }
+        });
+    }
+    if is_application_message_file_reference_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["messageId", "userFileId", "contentDigest"],
+            "properties": {
+                "messageId": {"type": "string", "format": "uuid"},
+                "userFileId": {"type": "string", "format": "uuid"},
+                "contentDigest": {"type": "string", "minLength": 1}
             }
         });
     }

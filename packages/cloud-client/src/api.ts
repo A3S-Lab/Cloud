@@ -9,6 +9,8 @@ import {
   type ApplicationFeedback,
   type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
+  type ApplicationMessageFileReference,
+  type ApplicationMessageFileReferenceMutationResult,
   type ApplicationMessageVariant,
   type ApplicationMessageVariantMutationResult,
   type ApplicationMutationResult,
@@ -19,6 +21,7 @@ import {
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
   type CreateApplicationInput,
+  type CreateApplicationMessageFileReferenceInput,
   type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
@@ -30,6 +33,7 @@ import {
   validateApplicationExpectedVersion,
   validateApplicationFeedbackInput,
   validateApplicationInitialVariables,
+  validateApplicationMessageFileReferenceInput,
   validateApplicationMessageVariantInput,
   validateApplicationInvocationInput,
   validateApplicationInvocationTimeout,
@@ -3006,6 +3010,54 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/annotations/${encodeURIComponent(annotationId)}`,
+      signal
+    );
+  }
+
+  createApplicationMessageFileReference(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CreateApplicationMessageFileReferenceInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageFileReferenceMutationResult> {
+    validateApplicationMessageFileReferenceInput(input);
+    return this.postQueryJson(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-file-references`,
+      {
+        messageId: input.messageId,
+        userFileId: input.userFileId,
+        contentDigest: input.contentDigest,
+      },
+      signal
+    );
+  }
+
+  listApplicationMessageFileReferences(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageFileReference[]> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/message-file-references`,
+      signal
+    );
+  }
+
+  getApplicationMessageFileReference(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    referenceId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationMessageFileReference> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/message-file-references/${encodeURIComponent(referenceId)}`,
       signal
     );
   }

@@ -210,6 +210,34 @@ export interface ApplicationMessage {
   createdAt: string;
 }
 
+export interface ApplicationMessageFileReference {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  invocationId: string;
+  messageId: string;
+  messageKind: ApplicationMessageKind;
+  userFileId: string;
+  contentDigest: string;
+  referenceId: string;
+  createdAt: string;
+}
+
+export interface CreateApplicationMessageFileReferenceInput {
+  messageId: string;
+  userFileId: string;
+  contentDigest: string;
+}
+
+export interface ApplicationMessageFileReferenceMutationResult {
+  reference: ApplicationMessageFileReference;
+  replayed: boolean;
+}
+
 export interface ApplicationMessageVariant {
   organizationId: string;
   projectId: string;
@@ -436,6 +464,22 @@ export function validateApplicationAnnotationInput(input: CreateApplicationAnnot
   );
   if (input.sourceMessageId !== undefined && typeof input.sourceMessageId !== 'string') {
     throw new TypeError('Application annotation sourceMessageId must be a string');
+  }
+}
+
+export function validateApplicationMessageFileReferenceInput(
+  input: CreateApplicationMessageFileReferenceInput
+): void {
+  if (typeof input.messageId !== 'string' || input.messageId.length === 0) {
+    throw new TypeError('Application message file reference messageId must be a non-empty string');
+  }
+  if (typeof input.userFileId !== 'string' || input.userFileId.length === 0) {
+    throw new TypeError('Application message file reference userFileId must be a non-empty string');
+  }
+  if (typeof input.contentDigest !== 'string' || input.contentDigest.length === 0) {
+    throw new TypeError(
+      'Application message file reference contentDigest must be a non-empty string'
+    );
   }
 }
 

@@ -1,10 +1,11 @@
 use super::applications::{
     ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
-    ApplicationInvocationArguments, ApplicationMessageVariantArguments,
+    ApplicationInvocationArguments, ApplicationMessageFileReferenceArguments,
+    ApplicationMessageVariantArguments,
     ApplicationReleaseArguments, ApplicationSessionArguments, CancelApplicationInvocationArguments,
     CloseApplicationSessionArguments, CreateApplicationAnnotationArguments,
     CreateApplicationArguments, CreateApplicationFeedbackArguments,
-    CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
+    CreateApplicationMessageFileReferenceArguments, CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
     ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
     PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
 };
@@ -438,6 +439,44 @@ pub async fn execute(
         ManagementTool::ApplicationAnnotationsGet => {
             let arguments = arguments::parse::<ApplicationAnnotationArguments>(arguments).ok()?;
             applications::get_annotation(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageFileReferencesCreate => {
+            let arguments =
+                arguments::parse::<CreateApplicationMessageFileReferenceArguments>(arguments).ok()?;
+            applications::create_message_file_reference(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageFileReferencesList => {
+            let arguments = arguments::parse::<ApplicationSessionArguments>(arguments).ok()?;
+            applications::list_message_file_references(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationMessageFileReferencesGet => {
+            let arguments =
+                arguments::parse::<ApplicationMessageFileReferenceArguments>(arguments).ok()?;
+            applications::get_message_file_reference(
                 query_bus,
                 organization_id,
                 actor_principal_id,

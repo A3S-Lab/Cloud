@@ -4,6 +4,8 @@ import type {
   ApplicationAnnotationMutationResult,
   ApplicationFeedback,
   ApplicationFeedbackMutationResult,
+  ApplicationMessageFileReference,
+  ApplicationMessageFileReferenceMutationResult,
   ApplicationMessageVariant,
   ApplicationMessageVariantMutationResult,
   ApplicationInvocation,
@@ -80,6 +82,14 @@ const APPLICATION_ANNOTATION_COLUMNS = [
   { header: 'SESSION', value: (row: ApplicationAnnotation) => row.sessionId },
   { header: 'DIGEST', value: (row: ApplicationAnnotation) => row.contentDigest },
   { header: 'CREATED AT', value: (row: ApplicationAnnotation) => row.createdAt },
+] as const;
+
+const APPLICATION_MESSAGE_FILE_REFERENCE_COLUMNS = [
+  { header: 'REFERENCE', value: (row: ApplicationMessageFileReference) => row.referenceId },
+  { header: 'MESSAGE', value: (row: ApplicationMessageFileReference) => row.messageId },
+  { header: 'FILE', value: (row: ApplicationMessageFileReference) => row.userFileId },
+  { header: 'DIGEST', value: (row: ApplicationMessageFileReference) => row.contentDigest },
+  { header: 'CREATED AT', value: (row: ApplicationMessageFileReference) => row.createdAt },
 ] as const;
 
 const APPLICATION_MESSAGE_VARIANT_COLUMNS = [
@@ -207,6 +217,33 @@ export function applicationAnnotationMutationResult(
       {
         header: 'REPLAYED',
         value: (row: ApplicationAnnotation & { replayed: boolean }) => row.replayed,
+      },
+    ]),
+  };
+}
+
+export function applicationMessageFileReferencesResult(
+  rows: ApplicationMessageFileReference[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_MESSAGE_FILE_REFERENCE_COLUMNS) };
+}
+
+export function applicationMessageFileReferenceResult(
+  row: ApplicationMessageFileReference
+): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_MESSAGE_FILE_REFERENCE_COLUMNS) };
+}
+
+export function applicationMessageFileReferenceMutationResult(
+  result: ApplicationMessageFileReferenceMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.reference, replayed: result.replayed }], [
+      ...APPLICATION_MESSAGE_FILE_REFERENCE_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationMessageFileReference & { replayed: boolean }) => row.replayed,
       },
     ]),
   };
