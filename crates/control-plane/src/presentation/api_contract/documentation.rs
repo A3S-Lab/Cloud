@@ -818,6 +818,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Cancel an application invocation",
         ),
         (
+            "/invocations/{invocation_id}/blocking-observation",
+            "Observe an application blocking invocation",
+        ),
+        (
             "/workflow-runs/{workflow_run_id}/cancel",
             "Cancel a workflow run",
         ),

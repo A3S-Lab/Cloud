@@ -9,6 +9,7 @@ import {
   type ApplicationFeedback,
   type ApplicationFeedbackMutationResult,
   type ApplicationMessage,
+  type ApplicationBlockingObservation,
   type ApplicationMessageCitation,
   type ApplicationMessageCitationMutationResult,
   type ApplicationMessageFileReference,
@@ -2879,6 +2880,21 @@ export class CloudApi {
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/invocations/${encodeURIComponent(invocationId)}`,
       signal
+    );
+  }
+
+  observeApplicationBlockingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    signal?: AbortSignal,
+  ): Promise<ApplicationBlockingObservation> {
+    return this.get(
+      `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/blocking-observation`,
+      signal,
     );
   }
 
