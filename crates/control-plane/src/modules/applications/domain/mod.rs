@@ -15,6 +15,7 @@ mod conversation_variables;
 mod delivery_credential_repository;
 mod events;
 mod feedback_repository;
+mod message_variant_repository;
 mod repository;
 mod session_repository;
 mod workflow_binding;
@@ -53,6 +54,7 @@ pub use conversation_variables::{
 pub use delivery_credential_repository::IApplicationDeliveryCredentialRepository;
 pub use events::ApplicationReleasePublished;
 pub use feedback_repository::IApplicationFeedbackRepository;
+pub use message_variant_repository::IApplicationMessageVariantRepository;
 pub(crate) use repository::ApplicationWriteReference;
 pub use repository::{
     ApplicationRecord, CreateApplicationWrite, IApplicationRepository,
