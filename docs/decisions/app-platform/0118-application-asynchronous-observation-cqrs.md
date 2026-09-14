@@ -36,3 +36,5 @@ session/invocation/message state.
 ## Evidence
 
 - Merge commit: 3787e1f2e077544ca1087894b0271bab0c7adc67
+- Verified commit: 407cd96cd20ab567938d52d511efd61478a53985
+- Focused test: cargo test -p a3s-cloud-control-plane --lib asynchronous_observation (9 passed)
