@@ -10,24 +10,28 @@ pub use domain::{
     ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy,
     ApplicationEndUser, ApplicationExperience, ApplicationFeedback, ApplicationFeedbackRating,
     ApplicationInteractionMode, ApplicationInvocation, ApplicationInvocationStatus,
-    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageFileReference, ApplicationMessageKind,
+    ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageCitation,
+    ApplicationMessageFileReference, ApplicationMessageKind,
     ApplicationMessageVariant, ApplicationRecord, ApplicationRelease, ApplicationReleaseContract,
     ApplicationReleaseContractSpec, ApplicationReleasePublished, ApplicationResponseMode,
     ApplicationSession, ApplicationSessionStatus, ApplicationWorkflowBinding,
     ApplicationWorkflowEffect, ApplicationWorkflowRevisionEvidence, CloseApplicationSessionWrite,
     ConversationVariableRevision, CreateApplicationWrite, IApplicationAnnotationRepository,
     IApplicationDeliveryCredentialRepository, IApplicationFeedbackRepository,
-    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository, IApplicationRepository, IApplicationSessionRepository,
+    IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
+    IApplicationMessageVariantRepository, IApplicationRepository, IApplicationSessionRepository,
     OpenApplicationSessionWrite, PublishApplicationReleaseWrite, RequestApplicationInvocationWrite,
     APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
     APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
-    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_MAX_BYTES,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_CITATION_EXCERPT_MAX_BYTES,
+    APPLICATION_MESSAGE_MAX_BYTES,
     APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
     APPLICATION_RELEASE_CONTRACT_SCHEMA,
 };
 pub use infrastructure::InMemoryApplicationAnnotationRepository;
 pub use infrastructure::InMemoryApplicationDeliveryCredentialRepository;
 pub use infrastructure::InMemoryApplicationFeedbackRepository;
+pub use infrastructure::InMemoryApplicationMessageCitationRepository;
 pub use infrastructure::InMemoryApplicationMessageFileReferenceRepository;
 pub use infrastructure::InMemoryApplicationMessageVariantRepository;
 #[cfg(test)]
@@ -36,7 +40,8 @@ pub use infrastructure::InMemoryApplicationRepository;
 pub use infrastructure::InMemoryApplicationSessionRepository;
 pub use infrastructure::{
     PostgresApplicationAnnotationRepository, PostgresApplicationDeliveryCredentialRepository,
-    PostgresApplicationFeedbackRepository, PostgresApplicationMessageFileReferenceRepository,
+    PostgresApplicationFeedbackRepository, PostgresApplicationMessageCitationRepository,
+    PostgresApplicationMessageFileReferenceRepository,
     PostgresApplicationMessageVariantRepository,
     PostgresApplicationRepository, PostgresApplicationSessionRepository,
     ProjectsApplicationsEnvironmentAccessAdapter, WorkflowApplicationOntologyRevisionReader,
