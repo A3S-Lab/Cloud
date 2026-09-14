@@ -1,5 +1,9 @@
+mod annotation_postgres;
+mod annotation_postgres_schema;
 mod delivery_credential_postgres;
 mod delivery_credential_postgres_schema;
+mod feedback_postgres;
+mod feedback_postgres_schema;
 mod postgres;
 mod postgres_records;
 mod postgres_writes;
@@ -11,6 +15,8 @@ mod session_postgres_records;
 mod session_postgres_support;
 mod session_postgres_writes;
 
+pub use annotation_postgres::PostgresApplicationAnnotationRepository;
 pub use delivery_credential_postgres::PostgresApplicationDeliveryCredentialRepository;
+pub use feedback_postgres::PostgresApplicationFeedbackRepository;
 pub use postgres::PostgresApplicationRepository;
 pub use session_postgres::PostgresApplicationSessionRepository;

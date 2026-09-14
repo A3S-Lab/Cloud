@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 204;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "204";
+pub const CLOUD_MIGRATION_COUNT: i64 = 205;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "205";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1841,6 +1841,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/204_application_delivery_credentials.sql"
             )),
         ),
+        Migration::new(
+            "205",
+            "Application feedback and annotations",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/205_application_feedback_and_annotations.sql"
+            )),
+        ),
     ]
 }
 
@@ -1851,6 +1859,10 @@ mod workflow_transform_failure_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/application_delivery_credential_migration.rs"]
 mod application_delivery_credential_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/application_feedback_annotation_migration.rs"]
+mod application_feedback_annotation_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
