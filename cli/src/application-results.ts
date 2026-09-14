@@ -4,6 +4,7 @@ import type {
   ApplicationAnnotationMutationResult,
   ApplicationFeedback,
   ApplicationFeedbackMutationResult,
+  ApplicationBlockingObservation,
   ApplicationMessageCitation,
   ApplicationMessageCitationMutationResult,
   ApplicationMessageFileReference,
@@ -85,6 +86,15 @@ const APPLICATION_ANNOTATION_COLUMNS = [
   { header: 'DIGEST', value: (row: ApplicationAnnotation) => row.contentDigest },
   { header: 'CREATED AT', value: (row: ApplicationAnnotation) => row.createdAt },
 ] as const;
+
+
+const APPLICATION_BLOCKING_OBSERVATION_COLUMNS = [
+  { header: 'INVOCATION', value: (row: ApplicationBlockingObservation) => row.invocationId },
+  { header: 'WAIT', value: (row: ApplicationBlockingObservation) => row.waitStatus },
+  { header: 'STATUS', value: (row: ApplicationBlockingObservation) => row.invocationStatus },
+  { header: 'MODE', value: (row: ApplicationBlockingObservation) => row.responseMode },
+  { header: 'OBSERVED AT', value: (row: ApplicationBlockingObservation) => row.observedAt },
+];
 
 const APPLICATION_MESSAGE_CITATION_COLUMNS = [
   { header: 'CITATION', value: (row: ApplicationMessageCitation) => row.citationId },
@@ -307,4 +317,10 @@ export function applicationMessageVariantMutationResult(
       },
     ]),
   };
+}
+
+export function applicationBlockingObservationResult(
+  row: ApplicationBlockingObservation
+): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_BLOCKING_OBSERVATION_COLUMNS) };
 }

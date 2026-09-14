@@ -142,6 +142,8 @@ pub const APPLICATION_MESSAGE_CITATIONS_LIST: &str =
     "a3s_cloud_application_message_citations_list";
 pub const APPLICATION_MESSAGE_CITATIONS_GET: &str =
     "a3s_cloud_application_message_citations_get";
+pub const APPLICATION_BLOCKING_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_blocking_observation_observe";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -376,6 +378,7 @@ pub enum ManagementTool {
     ApplicationMessageCitationsCreate,
     ApplicationMessageCitationsList,
     ApplicationMessageCitationsGet,
+    ApplicationBlockingObservationObserve,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -595,7 +598,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 232] = [
+    const ALL: [Self; 233] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -627,6 +630,7 @@ impl ManagementTool {
         Self::ApplicationMessageCitationsCreate,
         Self::ApplicationMessageCitationsList,
         Self::ApplicationMessageCitationsGet,
+        Self::ApplicationBlockingObservationObserve,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -886,6 +890,7 @@ impl ManagementTool {
             Self::ApplicationMessageCitationsCreate => APPLICATION_MESSAGE_CITATIONS_CREATE,
             Self::ApplicationMessageCitationsList => APPLICATION_MESSAGE_CITATIONS_LIST,
             Self::ApplicationMessageCitationsGet => APPLICATION_MESSAGE_CITATIONS_GET,
+            Self::ApplicationBlockingObservationObserve => APPLICATION_BLOCKING_OBSERVATION_OBSERVE,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1131,7 +1136,8 @@ impl ManagementTool {
             | Self::ApplicationMessageFileReferencesGet
             | Self::ApplicationMessageCitationsCreate
             | Self::ApplicationMessageCitationsList
-            | Self::ApplicationMessageCitationsGet => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationMessageCitationsGet
+            | Self::ApplicationBlockingObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1516,6 +1522,7 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsCreate
             | Self::ApplicationMessageCitationsList
             | Self::ApplicationMessageCitationsGet
+            | Self::ApplicationBlockingObservationObserve
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1798,6 +1805,12 @@ impl ManagementTool {
                 "Get Application message citation",
                 "Get one Application message citation by session and citation identity.",
                 application_message_citation_schema(),
+                true,
+            ),
+            Self::ApplicationBlockingObservationObserve => (
+                "Observe Application blocking invocation",
+                "Poll one Application Blocking-mode invocation observation for an authorized session.",
+                application_invocation_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (

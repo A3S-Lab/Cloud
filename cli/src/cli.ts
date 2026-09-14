@@ -131,6 +131,7 @@ Commands:
   application-message-citations create APP SESSION Create session message citation from JSON --file
   application-message-citations list APP SESSION List session message citations for the caller project
   application-message-citations get APP SESSION CITATION Get one session message citation by id
+  application-blocking-observation observe APP SESSION INVOCATION Poll blocking invocation observation
   application-message-variants create APP SESSION Create session message variant from JSON --file
   application-message-variants list APP SESSION List session message variants for the caller project
   application-message-variants get APP SESSION VARIANT Get one session message variant by id

@@ -210,6 +210,24 @@ export interface ApplicationMessage {
   createdAt: string;
 }
 
+export interface ApplicationBlockingObservation {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  invocationId: string;
+  responseMode: string;
+  invocationStatus: string;
+  waitStatus: string;
+  inputMessageId?: string | null;
+  answerMessageIds: string[];
+  finalOutputMessageId?: string | null;
+  observedAt: string;
+}
+
 export interface ApplicationMessageCitation {
   organizationId: string;
   projectId: string;

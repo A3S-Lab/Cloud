@@ -711,3 +711,54 @@ impl From<crate::modules::applications::application::ApplicationMessageCitationM
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationBlockingObservationResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub invocation_id: Uuid,
+    pub response_mode: String,
+    pub invocation_status: String,
+    pub wait_status: String,
+    pub input_message_id: Option<Uuid>,
+    pub answer_message_ids: Vec<Uuid>,
+    pub final_output_message_id: Option<Uuid>,
+    pub observed_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationBlockingObservation>
+    for ApplicationBlockingObservationResponse
+{
+    fn from(
+        observation: crate::modules::applications::domain::ApplicationBlockingObservation,
+    ) -> Self {
+        Self {
+            organization_id: observation.organization_id.as_uuid(),
+            project_id: observation.project_id.as_uuid(),
+            application_id: observation.application_id.as_uuid(),
+            application_release_id: observation.application_release_id.as_uuid(),
+            application_release_digest: observation.application_release_digest.as_str().to_owned(),
+            session_id: observation.session_id.as_uuid(),
+            end_user_id: observation.end_user_id.as_uuid(),
+            invocation_id: observation.invocation_id.as_uuid(),
+            response_mode: observation.response_mode.as_str().to_owned(),
+            invocation_status: observation.invocation_status.as_str().to_owned(),
+            wait_status: observation.wait_status.as_str().to_owned(),
+            input_message_id: observation.input_message_id.map(|value| value.as_uuid()),
+            answer_message_ids: observation
+                .answer_message_ids
+                .into_iter()
+                .map(|value| value.as_uuid())
+                .collect(),
+            final_output_message_id: observation
+                .final_output_message_id
+                .map(|value| value.as_uuid()),
+            observed_at: observation.observed_at,
+        }
+    }
+}
