@@ -10,6 +10,7 @@ mod environment_access;
 mod feedback_annotation_commands;
 mod invocation_commands;
 mod invocation_composition;
+mod message_variant_commands;
 mod ontology_revision_port;
 mod preset_workflow;
 mod preset_workflow_port;
@@ -68,6 +69,12 @@ pub use invocation_composition::{
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
     ComposeApplicationInvocationWorkflowRunResult,
 };
+pub use message_variant_commands::{
+    ApplicationMessageVariantMutationResult, CreateApplicationMessageVariant,
+    CreateApplicationMessageVariantHandler, GetApplicationMessageVariant,
+    GetApplicationMessageVariantHandler, ListApplicationMessageVariantsBySession,
+    ListApplicationMessageVariantsBySessionHandler,
+};
 pub use ontology_revision_port::{
     ApplicationOntologyRevisionEvidence, IApplicationOntologyRevisionPort,
 };
@@ -113,6 +120,7 @@ mod delivery_tests;
 mod feedback_annotation_tests;
 #[cfg(test)]
 mod invocation_composition_tests;
+mod message_variant_tests;
 #[cfg(test)]
 mod preset_workflow_tests;
 #[cfg(test)]
