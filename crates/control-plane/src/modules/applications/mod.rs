@@ -7,8 +7,9 @@ pub use application::*;
 pub use domain::{
     AdvanceApplicationInvocationWrite, AdvanceConversationVariablesWrite,
     AppendApplicationMessageWrite, Application, ApplicationAnnotation, ApplicationAudience,
-    ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy,
-    ApplicationEndUser, ApplicationExperience, ApplicationFeedback, ApplicationFeedbackRating,
+    ApplicationBlockingObservation, ApplicationBlockingWaitStatus, ApplicationDeliveryCredential,
+    ApplicationDeliveryCredentialStatus, ApplicationDeliveryPolicy, ApplicationEndUser,
+    ApplicationExperience, ApplicationFeedback, ApplicationFeedbackRating,
     ApplicationInteractionMode, ApplicationInvocation, ApplicationInvocationStatus,
     ApplicationInvocationWorkflowAuthority, ApplicationMessage, ApplicationMessageCitation,
     ApplicationMessageFileReference, ApplicationMessageKind,
