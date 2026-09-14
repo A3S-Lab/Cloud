@@ -3,6 +3,7 @@ mod authoring_profile_commands;
 mod anonymous_delivery_commands;
 mod anonymous_invocation_commands;
 mod blocking_observation_commands;
+mod streaming_observation_commands;
 mod commands;
 mod delivery_access;
 mod delivery_commands;
@@ -39,6 +40,9 @@ pub use anonymous_delivery_commands::{
 };
 pub use blocking_observation_commands::{
     ObserveApplicationBlockingInvocation, ObserveApplicationBlockingInvocationHandler,
+};
+pub use streaming_observation_commands::{
+    ObserveApplicationStreamingInvocation, ObserveApplicationStreamingInvocationHandler,
 };
 pub use anonymous_invocation_commands::{
     RequestAnonymousApplicationInvocation, RequestAnonymousApplicationInvocationHandler,
@@ -149,6 +153,8 @@ mod authoring_profile_tests;
 mod anonymous_delivery_tests;
 #[cfg(test)]
 mod blocking_observation_tests;
+#[cfg(test)]
+mod streaming_observation_tests;
 #[cfg(test)]
 mod anonymous_invocation_tests;
 #[cfg(test)]

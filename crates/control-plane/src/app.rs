@@ -35,6 +35,7 @@ use crate::modules::applications::{
     GetApplicationReleaseHandler,
     GetApplicationSessionHandler, IApplicationAnnotationRepository, IApplicationFeedbackRepository,
     ObserveApplicationBlockingInvocationHandler,
+    ObserveApplicationStreamingInvocationHandler,
     IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
     IApplicationMessageVariantRepository,
     IApplicationOntologyRevisionPort,
@@ -2844,6 +2845,7 @@ fn build_management_application_with_health(
     let get_application_message_citation_sessions = Arc::clone(&application_sessions);
     let list_application_message_citation_sessions = Arc::clone(&application_sessions);
     let observe_application_blocking_sessions = Arc::clone(&application_sessions);
+    let observe_application_streaming_sessions = Arc::clone(&application_sessions);
     let replay_application_sessions = application_sessions;
     let create_application_feedbacks = Arc::clone(&application_feedbacks);
     let get_application_feedbacks = Arc::clone(&application_feedbacks);
@@ -4518,6 +4520,11 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::applications::ObserveApplicationBlockingInvocation, _>(
                     ObserveApplicationBlockingInvocationHandler::new(
                         observe_application_blocking_sessions,
+                    ),
+                )
+                .query_handler::<crate::modules::applications::ObserveApplicationStreamingInvocation, _>(
+                    ObserveApplicationStreamingInvocationHandler::new(
+                        observe_application_streaming_sessions,
                     ),
                 )
                 .query_handler::<crate::modules::applications::ReplayApplicationSession, _>(
