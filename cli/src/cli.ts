@@ -125,6 +125,14 @@ Commands:
   connector-profiles revise ID Revise a Connector profile from A3S ACL
   connector-revisions list PROFILE List immutable revisions for one Connector profile
   connector-revisions get PROFILE REV Get one exact immutable Connector revision
+  automation-webhook-endpoints create Create one authorized Automation webhook endpoint
+  automation-webhook-endpoints get ID Get one Automation webhook endpoint projection
+  automation-webhook-endpoints disable ID Disable one endpoint with generation fence
+  automation-webhook-endpoints enable ID Enable one endpoint with generation fence
+  automation-webhook-endpoints revoke ID Revoke one endpoint with generation fence
+  automation-definitions list List bounded Automation definitions visible to the organization
+  automation-definitions get ID Get one Automation definition catalog projection
+  automation-revisions get AUTO REV Get one immutable Automation revision
   durable-cell-applications list List Durable Cell applications in the selected environment
   durable-cell-applications get ID Get one application and its current immutable revision
   durable-cell-applications create NAME Create a Durable Cell application from A3S ACL

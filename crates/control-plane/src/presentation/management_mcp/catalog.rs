@@ -124,6 +124,18 @@ pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
 pub const CONNECTOR_PROFILES_GET: &str = "a3s_cloud_connector_profiles_get";
 pub const CONNECTOR_REVISIONS_LIST: &str = "a3s_cloud_connector_revisions_list";
 pub const CONNECTOR_REVISIONS_GET: &str = "a3s_cloud_connector_revisions_get";
+pub const AUTOMATION_WEBHOOK_ENDPOINTS_CREATE: &str =
+    "a3s_cloud_automation_webhook_endpoints_create";
+pub const AUTOMATION_WEBHOOK_ENDPOINTS_GET: &str = "a3s_cloud_automation_webhook_endpoints_get";
+pub const AUTOMATION_WEBHOOK_ENDPOINTS_DISABLE: &str =
+    "a3s_cloud_automation_webhook_endpoints_disable";
+pub const AUTOMATION_WEBHOOK_ENDPOINTS_ENABLE: &str =
+    "a3s_cloud_automation_webhook_endpoints_enable";
+pub const AUTOMATION_WEBHOOK_ENDPOINTS_REVOKE: &str =
+    "a3s_cloud_automation_webhook_endpoints_revoke";
+pub const AUTOMATION_DEFINITIONS_LIST: &str = "a3s_cloud_automation_definitions_list";
+pub const AUTOMATION_DEFINITIONS_GET: &str = "a3s_cloud_automation_definitions_get";
+pub const AUTOMATION_REVISIONS_GET: &str = "a3s_cloud_automation_revisions_get";
 pub const DURABLE_CELL_APPLICATIONS_CREATE: &str = "a3s_cloud_durable_cell_applications_create";
 pub const DURABLE_CELL_APPLICATIONS_REVISE: &str = "a3s_cloud_durable_cell_applications_revise";
 pub const DURABLE_CELL_APPLICATIONS_START: &str = "a3s_cloud_durable_cell_applications_start";
@@ -331,6 +343,14 @@ pub enum ManagementTool {
     ConnectorProfilesGet,
     ConnectorRevisionsList,
     ConnectorRevisionsGet,
+    AutomationWebhookEndpointsCreate,
+    AutomationWebhookEndpointsGet,
+    AutomationWebhookEndpointsDisable,
+    AutomationWebhookEndpointsEnable,
+    AutomationWebhookEndpointsRevoke,
+    AutomationDefinitionsList,
+    AutomationDefinitionsGet,
+    AutomationRevisionsGet,
     DurableCellApplicationsCreate,
     DurableCellApplicationsRevise,
     DurableCellApplicationsStart,
@@ -536,7 +556,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 209] = [
+    const ALL: [Self; 217] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -559,6 +579,14 @@ impl ManagementTool {
         Self::ConnectorProfilesGet,
         Self::ConnectorRevisionsList,
         Self::ConnectorRevisionsGet,
+        Self::AutomationWebhookEndpointsCreate,
+        Self::AutomationWebhookEndpointsGet,
+        Self::AutomationWebhookEndpointsDisable,
+        Self::AutomationWebhookEndpointsEnable,
+        Self::AutomationWebhookEndpointsRevoke,
+        Self::AutomationDefinitionsList,
+        Self::AutomationDefinitionsGet,
+        Self::AutomationRevisionsGet,
         Self::DurableCellApplicationsCreate,
         Self::DurableCellApplicationsRevise,
         Self::DurableCellApplicationsStart,
@@ -795,6 +823,14 @@ impl ManagementTool {
             Self::ConnectorProfilesGet => CONNECTOR_PROFILES_GET,
             Self::ConnectorRevisionsList => CONNECTOR_REVISIONS_LIST,
             Self::ConnectorRevisionsGet => CONNECTOR_REVISIONS_GET,
+            Self::AutomationWebhookEndpointsCreate => AUTOMATION_WEBHOOK_ENDPOINTS_CREATE,
+            Self::AutomationWebhookEndpointsGet => AUTOMATION_WEBHOOK_ENDPOINTS_GET,
+            Self::AutomationWebhookEndpointsDisable => AUTOMATION_WEBHOOK_ENDPOINTS_DISABLE,
+            Self::AutomationWebhookEndpointsEnable => AUTOMATION_WEBHOOK_ENDPOINTS_ENABLE,
+            Self::AutomationWebhookEndpointsRevoke => AUTOMATION_WEBHOOK_ENDPOINTS_REVOKE,
+            Self::AutomationDefinitionsList => AUTOMATION_DEFINITIONS_LIST,
+            Self::AutomationDefinitionsGet => AUTOMATION_DEFINITIONS_GET,
+            Self::AutomationRevisionsGet => AUTOMATION_REVISIONS_GET,
             Self::DurableCellApplicationsCreate => DURABLE_CELL_APPLICATIONS_CREATE,
             Self::DurableCellApplicationsRevise => DURABLE_CELL_APPLICATIONS_REVISE,
             Self::DurableCellApplicationsStart => DURABLE_CELL_APPLICATIONS_START,
@@ -1013,6 +1049,10 @@ impl ManagementTool {
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
+            Self::AutomationWebhookEndpointsCreate
+            | Self::AutomationWebhookEndpointsDisable
+            | Self::AutomationWebhookEndpointsEnable
+            | Self::AutomationWebhookEndpointsRevoke => Some(ApiTokenScope::AUTOMATION_WRITE),
             Self::DurableCellApplicationsCreate
             | Self::DurableCellApplicationsRevise
             | Self::DurableCellApplicationsStart
@@ -1120,6 +1160,10 @@ impl ManagementTool {
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
             | Self::ConnectorRevisionsGet
+            | Self::AutomationWebhookEndpointsGet
+            | Self::AutomationDefinitionsList
+            | Self::AutomationDefinitionsGet
+            | Self::AutomationRevisionsGet
             | Self::DurableCellApplicationsList
             | Self::DurableCellApplicationsGet
             | Self::DurableCellRevisionsList
@@ -1321,6 +1365,11 @@ impl ManagementTool {
             | Self::ConnectorProfilesGet
             | Self::ConnectorRevisionsList
             | Self::ConnectorRevisionsGet
+            | Self::AutomationWebhookEndpointsCreate
+            | Self::AutomationWebhookEndpointsGet
+            | Self::AutomationWebhookEndpointsDisable
+            | Self::AutomationWebhookEndpointsEnable
+            | Self::AutomationWebhookEndpointsRevoke
             | Self::DurableCellApplicationsCreate
             | Self::DurableCellApplicationsRevise
             | Self::DurableCellApplicationsStart
@@ -1592,6 +1641,54 @@ impl ManagementTool {
                 "Get Connector revision",
                 "Get one exact immutable Connector revision and canonical A3S ACL without resolving referenced Secrets.",
                 connector_revision_schema(),
+                true,
+            ),
+            Self::AutomationWebhookEndpointsCreate => (
+                "Create Automation webhook endpoint",
+                "Create one authorized, environment-scoped Automation webhook endpoint bound to an exact Automation revision. This surface does not open Gateway public receive.",
+                create_automation_webhook_endpoint_schema(),
+                false,
+            ),
+            Self::AutomationWebhookEndpointsGet => (
+                "Get Automation webhook endpoint",
+                "Get one exact Automation webhook endpoint without revealing signing secret material.",
+                automation_webhook_endpoint_schema(),
+                true,
+            ),
+            Self::AutomationWebhookEndpointsDisable => (
+                "Disable Automation webhook endpoint",
+                "Generation-fence disable one Automation webhook endpoint.",
+                change_automation_webhook_endpoint_schema(),
+                false,
+            ),
+            Self::AutomationWebhookEndpointsEnable => (
+                "Enable Automation webhook endpoint",
+                "Generation-fence enable one Automation webhook endpoint.",
+                change_automation_webhook_endpoint_schema(),
+                false,
+            ),
+            Self::AutomationWebhookEndpointsRevoke => (
+                "Revoke Automation webhook endpoint",
+                "Generation-fence revoke one Automation webhook endpoint.",
+                change_automation_webhook_endpoint_schema(),
+                false,
+            ),
+            Self::AutomationDefinitionsList => (
+                "List Automation definitions",
+                "List a bounded set of Automation definitions visible to the authorized organization tenant.",
+                list_automation_definitions_schema(),
+                true,
+            ),
+            Self::AutomationDefinitionsGet => (
+                "Get Automation definition",
+                "Get one Automation definition head without exposing invocation or Gateway receive state.",
+                automation_definition_schema(),
+                true,
+            ),
+            Self::AutomationRevisionsGet => (
+                "Get Automation revision",
+                "Get one exact Automation revision document.",
+                automation_revision_schema(),
                 true,
             ),
             Self::DurableCellApplicationsCreate => (
@@ -4174,6 +4271,102 @@ fn connector_revision_schema() -> Value {
         "additionalProperties": false
     })
 }
+
+fn create_automation_webhook_endpoint_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "endpointId": {"type": "string", "format": "uuid"},
+            "endpointKey": {"type": "string", "minLength": 1, "maxLength": 128},
+            "signingSecret": {
+                "type": "object",
+                "properties": {
+                    "secretId": {"type": "string", "format": "uuid"},
+                    "version": {"type": "integer", "minimum": 1}
+                },
+                "required": ["secretId", "version"],
+                "additionalProperties": false
+            },
+            "maxBodyBytes": {"type": "integer", "minimum": 1},
+            "automationId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": [
+            "projectId",
+            "environmentId",
+            "endpointId",
+            "endpointKey",
+            "signingSecret",
+            "maxBodyBytes",
+            "automationId",
+            "revisionId"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn automation_webhook_endpoint_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "endpointId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "environmentId", "endpointId"],
+        "additionalProperties": false
+    })
+}
+
+fn change_automation_webhook_endpoint_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "endpointId": {"type": "string", "format": "uuid"},
+            "expectedGeneration": {"type": "integer", "minimum": 0}
+        },
+        "required": ["projectId", "environmentId", "endpointId", "expectedGeneration"],
+        "additionalProperties": false
+    })
+}
+
+fn list_automation_definitions_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200, "default": 50}
+        },
+        "additionalProperties": false
+    })
+}
+
+fn automation_definition_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "automationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["automationId"],
+        "additionalProperties": false
+    })
+}
+
+fn automation_revision_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "automationId": {"type": "string", "format": "uuid"},
+            "revisionId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["automationId", "revisionId"],
+        "additionalProperties": false
+    })
+}
+
 
 fn create_durable_cell_application_schema() -> Value {
     json!({

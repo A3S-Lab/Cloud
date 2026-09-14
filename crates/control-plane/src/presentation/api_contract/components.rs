@@ -3,6 +3,10 @@ use super::developer_workflow_components::{
     install_developer_workflow_component_schemas, BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS,
     BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
 };
+use super::automation_components::{
+    install_automation_component_schemas, AUTOMATION_SUCCESS_RESPONSE_BINDINGS,
+    AUTOMATION_SUCCESS_SCHEMA_BINDINGS,
+};
 use super::knowledge_components::{
     install_knowledge_component_schemas, KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS,
     KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS,
@@ -374,6 +378,7 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
     install_source_discovery_component_schemas(&mut schema_components);
     install_user_file_component_schemas(&mut schema_components);
     install_knowledge_component_schemas(&mut schema_components);
+    install_automation_component_schemas(&mut schema_components);
     install_workflow_component_schemas(&mut schema_components);
     install_workflow_goal_component_schemas(&mut schema_components);
     install_workflow_human_task_component_schemas(&mut schema_components);
@@ -411,6 +416,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     for &(name, data_schema) in USER_FILE_SUCCESS_SCHEMA_BINDINGS {
+        schema_components.insert(
+            name.into(),
+            typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
+        );
+    }
+    for &(name, data_schema) in AUTOMATION_SUCCESS_SCHEMA_BINDINGS {
         schema_components.insert(
             name.into(),
             typed_success_response_schema(&format!("#/components/schemas/{data_schema}")),
@@ -589,6 +600,12 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         );
     }
     for &(name, status, schema) in USER_FILE_SUCCESS_RESPONSE_BINDINGS {
+        response_components.insert(
+            name.into(),
+            response_component(status, &format!("#/components/schemas/{schema}")),
+        );
+    }
+    for &(name, status, schema) in AUTOMATION_SUCCESS_RESPONSE_BINDINGS {
         response_components.insert(
             name.into(),
             response_component(status, &format!("#/components/schemas/{schema}")),

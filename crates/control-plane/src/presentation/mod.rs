@@ -60,6 +60,12 @@ pub(crate) fn organization_tenant_knowledge_write_controller(
     organization_tenant_scoped_controller(controller, ApiTokenScope::KNOWLEDGE_WRITE)
 }
 
+pub(crate) fn organization_tenant_automation_write_controller(
+    controller: ControllerDefinition,
+) -> Result<ControllerDefinition> {
+    organization_tenant_scoped_controller(controller, ApiTokenScope::AUTOMATION_WRITE)
+}
+
 pub(crate) fn organization_tenant_asset_write_controller(
     controller: ControllerDefinition,
 ) -> Result<ControllerDefinition> {

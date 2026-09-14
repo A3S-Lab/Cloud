@@ -31,6 +31,7 @@ impl ApiTokenScope {
     pub const FILE_WRITE: &'static str = "file:write";
     pub const KNOWLEDGE_WRITE: &'static str = "knowledge:write";
     pub const PLUGIN_WRITE: &'static str = "plugin:write";
+    pub const AUTOMATION_WRITE: &'static str = "automation:write";
 
     pub fn parse(value: impl Into<String>) -> Result<Self, String> {
         let value = value.into();
@@ -84,6 +85,7 @@ impl ApiTokenScope {
             Self::FILE_WRITE,
             Self::KNOWLEDGE_WRITE,
             Self::PLUGIN_WRITE,
+            Self::AUTOMATION_WRITE,
         ]
         .into_iter()
         .map(|scope| Self(scope.to_owned()))

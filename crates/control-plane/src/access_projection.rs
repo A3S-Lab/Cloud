@@ -5,6 +5,7 @@
 //! consumer application and domain layers never depend on Identity grant types.
 
 use crate::modules::agents::{AgentAccess, AgentAccessScope};
+use crate::modules::automations::{AutomationAccess, AutomationAccessScope};
 use crate::modules::applications::{ApplicationAccess, ApplicationAccessScope};
 use crate::modules::artifacts::{ArtifactAccess, ArtifactAccessScope};
 use crate::modules::assets::AssetAccess;
@@ -181,6 +182,30 @@ pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> Use
             ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
         }
     }))
+}
+
+
+pub(crate) fn automation_access(resource_access: &ResourceAccessEvaluator) -> AutomationAccess {
+    if resource_access.is_organization_wide() {
+        return AutomationAccess::organization_wide();
+    }
+    AutomationAccess::restricted(
+        resource_access
+            .granted_scopes()
+            .filter_map(|scope| match scope {
+                ResourceGrantScope::Project { project_id } => {
+                    Some(AutomationAccessScope::Project { project_id })
+                }
+                ResourceGrantScope::Environment {
+                    project_id,
+                    environment_id,
+                } => Some(AutomationAccessScope::Environment {
+                    project_id,
+                    environment_id,
+                }),
+                ResourceGrantScope::Node { .. } => None,
+            }),
+    )
 }
 
 pub(crate) fn knowledge_access(resource_access: &ResourceAccessEvaluator) -> KnowledgeAccess {

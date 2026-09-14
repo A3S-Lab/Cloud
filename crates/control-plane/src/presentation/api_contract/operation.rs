@@ -7,6 +7,12 @@ use super::developer_workflow_operation::{
     success_component as developer_workflow_success_component,
 };
 use super::documentation::describe_operation_documentation;
+use super::automation_operation::{
+    is_automation_management_path, is_automation_webhook_endpoint_collection_path,
+    is_automation_webhook_endpoint_mutation_path,
+    query_parameters as automation_query_parameters, request_schema as automation_request_schema,
+    success_component as automation_success_component,
+};
 use super::knowledge_operation::{
     is_base_collection_path as is_knowledge_base_collection_path,
     is_document_collection_path as is_knowledge_document_collection_path,
@@ -320,6 +326,9 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
         upsert_parameter(parameters, parameter);
     }
     for parameter in knowledge_query_parameters(method, path) {
+        upsert_parameter(parameters, parameter);
+    }
+    for parameter in automation_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
     for parameter in privileged_management_query_parameters(method, path) {
@@ -1006,6 +1015,8 @@ fn describe_request_body(
             "application/json".into(),
             json!({"schema": durable_cell_request_schema(path)}),
         );
+    } else if let Some(schema) = automation_request_schema(path) {
+        content.insert("application/json".into(), json!({"schema": schema}));
     } else if is_connector_profile_mutation_path(path) {
         let schema = if is_connector_revision_revocation_path(path)
             || is_connector_execution_attempt_resolution_path(path)
@@ -1332,6 +1343,8 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             component.to_owned()
         } else if let Some(component) = knowledge_success_component(method, path, status) {
             component.to_owned()
+        } else if let Some(component) = automation_success_component(method, path, status) {
+            component.to_owned()
         } else if let Some(component) = source_discovery_success_component(method, path, status) {
             component.to_owned()
         } else if let Some(component) = developer_workflow_success_component(method, path, status) {
@@ -1463,6 +1476,9 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     if method == "post" && asynchronous_mutation(path) {
         return vec![200, 202];
     }
+    if method == "post" && is_automation_webhook_endpoint_collection_path(path) {
+        return vec![201];
+    }
     if method == "post" && creates_resource(path) {
         return vec![200, 201];
     }
@@ -1567,6 +1583,8 @@ fn operation_tag(path: &str) -> &'static str {
         "Workflow"
     } else if path.contains("/forms") {
         "Forms"
+    } else if is_automation_management_path(path) {
+        "Automations"
     } else if path.contains("connector-profiles") {
         "Connectors"
     } else if path.contains("/applications") {
@@ -1606,7 +1624,8 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_human_task_submission_path(path)
             && !is_plugin_catalog_read_path(path)
             && !is_asset_git_path(path)
-            && !is_build_plan_detection_path(path))
+            && !is_build_plan_detection_path(path)
+            && !is_automation_webhook_endpoint_mutation_path(path))
 }
 
 fn is_plugin_catalog_read_path(path: &str) -> bool {

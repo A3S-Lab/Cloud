@@ -1,4 +1,5 @@
 mod applications;
+mod automations;
 mod arguments;
 mod artifacts;
 mod audit;

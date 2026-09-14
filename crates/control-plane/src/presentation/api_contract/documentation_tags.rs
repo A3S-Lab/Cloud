@@ -1,4 +1,4 @@
-pub(super) const TAGS: [(&str, &str); 26] = [
+pub(super) const TAGS: [(&str, &str); 27] = [
     (
         "Platform",
         "Public diagnostics plus installation-scoped platform RBAC and tenant-support administration.",
@@ -70,6 +70,10 @@ pub(super) const TAGS: [(&str, &str); 26] = [
     (
         "Connectors",
         "Environment-scoped Connector profiles and immutable revisions.",
+    ),
+    (
+        "Automations",
+        "Authorized Automation webhook endpoint lifecycle and definition catalog reads.",
     ),
     (
         "Applications",

@@ -49,6 +49,9 @@ use crate::modules::identity::domain::value_objects::{
 use crate::modules::identity::{
     ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort, InMemoryIdentityRepository,
 };
+use crate::modules::automations::{
+    InMemoryAutomationDefinitionRepository, InMemoryAutomationWebhookRepository,
+};
 use crate::modules::knowledge::{
     InMemoryKnowledgeBaseRepository, InMemoryKnowledgeChunkRepository,
     InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeDocumentRepository,
@@ -2322,6 +2325,8 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             connector_attempts: connector_execution.clone(),
             connector_attempt_resolutions: connector_execution.clone(),
             connector_revocations: connector_execution,
+            automation_definitions: Arc::new(InMemoryAutomationDefinitionRepository::new()),
+            automation_webhooks: Arc::new(InMemoryAutomationWebhookRepository::new()),
             applications: Arc::new(
                 crate::modules::applications::InMemoryApplicationRepository::new(),
             ),
