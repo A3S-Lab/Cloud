@@ -72,6 +72,7 @@ identifier!(ApplicationFeedbackId);
 identifier!(ApplicationAnnotationId);
 identifier!(ApplicationMessageVariantId);
 identifier!(ApplicationMessageFileReferenceId);
+identifier!(ApplicationMessageCitationId);
 identifier!(ApplicationAuthoringProfileId);
 identifier!(ApplicationReleaseId);
 identifier!(ApplicationSessionId);
