@@ -1865,6 +1865,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/207_application_message_file_references.sql"
             )),
         ),
+        Migration::new(
+            "208",
+            "Application message citations",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/208_application_message_citations.sql"
+            )),
+        ),
     ]
 }
 
@@ -1887,6 +1895,10 @@ mod application_message_variant_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/application_message_file_reference_migration.rs"]
 mod application_message_file_reference_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/application_message_citation_migration.rs"]
+mod application_message_citation_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]

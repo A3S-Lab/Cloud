@@ -1,9 +1,11 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
 use crate::modules::applications::{
     IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository,
+    IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
+    IApplicationMessageVariantRepository,
     IApplicationRepository, IApplicationSessionRepository,
     PostgresApplicationAnnotationRepository, PostgresApplicationFeedbackRepository,
+    PostgresApplicationMessageCitationRepository,
     PostgresApplicationMessageFileReferenceRepository,
     PostgresApplicationMessageVariantRepository, PostgresApplicationRepository,
     PostgresApplicationSessionRepository,
@@ -210,6 +212,9 @@ impl PostgresAdapterFactory {
             application_message_file_references: Arc::new(
                 PostgresApplicationMessageFileReferenceRepository::new(self.executor.clone()),
             ),
+            application_message_citations: Arc::new(
+                PostgresApplicationMessageCitationRepository::new(self.executor.clone()),
+            ),
             durable_cell_applications: Arc::new(PostgresDurableCellApplicationRepository::new(
                 self.executor.clone(),
             )),
@@ -329,6 +334,9 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
     pub(super) application_message_file_references:
         Arc<dyn IApplicationMessageFileReferenceRepository>,
+    /// Wired for APP0.2-C36 persistence; CQRS consumption lands in APP0.2-C37.
+    #[allow(dead_code)]
+    pub(super) application_message_citations: Arc<dyn IApplicationMessageCitationRepository>,
     pub(super) durable_cell_applications: Arc<dyn IDurableCellApplicationRepository>,
     pub(super) durable_cell_deployments: Arc<dyn IDurableCellDeploymentRepository>,
     pub(super) operations: Arc<dyn IOperationRepository>,
