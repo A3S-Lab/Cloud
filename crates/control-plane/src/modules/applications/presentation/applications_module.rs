@@ -5,6 +5,9 @@ use super::delivery_controller::{
 use super::feedback_delivery_controller::{
     application_feedback_commands_controller, application_feedback_queries_controller,
 };
+use super::message_variant_delivery_controller::{
+    application_message_variant_commands_controller, application_message_variant_queries_controller,
+};
 use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -23,6 +26,8 @@ impl Module for ApplicationsModule {
             application_delivery_queries_controller(module_ref.get::<QueryBus>()?)?,
             application_feedback_commands_controller(module_ref.get::<CommandBus>()?)?,
             application_feedback_queries_controller(module_ref.get::<QueryBus>()?)?,
+            application_message_variant_commands_controller(module_ref.get::<CommandBus>()?)?,
+            application_message_variant_queries_controller(module_ref.get::<QueryBus>()?)?,
         ])
     }
 }

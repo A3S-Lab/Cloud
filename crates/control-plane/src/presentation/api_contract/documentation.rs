@@ -31,7 +31,7 @@ use super::user_file_documentation::{
     response_data_description as user_file_response_data_description,
 };
 use a3s_boot::{BootError, Result};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 const DOCUMENTATION_URL: &str = "https://github.com/A3S-Lab/Cloud/blob/main/docs/openapi.md";
 const REPOSITORY_URL: &str = "https://github.com/A3S-Lab/Cloud";
@@ -921,6 +921,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
         ("/invocations", "Request an application invocation"),
         ("/feedbacks", "Create application session feedback"),
         ("/annotations", "Create an application session annotation"),
+        (
+            "/message-variants",
+            "Create an application session message variant",
+        ),
         ("/versions", "Create a secret version"),
         ("/executions", "Start an execution"),
         ("/deployments", "Create a deployment"),
@@ -1029,6 +1033,10 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "messages" => ("application message", "application messages"),
         "feedbacks" => ("application feedback", "application feedback"),
         "annotations" => ("application annotation", "application annotations"),
+        "message-variants" => (
+            "application message variant",
+            "application message variants",
+        ),
         "attribution-profiles" => (
             "project attribution profile",
             "project attribution profiles",

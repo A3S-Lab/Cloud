@@ -2,9 +2,10 @@ use super::arguments::{DEFAULT_LOG_LIMIT, MAXIMUM_IDEMPOTENCY_KEY_LENGTH, MAXIMU
 use crate::modules::applications::{
     APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
     APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
-    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
-    DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
-    MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES,
+    APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, DEFAULT_APPLICATION_LIST_LIMIT,
+    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
+    MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 use crate::modules::audit::{
     DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
@@ -17,8 +18,8 @@ use crate::modules::data::OBJECT_NAMESPACE_PROVIDER_PROFILE_MAX_ACL_BYTES;
 use crate::modules::developer_workflows::{
     BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES, DEFAULT_BUILD_PLAN_LIST_LIMIT,
     DEFAULT_PREVIEW_POLICY_REVISION_LIST_LIMIT, DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
-    MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER, MAXIMUM_BUILD_PLAN_LIST_LIMIT,
-    MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
+    MAXIMUM_BUILD_PLAN_LIST_LIMIT, MAXIMUM_PREVIEW_POLICY_REVISION_LIST_LIMIT,
+    MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAX_DEVELOPER_WORKFLOW_SAFE_INTEGER,
     PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES, WORKLOAD_PROFILE_MAX_ACL_BYTES,
 };
 use crate::modules::durable_cells::domain::{
@@ -33,8 +34,8 @@ use crate::modules::files::{
     DEFAULT_USER_FILE_LIST_LIMIT, MAXIMUM_USER_FILE_LIST_LIMIT,
     USER_FILE_ADMISSION_CONTRACT_MAX_ACL_BYTES, USER_FILE_REJECTION_REASON_MAX_BYTES,
 };
-use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::forms::presentation::form_interaction_submission_schema;
+use crate::modules::forms::CLOUD_FORM_DOCUMENT_MAX_BYTES;
 use crate::modules::identity::domain::repositories::{
     DEFAULT_WORKLOAD_IDENTITY_REVISIONS_PAGE, MAX_WORKLOAD_IDENTITY_REVISIONS_PAGE,
 };
@@ -77,7 +78,7 @@ use a3s_use_extension::{
     plugin_catalog_host_input_schema, plugin_catalog_inspection_input_schema,
     plugin_catalog_search_input_schema,
 };
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub const BUILD_PLAN_DETECTIONS_CREATE: &str = "a3s_cloud_build_plan_detections_create";
 pub const BUILD_PLANS_ACCEPT: &str = "a3s_cloud_build_plans_accept";
@@ -125,6 +126,10 @@ pub const APPLICATION_FEEDBACKS_GET: &str = "a3s_cloud_application_feedbacks_get
 pub const APPLICATION_ANNOTATIONS_CREATE: &str = "a3s_cloud_application_annotations_create";
 pub const APPLICATION_ANNOTATIONS_LIST: &str = "a3s_cloud_application_annotations_list";
 pub const APPLICATION_ANNOTATIONS_GET: &str = "a3s_cloud_application_annotations_get";
+pub const APPLICATION_MESSAGE_VARIANTS_CREATE: &str =
+    "a3s_cloud_application_message_variants_create";
+pub const APPLICATION_MESSAGE_VARIANTS_LIST: &str = "a3s_cloud_application_message_variants_list";
+pub const APPLICATION_MESSAGE_VARIANTS_GET: &str = "a3s_cloud_application_message_variants_get";
 pub const CONNECTOR_PROFILES_CREATE: &str = "a3s_cloud_connector_profiles_create";
 pub const CONNECTOR_PROFILES_REVISE: &str = "a3s_cloud_connector_profiles_revise";
 pub const CONNECTOR_PROFILES_LIST: &str = "a3s_cloud_connector_profiles_list";
@@ -350,6 +355,9 @@ pub enum ManagementTool {
     ApplicationAnnotationsCreate,
     ApplicationAnnotationsList,
     ApplicationAnnotationsGet,
+    ApplicationMessageVariantsCreate,
+    ApplicationMessageVariantsList,
+    ApplicationMessageVariantsGet,
     ConnectorProfilesCreate,
     ConnectorProfilesRevise,
     ConnectorProfilesList,
@@ -569,7 +577,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 223] = [
+    const ALL: [Self; 226] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -592,6 +600,9 @@ impl ManagementTool {
         Self::ApplicationAnnotationsCreate,
         Self::ApplicationAnnotationsList,
         Self::ApplicationAnnotationsGet,
+        Self::ApplicationMessageVariantsCreate,
+        Self::ApplicationMessageVariantsList,
+        Self::ApplicationMessageVariantsGet,
         Self::ConnectorProfilesCreate,
         Self::ConnectorProfilesRevise,
         Self::ConnectorProfilesList,
@@ -842,6 +853,9 @@ impl ManagementTool {
             Self::ApplicationAnnotationsCreate => APPLICATION_ANNOTATIONS_CREATE,
             Self::ApplicationAnnotationsList => APPLICATION_ANNOTATIONS_LIST,
             Self::ApplicationAnnotationsGet => APPLICATION_ANNOTATIONS_GET,
+            Self::ApplicationMessageVariantsCreate => APPLICATION_MESSAGE_VARIANTS_CREATE,
+            Self::ApplicationMessageVariantsList => APPLICATION_MESSAGE_VARIANTS_LIST,
+            Self::ApplicationMessageVariantsGet => APPLICATION_MESSAGE_VARIANTS_GET,
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1078,7 +1092,10 @@ impl ManagementTool {
             | Self::ApplicationFeedbacksGet
             | Self::ApplicationAnnotationsCreate
             | Self::ApplicationAnnotationsList
-            | Self::ApplicationAnnotationsGet => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationAnnotationsGet
+            | Self::ApplicationMessageVariantsCreate
+            | Self::ApplicationMessageVariantsList
+            | Self::ApplicationMessageVariantsGet => Some(ApiTokenScope::APPLICATION_WRITE),
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1454,6 +1471,9 @@ impl ManagementTool {
             | Self::ApplicationAnnotationsCreate
             | Self::ApplicationAnnotationsList
             | Self::ApplicationAnnotationsGet
+            | Self::ApplicationMessageVariantsCreate
+            | Self::ApplicationMessageVariantsList
+            | Self::ApplicationMessageVariantsGet
             | Self::FormsRevise
             | Self::FormReleasesGet
             | Self::FormReleasesList
@@ -1682,6 +1702,24 @@ impl ManagementTool {
                 "Get Application annotation",
                 "Get one Application annotation by session and annotation identity.",
                 application_annotation_schema(),
+                true,
+            ),
+            Self::ApplicationMessageVariantsCreate => (
+                "Create Application message variant",
+                "Create or replay one immutable Application message variant for an active session.",
+                create_application_message_variant_schema(),
+                false,
+            ),
+            Self::ApplicationMessageVariantsList => (
+                "List Application message variants",
+                "List Application message variants for one session.",
+                application_session_schema(),
+                true,
+            ),
+            Self::ApplicationMessageVariantsGet => (
+                "Get Application message variant",
+                "Get one Application message variant by session and variant identity.",
+                application_message_variant_schema(),
                 true,
             ),
             Self::ConnectorProfilesCreate => (
@@ -4291,6 +4329,38 @@ fn create_application_annotation_schema() -> Value {
     })
 }
 
+fn create_application_message_variant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "sourceMessageId": {"type": "string", "format": "uuid"},
+            "instruction": {
+                "type": "object",
+                "x-a3s-max-canonical-bytes": APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES
+            }
+        },
+        "required": ["projectId", "applicationId", "sessionId", "sourceMessageId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_message_variant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "variantId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "variantId"],
+        "additionalProperties": false
+    })
+}
+
 fn application_annotation_schema() -> Value {
     json!({
         "type": "object",
@@ -5971,19 +6041,17 @@ mod tests {
             policy_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             PLATFORM_ROLE_POLICY_MAX_ACL_BYTES
         );
-        assert!(
-            policy_acceptance["inputSchema"]["properties"]
-                .get("organizationId")
-                .is_none()
-        );
+        assert!(policy_acceptance["inputSchema"]["properties"]
+            .get("organizationId")
+            .is_none());
         let support_proposal = ManagementTool::TenantSupportGrantsPropose.definition();
         assert_eq!(
             support_proposal["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
             TENANT_SUPPORT_GRANT_MAX_ACL_BYTES
         );
         assert_eq!(
-            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]["expectedContractDigest"]
-                ["pattern"],
+            ManagementTool::TenantSupportGrantsApprove.definition()["inputSchema"]["properties"]
+                ["expectedContractDigest"]["pattern"],
             "^sha256:[0-9a-f]{64}$"
         );
         let trust_acceptance = ManagementTool::TrustDomainRevisionsAccept.definition();
@@ -5999,7 +6067,8 @@ mod tests {
         let workload_acceptance =
             ManagementTool::WorkloadIdentityPolicyRevisionsAccept.definition();
         assert_eq!(
-            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]["x-a3s-max-utf8-bytes"],
+            workload_acceptance["inputSchema"]["properties"]["canonicalAcl"]
+                ["x-a3s-max-utf8-bytes"],
             WORKLOAD_IDENTITY_POLICY_MAX_ACL_BYTES
         );
         for tool in [

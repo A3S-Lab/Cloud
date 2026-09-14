@@ -125,6 +125,9 @@ Commands:
   application-annotations create APP SESSION Create session annotation from JSON --file (content-digest replay)
   application-annotations list APP SESSION List session annotations for the caller project
   application-annotations get APP SESSION ANNOTATION Get one session annotation by id
+  application-message-variants create APP SESSION Create session message variant from JSON --file
+  application-message-variants list APP SESSION List session message variants for the caller project
+  application-message-variants get APP SESSION VARIANT Get one session message variant by id
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision
   connector-profiles create NAME Create a Connector profile from A3S ACL

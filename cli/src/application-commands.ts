@@ -3,9 +3,11 @@ import {
   type CloudApi,
   type CreateApplicationAnnotationInput,
   type CreateApplicationFeedbackInput,
+  type CreateApplicationMessageVariantInput,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
   MAX_APPLICATION_ANNOTATION_CONTENT_BYTES,
   MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS,
+  MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES,
   MAX_APPLICATION_MESSAGE_LIST_LIMIT,
   MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES,
   MAX_APPLICATION_INVOCATION_INPUT_BYTES,
@@ -13,6 +15,7 @@ import {
   type RequestApplicationInvocationInput,
   validateApplicationAnnotationInput,
   validateApplicationFeedbackInput,
+  validateApplicationMessageVariantInput,
 } from '@a3s/cloud-client';
 import { readAclDocument, requireAclMutationCommand, requireVersionedAclMutationCommand } from './acl-file';
 import {
@@ -26,6 +29,9 @@ import {
   applicationFeedbackMutationResult,
   applicationFeedbackResult,
   applicationFeedbacksResult,
+  applicationMessageVariantMutationResult,
+  applicationMessageVariantResult,
+  applicationMessageVariantsResult,
   applicationMessagesResult,
   applicationResult,
   applicationReleaseResult,
@@ -399,6 +405,58 @@ export async function executeApplicationCommand(
           positionalUuid(positionals, 4, 'Application annotation ID')
         )
       );
+    case 'application-message-variants create': {
+      const mutation = requireFeedbackAnnotationCreate(
+        arguments_,
+        'application-message-variants create <application-id> <session-id>'
+      );
+      const body = await readApplicationObject(
+        mutation.file,
+        'Application message variant',
+        MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES + 1024,
+        dependencies.readFile
+      );
+      const input = applicationMessageVariantInput(body);
+      validateApplicationMessageVariantInput(input);
+      return applicationMessageVariantMutationResult(
+        await cloudApi().createApplicationMessageVariant(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          input
+        )
+      );
+    }
+    case 'application-message-variants list':
+      requireReadCommand(
+        arguments_,
+        'application-message-variants list <application-id> <session-id>',
+        4
+      );
+      return applicationMessageVariantsResult(
+        await cloudApi().listApplicationMessageVariants(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID')
+        )
+      );
+    case 'application-message-variants get':
+      requireReadCommand(
+        arguments_,
+        'application-message-variants get <application-id> <session-id> <variant-id>',
+        5
+      );
+      return applicationMessageVariantResult(
+        await cloudApi().getApplicationMessageVariant(
+          organizationId(),
+          projectId(),
+          positionalUuid(positionals, 2, 'Application ID'),
+          positionalUuid(positionals, 3, 'Application session ID'),
+          positionalUuid(positionals, 4, 'Application message variant ID')
+        )
+      );
     default:
       return undefined;
   }
@@ -420,6 +478,34 @@ function requireFeedbackAnnotationCreate(
     throw usageError(`--file is required for ${usage}`);
   }
   return { file: arguments_.file };
+}
+
+function applicationMessageVariantInput(
+  value: Record<string, unknown>
+): CreateApplicationMessageVariantInput {
+  const allowed = new Set(['sourceMessageId', 'instruction']);
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) {
+      throw usageError(`Application message variant field '${key}' is not supported`);
+    }
+  }
+  if (typeof value.sourceMessageId !== 'string') {
+    throw usageError('Application message variant sourceMessageId must be a string');
+  }
+  if (
+    value.instruction !== undefined &&
+    (value.instruction === null ||
+      Array.isArray(value.instruction) ||
+      typeof value.instruction !== 'object')
+  ) {
+    throw usageError('Application message variant instruction must be a JSON object');
+  }
+  return {
+    sourceMessageId: value.sourceMessageId,
+    ...(value.instruction !== undefined
+      ? { instruction: value.instruction as Record<string, unknown> }
+      : {}),
+  };
 }
 
 function applicationFeedbackInput(value: Record<string, unknown>): CreateApplicationFeedbackInput {

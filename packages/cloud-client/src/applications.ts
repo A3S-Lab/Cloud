@@ -8,6 +8,7 @@ export const DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT = 100;
 export const MAX_APPLICATION_MESSAGE_LIST_LIMIT = 500;
 export const MAX_APPLICATION_FEEDBACK_COMMENT_CHARACTERS = 4_096;
 export const MAX_APPLICATION_ANNOTATION_CONTENT_BYTES = 256 * 1024;
+export const MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES = 4 * 1024;
 export const DEFAULT_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 24 * 60 * 60;
 export const MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
 
@@ -209,6 +210,33 @@ export interface ApplicationMessage {
   createdAt: string;
 }
 
+export interface ApplicationMessageVariant {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  sessionId: string;
+  endUserId: string;
+  invocationId: string;
+  sourceMessageId: string;
+  sourceMessageKind: ApplicationMessageKind;
+  variantId: string;
+  instruction: Record<string, unknown> | null;
+  instructionDigest: string;
+  createdAt: string;
+}
+
+export interface CreateApplicationMessageVariantInput {
+  sourceMessageId: string;
+  instruction?: Record<string, unknown>;
+}
+
+export interface ApplicationMessageVariantMutationResult {
+  variant: ApplicationMessageVariant;
+  replayed: boolean;
+}
+
 export type ApplicationFeedbackRating = 'positive' | 'negative';
 
 export interface CreateApplicationFeedbackInput {
@@ -408,6 +436,21 @@ export function validateApplicationAnnotationInput(input: CreateApplicationAnnot
   );
   if (input.sourceMessageId !== undefined && typeof input.sourceMessageId !== 'string') {
     throw new TypeError('Application annotation sourceMessageId must be a string');
+  }
+}
+
+export function validateApplicationMessageVariantInput(
+  input: CreateApplicationMessageVariantInput
+): void {
+  if (typeof input.sourceMessageId !== 'string' || input.sourceMessageId.length === 0) {
+    throw new TypeError('Application message variant sourceMessageId must be a non-empty string');
+  }
+  if (input.instruction !== undefined) {
+    validateApplicationObject(
+      input.instruction,
+      'Application message variant instruction',
+      MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES
+    );
   }
 }
 

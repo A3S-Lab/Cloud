@@ -485,3 +485,73 @@ impl From<crate::modules::applications::application::ApplicationAnnotationMutati
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationMessageVariantRequest {
+    pub source_message_id: Uuid,
+    #[serde(default)]
+    pub instruction: Option<Value>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageVariantResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub session_id: Uuid,
+    pub end_user_id: Uuid,
+    pub invocation_id: Uuid,
+    pub source_message_id: Uuid,
+    pub source_message_kind: String,
+    pub variant_id: Uuid,
+    pub instruction: Option<Value>,
+    pub instruction_digest: String,
+    pub created_at: DateTime<Utc>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationMessageVariant>
+    for ApplicationMessageVariantResponse
+{
+    fn from(variant: crate::modules::applications::domain::ApplicationMessageVariant) -> Self {
+        Self {
+            organization_id: variant.organization_id.as_uuid(),
+            project_id: variant.project_id.as_uuid(),
+            application_id: variant.application_id.as_uuid(),
+            application_release_id: variant.application_release_id.as_uuid(),
+            application_release_digest: variant.application_release_digest.as_str().to_owned(),
+            session_id: variant.session_id.as_uuid(),
+            end_user_id: variant.end_user_id.as_uuid(),
+            invocation_id: variant.invocation_id.as_uuid(),
+            source_message_id: variant.source_message_id.as_uuid(),
+            source_message_kind: variant.source_message_kind.as_str().to_owned(),
+            variant_id: variant.id.as_uuid(),
+            instruction: variant.instruction,
+            instruction_digest: variant.instruction_digest.as_str().to_owned(),
+            created_at: variant.created_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationMessageVariantMutationResponse {
+    pub variant: ApplicationMessageVariantResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationMessageVariantMutationResult>
+    for ApplicationMessageVariantMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationMessageVariantMutationResult,
+    ) -> Self {
+        Self {
+            variant: result.variant.into(),
+            replayed: result.replayed,
+        }
+    }
+}

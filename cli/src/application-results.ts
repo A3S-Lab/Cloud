@@ -4,6 +4,8 @@ import type {
   ApplicationAnnotationMutationResult,
   ApplicationFeedback,
   ApplicationFeedbackMutationResult,
+  ApplicationMessageVariant,
+  ApplicationMessageVariantMutationResult,
   ApplicationInvocation,
   ApplicationInvocationCancellationResult,
   ApplicationInvocationMutationResult,
@@ -78,6 +80,14 @@ const APPLICATION_ANNOTATION_COLUMNS = [
   { header: 'SESSION', value: (row: ApplicationAnnotation) => row.sessionId },
   { header: 'DIGEST', value: (row: ApplicationAnnotation) => row.contentDigest },
   { header: 'CREATED AT', value: (row: ApplicationAnnotation) => row.createdAt },
+] as const;
+
+const APPLICATION_MESSAGE_VARIANT_COLUMNS = [
+  { header: 'VARIANT', value: (row: ApplicationMessageVariant) => row.variantId },
+  { header: 'SOURCE', value: (row: ApplicationMessageVariant) => row.sourceMessageId },
+  { header: 'KIND', value: (row: ApplicationMessageVariant) => row.sourceMessageKind },
+  { header: 'INVOCATION', value: (row: ApplicationMessageVariant) => row.invocationId },
+  { header: 'CREATED AT', value: (row: ApplicationMessageVariant) => row.createdAt },
 ] as const;
 
 export function applicationsResult(rows: Application[]): CommandResult {
@@ -197,6 +207,31 @@ export function applicationAnnotationMutationResult(
       {
         header: 'REPLAYED',
         value: (row: ApplicationAnnotation & { replayed: boolean }) => row.replayed,
+      },
+    ]),
+  };
+}
+
+export function applicationMessageVariantsResult(
+  rows: ApplicationMessageVariant[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_MESSAGE_VARIANT_COLUMNS) };
+}
+
+export function applicationMessageVariantResult(row: ApplicationMessageVariant): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_MESSAGE_VARIANT_COLUMNS) };
+}
+
+export function applicationMessageVariantMutationResult(
+  result: ApplicationMessageVariantMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.variant, replayed: result.replayed }], [
+      ...APPLICATION_MESSAGE_VARIANT_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationMessageVariant & { replayed: boolean }) => row.replayed,
       },
     ]),
   };
