@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 206;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "206";
+pub const CLOUD_MIGRATION_COUNT: i64 = 207;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "207";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1857,6 +1857,14 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/206_application_message_variants.sql"
             )),
         ),
+        Migration::new(
+            "207",
+            "Application message file references",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/207_application_message_file_references.sql"
+            )),
+        ),
     ]
 }
 
@@ -1875,6 +1883,10 @@ mod application_feedback_annotation_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/application_message_variant_migration.rs"]
 mod application_message_variant_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/application_message_file_reference_migration.rs"]
+mod application_message_file_reference_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]
