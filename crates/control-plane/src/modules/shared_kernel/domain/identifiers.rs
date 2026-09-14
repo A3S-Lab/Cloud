@@ -68,6 +68,8 @@ identifier!(ApplicationDeliveryCredentialId);
 identifier!(ApplicationId);
 identifier!(ApplicationInvocationId);
 identifier!(ApplicationMessageId);
+identifier!(ApplicationFeedbackId);
+identifier!(ApplicationAnnotationId);
 identifier!(ApplicationReleaseId);
 identifier!(ApplicationSessionId);
 identifier!(ConversationVariableRevisionId);
