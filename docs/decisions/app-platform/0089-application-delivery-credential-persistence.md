@@ -21,7 +21,7 @@ Applications owns persistence for anonymous delivery credential bindings:
 - generation-fenced CAS for disable/enable/revoke
 - exact `SecretVersionReference` foreign key (no plaintext)
 
-`APP0.2-C17` remains component-only. Identity issuance, REST/MCP, Gateway, SSE,
+`APP0.2-C17` remains component-only. Anonymous session admission is `APP0.2-C18`. Identity issuance, REST/MCP, Gateway, SSE,
 and availability stay later slices.
 
 ## Consequences
