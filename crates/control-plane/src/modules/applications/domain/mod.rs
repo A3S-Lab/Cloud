@@ -2,6 +2,7 @@ mod annotation_repository;
 mod application;
 mod application_annotation;
 mod application_blocking_observation;
+mod application_streaming_observation;
 mod application_delivery_credential;
 mod application_effect;
 mod application_end_user;
@@ -30,6 +31,10 @@ pub use application::{APPLICATION_DESCRIPTION_MAX_CHARS, Application, Applicatio
 pub use application_annotation::{APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, ApplicationAnnotation};
 pub use application_blocking_observation::{
     ApplicationBlockingObservation, ApplicationBlockingWaitStatus,
+};
+pub use application_streaming_observation::{
+    ApplicationStreamingObservation, ApplicationStreamingObservationFrame,
+    ApplicationStreamingObservationStatus,
 };
 pub use application_delivery_credential::{
     ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus,
