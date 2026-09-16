@@ -6,6 +6,7 @@ mod datasource_entrance;
 mod ingestion_provenance;
 mod document_incremental_update;
 mod ingestion_cancellation;
+mod failure_cleanup;
 mod source_tombstone;
 mod processor_output_contract;
 mod document;
@@ -35,6 +36,10 @@ pub use datasource_entrance::{
 pub use ingestion_provenance::{
     KnowledgeIngestionProvenanceKindV1, KnowledgeIngestionProvenanceSpecV1,
     KnowledgeIngestionProvenanceV1,
+};
+pub use failure_cleanup::{
+    KnowledgeFailureCleanupKindV1, KnowledgeFailureCleanupSpecV1,
+    KnowledgeFailureCleanupV1,
 };
 pub use ingestion_cancellation::{
     KnowledgeIngestionCancellationKindV1, KnowledgeIngestionCancellationSpecV1,
@@ -75,7 +80,7 @@ pub use retrieval_policy::{
 };
 pub use types::{
     KnowledgeChunkStructureV1, KnowledgeIndexStrategyV1, EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1,
-    KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1, KNOWLEDGE_INGESTION_PROVENANCE_SCHEMA_V1, KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1, KNOWLEDGE_DOCUMENT_INCREMENTAL_UPDATE_SCHEMA_V1, KNOWLEDGE_INGESTION_CANCELLATION_SCHEMA_V1, KNOWLEDGE_SOURCE_TOMBSTONE_SCHEMA_V1,
+    KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1, KNOWLEDGE_INGESTION_PROVENANCE_SCHEMA_V1, KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1, KNOWLEDGE_DOCUMENT_INCREMENTAL_UPDATE_SCHEMA_V1, KNOWLEDGE_INGESTION_CANCELLATION_SCHEMA_V1, KNOWLEDGE_FAILURE_CLEANUP_SCHEMA_V1, KNOWLEDGE_SOURCE_TOMBSTONE_SCHEMA_V1,
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
     KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1, KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,

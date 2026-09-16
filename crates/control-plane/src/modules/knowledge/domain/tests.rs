@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeDocumentIncrementalUpdateId, KnowledgeIngestionCancellationId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeDocumentIncrementalUpdateId, KnowledgeIngestionCancellationId, KnowledgeFailureCleanupId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -33,6 +33,8 @@ const INCREMENTAL_UPDATE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-document-incremental-update.acl");
 const CANCELLATION_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-ingestion-cancellation.acl");
+const FAILURE_CLEANUP_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-failure-cleanup.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -752,5 +754,115 @@ fn k02_c6_file_text_ingestion_cancellation_matches_fixture_and_rejects_noop_and_
 
     let deferred = "knowledge_ingestion_cancellation {\n  cancellation_id = \"018f0000-0000-7000-8000-000000000904\"\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl cancel\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-ingestion-cancellation.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
     let err = KnowledgeIngestionCancellationV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
+}
+
+#[test]
+fn k02_c7_file_text_failure_cleanup_matches_fixture_and_rejects_noop_and_deferred() {
+    let cleanup = KnowledgeFailureCleanupV1::from_spec(KnowledgeFailureCleanupSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        cleanup_id: id(
+            "018f0000-0000-7000-8000-000000000a01",
+            KnowledgeFailureCleanupId::from_uuid,
+        ),
+        name: "FAQ upload failure cleanup".into(),
+        kind: KnowledgeFailureCleanupKindV1::FailedAdmittedUserFileIngestion {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000501",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            provenance_digest: digest(0xaa),
+            content_digest: digest(0x0a),
+            user_file_id: id(
+                "018f0000-0000-7000-8000-000000000203",
+                UserFileId::from_uuid,
+            ),
+            failure_digest: digest(0xee),
+        },
+    })
+    .expect("cleanup");
+    assert_eq!(cleanup.canonical_acl(), FAILURE_CLEANUP_FIXTURE);
+    assert_eq!(
+        KnowledgeFailureCleanupV1::parse_acl(FAILURE_CLEANUP_FIXTURE).expect("parse"),
+        cleanup
+    );
+    assert!(KnowledgeFailureCleanupV1::parse_acl(FAILURE_CLEANUP_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeFailureCleanupV1::restore(FAILURE_CLEANUP_FIXTURE, digest(0xbb).as_str()).is_err()
+    );
+
+    let noop = KnowledgeFailureCleanupV1::from_spec(KnowledgeFailureCleanupSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        cleanup_id: id(
+            "018f0000-0000-7000-8000-000000000a02",
+            KnowledgeFailureCleanupId::from_uuid,
+        ),
+        name: "noop update failure cleanup".into(),
+        kind: KnowledgeFailureCleanupKindV1::FailedDocumentIncrementalUpdate {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            update_id: id(
+                "018f0000-0000-7000-8000-000000000801",
+                KnowledgeDocumentIncrementalUpdateId::from_uuid,
+            ),
+            previous_provenance_digest: digest(0xaa),
+            next_provenance_digest: digest(0xaa),
+            failure_digest: digest(0xef),
+        },
+    })
+    .expect_err("noop provenance");
+    assert!(noop.contains("provenance_digest"), "{noop}");
+
+    let inline = KnowledgeFailureCleanupV1::from_spec(KnowledgeFailureCleanupSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        cleanup_id: id(
+            "018f0000-0000-7000-8000-000000000a03",
+            KnowledgeFailureCleanupId::from_uuid,
+        ),
+        name: "FAQ paste failure cleanup".into(),
+        kind: KnowledgeFailureCleanupKindV1::FailedImmutableObjectIngestion {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            provenance_digest: digest(0xac),
+            content_digest: digest(0x0c),
+            failure_digest: digest(0xf0),
+        },
+    })
+    .expect("inline cleanup");
+    assert!(inline.digest().as_str().starts_with("sha256:"));
+
+    let deferred = "knowledge_failure_cleanup {\n  cleanup_id = \"018f0000-0000-7000-8000-000000000a04\"\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl cleanup\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-failure-cleanup.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
+    let err = KnowledgeFailureCleanupV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }

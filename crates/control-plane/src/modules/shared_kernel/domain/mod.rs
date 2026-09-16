@@ -30,7 +30,7 @@ pub use identifiers::{
     ExternalIdentityLinkId, ExternalKnowledgeBindingId, FormId, FormReleaseId, FormSubmissionId,
     GatewayCertificateId, GatewayRolloutId, GatewayScopeId, HumanTaskId, InferenceCredentialId,
     InferenceRouteId, InstallationId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeDocumentIncrementalUpdateId, KnowledgeIngestionCancellationId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeDocumentIncrementalUpdateId, KnowledgeIngestionCancellationId, KnowledgeFailureCleanupId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, McpCredentialId, MembershipId, MembershipInvitationId,
     NodeCertificateId, NodeCommandId, NodeId, NodePoolId, NotificationAlertPolicyId,
     NotificationId, NotificationSubscriptionId, OidcFlowId, OntologyId, OntologyRevisionId,
