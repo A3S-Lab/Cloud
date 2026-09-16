@@ -8,6 +8,8 @@
 //! whose digests feed `output_contract_digest`. Tool/OCR/multimodal
 //! processors remain deferred.
 //! `K0.2-C3` freezes file/text+builtin-text ingestion provenance
+//! and `K0.2-C4` freezes exact source tombstones for admitted
+//! user-file and immutable-object document sources
 //! whose digests feed document `provenance_digest`. Drive/crawl/
 //! Tool/OCR provenance remains deferred. No persistence, worker, or
 //! availability.
@@ -113,6 +115,8 @@ pub use domain::{
     KnowledgeDatasourceEntranceSpecV1, KnowledgeDatasourceEntranceV1,
     KnowledgeIngestionProvenanceKindV1, KnowledgeIngestionProvenanceSpecV1,
     KnowledgeIngestionProvenanceV1, KnowledgeProcessorOutputContractKindV1,
+    KnowledgeSourceTombstoneKindV1, KnowledgeSourceTombstoneSpecV1,
+    KnowledgeSourceTombstoneV1,
     KnowledgeProcessorOutputContractSpecV1, KnowledgeProcessorOutputContractV1,
     KnowledgeDocumentLifecycleChanged, KnowledgeDocumentRecord,
     KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1, KnowledgeDocumentV1,
@@ -125,6 +129,7 @@ pub use domain::{
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
     KNOWLEDGE_INGESTION_PROVENANCE_SCHEMA_V1,
+    KNOWLEDGE_SOURCE_TOMBSTONE_SCHEMA_V1,
     KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1,
     KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
     KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,

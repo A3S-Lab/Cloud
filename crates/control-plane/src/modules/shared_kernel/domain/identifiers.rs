@@ -92,6 +92,7 @@ identifier!(KnowledgePipelineReleaseId);
 identifier!(KnowledgeDatasourceEntranceId);
 identifier!(KnowledgeProcessorOutputContractId);
 identifier!(KnowledgeIngestionProvenanceId);
+identifier!(KnowledgeSourceTombstoneId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);

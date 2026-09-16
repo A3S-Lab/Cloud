@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -27,6 +27,8 @@ const PROCESSOR_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-processor-output-contract.acl");
 const PROVENANCE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-ingestion-provenance.acl");
+const TOMBSTONE_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-source-tombstone.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -453,5 +455,80 @@ fn k02_c3_file_text_ingestion_provenance_matches_fixture_and_rejects_deferred_ki
 
     let deferred = "knowledge_ingestion_provenance {\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl provenance\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  provenance_id = \"018f0000-0000-7000-8000-000000000603\"\n  schema = \"cloud.knowledge-ingestion-provenance.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
     let err = KnowledgeIngestionProvenanceV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
+}
+
+#[test]
+fn k02_c4_file_text_source_tombstone_matches_fixture_and_rejects_deferred_kinds() {
+    let tombstone = KnowledgeSourceTombstoneV1::from_spec(KnowledgeSourceTombstoneSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        tombstone_id: id(
+            "018f0000-0000-7000-8000-000000000701",
+            KnowledgeSourceTombstoneId::from_uuid,
+        ),
+        name: "FAQ upload tombstone".into(),
+        kind: KnowledgeSourceTombstoneKindV1::AdmittedUserFile {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000501",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            provenance_digest: digest(0xaa),
+            user_file_id: id(
+                "018f0000-0000-7000-8000-000000000203",
+                UserFileId::from_uuid,
+            ),
+            content_digest: digest(0x0a),
+        },
+    })
+    .expect("tombstone");
+    assert_eq!(tombstone.canonical_acl(), TOMBSTONE_FIXTURE);
+    assert_eq!(
+        KnowledgeSourceTombstoneV1::parse_acl(TOMBSTONE_FIXTURE).expect("parse"),
+        tombstone
+    );
+    assert!(KnowledgeSourceTombstoneV1::parse_acl(TOMBSTONE_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeSourceTombstoneV1::restore(TOMBSTONE_FIXTURE, digest(0xbb).as_str()).is_err()
+    );
+
+    let inline = KnowledgeSourceTombstoneV1::from_spec(KnowledgeSourceTombstoneSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        tombstone_id: id(
+            "018f0000-0000-7000-8000-000000000702",
+            KnowledgeSourceTombstoneId::from_uuid,
+        ),
+        name: "FAQ paste tombstone".into(),
+        kind: KnowledgeSourceTombstoneKindV1::ImmutableObject {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            provenance_digest: digest(0xab),
+            content_digest: digest(0x0c),
+        },
+    })
+    .expect("inline tombstone");
+    assert!(inline.digest().as_str().starts_with("sha256:"));
+
+    let deferred = "knowledge_source_tombstone {\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl tombstone\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-source-tombstone.v1\"\n  tombstone_id = \"018f0000-0000-7000-8000-000000000703\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
+    let err = KnowledgeSourceTombstoneV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }
