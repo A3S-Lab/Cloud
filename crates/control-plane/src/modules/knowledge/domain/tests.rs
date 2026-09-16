@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeDocumentIncrementalUpdateId, KnowledgeSourceTombstoneId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -29,6 +29,8 @@ const PROVENANCE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-ingestion-provenance.acl");
 const TOMBSTONE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-source-tombstone.acl");
+const INCREMENTAL_UPDATE_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-document-incremental-update.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -530,5 +532,115 @@ fn k02_c4_file_text_source_tombstone_matches_fixture_and_rejects_deferred_kinds(
 
     let deferred = "knowledge_source_tombstone {\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl tombstone\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-source-tombstone.v1\"\n  tombstone_id = \"018f0000-0000-7000-8000-000000000703\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
     let err = KnowledgeSourceTombstoneV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
+}
+
+#[test]
+fn k02_c5_file_text_document_incremental_update_matches_fixture_and_rejects_noop_and_deferred() {
+    let update = KnowledgeDocumentIncrementalUpdateV1::from_spec(KnowledgeDocumentIncrementalUpdateSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        update_id: id(
+            "018f0000-0000-7000-8000-000000000801",
+            KnowledgeDocumentIncrementalUpdateId::from_uuid,
+        ),
+        name: "FAQ upload incremental update".into(),
+        kind: KnowledgeDocumentIncrementalUpdateKindV1::ReplaceAdmittedUserFile {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000501",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            previous_provenance_digest: digest(0xaa),
+            next_provenance_digest: digest(0xab),
+            previous_content_digest: digest(0x0a),
+            next_content_digest: digest(0x0b),
+            user_file_id: id(
+                "018f0000-0000-7000-8000-000000000203",
+                UserFileId::from_uuid,
+            ),
+        },
+    })
+    .expect("incremental update");
+    assert_eq!(update.canonical_acl(), INCREMENTAL_UPDATE_FIXTURE);
+    assert_eq!(
+        KnowledgeDocumentIncrementalUpdateV1::parse_acl(INCREMENTAL_UPDATE_FIXTURE).expect("parse"),
+        update
+    );
+    assert!(KnowledgeDocumentIncrementalUpdateV1::parse_acl(INCREMENTAL_UPDATE_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeDocumentIncrementalUpdateV1::restore(INCREMENTAL_UPDATE_FIXTURE, digest(0xbb).as_str())
+            .is_err()
+    );
+
+    let noop = KnowledgeDocumentIncrementalUpdateV1::from_spec(KnowledgeDocumentIncrementalUpdateSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        update_id: id(
+            "018f0000-0000-7000-8000-000000000802",
+            KnowledgeDocumentIncrementalUpdateId::from_uuid,
+        ),
+        name: "noop update".into(),
+        kind: KnowledgeDocumentIncrementalUpdateKindV1::ReplaceImmutableObject {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            previous_provenance_digest: digest(0xaa),
+            next_provenance_digest: digest(0xaa),
+            previous_content_digest: digest(0x0c),
+            next_content_digest: digest(0x0d),
+        },
+    })
+    .expect_err("noop provenance");
+    assert!(noop.contains("provenance_digest"), "{noop}");
+
+    let inline = KnowledgeDocumentIncrementalUpdateV1::from_spec(KnowledgeDocumentIncrementalUpdateSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        update_id: id(
+            "018f0000-0000-7000-8000-000000000803",
+            KnowledgeDocumentIncrementalUpdateId::from_uuid,
+        ),
+        name: "FAQ paste incremental update".into(),
+        kind: KnowledgeDocumentIncrementalUpdateKindV1::ReplaceImmutableObject {
+            document_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeDocumentId::from_uuid,
+            ),
+            previous_provenance_digest: digest(0xaa),
+            next_provenance_digest: digest(0xac),
+            previous_content_digest: digest(0x0c),
+            next_content_digest: digest(0x0d),
+        },
+    })
+    .expect("inline incremental");
+    assert!(inline.digest().as_str().starts_with("sha256:"));
+
+    let deferred = "knowledge_document_incremental_update {\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl update\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-document-incremental-update.v1\"\n  update_id = \"018f0000-0000-7000-8000-000000000804\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
+    let err = KnowledgeDocumentIncrementalUpdateV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }

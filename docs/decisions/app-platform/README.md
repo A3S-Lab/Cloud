@@ -302,3 +302,4 @@ AI application platform parity manifest.
 | [0286](0286-k02-c2-builtin-text-processor-output.md) | 0286. K0.2-C2 built-in plain-text processor output contract | Accepted |
 | [0287](0287-k02-c3-ingestion-provenance.md) | 0287. K0.2-C3 file/text ingestion provenance contract | Accepted |
 | [0288](0288-k02-c4-source-tombstone.md) | 0288. K0.2-C4 exact source tombstone contract | Accepted |
+| [0289](0289-k02-c5-document-incremental-update.md) | 0289. K0.2-C5 file/text document incremental-update contract | Accepted |

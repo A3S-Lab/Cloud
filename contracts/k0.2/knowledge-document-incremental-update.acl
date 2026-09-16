@@ -1,0 +1,18 @@
+knowledge_document_incremental_update {
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  name = "FAQ upload incremental update"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.knowledge-document-incremental-update.v1"
+  update_id = "018f0000-0000-7000-8000-000000000801"
+  kind {
+    document_id = "018f0000-0000-7000-8000-000000000501"
+    name = "replace_admitted_user_file"
+    next_content_digest = "sha256:0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"
+    next_provenance_digest = "sha256:abababababababababababababababababababababababababababababababab"
+    previous_content_digest = "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    previous_provenance_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    user_file_id = "018f0000-0000-7000-8000-000000000203"
+  }
+}
