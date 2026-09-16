@@ -281,3 +281,4 @@ AI application platform parity manifest.
 | [0265](0265-nest-ontology-commands.md) | 0265: Nest-macro Workflow ontology create command | Accepted |
 | [0266](0266-nest-execution-commands.md) | 0266: Nest-macro Executions create commands | Accepted |
 | [0267](0267-nest-secrets-commands.md) | 0267: Nest-macro Secrets create command | Accepted |
+| [0268](0268-nest-ontology-queries.md) | 0268: Nest-macro Workflow ontology list query | Accepted |

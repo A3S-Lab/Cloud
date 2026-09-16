@@ -16,47 +16,21 @@ use crate::modules::workflow::presentation::dto::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
+    controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
+    RouteDefinition,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    let list_bus = Arc::clone(&bus);
+    // Nest macros own list; org-scoped reads keep deferred project admission
+    // because deferred resource scope is not a Nest attribute today.
     let get_bus = Arc::clone(&bus);
     let revisions_bus = Arc::clone(&bus);
     let revision_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .get(
-            "/{organization_id}/projects/{project_id}/ontologies",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&list_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ListOntologies {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            access: workflow_access(&request)?,
-                        })
-                        .await?
-                    {
-                        Ok(values) => BootResponse::json(
-                            &values
-                                .into_iter()
-                                .map(OntologyResponse::from)
-                                .collect::<Vec<_>>(),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
+    let diff_bus = Arc::clone(&bus);
+    Arc::new(OntologyQueriesController { bus })
+        .controller()?
         .route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/ontologies/{ontology_id}",
@@ -150,7 +124,7 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
             RouteDefinition::get(
                 "/{organization_id}/ontologies/{ontology_id}/revisions/{from_revision_id}/diff/{to_revision_id}",
                 move |request: BootRequest| {
-                    let bus = Arc::clone(&bus);
+                    let bus = Arc::clone(&diff_bus);
                     async move {
                         let request_id = request_id(&request)?;
                         match bus
@@ -179,4 +153,62 @@ pub fn ontology_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefin
             )?,
             DeferredResourceScope::Project,
         )?)
+}
+
+#[derive(Debug, Clone)]
+struct OntologyQueriesController {
+    bus: Arc<QueryBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+impl OntologyQueriesController {
+    #[get("/{organization_id}/projects/{project_id}/ontologies", raw)]
+    async fn list(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(ListOntologies {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                access: workflow_access(&request)?,
+            })
+            .await?
+        {
+            Ok(values) => BootResponse::json(
+                &values
+                    .into_iter()
+                    .map(OntologyResponse::from)
+                    .collect::<Vec<_>>(),
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_ontology_queries_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn ontology_queries_controller_registers_list_via_nest_macros() {
+        let controller = ontology_queries_controller(Arc::new(QueryBus::new()))
+            .expect("ontology queries nest controller");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 5);
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/ontologies"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path() == "/organizations/{organization_id}/ontologies/{ontology_id}"
+        }));
+    }
 }
