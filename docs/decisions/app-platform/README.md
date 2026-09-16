@@ -279,3 +279,4 @@ AI application platform parity manifest.
 | [0263](0263-nest-github-callbacks.md) | 0263: Nest-macro Sources GitHub connection callbacks | Accepted |
 | [0264](0264-nest-oidc.md) | 0264: Nest-macro Identity OIDC controllers | Accepted |
 | [0265](0265-nest-ontology-commands.md) | 0265: Nest-macro Workflow ontology create command | Accepted |
+| [0266](0266-nest-execution-commands.md) | 0266: Nest-macro Executions create commands | Accepted |
