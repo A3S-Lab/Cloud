@@ -5,8 +5,8 @@ use crate::presentation::{
     OAuthNoStoreErrorFilter,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, CookieOptions,
-    CookieSameSite, Result, AUTH_PUBLIC_METADATA,
+    controller, get, metadata, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+    CommandBus, ControllerDefinition, CookieOptions, CookieSameSite, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -26,89 +26,97 @@ struct GithubSetupQuery {
 pub fn github_connection_callbacks_controller(
     commands: Arc<CommandBus>,
 ) -> Result<ControllerDefinition> {
-    let setup_commands = Arc::clone(&commands);
-    ControllerDefinition::new("/source-connections")?
-        .with_filter(OAuthNoStoreErrorFilter)
-        .with_metadata(AUTH_PUBLIC_METADATA, true)?
-        .get("/github/setup", move |request: BootRequest| {
-            let commands = Arc::clone(&setup_commands);
-            async move {
-                let query = setup_query(&request)?;
-                validate_setup_action(query.setup_action.as_deref())?;
-                let request_id = request_id(&request)?;
-                match commands
-                    .execute(PrepareGithubConnectionOauth {
-                        installation_id: query.installation_id,
-                        installation_state: query.state,
-                        requested_at: Utc::now(),
-                    })
-                    .await?
-                {
-                    Ok(result) => {
-                        let max_age = (result.expires_at - Utc::now())
-                            .to_std()
-                            .unwrap_or(Duration::from_secs(1))
-                            .max(Duration::from_secs(1));
-                        Ok(oauth_no_store(
-                            BootResponse::see_other(result.authorization_url).with_cookie(
-                                PKCE_COOKIE,
-                                result.pkce_verifier.as_str(),
-                                cookie_options().with_max_age(max_age),
-                            )?,
-                        ))
-                    }
-                    Err(error) => Ok(oauth_no_store(application_error_response(
-                        error, request_id,
-                    )?)),
-                }
+    // Nest macros own the public OAuth setup/callback GETs; OAuth no-store
+    // filter stays wiring-owned because it is not a Nest attribute today.
+    Ok(Arc::new(GithubConnectionCallbacksController { commands })
+        .controller()?
+        .with_filter(OAuthNoStoreErrorFilter))
+}
+
+#[derive(Debug, Clone)]
+struct GithubConnectionCallbacksController {
+    commands: Arc<CommandBus>,
+}
+
+#[controller("/source-connections")]
+#[metadata("auth.public", true)]
+impl GithubConnectionCallbacksController {
+    #[get("/github/setup", raw)]
+    async fn setup(&self, request: BootRequest) -> Result<BootResponse> {
+        let query = setup_query(&request)?;
+        validate_setup_action(query.setup_action.as_deref())?;
+        let request_id = request_id(&request)?;
+        match self
+            .commands
+            .execute(PrepareGithubConnectionOauth {
+                installation_id: query.installation_id,
+                installation_state: query.state,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => {
+                let max_age = (result.expires_at - Utc::now())
+                    .to_std()
+                    .unwrap_or(Duration::from_secs(1))
+                    .max(Duration::from_secs(1));
+                Ok(oauth_no_store(
+                    BootResponse::see_other(result.authorization_url).with_cookie(
+                        PKCE_COOKIE,
+                        result.pkce_verifier.as_str(),
+                        cookie_options().with_max_age(max_age),
+                    )?,
+                ))
             }
-        })?
-        .get("/github/callback", move |request: BootRequest| {
-            let commands = Arc::clone(&commands);
-            async move {
-                let query = oauth_callback_query(&request, "GitHub OAuth")?;
-                if query.has_error {
-                    return Err(BootError::BadRequest(
-                        "GitHub authorization was not completed".into(),
-                    ));
-                }
-                let code = query
-                    .code
-                    .filter(|value| !value.is_empty())
-                    .ok_or_else(|| BootError::BadRequest("GitHub OAuth code is required".into()))?;
-                let state = query
-                    .state
-                    .filter(|value| !value.is_empty())
-                    .ok_or_else(|| {
-                        BootError::BadRequest("GitHub OAuth state is required".into())
-                    })?;
-                let verifier = Zeroizing::new(request.cookie(PKCE_COOKIE)?.ok_or_else(|| {
-                    BootError::BadRequest("GitHub OAuth PKCE cookie is required".into())
-                })?);
-                let request_id = request_id(&request)?;
-                match commands
-                    .execute(CompleteGithubConnection {
-                        oauth_state: state,
-                        code,
-                        pkce_verifier: verifier,
-                        request_id,
-                        completed_at: Utc::now(),
-                    })
-                    .await?
-                {
-                    Ok(connection) => Ok(oauth_no_store(
-                        BootResponse::json_with_status(
-                            201,
-                            &GithubConnectionResponse::from(connection),
-                        )?
-                        .delete_cookie(PKCE_COOKIE, cookie_options())?,
-                    )),
-                    Err(error) => Ok(oauth_no_store(application_error_response(
-                        error, request_id,
-                    )?)),
-                }
-            }
-        })
+            Err(error) => Ok(oauth_no_store(application_error_response(
+                error, request_id,
+            )?)),
+        }
+    }
+
+    #[get("/github/callback", raw)]
+    async fn callback(&self, request: BootRequest) -> Result<BootResponse> {
+        let query = oauth_callback_query(&request, "GitHub OAuth")?;
+        if query.has_error {
+            return Err(BootError::BadRequest(
+                "GitHub authorization was not completed".into(),
+            ));
+        }
+        let code = query
+            .code
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| BootError::BadRequest("GitHub OAuth code is required".into()))?;
+        let state = query
+            .state
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| BootError::BadRequest("GitHub OAuth state is required".into()))?;
+        let verifier = Zeroizing::new(request.cookie(PKCE_COOKIE)?.ok_or_else(|| {
+            BootError::BadRequest("GitHub OAuth PKCE cookie is required".into())
+        })?);
+        let request_id = request_id(&request)?;
+        match self
+            .commands
+            .execute(CompleteGithubConnection {
+                oauth_state: state,
+                code,
+                pkce_verifier: verifier,
+                request_id,
+                completed_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(connection) => Ok(oauth_no_store(
+                BootResponse::json_with_status(
+                    201,
+                    &GithubConnectionResponse::from(connection),
+                )?
+                .delete_cookie(PKCE_COOKIE, cookie_options())?,
+            )),
+            Err(error) => Ok(oauth_no_store(application_error_response(
+                error, request_id,
+            )?)),
+        }
+    }
 }
 
 fn setup_query(request: &BootRequest) -> Result<GithubSetupQuery> {
@@ -175,4 +183,33 @@ fn request_id(request: &BootRequest) -> Result<Uuid> {
             Uuid::parse_str(value)
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })
+}
+
+#[cfg(test)]
+mod nest_macro_github_connection_callbacks_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn github_connection_callbacks_controller_registers_public_gets_via_nest_macros() {
+        let controller =
+            github_connection_callbacks_controller(Arc::new(CommandBus::new()))
+                .expect("github connection callbacks nest controller");
+
+        assert_eq!(controller.prefix(), "/source-connections");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].method(), HttpMethod::Get);
+        assert_eq!(routes[0].path(), "/source-connections/github/setup");
+        assert_eq!(routes[1].method(), HttpMethod::Get);
+        assert_eq!(routes[1].path(), "/source-connections/github/callback");
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_PUBLIC_METADATA)
+                .cloned()
+                .expect("auth.public"),
+            serde_json::json!(true)
+        );
+    }
 }

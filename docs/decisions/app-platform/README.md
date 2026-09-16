@@ -276,3 +276,4 @@ AI application platform parity manifest.
 | [0260](0260-nest-edge-mcp-queries.md) | 0260: Nest-macro Edge MCP credential and route-policy queries | Accepted |
 | [0261](0261-nest-bootstrap.md) | 0261: Nest-macro Identity bootstrap controller | Accepted |
 | [0262](0262-nest-github-connections.md) | 0262: Nest-macro Sources GitHub connections controller | Accepted |
+| [0263](0263-nest-github-callbacks.md) | 0263: Nest-macro Sources GitHub connection callbacks | Accepted |
