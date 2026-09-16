@@ -277,3 +277,4 @@ AI application platform parity manifest.
 | [0261](0261-nest-bootstrap.md) | 0261: Nest-macro Identity bootstrap controller | Accepted |
 | [0262](0262-nest-github-connections.md) | 0262: Nest-macro Sources GitHub connections controller | Accepted |
 | [0263](0263-nest-github-callbacks.md) | 0263: Nest-macro Sources GitHub connection callbacks | Accepted |
+| [0264](0264-nest-oidc.md) | 0264: Nest-macro Identity OIDC controllers | Accepted |

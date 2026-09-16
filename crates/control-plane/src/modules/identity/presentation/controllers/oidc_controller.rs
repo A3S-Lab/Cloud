@@ -13,8 +13,9 @@ use crate::presentation::{
     oauth_callback_query, oauth_no_store, OAuthNoStoreErrorFilter,
 };
 use a3s_boot::{
+    controller, get, metadata, post, use_guard, AUTH_PUBLIC_METADATA, AUTH_SCOPES_METADATA,
     BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, CookieOptions,
-    CookieSameSite, Result, AUTH_PUBLIC_METADATA, AUTH_SCOPES_METADATA,
+    CookieSameSite, Result,
 };
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -73,74 +74,91 @@ enum BeginFlowTransport {
 }
 
 pub fn oidc_public_controller(commands: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    let login_commands = Arc::clone(&commands);
-    ControllerDefinition::new("/identity/oidc")?
-        .with_filter(OAuthNoStoreErrorFilter)
-        .with_metadata(AUTH_PUBLIC_METADATA, true)?
-        .get("/{provider_key}/login", move |request: BootRequest| {
-            let commands = Arc::clone(&login_commands);
-            async move {
-                let organization_id = login_organization_id(&request)?;
-                let provider_key = provider_key(&request)?;
-                let request_id = request_id(&request)?;
-                match commands
-                    .execute(BeginOidcFlow {
-                        organization_id,
-                        provider_key: provider_key.clone(),
-                        purpose: OidcFlowPurpose::Login,
-                        principal_id: None,
-                    })
-                    .await?
-                {
-                    Ok(result) => {
-                        begin_flow_response(result, &provider_key, BeginFlowTransport::Redirect)
-                    }
-                    Err(error) => Ok(oauth_no_store(application_error_response(
-                        error, request_id,
-                    )?)),
-                }
-            }
-        })?
-        .get("/{provider_key}/callback", move |request: BootRequest| {
-            let commands = Arc::clone(&commands);
-            async move { complete_flow_response(&request, commands).await }
-        })
+    // Nest macros own public OIDC login/callback; OAuth no-store filter stays
+    // wiring-owned because it is not a Nest attribute today.
+    Ok(Arc::new(OidcPublicController { commands })
+        .controller()?
+        .with_filter(OAuthNoStoreErrorFilter))
 }
 
 pub fn oidc_link_controller(commands: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_filter(OAuthNoStoreErrorFilter)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
-        .post(
-            "/{organization_id}/identity/oidc/{provider_key}/link",
-            move |request: BootRequest| {
-                let commands = Arc::clone(&commands);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let provider_key = provider_key(&request)?;
-                    let principal_id = actor(&request)?.principal_id;
-                    let request_id = request_id(&request)?;
-                    match commands
-                        .execute(BeginOidcFlow {
-                            organization_id,
-                            provider_key: provider_key.clone(),
-                            purpose: OidcFlowPurpose::Link,
-                            principal_id: Some(principal_id),
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            begin_flow_response(result, &provider_key, BeginFlowTransport::Json)
-                        }
-                        Err(error) => Ok(oauth_no_store(application_error_response(
-                            error, request_id,
-                        )?)),
-                    }
-                }
-            },
-        )
+    // Nest macros own tenant OIDC link begin; OAuth no-store filter stays
+    // wiring-owned because it is not a Nest attribute today.
+    Ok(Arc::new(OidcLinkController { commands })
+        .controller()?
+        .with_filter(OAuthNoStoreErrorFilter))
+}
+
+#[derive(Debug, Clone)]
+struct OidcPublicController {
+    commands: Arc<CommandBus>,
+}
+
+#[derive(Debug, Clone)]
+struct OidcLinkController {
+    commands: Arc<CommandBus>,
+}
+
+#[controller("/identity/oidc")]
+#[metadata("auth.public", true)]
+impl OidcPublicController {
+    #[get("/{provider_key}/login", raw)]
+    async fn login(&self, request: BootRequest) -> Result<BootResponse> {
+        let organization_id = login_organization_id(&request)?;
+        let provider_key = provider_key(&request)?;
+        let request_id = request_id(&request)?;
+        match self
+            .commands
+            .execute(BeginOidcFlow {
+                organization_id,
+                provider_key: provider_key.clone(),
+                purpose: OidcFlowPurpose::Login,
+                principal_id: None,
+            })
+            .await?
+        {
+            Ok(result) => {
+                begin_flow_response(result, &provider_key, BeginFlowTransport::Redirect)
+            }
+            Err(error) => Ok(oauth_no_store(application_error_response(
+                error, request_id,
+            )?)),
+        }
+    }
+
+    #[get("/{provider_key}/callback", raw)]
+    async fn callback(&self, request: BootRequest) -> Result<BootResponse> {
+        complete_flow_response(&request, Arc::clone(&self.commands)).await
+    }
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::CLOUD_READ])]
+impl OidcLinkController {
+    #[post("/{organization_id}/identity/oidc/{provider_key}/link", raw)]
+    async fn link(&self, request: BootRequest) -> Result<BootResponse> {
+        let organization_id =
+            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+        let provider_key = provider_key(&request)?;
+        let principal_id = actor(&request)?.principal_id;
+        let request_id = request_id(&request)?;
+        match self
+            .commands
+            .execute(BeginOidcFlow {
+                organization_id,
+                provider_key: provider_key.clone(),
+                purpose: OidcFlowPurpose::Link,
+                principal_id: Some(principal_id),
+            })
+            .await?
+        {
+            Ok(result) => begin_flow_response(result, &provider_key, BeginFlowTransport::Json),
+            Err(error) => Ok(oauth_no_store(application_error_response(
+                error, request_id,
+            )?)),
+        }
+    }
 }
 
 async fn complete_flow_response(
@@ -337,5 +355,56 @@ mod tests {
         );
 
         assert!(login_organization_id(&request).is_err());
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_oidc_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn oidc_public_controller_registers_public_gets_via_nest_macros() {
+        let controller =
+            oidc_public_controller(Arc::new(CommandBus::new())).expect("oidc public nest");
+
+        assert_eq!(controller.prefix(), "/identity/oidc");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].method(), HttpMethod::Get);
+        assert_eq!(routes[0].path(), "/identity/oidc/{provider_key}/login");
+        assert_eq!(routes[1].method(), HttpMethod::Get);
+        assert_eq!(routes[1].path(), "/identity/oidc/{provider_key}/callback");
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_PUBLIC_METADATA)
+                .cloned()
+                .expect("auth.public"),
+            serde_json::json!(true)
+        );
+    }
+
+    #[test]
+    fn oidc_link_controller_registers_tenant_post_via_nest_macros() {
+        let controller =
+            oidc_link_controller(Arc::new(CommandBus::new())).expect("oidc link nest");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 1);
+        assert_eq!(routes[0].method(), HttpMethod::Post);
+        assert_eq!(
+            routes[0].path(),
+            "/organizations/{organization_id}/identity/oidc/{provider_key}/link"
+        );
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::CLOUD_READ])
+        );
     }
 }
