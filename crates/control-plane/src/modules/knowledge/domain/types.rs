@@ -11,6 +11,8 @@ pub const EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1: &str = "cloud.external-knowledge
 pub const KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1: &str = "cloud.knowledge-pipeline-release.v1";
 pub const KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1: &str =
     "cloud.knowledge-datasource-entrance.v1";
+pub const KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1: &str =
+    "cloud.knowledge-processor-output-contract.v1";
 
 pub const KNOWLEDGE_MAX_NAME_BYTES: usize = 63;
 pub const KNOWLEDGE_MAX_TAG_BYTES: usize = 64;

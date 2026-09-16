@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeProcessorOutputContractId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -23,6 +23,8 @@ const PIPELINE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.1/knowledge-pipeline-release.acl");
 const ENTRANCE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-datasource-entrance.acl");
+const PROCESSOR_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-processor-output-contract.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -329,5 +331,56 @@ fn k02_c1_file_text_datasource_entrance_matches_fixture_and_rejects_deferred_kin
 
     let deferred = "knowledge_datasource_entrance {\n  entrance_id = \"018f0000-0000-7000-8000-000000000404\"\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  provenance_digest = \"sha256:4747474747474747474747474747474747474747474747474747474747474747\"\n  schema = \"cloud.knowledge-datasource-entrance.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
     let err = KnowledgeDatasourceEntranceV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
+}
+
+#[test]
+fn k02_c2_builtin_plain_text_processor_output_matches_fixture_and_rejects_deferred_kinds() {
+    let contract = KnowledgeProcessorOutputContractV1::from_spec(
+        KnowledgeProcessorOutputContractSpecV1 {
+            organization_id: org(),
+            project_id: project(),
+            contract_id: id(
+                "018f0000-0000-7000-8000-000000000501",
+                KnowledgeProcessorOutputContractId::from_uuid,
+            ),
+            name: "FAQ text extract".into(),
+            kind: KnowledgeProcessorOutputContractKindV1::BuiltinPlainTextExtract {
+                max_input_bytes: 1_048_576,
+                output_media_type: "text/plain".into(),
+            },
+        },
+    )
+    .expect("contract");
+    assert_eq!(contract.canonical_acl(), PROCESSOR_FIXTURE);
+    assert_eq!(
+        KnowledgeProcessorOutputContractV1::parse_acl(PROCESSOR_FIXTURE).expect("parse"),
+        contract
+    );
+    assert!(KnowledgeProcessorOutputContractV1::parse_acl(PROCESSOR_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeProcessorOutputContractV1::restore(PROCESSOR_FIXTURE, digest(0xbb).as_str())
+            .is_err()
+    );
+
+    let bad_media = KnowledgeProcessorOutputContractV1::from_spec(
+        KnowledgeProcessorOutputContractSpecV1 {
+            organization_id: org(),
+            project_id: project(),
+            contract_id: id(
+                "018f0000-0000-7000-8000-000000000502",
+                KnowledgeProcessorOutputContractId::from_uuid,
+            ),
+            name: "bad media".into(),
+            kind: KnowledgeProcessorOutputContractKindV1::BuiltinPlainTextExtract {
+                max_input_bytes: 1024,
+                output_media_type: "application/pdf".into(),
+            },
+        },
+    );
+    assert!(bad_media.is_err());
+
+    let deferred = "knowledge_processor_output_contract {\n  contract_id = \"018f0000-0000-7000-8000-000000000503\"\n  name = \"ocr\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-processor-output-contract.v1\"\n  kind {\n    name = \"ocr_layout\"\n  }\n}\n";
+    let err = KnowledgeProcessorOutputContractV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }

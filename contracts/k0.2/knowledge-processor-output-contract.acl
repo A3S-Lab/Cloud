@@ -1,0 +1,12 @@
+knowledge_processor_output_contract {
+  contract_id = "018f0000-0000-7000-8000-000000000501"
+  name = "FAQ text extract"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.knowledge-processor-output-contract.v1"
+  kind {
+    max_input_bytes = 1048576
+    name = "builtin_plain_text_extract"
+    output_media_type = "text/plain"
+  }
+}

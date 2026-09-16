@@ -3,7 +3,10 @@
 //! `K0.2-C1` freezes file-upload and inline-text datasource entrance
 //! contracts whose digests feed `KnowledgePipelineRelease`
 //! `datasource_entrance_digests`. Drive/crawl/marketplace kinds remain
-//! deferred. No persistence, worker, OCR, processor, or availability.
+//! deferred.
+//! `K0.2-C2` freezes built-in plain-text processor output contracts
+//! whose digests feed `output_contract_digest`. Tool/OCR/multimodal
+//! processors remain deferred. No persistence, worker, or availability.
 //!
 //! `K0.1-C3` freezes canonical Knowledge and KnowledgePipeline contracts.
 //! `K0.1-C4a` adds the durable KnowledgeBase/PipelineRelease catalogs without
@@ -104,6 +107,8 @@ pub use domain::{
     KnowledgeChunkRecord, KnowledgeChunkSpecV1, KnowledgeChunkStructureV1, KnowledgeChunkV1,
     KnowledgeContentReferenceV1, KnowledgeDatasourceEntranceKindV1,
     KnowledgeDatasourceEntranceSpecV1, KnowledgeDatasourceEntranceV1,
+    KnowledgeProcessorOutputContractKindV1, KnowledgeProcessorOutputContractSpecV1,
+    KnowledgeProcessorOutputContractV1,
     KnowledgeDocumentLifecycleChanged, KnowledgeDocumentRecord,
     KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1, KnowledgeDocumentV1,
     KnowledgeDocumentWriteReference, KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1,
@@ -114,6 +119,7 @@ pub use domain::{
     EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA,
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
+    KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1,
     KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
     KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,

@@ -299,3 +299,4 @@ AI application platform parity manifest.
 | [0283](0283-nest-exhaustion-production-blockers.md) | 0283. Nest claimable-surface exhaustion and production-release foreign blockers | Accepted |
 | [0284](0284-k01-production-foundation.md) | 0284. K0.1 production foundation for Knowledge corpus control plane | Accepted |
 | [0285](0285-k02-c1-file-text-datasource-entrance.md) | 0285. K0.2-C1 file/text datasource entrance contract | Accepted |
+| [0286](0286-k02-c2-builtin-text-processor-output.md) | 0286. K0.2-C2 built-in plain-text processor output contract | Accepted |

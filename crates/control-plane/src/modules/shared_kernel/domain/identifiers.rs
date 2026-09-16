@@ -90,6 +90,7 @@ identifier!(ExternalKnowledgeBindingId);
 identifier!(KnowledgePipelineId);
 identifier!(KnowledgePipelineReleaseId);
 identifier!(KnowledgeDatasourceEntranceId);
+identifier!(KnowledgeProcessorOutputContractId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);
