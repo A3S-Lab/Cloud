@@ -866,3 +866,17 @@ fn k02_c7_file_text_failure_cleanup_matches_fixture_and_rejects_noop_and_deferre
     let err = KnowledgeFailureCleanupV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }
+
+#[test]
+fn k02_cloud_file_text_sealed_contracts_c1_through_c7_parse() {
+    // PROD-R3 ratchet: Cloud-owned file/text sealed contracts stop at C1–C7.
+    // Do not invent CQRS/workers here; foreign owners still block K0.2.
+    KnowledgeDatasourceEntranceV1::parse_acl(ENTRANCE_FIXTURE).expect("C1 entrance");
+    KnowledgeProcessorOutputContractV1::parse_acl(PROCESSOR_FIXTURE).expect("C2 processor");
+    KnowledgeIngestionProvenanceV1::parse_acl(PROVENANCE_FIXTURE).expect("C3 provenance");
+    KnowledgeSourceTombstoneV1::parse_acl(TOMBSTONE_FIXTURE).expect("C4 tombstone");
+    KnowledgeDocumentIncrementalUpdateV1::parse_acl(INCREMENTAL_UPDATE_FIXTURE)
+        .expect("C5 incremental");
+    KnowledgeIngestionCancellationV1::parse_acl(CANCELLATION_FIXTURE).expect("C6 cancellation");
+    KnowledgeFailureCleanupV1::parse_acl(FAILURE_CLEANUP_FIXTURE).expect("C7 cleanup");
+}

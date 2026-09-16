@@ -56,6 +56,9 @@
 //! index/policy/binding handlers without bumping OpenAPI.
 //! `K0.1-C16` adds authorized bounded list for index/policy/binding through
 //! REST/OpenAPI `1.96.0`, client, CLI, and three Management MCP read tools.
+//! Cloud-owned file/text sealed contracts for `K0.2` are exhausted at C1–C7
+//! (ADR `0292` / PROD-R3). Further productization requires workers and
+//! foreign owners; do not invent CQRS-only persistence for those digests.
 
 mod application;
 mod domain;

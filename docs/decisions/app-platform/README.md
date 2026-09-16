@@ -305,3 +305,4 @@ AI application platform parity manifest.
 | [0289](0289-k02-c5-document-incremental-update.md) | 0289. K0.2-C5 file/text document incremental-update contract | Accepted |
 | [0290](0290-k02-c6-ingestion-cancellation.md) | 0290. K0.2-C6 file/text ingestion-cancellation intent contract | Accepted |
 | [0291](0291-k02-c7-failure-cleanup.md) | 0291. K0.2-C7 file/text failure-cleanup intent contract | Accepted |
+| [0292](0292-k02-cloud-sealed-contract-exhaustion.md) | 0292. K0.2 Cloud-owned file/text sealed-contract exhaustion | Accepted |
