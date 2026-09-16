@@ -21,41 +21,85 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    RouteDefinition,
+    controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+    CommandBus, ControllerDefinition, Result, RouteDefinition,
 };
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
+    // Nest macros own create-conversation; start/cancel/checkpoint/fork/approval
+    // keep deferred project admission (not a Nest attribute today).
     let start_bus = Arc::clone(&bus);
     let cancel_bus = Arc::clone(&bus);
     let capture_checkpoint_bus = Arc::clone(&bus);
     let fork_execution_bus = Arc::clone(&bus);
     let decide_approval_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::EXECUTION_WRITE])?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
+    let mut controller = Arc::new(AgentCommandsController { bus }).controller()?;
+    controller = controller.route(with_deferred_resource_scope(
+        RouteDefinition::post(
+            "/{organization_id}/agent-conversations/{conversation_id}/executions",
             move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
+                let bus = Arc::clone(&start_bus);
+                async move {
+                    let body: StartAgentExecutionRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = agent_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
+                    match bus
+                        .execute(StartAgentExecution {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            conversation_id: AgentConversationId::from_uuid(
+                                request.param_as::<Uuid>("conversation_id")?,
+                            ),
+                            access,
+                            agent_asset_id: AssetId::from_uuid(body.agent_asset_id),
+                            agent_asset_release_id: AssetReleaseId::from_uuid(
+                                body.agent_asset_release_id,
+                            ),
+                            provider_kind: body.provider_kind,
+                            input: body.input,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &AgentExecutionMutationResponse::from(result),
+                            )
+                        }
+                        Err(error) => application_error_response(error, request_id),
+                    }
+                }
+            },
+        )?,
+        DeferredResourceScope::Project,
+    )?)?;
+    controller = controller.route(with_deferred_resource_scope(
+        RouteDefinition::post(
+            "/{organization_id}/agent-executions/{execution_id}/cancel",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&cancel_bus);
                 async move {
                     let (idempotency_key, request_id) = request_identity(&request)?;
                     let access = agent_access(&resource_access_evaluator(
                         &request.require_auth_principal()?,
                     )?);
                     match bus
-                        .execute(CreateAgentConversation {
+                        .execute(CancelAgentExecution {
                             organization_id: OrganizationId::from_uuid(
                                 request.param_as::<Uuid>("organization_id")?,
                             ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
+                            execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
                             ),
                             access,
                             idempotency_key,
@@ -65,225 +109,227 @@ pub fn agent_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefin
                         .await?
                     {
                         Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
+                            let status = if result.replayed { 200 } else { 202 };
                             BootResponse::json_with_status(
                                 status,
-                                &AgentConversationMutationResponse::from(result),
+                                &AgentExecutionMutationResponse::from(result),
                             )
                         }
                         Err(error) => application_error_response(error, request_id),
                     }
                 }
             },
-        )?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::post(
-                "/{organization_id}/agent-conversations/{conversation_id}/executions",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&start_bus);
-                    async move {
-                        let body: StartAgentExecutionRequest = request.json_with_content_type()?;
-                        let (idempotency_key, request_id) = request_identity(&request)?;
-                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
-                        match bus
-                            .execute(StartAgentExecution {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                conversation_id: AgentConversationId::from_uuid(
-                                    request.param_as::<Uuid>("conversation_id")?,
-                                ),
-                                access,
-                                agent_asset_id: AssetId::from_uuid(body.agent_asset_id),
-                                agent_asset_release_id: AssetReleaseId::from_uuid(
-                                    body.agent_asset_release_id,
-                                ),
-                                provider_kind: body.provider_kind,
-                                input: body.input,
-                                idempotency_key,
-                                request_id,
-                                requested_at: Utc::now(),
-                            })
-                            .await?
-                        {
-                            Ok(result) => {
-                                let status = if result.replayed { 200 } else { 202 };
-                                BootResponse::json_with_status(
-                                    status,
-                                    &AgentExecutionMutationResponse::from(result),
-                                )
-                            }
-                            Err(error) => application_error_response(error, request_id),
+        )?,
+        DeferredResourceScope::Project,
+    )?)?;
+    controller = controller.route(with_deferred_resource_scope(
+        RouteDefinition::post(
+            "/{organization_id}/agent-executions/{execution_id}/checkpoints",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&capture_checkpoint_bus);
+                async move {
+                    let body: CaptureAgentExecutionCheckpointRequest =
+                        request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = agent_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
+                    match bus
+                        .execute(CaptureAgentExecutionCheckpoint {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
+                            ),
+                            access,
+                            through_event_sequence: body.through_event_sequence,
+                            idempotency_key,
+                            request_id,
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 201 };
+                            BootResponse::json_with_status(
+                                status,
+                                &AgentExecutionCheckpointMutationResponse::from(result),
+                            )
                         }
+                        Err(error) => application_error_response(error, request_id),
                     }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::post(
-                "/{organization_id}/agent-executions/{execution_id}/cancel",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&cancel_bus);
-                    async move {
-                        let (idempotency_key, request_id) = request_identity(&request)?;
-                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
-                        match bus
-                            .execute(CancelAgentExecution {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                execution_id: AgentExecutionId::from_uuid(
-                                    request.param_as::<Uuid>("execution_id")?,
-                                ),
-                                access,
-                                idempotency_key,
-                                request_id,
-                                requested_at: Utc::now(),
-                            })
-                            .await?
-                        {
-                            Ok(result) => {
-                                let status = if result.replayed { 200 } else { 202 };
-                                BootResponse::json_with_status(
-                                    status,
-                                    &AgentExecutionMutationResponse::from(result),
-                                )
-                            }
-                            Err(error) => application_error_response(error, request_id),
+                }
+            },
+        )?,
+        DeferredResourceScope::Project,
+    )?)?;
+    controller = controller.route(with_deferred_resource_scope(
+        RouteDefinition::post(
+            "/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&fork_execution_bus);
+                async move {
+                    let body: ForkAgentExecutionRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = agent_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
+                    match bus
+                        .execute(ForkAgentExecution {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            parent_execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
+                            ),
+                            checkpoint_id: AgentExecutionCheckpointId::from_uuid(
+                                request.param_as::<Uuid>("checkpoint_id")?,
+                            ),
+                            access,
+                            input: body.input,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &AgentExecutionMutationResponse::from(result),
+                            )
                         }
+                        Err(error) => application_error_response(error, request_id),
                     }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::post(
-                "/{organization_id}/agent-executions/{execution_id}/checkpoints",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&capture_checkpoint_bus);
-                    async move {
-                        let body: CaptureAgentExecutionCheckpointRequest =
-                            request.json_with_content_type()?;
-                        let (idempotency_key, request_id) = request_identity(&request)?;
-                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
-                        match bus
-                            .execute(CaptureAgentExecutionCheckpoint {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                execution_id: AgentExecutionId::from_uuid(
-                                    request.param_as::<Uuid>("execution_id")?,
-                                ),
-                                access,
-                                through_event_sequence: body.through_event_sequence,
-                                idempotency_key,
-                                request_id,
-                            })
-                            .await?
-                        {
-                            Ok(result) => {
-                                let status = if result.replayed { 200 } else { 201 };
-                                BootResponse::json_with_status(
-                                    status,
-                                    &AgentExecutionCheckpointMutationResponse::from(result),
-                                )
-                            }
-                            Err(error) => application_error_response(error, request_id),
+                }
+            },
+        )?,
+        DeferredResourceScope::Project,
+    )?)?;
+    controller.route(with_deferred_resource_scope(
+        RouteDefinition::post(
+            "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
+            move |request: BootRequest| {
+                let bus = Arc::clone(&decide_approval_bus);
+                async move {
+                    let body: AgentApprovalDecisionRequest = request.json_with_content_type()?;
+                    let (idempotency_key, request_id) = request_identity(&request)?;
+                    let access = agent_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?);
+                    let actor = credential_actor(&request)?;
+                    match bus
+                        .execute(DecideAgentApprovalCheckpoint {
+                            organization_id: OrganizationId::from_uuid(
+                                request.param_as::<Uuid>("organization_id")?,
+                            ),
+                            execution_id: AgentExecutionId::from_uuid(
+                                request.param_as::<Uuid>("execution_id")?,
+                            ),
+                            checkpoint_id: AgentApprovalCheckpointId::from_uuid(
+                                request.param_as::<Uuid>("checkpoint_id")?,
+                            ),
+                            expected_version: expected_version(&request)?,
+                            outcome: body.outcome.into(),
+                            reason: body.reason,
+                            access,
+                            actor_principal_id: actor.principal_id,
+                            credential_id: actor.credential_id,
+                            idempotency_key,
+                            request_id,
+                            requested_at: Utc::now(),
+                        })
+                        .await?
+                    {
+                        Ok(result) => {
+                            let status = if result.replayed { 200 } else { 202 };
+                            BootResponse::json_with_status(
+                                status,
+                                &AgentApprovalCheckpointMutationResponse::from(result),
+                            )
                         }
+                        Err(error) => application_error_response(error, request_id),
                     }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::post(
-                "/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/fork",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&fork_execution_bus);
-                    async move {
-                        let body: ForkAgentExecutionRequest = request.json_with_content_type()?;
-                        let (idempotency_key, request_id) = request_identity(&request)?;
-                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
-                        match bus
-                            .execute(ForkAgentExecution {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                parent_execution_id: AgentExecutionId::from_uuid(
-                                    request.param_as::<Uuid>("execution_id")?,
-                                ),
-                                checkpoint_id: AgentExecutionCheckpointId::from_uuid(
-                                    request.param_as::<Uuid>("checkpoint_id")?,
-                                ),
-                                access,
-                                input: body.input,
-                                idempotency_key,
-                                request_id,
-                                requested_at: Utc::now(),
-                            })
-                            .await?
-                        {
-                            Ok(result) => {
-                                let status = if result.replayed { 200 } else { 202 };
-                                BootResponse::json_with_status(
-                                    status,
-                                    &AgentExecutionMutationResponse::from(result),
-                                )
-                            }
-                            Err(error) => application_error_response(error, request_id),
-                        }
-                    }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::post(
-                "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}/decision",
-                move |request: BootRequest| {
-                    let bus = Arc::clone(&decide_approval_bus);
-                    async move {
-                        let body: AgentApprovalDecisionRequest =
-                            request.json_with_content_type()?;
-                        let (idempotency_key, request_id) = request_identity(&request)?;
-                        let access = agent_access(&resource_access_evaluator(&request.require_auth_principal()?)?);
-                        let actor = credential_actor(&request)?;
-                        match bus
-                            .execute(DecideAgentApprovalCheckpoint {
-                                organization_id: OrganizationId::from_uuid(
-                                    request.param_as::<Uuid>("organization_id")?,
-                                ),
-                                execution_id: AgentExecutionId::from_uuid(
-                                    request.param_as::<Uuid>("execution_id")?,
-                                ),
-                                checkpoint_id: AgentApprovalCheckpointId::from_uuid(
-                                    request.param_as::<Uuid>("checkpoint_id")?,
-                                ),
-                                expected_version: expected_version(&request)?,
-                                outcome: body.outcome.into(),
-                                reason: body.reason,
-                                access,
-                                actor_principal_id: actor.principal_id,
-                                credential_id: actor.credential_id,
-                                idempotency_key,
-                                request_id,
-                                requested_at: Utc::now(),
-                            })
-                            .await?
-                        {
-                            Ok(result) => {
-                                let status = if result.replayed { 200 } else { 202 };
-                                BootResponse::json_with_status(
-                                    status,
-                                    &AgentApprovalCheckpointMutationResponse::from(result),
-                                )
-                            }
-                            Err(error) => application_error_response(error, request_id),
-                        }
-                    }
-                },
-            )?,
-            DeferredResourceScope::Project,
-        )?)
+                }
+            },
+        )?,
+        DeferredResourceScope::Project,
+    )?)
+}
+
+#[derive(Debug, Clone)]
+struct AgentCommandsController {
+    bus: Arc<CommandBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::EXECUTION_WRITE])]
+impl AgentCommandsController {
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
+        raw
+    )]
+    async fn create_conversation(&self, request: BootRequest) -> Result<BootResponse> {
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        let access = agent_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        match self
+            .bus
+            .execute(CreateAgentConversation {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                environment_id: EnvironmentId::from_uuid(
+                    request.param_as::<Uuid>("environment_id")?,
+                ),
+                access,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => {
+                let status = if result.replayed { 200 } else { 201 };
+                BootResponse::json_with_status(
+                    status,
+                    &AgentConversationMutationResponse::from(result),
+                )
+            }
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_agent_commands_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn agent_commands_controller_registers_create_conversation_via_nest_macros() {
+        let controller = agent_commands_controller(Arc::new(CommandBus::new()))
+            .expect("agent commands nest controller");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 6);
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Post
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"
+        }));
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::EXECUTION_WRITE])
+        );
+    }
 }

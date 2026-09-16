@@ -289,3 +289,4 @@ AI application platform parity manifest.
 | [0273](0273-nest-asset-queries.md) | 0273: Nest-macro Assets list query | Accepted |
 | [0274](0274-nest-workflow-commands.md) | 0274: Nest-macro Workflow create commands | Accepted |
 | [0275](0275-nest-workflow-queries.md) | 0275: Nest-macro Workflow list queries | Accepted |
+| [0276](0276-nest-agent-commands.md) | 0276: Nest-macro Agent create-conversation command | Accepted |
