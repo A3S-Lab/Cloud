@@ -292,3 +292,4 @@ AI application platform parity manifest.
 | [0276](0276-nest-agent-commands.md) | 0276: Nest-macro Agent create-conversation command | Accepted |
 | [0277](0277-nest-workloads.md) | 0277: Nest-macro Workloads create commands | Accepted |
 | [0278](0278-nest-agent-queries.md) | 0278: Nest-macro Agent list-conversations query | Accepted |
+| [0279](0279-nest-workload-queries.md) | 0279: Nest-macro Workloads list query | Accepted |
