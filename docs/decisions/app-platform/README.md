@@ -307,3 +307,4 @@ AI application platform parity manifest.
 | [0291](0291-k02-c7-failure-cleanup.md) | 0291. K0.2-C7 file/text failure-cleanup intent contract | Accepted |
 | [0292](0292-k02-cloud-sealed-contract-exhaustion.md) | 0292. K0.2 Cloud-owned file/text sealed-contract exhaustion | Accepted |
 | [0293](0293-app04-variable-inspection-claim-path.md) | 0293. APP0.4 claim path for Workflow-owned variable inspection | Accepted |
+| [0294](0294-prod-r4-claim-path-exhaustion-after-app04-c4.md) | 0294. Cloud claim-path exhaustion after APP0.4-C4 | Accepted |

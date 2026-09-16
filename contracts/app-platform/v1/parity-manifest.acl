@@ -68,7 +68,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "implemented"
   }
   gate "APP0.6" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0171-app06-custom-domain-claim-path.md", "doc:docs/decisions/app-platform/0172-app06-isolation-quota-retention-claim-path.md", "doc:docs/decisions/app-platform/0173-app06-production-foundation.md", "doc:docs/decisions/app-platform/0251-production-release-honesty-refusals.md", "doc:docs/decisions/app-platform/0283-nest-exhaustion-production-blockers.md", "test:crates/control-plane/src/modules/edge/presentation/controllers/enterprise_custom_domain_claim_path_tests.rs", "test:crates/control-plane/src/modules/enterprise_isolation_quota_retention_claim_path_tests.rs"]
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0171-app06-custom-domain-claim-path.md", "doc:docs/decisions/app-platform/0172-app06-isolation-quota-retention-claim-path.md", "doc:docs/decisions/app-platform/0173-app06-production-foundation.md", "doc:docs/decisions/app-platform/0251-production-release-honesty-refusals.md", "doc:docs/decisions/app-platform/0283-nest-exhaustion-production-blockers.md", "doc:docs/decisions/app-platform/0294-prod-r4-claim-path-exhaustion-after-app04-c4.md", "test:crates/control-plane/src/modules/edge/presentation/controllers/enterprise_custom_domain_claim_path_tests.rs", "test:crates/control-plane/src/modules/enterprise_isolation_quota_retention_claim_path_tests.rs"]
     state = "implemented"
   }
   gate "AUT0.2" {
