@@ -34,9 +34,11 @@ owning gates for every public capability.
 
 ## Decision
 
-1. Keep `AUT0.4`, `S0`, `K0.2`, `K0.3`, `K0.5`, `U0.4`, `I0.*`, and `MCP0.5`
+1. Keep `S0`, `K0.2`, `K0.3`, `K0.5`, `U0.4`, `I0.2`/`I0.6`, and `MCP0.5`
    `planned` until a real owning implementation slice exists (for `MCP0.5`,
    that means joint committed-revision evidence, not catalog-only evidence).
+   `AUT0.4` component foundations (C1-C4) are claimed separately in ADR
+   `0255` without advertising `node.integration-trigger`.
 2. Refuse inventing BYOK/S0, HA/ops console, SAML-SCIM productization beyond
    already-claimed internal C0.5 surfaces, SIEM/PII CMS, Knowledge
    datasource/transform product claims from Nest controllers alone, and

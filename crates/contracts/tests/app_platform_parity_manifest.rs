@@ -1083,6 +1083,57 @@ fn i02c_production_foundation_closes_gate_without_inventing_public_usage() {
     assert_eq!(manifest.public_claim_gate(), "APP0.6");
 }
 
+
+#[test]
+fn aut04_production_foundation_closes_gate_without_inventing_integration_trigger() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "AUT0.4")
+        .expect("AUT0.4 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0255-aut04-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("event_dispatch.rs")
+            || item.contains("event_fanout.rs")
+            || item.contains("event_consumer.rs")
+            || item.contains("event_invocation.rs")
+    }));
+    assert_eq!(
+        manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == "node.integration-trigger")
+            .expect("node.integration-trigger")
+            .availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == "plugin.trigger")
+            .expect("plugin.trigger")
+            .availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "U0.4")
+            .expect("U0.4")
+            .state(),
+        AppPlatformGateState::Planned
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
 #[test]
 fn h05_production_foundation_claims_ha_disaster_recovery() {
     let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");

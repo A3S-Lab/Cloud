@@ -1,5 +1,5 @@
 workflow_node_profiles "application-platform-core-2026-08-13" {
-  parity_manifest_digest = "sha256:fd7c402fe874c111787ccb01289792733228653c3f1e8f6b7460efffe9fcfd66"
+  parity_manifest_digest = "sha256:4586ffb3dd9926ca7b78d1445495d95a649a1edba6c34348f675932ab4e56338"
   revision = "1.0.0"
   schema = "a3s.cloud.app-platform.workflow-node-profiles.v1"
   node "node.agent" {

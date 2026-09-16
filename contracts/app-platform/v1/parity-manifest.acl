@@ -80,8 +80,8 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "implemented"
   }
   gate "AUT0.4" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0255-aut04-production-foundation.md", "implementation:crates/control-plane/src/modules/automations/application/event_consumer.rs", "implementation:crates/control-plane/src/modules/automations/application/event_dispatch.rs", "implementation:crates/control-plane/src/modules/automations/application/event_fanout.rs", "implementation:crates/control-plane/src/modules/automations/application/event_invocation.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/automations/application/event_dispatch_tests.rs"]
+    state = "implemented"
   }
   gate "AUT0.5" {
     evidence = ["contract:openapi/v1.json", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0058-terminal-connector-attempt-resolution.md", "doc:docs/decisions/app-platform/0246-aut05-production-foundation.md", "implementation:crates/control-plane/src/modules/connectors/domain/attempt_resolution.rs", "implementation:crates/control-plane/src/modules/connectors/infrastructure/attempt_resolution_postgres.rs", "implementation:migrations/155_connector_execution_attempt_resolutions.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/infrastructure/postgres_tests/connector_execution_attempt_resolution_migration.rs", "test:crates/control-plane/src/modules/connectors/application/execution_service.rs", "test:crates/control-plane/tests/support/connectors.rs"]
