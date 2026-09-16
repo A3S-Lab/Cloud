@@ -282,3 +282,4 @@ AI application platform parity manifest.
 | [0266](0266-nest-execution-commands.md) | 0266: Nest-macro Executions create commands | Accepted |
 | [0267](0267-nest-secrets-commands.md) | 0267: Nest-macro Secrets create command | Accepted |
 | [0268](0268-nest-ontology-queries.md) | 0268: Nest-macro Workflow ontology list query | Accepted |
+| [0269](0269-nest-execution-queries.md) | 0269: Nest-macro Executions query controllers | Accepted |
