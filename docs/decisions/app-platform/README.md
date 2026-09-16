@@ -273,3 +273,4 @@ AI application platform parity manifest.
 | [0257](0257-nest-inference-key-controller.md) | 0257. Nest-macro inference key controller | Accepted |
 | [0258](0258-nest-edge-route-domain-claim-queries.md) | 0258: Nest-macro Edge route and domain-claim queries | Accepted |
 | [0259](0259-nest-secret-queries.md) | 0259: Nest-macro Secrets query list controller | Accepted |
+| [0260](0260-nest-edge-mcp-queries.md) | 0260: Nest-macro Edge MCP credential and route-policy queries | Accepted |
