@@ -1,5 +1,5 @@
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
-use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
+use crate::modules::shared_kernel::domain::{ApplicationId, EnvironmentId, NodeId, ProjectId};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -15,6 +15,12 @@ pub enum ResourceGrantScopeDto {
         project_id: Uuid,
         #[serde(rename = "environmentId")]
         environment_id: Uuid,
+    },
+    Application {
+        #[serde(rename = "projectId")]
+        project_id: Uuid,
+        #[serde(rename = "applicationId")]
+        application_id: Uuid,
     },
     Node {
         #[serde(rename = "nodeId")]
@@ -39,6 +45,13 @@ impl TryFrom<ResourceGrantScopeDto> for ResourceGrantScope {
                 project_id: ProjectId::from_uuid(project_id),
                 environment_id: EnvironmentId::from_uuid(environment_id),
             }),
+            ResourceGrantScopeDto::Application {
+                project_id,
+                application_id,
+            } if !project_id.is_nil() && !application_id.is_nil() => Ok(Self::Application {
+                project_id: ProjectId::from_uuid(project_id),
+                application_id: ApplicationId::from_uuid(application_id),
+            }),
             ResourceGrantScopeDto::Node { node_id } if !node_id.is_nil() => Ok(Self::Node {
                 node_id: NodeId::from_uuid(node_id),
             }),
@@ -59,6 +72,13 @@ impl From<ResourceGrantScope> for ResourceGrantScopeDto {
             } => Self::Environment {
                 project_id: project_id.as_uuid(),
                 environment_id: environment_id.as_uuid(),
+            },
+            ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            } => Self::Application {
+                project_id: project_id.as_uuid(),
+                application_id: application_id.as_uuid(),
             },
             ResourceGrantScope::Node { node_id } => Self::Node {
                 node_id: node_id.as_uuid(),
@@ -89,6 +109,24 @@ mod tests {
                 "nodeId": Uuid::now_v7(),
             }))
             .is_err()
+        );
+    }
+
+    #[test]
+    fn application_scope_round_trips() {
+        let project_id = Uuid::now_v7();
+        let application_id = Uuid::now_v7();
+        let dto = ResourceGrantScopeDto::Application {
+            project_id,
+            application_id,
+        };
+        let domain = ResourceGrantScope::try_from(dto).expect("dto");
+        assert_eq!(
+            ResourceGrantScopeDto::from(domain),
+            ResourceGrantScopeDto::Application {
+                project_id,
+                application_id,
+            }
         );
     }
 }

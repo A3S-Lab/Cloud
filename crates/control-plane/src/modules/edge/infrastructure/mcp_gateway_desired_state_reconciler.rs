@@ -3,11 +3,15 @@ use super::{
     IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
     McpGatewaySnapshotReconciliationState, PlanMcpGatewayNodeProjection, StageMcpGatewaySnapshot,
 };
-use crate::modules::edge::application::IEdgeManagedInferenceAclAccess;
+use crate::modules::edge::application::{
+    EdgeManagedApplicationPublicationRouteIntentScope, IEdgeManagedApplicationPublicationRouteIntentAccess,
+    IEdgeManagedInferenceAclAccess,
+};
 use crate::modules::edge::domain::GatewayPublicationState;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, GatewayScopeId, NodeCommandId, NodeId, RepositoryError,
 };
+use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
@@ -39,6 +43,8 @@ pub struct McpGatewayDesiredStateReconciler {
     planner: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
     compiler: GatewaySnapshotCompiler,
     inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess>,
+    publication_route_intents:
+        Option<Arc<dyn IEdgeManagedApplicationPublicationRouteIntentAccess>>,
     interval: Duration,
     command_ttl: ChronoDuration,
     empty_snapshot_ttl: ChronoDuration,
@@ -82,6 +88,7 @@ impl McpGatewayDesiredStateReconciler {
             planner,
             compiler,
             inference_acl,
+            publication_route_intents: None,
             interval,
             command_ttl,
             empty_snapshot_ttl,
@@ -90,6 +97,15 @@ impl McpGatewayDesiredStateReconciler {
             batch_size,
             scope_cursor: Mutex::new(None),
         })
+    }
+
+    /// Wire Applications-owned publication route intent ACL loading for MCP compile.
+    pub fn with_publication_route_intent_access(
+        mut self,
+        publication_route_intents: Arc<dyn IEdgeManagedApplicationPublicationRouteIntentAccess>,
+    ) -> Self {
+        self.publication_route_intents = Some(publication_route_intents);
+        self
     }
 
     pub async fn run_once(
@@ -187,6 +203,32 @@ impl McpGatewayDesiredStateReconciler {
                 ));
                 continue;
             }
+            let mut intent_scopes =
+                Vec::with_capacity(scope_set.len());
+            let mut intent_scope_invalid = false;
+            for scope in &scope_set {
+                match EdgeManagedApplicationPublicationRouteIntentScope::new(
+                    scope.organization_id,
+                    scope.project_id,
+                ) {
+                    Ok(intent_scope) => intent_scopes.push(intent_scope),
+                    Err(_) => {
+                        intent_scope_invalid = true;
+                        break;
+                    }
+                }
+            }
+            if intent_scope_invalid {
+                report.failures.push(failure(
+                    seed_scope_id,
+                    node_id,
+                    "validate-scopes",
+                    "managed publication route intent scope is invalid",
+                ));
+                continue;
+            }
+            intent_scopes.sort();
+            intent_scopes.dedup();
             let gateway_scope_id = scope_set[0].id;
             let state = match self
                 .repository
@@ -321,6 +363,23 @@ impl McpGatewayDesiredStateReconciler {
                 let inference_credentials = inference_acl_snapshot.credentials;
                 let inference_routes = inference_acl_snapshot.routes;
                 let inference_workers = inference_acl_snapshot.workers;
+                let publication_route_intents = match load_publication_route_intents(
+                    self.publication_route_intents.as_ref(),
+                    &intent_scopes,
+                )
+                .await
+                {
+                    Ok(intents) => intents,
+                    Err(_) => {
+                        report.failures.push(failure(
+                            gateway_scope_id,
+                            node_id,
+                            "compile",
+                            "managed publication route intent projection failed",
+                        ));
+                        continue;
+                    }
+                };
                 match self
                     .compiler
                     .compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
@@ -338,6 +397,7 @@ impl McpGatewayDesiredStateReconciler {
                         inference_credentials,
                         inference_routes,
                         inference_workers,
+                        publication_route_intents,
                     }) {
                     Ok(candidate) => candidate,
                     Err(_) => {
@@ -441,6 +501,16 @@ impl McpGatewayDesiredStateReconciler {
                 }
             }
         }
+    }
+}
+
+async fn load_publication_route_intents(
+    access: Option<&Arc<dyn IEdgeManagedApplicationPublicationRouteIntentAccess>>,
+    intent_scopes: &[EdgeManagedApplicationPublicationRouteIntentScope],
+) -> Result<Vec<ApplicationPublicationRouteIntentAclProjection>, RepositoryError> {
+    match access {
+        Some(access) => access.list_for_scopes(intent_scopes).await,
+        None => Ok(Vec::new()),
     }
 }
 

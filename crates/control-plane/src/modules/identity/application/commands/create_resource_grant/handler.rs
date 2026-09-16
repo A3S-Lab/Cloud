@@ -1,7 +1,8 @@
 use super::CreateResourceGrant;
 use crate::modules::identity::application::{
-    IIdentityEnvironmentAccess, IIdentityNodeAccess, IIdentityProjectAccess,
-    IdentityEnvironmentScope, IdentityNodeScope, IdentityProjectScope, ResourceGrantMutationResult,
+    IIdentityApplicationAccess, IIdentityEnvironmentAccess, IIdentityNodeAccess,
+    IIdentityProjectAccess, IdentityApplicationScope, IdentityEnvironmentScope, IdentityNodeScope,
+    IdentityProjectScope, ResourceGrantMutationResult,
 };
 use crate::modules::identity::domain::entities::ResourceGrant;
 use crate::modules::identity::domain::events::ResourceGrantChanged;
@@ -19,6 +20,7 @@ pub struct CreateResourceGrantHandler {
     repository: Arc<dyn IResourceGrantRepository>,
     projects: Arc<dyn IIdentityProjectAccess>,
     environments: Arc<dyn IIdentityEnvironmentAccess>,
+    applications: Arc<dyn IIdentityApplicationAccess>,
     nodes: Arc<dyn IIdentityNodeAccess>,
 }
 
@@ -27,12 +29,14 @@ impl CreateResourceGrantHandler {
         repository: Arc<dyn IResourceGrantRepository>,
         projects: Arc<dyn IIdentityProjectAccess>,
         environments: Arc<dyn IIdentityEnvironmentAccess>,
+        applications: Arc<dyn IIdentityApplicationAccess>,
         nodes: Arc<dyn IIdentityNodeAccess>,
     ) -> Self {
         Self {
             repository,
             projects,
             environments,
+            applications,
             nodes,
         }
     }
@@ -50,6 +54,7 @@ impl CommandHandler<CreateResourceGrant> for CreateResourceGrantHandler {
         let repository = Arc::clone(&self.repository);
         let projects = Arc::clone(&self.projects);
         let environments = Arc::clone(&self.environments);
+        let applications = Arc::clone(&self.applications);
         let nodes = Arc::clone(&self.nodes);
         Box::pin(async move {
             let target_exists = match command.scope {
@@ -77,6 +82,23 @@ impl CommandHandler<CreateResourceGrant> for CreateResourceGrantHandler {
                         Err(error) => return Ok(Err(ApplicationError::Forbidden(error))),
                     };
                     match environments.environment_exists(scope).await {
+                        Ok(exists) => exists,
+                        Err(error) => return Ok(Err(error.into())),
+                    }
+                }
+                ResourceGrantScope::Application {
+                    project_id,
+                    application_id,
+                } => {
+                    let scope = match IdentityApplicationScope::new(
+                        command.organization_id,
+                        project_id,
+                        application_id,
+                    ) {
+                        Ok(scope) => scope,
+                        Err(error) => return Ok(Err(ApplicationError::Forbidden(error))),
+                    };
+                    match applications.application_exists(scope).await {
                         Ok(exists) => exists,
                         Err(error) => return Ok(Err(error.into())),
                     }
@@ -150,7 +172,7 @@ mod tests {
     use crate::modules::identity::domain::repositories::IResourceGrantRepository;
     use crate::modules::identity::infrastructure::persistence::InMemoryIdentityRepository;
     use crate::modules::shared_kernel::domain::{
-        EnvironmentId, MembershipId, NodeId, OrganizationId, PrincipalId, ProjectId,
+        ApplicationId, EnvironmentId, MembershipId, NodeId, OrganizationId, PrincipalId, ProjectId,
         RepositoryError,
     };
     use a3s_boot::ModuleRef;
@@ -161,6 +183,8 @@ mod tests {
     struct MissingProjectAccess;
     struct PresentEnvironmentAccess;
     struct MissingEnvironmentAccess;
+    struct PresentApplicationAccess;
+    struct MissingApplicationAccess;
     struct PresentNodeAccess;
     struct MissingNodeAccess;
 
@@ -205,6 +229,26 @@ mod tests {
     }
 
     #[async_trait]
+    impl IIdentityApplicationAccess for PresentApplicationAccess {
+        async fn application_exists(
+            &self,
+            _scope: IdentityApplicationScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(true)
+        }
+    }
+
+    #[async_trait]
+    impl IIdentityApplicationAccess for MissingApplicationAccess {
+        async fn application_exists(
+            &self,
+            _scope: IdentityApplicationScope,
+        ) -> Result<bool, RepositoryError> {
+            Ok(false)
+        }
+    }
+
+    #[async_trait]
     impl IIdentityNodeAccess for PresentNodeAccess {
         async fn node_exists(&self, _scope: IdentityNodeScope) -> Result<bool, RepositoryError> {
             Ok(true)
@@ -237,6 +281,7 @@ mod tests {
             repository,
             Arc::new(MissingProjectAccess),
             Arc::new(PresentEnvironmentAccess),
+            Arc::new(PresentApplicationAccess),
             Arc::new(PresentNodeAccess),
         );
         let result = handler
@@ -259,6 +304,7 @@ mod tests {
             repository,
             Arc::new(PresentProjectAccess),
             Arc::new(MissingEnvironmentAccess),
+            Arc::new(PresentApplicationAccess),
             Arc::new(PresentNodeAccess),
         );
         let result = handler
@@ -275,6 +321,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn missing_application_target_fails_closed_as_not_found() {
+        let repository: Arc<dyn IResourceGrantRepository> =
+            Arc::new(InMemoryIdentityRepository::new());
+        let handler = CreateResourceGrantHandler::new(
+            repository,
+            Arc::new(PresentProjectAccess),
+            Arc::new(PresentEnvironmentAccess),
+            Arc::new(MissingApplicationAccess),
+            Arc::new(PresentNodeAccess),
+        );
+        let result = handler
+            .execute(
+                command(ResourceGrantScope::Application {
+                    project_id: ProjectId::new(),
+                    application_id: ApplicationId::new(),
+                }),
+                a3s_boot::CqrsContext::new(ModuleRef::new()),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(result, Err(ApplicationError::NotFound(_))));
+    }
+
+    #[tokio::test]
     async fn missing_node_target_fails_closed_as_not_found() {
         let repository: Arc<dyn IResourceGrantRepository> =
             Arc::new(InMemoryIdentityRepository::new());
@@ -282,6 +352,7 @@ mod tests {
             repository,
             Arc::new(PresentProjectAccess),
             Arc::new(PresentEnvironmentAccess),
+            Arc::new(PresentApplicationAccess),
             Arc::new(MissingNodeAccess),
         );
         let result = handler

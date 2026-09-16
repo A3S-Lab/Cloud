@@ -164,3 +164,93 @@ impl From<ApplicationMutationResult> for ApplicationMutationResponse {
         }
     }
 }
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateApplicationPublicationRouteIntentRequest {
+    pub application_release_digest: String,
+    pub channels: Vec<String>,
+    #[serde(default)]
+    pub embed_origin_allowlist: Vec<String>,
+    pub rate_shaping_policy: ApplicationPublicationRateShapingPolicyRequest,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationPublicationRateShapingPolicyRequest {
+    pub profile_id: String,
+    pub policy_revision_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationPublicationRateShapingPolicyResponse {
+    pub profile_id: String,
+    pub policy_revision_digest: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationPublicationRouteIntentResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub application_release_id: Uuid,
+    pub application_release_digest: String,
+    pub intent_id: Uuid,
+    pub channels: Vec<String>,
+    pub embed_origin_allowlist: Vec<String>,
+    pub rate_shaping_policy: ApplicationPublicationRateShapingPolicyResponse,
+}
+
+impl From<crate::modules::applications::domain::ApplicationPublicationRouteIntent>
+    for ApplicationPublicationRouteIntentResponse
+{
+    fn from(
+        intent: crate::modules::applications::domain::ApplicationPublicationRouteIntent,
+    ) -> Self {
+        Self {
+            organization_id: intent.organization_id.as_uuid(),
+            project_id: intent.project_id.as_uuid(),
+            application_id: intent.application_id.as_uuid(),
+            application_release_id: intent.application_release_id.as_uuid(),
+            application_release_digest: intent.application_release_digest.as_str().to_owned(),
+            intent_id: intent.id.as_uuid(),
+            channels: intent
+                .channels
+                .iter()
+                .map(|channel| channel.as_str().to_owned())
+                .collect(),
+            embed_origin_allowlist: intent.embed_origin_allowlist,
+            rate_shaping_policy: ApplicationPublicationRateShapingPolicyResponse {
+                profile_id: intent.rate_shaping_policy.profile_id,
+                policy_revision_digest: intent
+                    .rate_shaping_policy
+                    .policy_revision_digest
+                    .as_str()
+                    .to_owned(),
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationPublicationRouteIntentMutationResponse {
+    pub intent: ApplicationPublicationRouteIntentResponse,
+    pub replayed: bool,
+}
+
+impl
+    From<crate::modules::applications::application::ApplicationPublicationRouteIntentMutationResult>
+    for ApplicationPublicationRouteIntentMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationPublicationRouteIntentMutationResult,
+    ) -> Self {
+        Self {
+            intent: ApplicationPublicationRouteIntentResponse::from(result.intent),
+            replayed: result.replayed,
+        }
+    }
+}

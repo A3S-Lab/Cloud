@@ -2,8 +2,8 @@ use super::webhook_transport::AutomationWebhookTransportRequest;
 use crate::modules::automations::application::AutomationWebhookEndpointScope;
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_PUBLIC_METADATA,
+    controller, metadata, post, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+    CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -17,49 +17,52 @@ use uuid::Uuid;
 /// The Cloud application decides whether and where to register this adapter;
 /// Gateway remains the live public ingress authority.
 pub fn automation_webhooks_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    ControllerDefinition::new("/webhooks")?
-        .with_metadata(AUTH_PUBLIC_METADATA, true)?
-        .post(
-            "/automations/{organization_id}/{project_id}/{environment_id}/{endpoint_key}",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let scope = AutomationWebhookEndpointScope {
-                        organization_id: request.param_as::<Uuid>("organization_id")?,
-                        project_id: request.param_as::<Uuid>("project_id")?,
-                        environment_id: request.param_as::<Uuid>("environment_id")?,
-                    };
-                    let endpoint_key = request
-                        .param("endpoint_key")
-                        .ok_or_else(|| {
-                            BootError::BadRequest("webhook endpoint key is required".into())
-                        })?
-                        .to_owned();
-                    let command = AutomationWebhookTransportRequest {
-                        scope,
-                        endpoint_key,
-                        headers: request
-                            .headers
-                            .iter()
-                            .map(|(name, value)| (name.clone(), value.clone()))
-                            .collect(),
-                        body: request.body().to_vec(),
-                        received_at: Utc::now(),
-                    }
-                    .into_receive_command()
-                    .map_err(|_| {
-                        BootError::BadRequest(
-                            "signed Automation webhook transport is invalid".into(),
-                        )
-                    })?;
-                    let request_id = request_id(&request)?;
-                    match bus.execute(command).await? {
-                        Ok(_) => Ok(BootResponse::empty(202)),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )
+    Arc::new(AutomationWebhooksController { bus }).controller()
+}
+
+#[derive(Debug, Clone)]
+struct AutomationWebhooksController {
+    bus: Arc<CommandBus>,
+}
+
+#[controller("/webhooks")]
+#[metadata("auth.public", true)]
+impl AutomationWebhooksController {
+    #[post(
+        "/automations/{organization_id}/{project_id}/{environment_id}/{endpoint_key}",
+        raw
+    )]
+    async fn receive(&self, request: BootRequest) -> Result<BootResponse> {
+        let scope = AutomationWebhookEndpointScope {
+            organization_id: request.param_as::<Uuid>("organization_id")?,
+            project_id: request.param_as::<Uuid>("project_id")?,
+            environment_id: request.param_as::<Uuid>("environment_id")?,
+        };
+        let endpoint_key = request
+            .param("endpoint_key")
+            .ok_or_else(|| BootError::BadRequest("webhook endpoint key is required".into()))?
+            .to_owned();
+        let command = AutomationWebhookTransportRequest {
+            scope,
+            endpoint_key,
+            headers: request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.clone(), value.clone()))
+                .collect(),
+            body: request.body().to_vec(),
+            received_at: Utc::now(),
+        }
+        .into_receive_command()
+        .map_err(|_| {
+            BootError::BadRequest("signed Automation webhook transport is invalid".into())
+        })?;
+        let request_id = request_id(&request)?;
+        match self.bus.execute(command).await? {
+            Ok(_) => Ok(BootResponse::empty(202)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
 }
 
 fn request_id(request: &BootRequest) -> Result<Uuid> {
@@ -73,19 +76,28 @@ fn request_id(request: &BootRequest) -> Result<Uuid> {
 }
 
 #[cfg(test)]
-mod tests {
+mod nest_macro_automation_webhooks_controller_tests {
     use super::*;
-    use a3s_boot::CommandBus;
+    use a3s_boot::HttpMethod;
 
     #[test]
-    fn exposes_only_the_scoped_signed_webhook_transport_route() {
+    fn automation_webhooks_controller_registers_public_post_via_nest_macros() {
         let controller = automation_webhooks_controller(Arc::new(CommandBus::new()))
-            .expect("automation webhook controller");
+            .expect("automation webhook nest controller");
         assert_eq!(controller.prefix(), "/webhooks");
         assert_eq!(controller.routes().len(), 1);
+        assert_eq!(controller.routes()[0].method(), HttpMethod::Post);
         assert_eq!(
             controller.routes()[0].path(),
             "/webhooks/automations/{organization_id}/{project_id}/{environment_id}/{endpoint_key}"
+        );
+        assert_eq!(
+            controller.routes()[0]
+                .metadata()
+                .get(AUTH_PUBLIC_METADATA)
+                .cloned()
+                .expect("auth.public"),
+            serde_json::json!(true)
         );
     }
 }

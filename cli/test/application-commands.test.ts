@@ -425,6 +425,344 @@ describe('a3s-cloud Application commands', () => {
     expect(called).toBe(false);
   });
 
+
+  it('opens, observes, closes, and cancels through authenticated /delivery without lookupKey', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const files = new Map<string, string>([
+      ['variables.json', JSON.stringify({ locale: 'en-US' })],
+      [
+        'invocation.json',
+        JSON.stringify({
+          ontologyId: ONTOLOGY_ID,
+          ontologyRevisionId: ONTOLOGY_REVISION_ID,
+          responseMode: 'blocking',
+          input: { query: 'hello' },
+          timeoutSeconds: 300,
+        }),
+      ],
+    ]);
+    const observation = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      applicationId: APPLICATION_ID,
+      applicationReleaseId: RELEASE_ID,
+      applicationReleaseDigest: DIGEST,
+      sessionId: SESSION_ID,
+      endUserId: PRINCIPAL_ID,
+      invocationId: INVOCATION_ID,
+      responseMode: 'blocking',
+      invocationStatus: 'running',
+      waitStatus: 'waiting',
+      answerMessageIds: [],
+      observedAt: '2026-09-15T00:00:00.000Z',
+    };
+    const streamingObservation = {
+      ...observation,
+      responseMode: 'streaming',
+      streamStatus: 'open',
+      afterSequence: 7,
+      frames: [],
+      nextSequence: 7,
+      hasMore: false,
+    };
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async (path: string) => new TextEncoder().encode(files.get(path) ?? ''),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const url = String(args[0]);
+        if (url.includes('streaming-observation')) {
+          return envelope(streamingObservation);
+        }
+        if (url.includes('blocking-observation') || url.includes('asynchronous-observation')) {
+          return envelope(observation);
+        }
+        if (url.endsWith('/cancel')) {
+          return envelope({ invocation: invocation(), workflow: workflowEvidence(), replayed: false });
+        }
+        if (url.endsWith('/close')) {
+          return envelope({ session: { ...session(), status: 'closed' }, replayed: false });
+        }
+        if (url.includes('/invocations')) {
+          return envelope({ invocation: invocation(), workflow: workflowEvidence(), replayed: false }, 201);
+        }
+        return envelope({ session: session(), replayed: false }, 201);
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'application-delivery-sessions',
+          'open',
+          APPLICATION_ID,
+          RELEASE_ID,
+          '--file=variables.json',
+          '--idempotency-key=cli:delivery:session-open',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-invocations',
+          'request',
+          APPLICATION_ID,
+          SESSION_ID,
+          '--file=invocation.json',
+          '--idempotency-key=cli:delivery:invoke',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-blocking-observation',
+          'observe',
+          APPLICATION_ID,
+          SESSION_ID,
+          INVOCATION_ID,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-streaming-observation',
+          'observe',
+          APPLICATION_ID,
+          SESSION_ID,
+          INVOCATION_ID,
+          '--after-sequence=7',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-asynchronous-observation',
+          'observe',
+          APPLICATION_ID,
+          SESSION_ID,
+          INVOCATION_ID,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-sessions',
+          'close',
+          APPLICATION_ID,
+          SESSION_ID,
+          '--expected-version=2',
+          '--idempotency-key=cli:delivery:session-close',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-delivery-invocations',
+          'cancel',
+          APPLICATION_ID,
+          SESSION_ID,
+          INVOCATION_ID,
+          '--expected-version=2',
+          '--idempotency-key=cli:delivery:invocation-cancel',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions`,
+        'POST',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}/invocations`,
+        'POST',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}` +
+          `/invocations/${INVOCATION_ID}/blocking-observation`,
+        'GET',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}` +
+          `/invocations/${INVOCATION_ID}/streaming-observation?afterSequence=7`,
+        'GET',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}` +
+          `/invocations/${INVOCATION_ID}/asynchronous-observation`,
+        'GET',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}/close`,
+        'POST',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/delivery/organizations/${ORGANIZATION_ID}` +
+          `/projects/${PROJECT_ID}/applications/${APPLICATION_ID}/sessions/${SESSION_ID}` +
+          `/invocations/${INVOCATION_ID}/cancel`,
+        'POST',
+      ],
+    ]);
+    for (const [url] of calls) {
+      expect(String(url).includes('lookupKey')).toBe(false);
+      expect(String(url).includes('/anonymous-delivery/')).toBe(false);
+    }
+    expect(calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ releaseId: RELEASE_ID, initialVariables: { locale: 'en-US' } })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
+  it('creates, gets, and lists management publication route intents', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const output = capture();
+    const intent = {
+      organizationId: ORGANIZATION_ID,
+      projectId: PROJECT_ID,
+      applicationId: APPLICATION_ID,
+      applicationReleaseId: RELEASE_ID,
+      applicationReleaseDigest: DIGEST,
+      intentId: '019c0000-0000-7000-8000-00000000000c',
+      channels: ['api_blocking', 'web'],
+      embedOriginAllowlist: [],
+      rateShapingPolicy: {
+        profileId: 'public-api-default',
+        policyRevisionDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      },
+    };
+    const files = new Map<string, string>([
+      [
+        'publication-route-intent.json',
+        JSON.stringify({
+          applicationReleaseDigest: DIGEST,
+          channels: ['api_blocking', 'web'],
+          embedOriginAllowlist: [],
+          rateShapingPolicy: {
+            profileId: 'public-api-default',
+            policyRevisionDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+          },
+        }),
+      ],
+    ]);
+    const runtime = {
+      ...output.runtime,
+      environment: completeEnvironment(),
+      readFile: async (path: string) => new TextEncoder().encode(files.get(path) ?? ''),
+      fetch: async (...args: Parameters<CloudFetch>) => {
+        calls.push(args);
+        const url = String(args[0]);
+        if (args[1]?.method === 'POST') {
+          return envelope({ intent, replayed: false }, 201);
+        }
+        if (url.includes('/publication-route-intents?')) {
+          return envelope([intent]);
+        }
+        return envelope(intent);
+      },
+    };
+
+    expect(
+      await runCli(
+        [
+          'application-publication-route-intents',
+          'create',
+          APPLICATION_ID,
+          RELEASE_ID,
+          '--file=publication-route-intent.json',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-publication-route-intents',
+          'get',
+          APPLICATION_ID,
+          '019c0000-0000-7000-8000-00000000000c',
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+    expect(
+      await runCli(
+        [
+          'application-publication-route-intents',
+          'list',
+          APPLICATION_ID,
+          RELEASE_ID,
+          DIGEST,
+          '--output=json',
+        ],
+        runtime
+      )
+    ).toBe(ExitCode.Success);
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+          `/applications/${APPLICATION_ID}/releases/${RELEASE_ID}/publication-route-intents`,
+        'POST',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+          `/applications/${APPLICATION_ID}/publication-route-intents/019c0000-0000-7000-8000-00000000000c`,
+        'GET',
+      ],
+      [
+        `http://127.0.0.1:8080/api/v1/organizations/${ORGANIZATION_ID}/projects/${PROJECT_ID}` +
+          `/applications/${APPLICATION_ID}/releases/${RELEASE_ID}/publication-route-intents` +
+          `?applicationReleaseDigest=${encodeURIComponent(DIGEST)}`,
+        'GET',
+      ],
+    ]);
+    expect(calls[0]?.[1]?.body).toBe(
+      JSON.stringify({
+        applicationReleaseDigest: DIGEST,
+        channels: ['api_blocking', 'web'],
+        embedOriginAllowlist: [],
+        rateShapingPolicy: {
+          profileId: 'public-api-default',
+          policyRevisionDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+        },
+      })
+    );
+    expect(calls[0]?.[1]?.headers).not.toEqual(
+      expect.objectContaining({ 'Idempotency-Key': expect.anything() })
+    );
+    expect(output.stderr()).toBe('');
+  });
+
   it('rejects oversized or unversioned Application ACL mutation before transport', async () => {
     let called = false;
     const output = capture();

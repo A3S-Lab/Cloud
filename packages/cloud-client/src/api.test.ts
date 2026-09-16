@@ -1671,6 +1671,228 @@ describe('CloudApi', () => {
     ).toThrow('Application message list limit must be between');
   });
 
+
+  it('exposes Principal-bound authenticated /delivery session, invocation, and observation paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+
+    await api.openDeliveryApplicationSession(
+      'organization / one',
+      'project / one',
+      'application / one',
+      { releaseId: 'release / one' },
+      'delivery:session-open'
+    );
+    await api.requestDeliveryApplicationInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      {
+        ontologyId: 'ontology / one',
+        ontologyRevisionId: 'ontology revision / one',
+        responseMode: 'blocking',
+        input: { query: 'hello' },
+        timeoutSeconds: 300,
+      },
+      'delivery:invoke'
+    );
+    await api.observeDeliveryApplicationBlockingInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one'
+    );
+    await api.observeDeliveryApplicationStreamingInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one',
+      7
+    );
+    await api.observeDeliveryApplicationAsynchronousInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one'
+    );
+    await api.closeDeliveryApplicationSession(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      { expectedVersion: 2 },
+      'delivery:session-close'
+    );
+    await api.cancelDeliveryApplicationInvocation(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'session / one',
+      'invocation / one',
+      { expectedVersion: 2 },
+      'delivery:invocation-cancel'
+    );
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions',
+        'POST',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations',
+        'POST',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one/blocking-observation',
+        'GET',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one/streaming-observation?afterSequence=7',
+        'GET',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one/asynchronous-observation',
+        'GET',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/close',
+        'POST',
+      ],
+      [
+        '/api/v1/delivery/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/sessions/session%20%2F%20one/invocations/invocation%20%2F%20one/cancel',
+        'POST',
+      ],
+    ]);
+    for (const call of calls) {
+      const url = String(call[0]);
+      expect(url.includes('lookupKey')).toBe(false);
+      expect(url.includes('/anonymous-delivery/')).toBe(false);
+    }
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token',
+          'Idempotency-Key': 'delivery:session-open',
+        }),
+        body: JSON.stringify({ releaseId: 'release / one', initialVariables: {} }),
+      })
+    );
+    expect(calls[1]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'delivery:invoke' }),
+        body: JSON.stringify({
+          ontologyId: 'ontology / one',
+          ontologyRevisionId: 'ontology revision / one',
+          responseMode: 'blocking',
+          input: { query: 'hello' },
+          timeoutSeconds: 300,
+        }),
+      })
+    );
+    expect(calls[5]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'delivery:session-close' }),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      })
+    );
+    expect(calls[6]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({ 'Idempotency-Key': 'delivery:invocation-cancel' }),
+        body: JSON.stringify({ expectedVersion: 2 }),
+      })
+    );
+  });
+
+  it('exposes management publication route intent create, get, and list-by-release paths', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({ replayed: false }, args[1]?.method === 'POST' ? 201 : 200);
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const digest = 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const policyDigest = 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const input = {
+      applicationReleaseDigest: digest,
+      channels: ['api_blocking', 'web'] as const,
+      embedOriginAllowlist: [],
+      rateShapingPolicy: {
+        profileId: 'public-api-default',
+        policyRevisionDigest: policyDigest,
+      },
+    };
+
+    await api.createApplicationPublicationRouteIntent(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'release / one',
+      {
+        applicationReleaseDigest: input.applicationReleaseDigest,
+        channels: [...input.channels],
+        embedOriginAllowlist: input.embedOriginAllowlist,
+        rateShapingPolicy: input.rateShapingPolicy,
+      }
+    );
+    await api.getApplicationPublicationRouteIntent(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'intent / one'
+    );
+    await api.listApplicationPublicationRouteIntentsByRelease(
+      'organization / one',
+      'project / one',
+      'application / one',
+      'release / one',
+      digest
+    );
+
+    expect(calls.map(([request, init]) => [request, init?.method])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases/release%20%2F%20one/publication-route-intents',
+        'POST',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/publication-route-intents/intent%20%2F%20one',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/projects/project%20%2F%20one/applications/application%20%2F%20one/releases/release%20%2F%20one/publication-route-intents?applicationReleaseDigest=' +
+          encodeURIComponent(digest),
+        'GET',
+      ],
+    ]);
+    expect(calls[0]?.[1]).toEqual(
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          Authorization: 'Bearer token',
+          'Content-Type': 'application/json',
+        }),
+        body: JSON.stringify({
+          applicationReleaseDigest: digest,
+          channels: ['api_blocking', 'web'],
+          embedOriginAllowlist: [],
+          rateShapingPolicy: {
+            profileId: 'public-api-default',
+            policyRevisionDigest: policyDigest,
+          },
+        }),
+      })
+    );
+    expect(calls[0]?.[1]?.headers).not.toEqual(
+      expect.objectContaining({ 'Idempotency-Key': expect.anything() })
+    );
+  });
+
   it('exposes bounded ACL-native Connector profile and revision management', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {

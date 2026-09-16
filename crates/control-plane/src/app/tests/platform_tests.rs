@@ -1,4 +1,5 @@
 use super::*;
+use crate::modules::applications::DeliveryProcessDrain;
 
 #[test]
 fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
@@ -243,6 +244,633 @@ async fn worker_and_relay_roles_expose_only_process_status_routes() -> Result<()
         }
     }
     Ok(())
+}
+
+#[tokio::test]
+async fn delivery_role_exposes_anonymous_delivery_without_management_routes() -> Result<()> {
+    // APP0.3-C3: Delivery registers public anonymous delivery over process-status.
+    let mut process_config = config();
+    process_config.server.role = ProcessRole::Delivery;
+    let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
+    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let credentials = Arc::new(
+        crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
+    );
+    let workflow_runs: Arc<dyn crate::modules::applications::IApplicationWorkflowRunPort> =
+        Arc::new(DeliveryTestWorkflowRunPort);
+    let ontology: Arc<dyn crate::modules::applications::IApplicationOntologyRevisionPort> =
+        Arc::new(DeliveryTestOntologyRevisionPort);
+    let environments: Arc<dyn crate::modules::applications::IApplicationsEnvironmentAccess> =
+        Arc::new(DeliveryTestEnvironmentAccess);
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let app = build_application_delivery_http(
+        &process_config,
+        HealthModule::new("readiness")
+            .with_route("/health/ready")
+            .indicator("fixture", || async { Ok(HealthIndicatorResult::up()) }),
+        DeliveryHttpDependencies {
+            applications,
+            application_sessions: sessions,
+            application_delivery_credentials: credentials,
+            application_workflow_runs: workflow_runs,
+            application_ontology_evidence: ontology,
+            admit_application_environments: environments,
+            api_tokens: identity.clone(),
+            resource_grants: identity,
+            drain: DeliveryProcessDrain::new(),
+        },
+    )?;
+
+    for path in [
+        "/api/v1/platform",
+        "/api/v1/health/live",
+        "/api/v1/health/ready",
+    ] {
+        let response = app
+            .call(
+                BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"),
+            )
+            .await?;
+        assert_eq!(response.status(), 200, "delivery must expose {path}");
+    }
+
+    let org = uuid::Uuid::nil();
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let session = uuid::Uuid::nil();
+    let invocation = uuid::Uuid::nil();
+    // Missing lookupKey must hit the registered public route (400), not router 404.
+    let anonymous_get = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/blocking-observation"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &anonymous_get)
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        400,
+        "delivery must register anonymous observation route (got {})",
+        response.status()
+    );
+
+    // Authenticated /delivery requires bearer auth (401 without credentials).
+    let delivery_sessions = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &delivery_sessions)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(br#"{"releaseId":"00000000-0000-0000-0000-000000000000","initialVariables":{}}"#.to_vec()),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        401,
+        "delivery authenticated route must require bearer auth (got {})",
+        response.status()
+    );
+
+    let delivery_observation = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/blocking-observation"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &delivery_observation)
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        401,
+        "delivery authenticated observation must require bearer auth (got {})",
+        response.status()
+    );
+
+    for path in ["/api/v1/openapi.json", "/api/v1/organizations"] {
+        let response = app
+            .call(
+                BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"),
+            )
+            .await?;
+        assert_eq!(
+            response.status(),
+            404,
+            "delivery must not expose management route {path}"
+        );
+    }
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_role_requires_bearer_for_authenticated_delivery_routes() -> Result<()> {
+    // APP0.3-C5: authenticated /delivery requires bearer; anonymous stays public.
+    let mut process_config = config();
+    process_config.server.role = ProcessRole::Delivery;
+    let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
+    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let credentials = Arc::new(
+        crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
+    );
+    let workflow_runs: Arc<dyn crate::modules::applications::IApplicationWorkflowRunPort> =
+        Arc::new(DeliveryTestWorkflowRunPort);
+    let ontology: Arc<dyn crate::modules::applications::IApplicationOntologyRevisionPort> =
+        Arc::new(DeliveryTestOntologyRevisionPort);
+    let environments: Arc<dyn crate::modules::applications::IApplicationsEnvironmentAccess> =
+        Arc::new(DeliveryTestEnvironmentAccess);
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let app = build_application_delivery_http(
+        &process_config,
+        HealthModule::new("readiness")
+            .with_route("/health/ready")
+            .indicator("fixture", || async { Ok(HealthIndicatorResult::up()) }),
+        DeliveryHttpDependencies {
+            applications,
+            application_sessions: sessions,
+            application_delivery_credentials: credentials,
+            application_workflow_runs: workflow_runs,
+            application_ontology_evidence: ontology,
+            admit_application_environments: environments,
+            api_tokens: identity.clone(),
+            resource_grants: identity,
+            drain: DeliveryProcessDrain::new(),
+        },
+    )?;
+
+    let org = uuid::Uuid::nil();
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let session = uuid::Uuid::nil();
+    let invocation = uuid::Uuid::nil();
+
+    let delivery_sessions = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &delivery_sessions)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(br#"{"releaseId":"00000000-0000-0000-0000-000000000000","initialVariables":{}}"#.to_vec()),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        401,
+        "authenticated delivery route must require bearer (got {})",
+        response.status()
+    );
+
+    let delivery_observation = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/blocking-observation"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &delivery_observation)
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        401,
+        "authenticated delivery observation must require bearer (got {})",
+        response.status()
+    );
+
+    let anonymous_get = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/blocking-observation"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &anonymous_get)
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        400,
+        "anonymous delivery must remain public (got {})",
+        response.status()
+    );
+    Ok(())
+}
+
+fn delivery_http_fixture(
+    drain: DeliveryProcessDrain,
+) -> Result<(
+    BootApplication,
+    DeliveryProcessDrain,
+    Arc<InMemoryIdentityRepository>,
+)> {
+    let mut process_config = config();
+    process_config.server.role = ProcessRole::Delivery;
+    let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
+    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let credentials = Arc::new(
+        crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
+    );
+    let workflow_runs: Arc<dyn crate::modules::applications::IApplicationWorkflowRunPort> =
+        Arc::new(DeliveryTestWorkflowRunPort);
+    let ontology: Arc<dyn crate::modules::applications::IApplicationOntologyRevisionPort> =
+        Arc::new(DeliveryTestOntologyRevisionPort);
+    let environments: Arc<dyn crate::modules::applications::IApplicationsEnvironmentAccess> =
+        Arc::new(DeliveryTestEnvironmentAccess);
+    let identity = Arc::new(InMemoryIdentityRepository::new());
+    let app = build_application_delivery_http(
+        &process_config,
+        HealthModule::new("readiness")
+            .with_route("/health/ready")
+            .indicator("fixture", || async { Ok(HealthIndicatorResult::up()) }),
+        DeliveryHttpDependencies {
+            applications,
+            application_sessions: sessions,
+            application_delivery_credentials: credentials,
+            application_workflow_runs: workflow_runs,
+            application_ontology_evidence: ontology,
+            admit_application_environments: environments,
+            api_tokens: identity.clone(),
+            resource_grants: identity.clone(),
+            drain: drain.clone(),
+        },
+    )?;
+    Ok((app, drain, identity))
+}
+
+async fn bootstrap_delivery_bearer(
+    identity: &Arc<InMemoryIdentityRepository>,
+) -> Result<(String, String)> {
+    use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+    use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
+    use crate::modules::identity::domain::repositories::IIdentityBootstrapRepository;
+
+    let identity_bootstrap: Arc<dyn IIdentityBootstrapRepository> = identity.clone();
+    let secret = format!("a3s_{}", "b".repeat(64));
+    let bootstrap = BootstrapIdentityHandler::new(identity_bootstrap)
+        .execute(
+            BootstrapIdentity {
+                organization_name: "Delivery Drain Test".into(),
+                token_name: "delivery-drain-bootstrap".into(),
+                token_secret: secret.clone(),
+                expires_at: None,
+                idempotency_key: format!("delivery-drain:{}", uuid::Uuid::new_v4()),
+                request_id: uuid::Uuid::new_v4(),
+            },
+            CqrsContext::new(ModuleRef::new()),
+        )
+        .await?
+        .map_err(|error| BootError::Internal(error.to_string()))?;
+    Ok((
+        bootstrap.identity.organization.id.as_uuid().to_string(),
+        secret,
+    ))
+}
+
+#[tokio::test]
+async fn delivery_readiness_reports_down_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, _) = delivery_http_fixture(drain)?;
+    let ready = app
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(ready.status(), 200);
+    let ready_body = response_json(&ready)?;
+    assert_eq!(ready_body["data"]["status"], "up");
+    assert_eq!(ready_body["data"]["checks"]["delivery-drain"]["status"], "up");
+
+    drain.begin();
+    let draining = app
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/ready")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(draining.status(), 503);
+    let draining_body = response_json(&draining)?;
+    assert_eq!(draining_body["data"]["status"], "down");
+    assert_eq!(
+        draining_body["data"]["checks"]["delivery-drain"]["status"],
+        "down"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_liveness_stays_up_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, _) = delivery_http_fixture(drain)?;
+    drain.begin();
+    let live = app
+        .call(
+            BootRequest::new(HttpMethod::Get, "/api/v1/health/live")
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_eq!(live.status(), 200);
+    let live_body = response_json(&live)?;
+    assert_eq!(live_body["data"]["status"], "up");
+    assert_eq!(live_body["data"]["checks"]["process"]["status"], "up");
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_refuses_new_anonymous_session_admit_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, _) = delivery_http_fixture(drain)?;
+    drain.begin();
+    let org = uuid::Uuid::nil();
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let path = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &path)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(
+                    br#"{"releaseId":"00000000-0000-0000-0000-000000000000","sessionId":"00000000-0000-0000-0000-000000000001","lookupKey":"opaque","initialVariables":{}}"#.to_vec(),
+                ),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        503,
+        "anonymous session admit must refuse while draining"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_refuses_new_authenticated_session_admit_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, identity) = delivery_http_fixture(drain)?;
+    let (organization_id, secret) = bootstrap_delivery_bearer(&identity).await?;
+    drain.begin();
+    let org = organization_id;
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let path = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &path)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_header("authorization", format!("Bearer {secret}"))
+                .with_body(
+                    br#"{"releaseId":"00000000-0000-0000-0000-000000000000","initialVariables":{}}"#
+                        .to_vec(),
+                ),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        503,
+        "authenticated session admit must refuse while draining (got {}) body={}",
+        response.status(),
+        String::from_utf8_lossy(response.body())
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_refuses_new_invocation_admit_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, identity) = delivery_http_fixture(drain)?;
+    let (organization_id, secret) = bootstrap_delivery_bearer(&identity).await?;
+    drain.begin();
+    let org = organization_id;
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let session = uuid::Uuid::nil();
+
+    let anonymous = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &anonymous)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(
+                    br#"{"invocationId":"00000000-0000-0000-0000-000000000002","expectedSessionVersion":1,"lookupKey":"opaque","responseMode":"blocking","input":{},"ontologyId":"00000000-0000-0000-0000-000000000003","ontologyRevisionId":"00000000-0000-0000-0000-000000000004","ontologyDigest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}"#.to_vec(),
+                ),
+        )
+        .await?;
+    assert_eq!(response.status(), 503, "anonymous invocation must refuse");
+
+    let authenticated = format!(
+        "/api/v1/delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &authenticated)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_header("authorization", format!("Bearer {secret}"))
+                .with_body(
+                    br#"{"responseMode":"blocking","input":{},"ontologyId":"00000000-0000-0000-0000-000000000003","ontologyRevisionId":"00000000-0000-0000-0000-000000000004"}"#.to_vec(),
+                ),
+        )
+        .await?;
+    assert_eq!(
+        response.status(),
+        503,
+        "authenticated invocation must refuse while draining"
+    );
+    Ok(())
+}
+
+#[tokio::test]
+async fn delivery_allows_observation_close_and_cancel_while_draining() -> Result<()> {
+    let drain = DeliveryProcessDrain::new();
+    let (app, drain, _) = delivery_http_fixture(drain)?;
+    drain.begin();
+    let org = uuid::Uuid::nil();
+    let project = uuid::Uuid::nil();
+    let application = uuid::Uuid::nil();
+    let session = uuid::Uuid::nil();
+    let invocation = uuid::Uuid::nil();
+
+    let observation = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/blocking-observation"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Get, &observation)
+                .with_header("accept", "application/json"),
+        )
+        .await?;
+    assert_ne!(response.status(), 503, "observation must not be drain-gated");
+    assert_eq!(response.status(), 400, "missing lookupKey remains validation");
+
+    let close = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/close"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &close)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(br#"{"expectedVersion":1,"lookupKey":"opaque"}"#.to_vec()),
+        )
+        .await?;
+    assert_ne!(response.status(), 503, "close must continue while draining");
+
+    let cancel = format!(
+        "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/invocations/{invocation}/cancel"
+    );
+    let response = app
+        .call(
+            BootRequest::new(HttpMethod::Post, &cancel)
+                .with_header("accept", "application/json")
+                .with_header("content-type", "application/json")
+                .with_body(br#"{"expectedVersion":1,"lookupKey":"opaque"}"#.to_vec()),
+        )
+        .await?;
+    assert_ne!(response.status(), 503, "cancel must continue while draining");
+    Ok(())
+}
+
+#[test]
+fn delivery_composition_registers_one_drain_readiness_indicator() {
+    let production = include_str!("../../app.rs");
+    let delivery = production
+        .split_once("async fn build_delivery_application(")
+        .and_then(|(_, tail)| tail.split_once("\nasync fn build_relay_application("))
+        .map(|(body, _)| body)
+        .expect("delivery composition root");
+    assert_eq!(
+        delivery.matches("indicator(\"delivery-drain\"").count(),
+        1,
+        "delivery must register exactly one delivery-drain readiness indicator"
+    );
+    assert!(
+        delivery.contains("ApplicationPublicDeliveryModule::new(drain.clone())"),
+        "public delivery must receive the shared drain latch"
+    );
+    assert!(
+        delivery.contains("ApplicationAuthenticatedDeliveryModule::new(drain)"),
+        "authenticated delivery must receive the shared drain latch"
+    );
+}
+
+
+#[test]
+fn delivery_composition_has_one_closed_dependency_set() {
+    let production = include_str!("../../app.rs");
+    let delivery = production
+        .split_once("async fn build_delivery_application(")
+        .and_then(|(_, tail)| tail.split_once("
+async fn build_relay_application("))
+        .map(|(body, _)| body)
+        .expect("delivery composition root");
+
+    for required in [
+        "PostgresAdapterFactory::new(executor.clone()).delivery()",
+        "WorkflowApplicationRunService::new(",
+        "build_application_delivery_http(",
+        "ApplicationPublicDeliveryModule",
+        "ApplicationAuthenticatedDeliveryModule",
+        "DeliveryProcessDrain",
+        "delivery-drain",
+        "ApiTokenVerifier",
+        "AuthModule::new(\"delivery-auth\")",
+        "use_global_auth()",
+        "ObserveApplicationBlockingInvocation",
+        "ObserveApplicationStreamingInvocation",
+        "ObserveApplicationAsynchronousInvocation",
+        "ControlPlaneWorkers::default()",
+    ] {
+        assert!(
+            delivery.contains(required),
+            "delivery composition lost required authority {required}"
+        );
+    }
+    for forbidden in [
+        "ApplicationsModule",
+        "IdentityModule::new(",
+        "build_management_application",
+        "connect_flow(",
+        "ControlPlaneWorkers::worker(",
+        "ControlPlaneWorkers::relay(",
+        "OpenIdConnectProviderService::new(",
+        "GithubSourceResolver::new(",
+    ] {
+        assert!(
+            !delivery.contains(forbidden),
+            "delivery composition acquired unrelated dependency {forbidden}"
+        );
+    }
+}
+
+struct DeliveryTestWorkflowRunPort;
+
+#[async_trait::async_trait]
+impl crate::modules::applications::IApplicationWorkflowRunPort for DeliveryTestWorkflowRunPort {
+    fn admit_timeout_seconds(
+        &self,
+        requested: Option<u64>,
+    ) -> crate::modules::shared_kernel::application::ApplicationResult<u64> {
+        Ok(requested.unwrap_or(3_600))
+    }
+
+    async fn start_or_adopt(
+        &self,
+        _request: &crate::modules::applications::ApplicationWorkflowRunRequest,
+    ) -> crate::modules::shared_kernel::application::ApplicationResult<
+        crate::modules::applications::ApplicationWorkflowRunEvidence,
+    > {
+        Err(
+            crate::modules::shared_kernel::application::ApplicationError::Invalid(
+                "delivery test workflow port does not start runs".into(),
+            ),
+        )
+    }
+}
+
+struct DeliveryTestOntologyRevisionPort;
+
+#[async_trait::async_trait]
+impl crate::modules::applications::IApplicationOntologyRevisionPort
+    for DeliveryTestOntologyRevisionPort
+{
+    async fn resolve_revision(
+        &self,
+        _organization_id: crate::modules::shared_kernel::domain::OrganizationId,
+        _project_id: crate::modules::shared_kernel::domain::ProjectId,
+        _ontology_id: crate::modules::shared_kernel::domain::OntologyId,
+        _ontology_revision_id: crate::modules::shared_kernel::domain::OntologyRevisionId,
+    ) -> crate::modules::shared_kernel::application::ApplicationResult<
+        crate::modules::applications::ApplicationOntologyRevisionEvidence,
+    > {
+        Err(
+            crate::modules::shared_kernel::application::ApplicationError::NotFound(
+                "delivery test ontology port has no revisions".into(),
+            ),
+        )
+    }
+}
+
+struct DeliveryTestEnvironmentAccess;
+
+#[async_trait::async_trait]
+impl crate::modules::applications::IApplicationsEnvironmentAccess for DeliveryTestEnvironmentAccess {
+    async fn environment_exists(
+        &self,
+        _scope: crate::modules::applications::ApplicationsEnvironmentScope,
+    ) -> std::result::Result<bool, crate::modules::shared_kernel::domain::RepositoryError> {
+        Ok(false)
+    }
 }
 
 #[tokio::test]
@@ -1148,13 +1776,15 @@ fn workflow_worker_injects_agent_and_applications_effect_authorities() {
 
 #[test]
 fn process_roles_have_one_closed_capability_matrix() {
-    for (role, management, workers, relay, events) in [
-        (ProcessRole::All, true, true, true, true),
-        (ProcessRole::Api, true, false, false, false),
-        (ProcessRole::Worker, false, true, false, true),
-        (ProcessRole::Relay, false, false, true, true),
+    for (role, management, delivery, workers, relay, events) in [
+        (ProcessRole::All, true, true, true, true, true),
+        (ProcessRole::Api, true, true, false, false, false),
+        (ProcessRole::Delivery, false, true, false, false, false),
+        (ProcessRole::Worker, false, false, true, false, true),
+        (ProcessRole::Relay, false, false, false, true, true),
     ] {
         assert_eq!(role.serves_management_api(), management, "{role:?}");
+        assert_eq!(role.serves_application_delivery(), delivery, "{role:?}");
         assert_eq!(role.runs_workers(), workers, "{role:?}");
         assert_eq!(role.runs_relay(), relay, "{role:?}");
         assert_eq!(role.owns_event_transport(), events, "{role:?}");

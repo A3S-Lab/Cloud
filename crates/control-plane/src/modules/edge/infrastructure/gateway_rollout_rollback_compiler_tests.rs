@@ -331,6 +331,49 @@ fn managed_rollback_compile_embeds_inference_credential_and_route_acl_without_wo
     }
 }
 
+
+fn rollback_compiler_with_public_api_rate_profile() -> GatewayRolloutRollbackCompiler {
+    use crate::modules::edge::domain::{
+        GatewayRateShapingAlgorithm, GatewayRateShapingProfile, GatewayRateShapingTokenBucket,
+    };
+    use crate::modules::edge::infrastructure::{
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
+        InMemoryGatewayRateShapingProfileCatalog,
+    };
+    use crate::modules::shared_kernel::domain::Sha256Digest;
+    use std::sync::Arc;
+
+    let catalog = InMemoryGatewayRateShapingProfileCatalog::new();
+    catalog
+        .register(
+            GatewayRateShapingProfile::new(
+                "public-api-default",
+                Sha256Digest::parse(format!("sha256:{}", "bb".repeat(32))).expect("digest"),
+                GatewayRateShapingAlgorithm::TokenBucket(GatewayRateShapingTokenBucket {
+                    capacity: 120,
+                    refill_tokens_per_second: 60,
+                }),
+            )
+            .expect("profile"),
+        )
+        .expect("register");
+    let snapshots = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
+        entrypoint_address: "0.0.0.0:8081".into(),
+        management_address: "127.0.0.1:9090".into(),
+        management_path_prefix: "/api/gateway".into(),
+        management_auth_token_env: "A3S_GATEWAY_ADMIN_TOKEN".into(),
+        upstream_request_timeout_ms: 30_000,
+        certificate_directory: "/var/lib/a3s-cloud/gateway/certificates".into(),
+        managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
+    })
+    .expect("snapshot compiler")
+    .with_rate_shaping_bindings(Arc::new(
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(Arc::new(catalog)),
+    ));
+    GatewayRolloutRollbackCompiler::new(snapshots, Duration::minutes(3), Duration::hours(24))
+        .expect("rollback compiler with rate catalog")
+}
+
 fn rollback_compiler() -> GatewayRolloutRollbackCompiler {
     GatewayRolloutRollbackCompiler::new(
         GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
@@ -532,3 +575,100 @@ fn acknowledgement(
         management_protocol: Some(GatewayManagementProtocol::advertised_v1()),
     }
 }
+
+#[test]
+fn managed_rollback_retains_application_publication_route_intent_acl() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+
+    let now = Utc::now();
+    let members = [NodeId::new(), NodeId::new()];
+    let scope = replicated_scope(members, now - Duration::minutes(30));
+    let failed = failed_rollout(&scope, now - Duration::minutes(2));
+    let rollback = GatewayRolloutRollback::required(&failed).expect("required rollback");
+    let intent_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: intent_id,
+        channels: vec!["api_blocking".into()],
+        embed_origin_allowlist: Vec::new(),
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    };
+    let mut contexts = Vec::new();
+    for (index, node_id) in members.into_iter().enumerate() {
+        let (route, certificate) = active_route_with_ready_certificate(
+            &scope,
+            node_id,
+            &format!("managed-pub-retained-{index}.example.com"),
+            now - Duration::minutes(20),
+        );
+        let claim_id = route.domain_claim_id.expect("route claim");
+        let mut claim = DomainClaim::create(
+            claim_id,
+            route.organization_id,
+            route.project_id,
+            route.environment_id,
+            route.domain_pattern.clone().expect("route domain pattern"),
+            format!("a3s-cloud-verification={claim_id}"),
+            now - Duration::minutes(30),
+        )
+        .expect("claim");
+        claim
+            .verify(now - Duration::minutes(25))
+            .expect("verified claim");
+        let mcp = PlannedMcpGatewayNodeProjection::single(
+            PlannedMcpGatewayProjectionSet::empty(scope.clone(), node_id, now)
+                .expect("empty MCP scope projection"),
+        )
+        .expect("empty MCP desired state");
+        let desired_state = PlannedGatewayNodeDesiredState::new(
+            GatewayScopeState {
+                node_id,
+                last_issued_revision: 2,
+                installed_revision: Some(if index == 0 { 2 } else { 1 }),
+                aggregate_version: 5,
+            },
+            vec![GatewaySnapshotRouteInput {
+                route,
+                domain_claim: claim,
+            }],
+            mcp,
+        )
+        .expect("managed member state")
+        .with_publication_route_intents(vec![intent.clone()]);
+        contexts.push(ManagedGatewayRollbackMemberSnapshotContext {
+            desired_state,
+            reusable_certificate: Some(certificate),
+            inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
+        });
+    }
+
+    let compiled = rollback_compiler_with_public_api_rate_profile()
+        .compile_managed(CompileManagedGatewayRolloutRollback {
+            scope,
+            failed_rollout: failed,
+            rollback,
+            member_contexts: contexts,
+            issued_at: now,
+        })
+        .expect("managed rollback with publication intents");
+    assert_eq!(compiled.publications.len(), 2);
+    for publication in &compiled.publications {
+        let acl = &publication.acl;
+        assert!(
+            acl.contains("application_publication_route_intents {"),
+            "rollback publication must retain publication route intents"
+        );
+        assert!(acl.contains(&format!("intents \"{}\" {{", intent_id)));
+        assert!(acl.contains("application_publication_rate_shaping_bound_profiles {"));
+        assert!(acl.contains("capacity = 120"));
+        assert!(!acl.contains("PublishRoute"));
+    }
+}
+

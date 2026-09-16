@@ -5,7 +5,10 @@ use crate::modules::agents::domain::{
 use crate::modules::audit::{
     MAXIMUM_AUDIT_RETENTION_BATCH_SIZE, MAXIMUM_AUDIT_RETENTION_MS, MINIMUM_AUDIT_RETENTION_MS,
 };
-use crate::modules::edge::domain::GatewaySnapshotRuntimeSettings;
+use crate::modules::edge::domain::{
+    GatewayRateShapingAlgorithm, GatewayRateShapingGcra, GatewayRateShapingProfile,
+    GatewayRateShapingTokenBucket, GatewaySnapshotRuntimeSettings,
+};
 use crate::modules::identity::domain::value_objects::{
     OidcIssuer, OidcProviderKey, RecipientContactSigningKeyId, RecipientEmailAddress,
     TrustDomainName, WorkloadIdentityProviderProfile, WorkloadIdentityProviderProfileSpec,
@@ -29,6 +32,8 @@ use zeroize::Zeroizing;
 pub enum ProcessRole {
     All,
     Api,
+    /// Published application delivery surface (APP0.3). No management or worker authority.
+    Delivery,
     Worker,
     Relay,
 }
@@ -38,16 +43,23 @@ impl ProcessRole {
         match value {
             "all" => Ok(Self::All),
             "api" => Ok(Self::Api),
+            "delivery" => Ok(Self::Delivery),
             "worker" => Ok(Self::Worker),
             "relay" => Ok(Self::Relay),
             _ => Err(ConfigError::Invalid(format!(
-                "server.role {value:?} must be all, api, worker, or relay"
+                "server.role {value:?} must be all, api, delivery, worker, or relay"
             ))),
         }
     }
 
     pub(crate) const fn serves_management_api(self) -> bool {
         matches!(self, Self::All | Self::Api)
+    }
+
+    /// Public published-application delivery routes (anonymous today; authenticated later).
+    /// `Api`/`All` still expose them via the management composition; `Delivery` is delivery-only.
+    pub(crate) const fn serves_application_delivery(self) -> bool {
+        matches!(self, Self::All | Self::Api | Self::Delivery)
     }
 
     pub(crate) const fn runs_workers(self) -> bool {
@@ -66,6 +78,7 @@ impl ProcessRole {
         match self {
             Self::All => "all",
             Self::Api => "api",
+            Self::Delivery => "delivery",
             Self::Worker => "worker",
             Self::Relay => "relay",
         }
@@ -462,6 +475,8 @@ pub struct EdgeConfig {
     pub certificate_reconciliation_interval_ms: u64,
     pub upstream_request_timeout_ms: u64,
     pub command_ttl_ms: u64,
+    /// Optional process-local Gateway rate-shaping catalog seeds from Edge ACL.
+    pub rate_shaping_profiles: Vec<GatewayRateShapingProfile>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -829,24 +844,8 @@ impl CloudConfig {
             ],
         )?;
         let edge = one_block(&document, "edge")?;
-        validate_block(
-            edge,
-            &[
-                "entrypoint_address",
-                "management_address",
-                "management_path_prefix",
-                "management_auth_token_env",
-                "domain_verification_timeout_ms",
-                "certificate_directory",
-                "managed_state_file",
-                "certificate_ttl_ms",
-                "certificate_renewal_window_ms",
-                "snapshot_renewal_window_ms",
-                "certificate_reconciliation_interval_ms",
-                "upstream_request_timeout_ms",
-                "command_ttl_ms",
-            ],
-        )?;
+        validate_edge_block(edge)?;
+        let edge_rate_shaping_profiles = parse_edge_rate_shaping_profiles(edge)?;
         let fleet = one_block(&document, "fleet")?;
         validate_block(
             fleet,
@@ -1126,6 +1125,7 @@ impl CloudConfig {
                 )?,
                 upstream_request_timeout_ms: integer(edge, "upstream_request_timeout_ms")?,
                 command_ttl_ms: integer(edge, "command_ttl_ms")?,
+                rate_shaping_profiles: edge_rate_shaping_profiles,
             },
             fleet: FleetConfig {
                 heartbeat_interval_ms: integer(fleet, "heartbeat_interval_ms")?,
@@ -1816,6 +1816,14 @@ impl CloudConfig {
                 "edge requires valid traffic and loopback management addresses, a safe management path/token environment, bounded DNS verification, normalized certificate and managed-state paths with bounded lifecycle windows, and independent bounded upstream and command timeouts"
                     .into(),
             ));
+        }
+        for profile in &self.edge.rate_shaping_profiles {
+            profile.validate().map_err(|error| {
+                ConfigError::Invalid(format!(
+                    "edge.rate_shaping_profile {:?} is invalid: {error}",
+                    profile.profile_id
+                ))
+            })?;
         }
         if self.fleet.heartbeat_interval_ms == 0
             || self.fleet.heartbeat_timeout_ms <= self.fleet.heartbeat_interval_ms
@@ -2599,6 +2607,143 @@ fn required_environment(name: &str) -> Result<String, ConfigError> {
     })
 }
 
+
+fn validate_edge_block(edge: &Block) -> Result<(), ConfigError> {
+    if !edge.labels.is_empty() {
+        return Err(ConfigError::Invalid(
+            "edge block cannot contain labels".into(),
+        ));
+    }
+    if edge
+        .blocks
+        .iter()
+        .any(|block| block.name != "rate_shaping_profile")
+    {
+        return Err(ConfigError::Invalid(
+            "edge may only nest optional rate_shaping_profile blocks".into(),
+        ));
+    }
+    if edge.blocks.len() > 64 {
+        return Err(ConfigError::Invalid(
+            "edge may contain at most 64 rate_shaping_profile blocks".into(),
+        ));
+    }
+    let expected = BTreeSet::from([
+        "entrypoint_address",
+        "management_address",
+        "management_path_prefix",
+        "management_auth_token_env",
+        "domain_verification_timeout_ms",
+        "certificate_directory",
+        "managed_state_file",
+        "certificate_ttl_ms",
+        "certificate_renewal_window_ms",
+        "snapshot_renewal_window_ms",
+        "certificate_reconciliation_interval_ms",
+        "upstream_request_timeout_ms",
+        "command_ttl_ms",
+    ]);
+    let actual = edge
+        .attributes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if actual != expected {
+        return Err(ConfigError::Invalid(
+            "edge block must contain exactly entrypoint_address, management_address, management_path_prefix, management_auth_token_env, domain_verification_timeout_ms, certificate_directory, managed_state_file, certificate_ttl_ms, certificate_renewal_window_ms, snapshot_renewal_window_ms, certificate_reconciliation_interval_ms, upstream_request_timeout_ms, command_ttl_ms".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn parse_edge_rate_shaping_profiles(
+    edge: &Block,
+) -> Result<Vec<GatewayRateShapingProfile>, ConfigError> {
+    let mut ids = BTreeSet::new();
+    edge.blocks
+        .iter()
+        .map(|profile| {
+            if profile.name != "rate_shaping_profile" {
+                return Err(ConfigError::Invalid(
+                    "edge may only nest rate_shaping_profile blocks".into(),
+                ));
+            }
+            if profile.labels.len() != 1 {
+                return Err(ConfigError::Invalid(
+                    "edge.rate_shaping_profile requires exactly one profile_id label".into(),
+                ));
+            }
+            let profile_id = profile.labels[0].clone();
+            if !ids.insert(profile_id.clone()) {
+                return Err(ConfigError::Invalid(format!(
+                    "edge.rate_shaping_profile id {profile_id:?} must be unique"
+                )));
+            }
+            let digest = Sha256Digest::parse(string(profile, "policy_revision_digest")?).map_err(
+                |error| {
+                    ConfigError::Invalid(format!(
+                        "edge.rate_shaping_profile {profile_id:?} policy_revision_digest is invalid: {error}"
+                    ))
+                },
+            )?;
+            let algorithm = parse_edge_rate_shaping_algorithm(profile, &profile_id)?;
+            GatewayRateShapingProfile::new(profile_id, digest, algorithm).map_err(|error| {
+                ConfigError::Invalid(format!("edge.rate_shaping_profile is invalid: {error}"))
+            })
+        })
+        .collect()
+}
+
+fn parse_edge_rate_shaping_algorithm(
+    profile: &Block,
+    profile_id: &str,
+) -> Result<GatewayRateShapingAlgorithm, ConfigError> {
+    let attribute_keys = profile
+        .attributes
+        .keys()
+        .map(String::as_str)
+        .collect::<BTreeSet<_>>();
+    if attribute_keys != BTreeSet::from(["policy_revision_digest"]) {
+        return Err(ConfigError::Invalid(format!(
+            "edge.rate_shaping_profile {profile_id:?} must contain exactly policy_revision_digest plus one algorithm block"
+        )));
+    }
+    if profile.blocks.len() != 1 {
+        return Err(ConfigError::Invalid(format!(
+            "edge.rate_shaping_profile {profile_id:?} must contain exactly one of token_bucket or gcra"
+        )));
+    }
+    let algorithm = &profile.blocks[0];
+    if !algorithm.labels.is_empty() || !algorithm.blocks.is_empty() {
+        return Err(ConfigError::Invalid(format!(
+            "edge.rate_shaping_profile {profile_id:?} algorithm block cannot contain labels or nested blocks"
+        )));
+    }
+    match algorithm.name.as_str() {
+        "token_bucket" => {
+            validate_block(algorithm, &["capacity", "refill_tokens_per_second"])?;
+            // validate_block rejects nested blocks; algorithm leaf has none.
+            // Re-check attributes only since validate_block also rejects labels (ok).
+            Ok(GatewayRateShapingAlgorithm::TokenBucket(
+                GatewayRateShapingTokenBucket {
+                    capacity: integer(algorithm, "capacity")?,
+                    refill_tokens_per_second: integer(algorithm, "refill_tokens_per_second")?,
+                },
+            ))
+        }
+        "gcra" => {
+            validate_block(algorithm, &["emission_interval_nanos", "burst_tolerance"])?;
+            Ok(GatewayRateShapingAlgorithm::Gcra(GatewayRateShapingGcra {
+                emission_interval_nanos: integer(algorithm, "emission_interval_nanos")?,
+                burst_tolerance: integer(algorithm, "burst_tolerance")?,
+            }))
+        }
+        other => Err(ConfigError::Invalid(format!(
+            "edge.rate_shaping_profile {profile_id:?} algorithm {other:?} must be token_bucket or gcra"
+        ))),
+    }
+}
+
 fn one_block<'a>(document: &'a Document, name: &str) -> Result<&'a Block, ConfigError> {
     let blocks = document
         .blocks
@@ -3186,7 +3331,7 @@ events {"#,
     #[test]
     fn packaged_process_role_can_only_narrow_an_all_acl() {
         let split = VALID.replace("provider = \"memory\"", "provider = \"nats\"");
-        for role in ["all", "api", "worker", "relay"] {
+        for role in ["all", "api", "delivery", "worker", "relay"] {
             let config = CloudConfig::parse(&split)
                 .expect("split-role ACL")
                 .restrict_to_process_role(role)
@@ -3201,7 +3346,7 @@ events {"#,
             .expect("exact packaged role");
         assert_eq!(exact.server.role, ProcessRole::Api);
 
-        for forbidden in ["all", "worker", "relay"] {
+        for forbidden in ["all", "delivery", "worker", "relay"] {
             let error = CloudConfig::parse(&api)
                 .expect("API ACL")
                 .restrict_to_process_role(forbidden)
@@ -3217,7 +3362,7 @@ events {"#,
         assert_eq!(config.server.role, ProcessRole::All);
         assert_eq!(config.security.profile, SecurityProfile::Production);
         assert_eq!(config.objects.provider, ObjectStorageProviderKind::S3);
-        for role in ["api", "worker", "relay"] {
+        for role in ["api", "delivery", "worker", "relay"] {
             CloudConfig::parse(source)
                 .expect("production Cloud ACL")
                 .restrict_to_process_role(role)
@@ -3834,5 +3979,75 @@ events {"#,
 events {"#,
         );
         assert!(CloudConfig::parse(&duplicate).is_err());
+    }
+
+    #[test]
+    fn edge_rate_shaping_profile_acl_seeds_are_closed_and_unique() {
+        let base = platform_valid();
+        let edge_close = "\n  command_ttl_ms = 180000\n}";
+        assert!(
+            base.contains(edge_close) || base.contains("command_ttl_ms = 180000"),
+            "platform_valid fixture must expose edge.command_ttl_ms for seed splice"
+        );
+        let seed_block = r#"
+  command_ttl_ms = 180000
+  rate_shaping_profile "public-api-default" {
+    policy_revision_digest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+    token_bucket {
+      capacity = 120
+      refill_tokens_per_second = 60
+    }
+  }
+  rate_shaping_profile "burst-gcra" {
+    policy_revision_digest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    gcra {
+      emission_interval_nanos = 1000000
+      burst_tolerance = 10
+    }
+  }
+}"#;
+        let seeded = if let Some(idx) = base.rfind(edge_close) {
+            let mut out = String::new();
+            out.push_str(&base[..idx]);
+            out.push_str(seed_block);
+            out.push_str(&base[idx + edge_close.len()..]);
+            out
+        } else {
+            let alt = "\ncommand_ttl_ms = 180000\n}";
+            let idx = base
+                .rfind(alt)
+                .expect("edge command_ttl close marker");
+            let mut out = String::new();
+            out.push_str(&base[..idx]);
+            out.push_str(seed_block);
+            out.push_str(&base[idx + alt.len()..]);
+            out
+        };
+        let config = CloudConfig::parse(&seeded).expect("seeded edge rate shaping ACL");
+        assert_eq!(config.edge.rate_shaping_profiles.len(), 2);
+        assert_eq!(
+            config.edge.rate_shaping_profiles[0].profile_id,
+            "public-api-default"
+        );
+        assert!(matches!(
+            config.edge.rate_shaping_profiles[0].algorithm,
+            GatewayRateShapingAlgorithm::TokenBucket(_)
+        ));
+        assert!(matches!(
+            config.edge.rate_shaping_profiles[1].algorithm,
+            GatewayRateShapingAlgorithm::Gcra(_)
+        ));
+
+        let unknown_child = seeded.replace("rate_shaping_profile", "rate_limit_profile");
+        assert!(CloudConfig::parse(&unknown_child).is_err());
+
+        let duplicate = seeded.replacen("burst-gcra", "public-api-default", 1);
+        assert!(CloudConfig::parse(&duplicate).is_err());
+
+        let missing_algo = seeded.replace(
+            "    token_bucket {\n      capacity = 120\n      refill_tokens_per_second = 60\n    }\n",
+            "",
+        );
+        assert!(CloudConfig::parse(&missing_algo).is_err());
     }
 }

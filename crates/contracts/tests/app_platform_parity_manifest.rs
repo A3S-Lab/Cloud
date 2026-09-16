@@ -31,7 +31,34 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             .find(|gate| gate.id() == "APP0.2")
             .expect("APP0.2 gate")
             .state(),
-        AppPlatformGateState::InProgress
+        AppPlatformGateState::Implemented
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.3")
+            .expect("APP0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.4")
+            .expect("APP0.4 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.5")
+            .expect("APP0.5 gate")
+            .state(),
+        AppPlatformGateState::Implemented
     );
     assert!(manifest.digest().starts_with("sha256:"));
     assert_eq!(manifest.canonical_acl(), MANIFEST.replace("\r\n", "\n"));
@@ -85,15 +112,40 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             .map(|capability| capability.id())
             .collect::<Vec<_>>(),
         [
+            "application.chatbot",
+            "application.chatflow",
+            "application.classic-agent",
+            "application.new-agent",
+            "application.text-generator",
+            "application.workflow",
+            "enterprise.audit-security",
+            "enterprise.custom-domain-branding",
+            "enterprise.external-identity",
+            "enterprise.ha-disaster-recovery",
+            "enterprise.isolation-quota-retention",
             "enterprise.organizations-workspaces",
+            "enterprise.saml-oidc-scim",
+            "monitoring.feedback-review",
+            "monitoring.usage-cost",
+            "node.answer",
             "node.http-request",
             "node.human-input",
             "node.if-else",
+            "node.iteration",
             "node.list-operator",
+            "node.loop",
             "node.output",
+            "node.schedule-trigger",
             "node.template",
             "node.user-input",
             "node.variable-aggregator",
+            "node.webhook-trigger",
+            "publication.api-blocking",
+            "publication.api-streaming",
+            "toolkit.annotation-reply",
+            "toolkit.citations",
+            "toolkit.file-input",
+            "toolkit.more-like-this",
         ]
     );
 }
@@ -321,4 +373,706 @@ fn authority_decision_register_matches_files_and_latest_decision_is_manifested()
     assert!(
         MANIFEST.contains("doc:docs/decisions/app-platform/0052-workflow-local-list-operations.md")
     );
+}
+
+#[test]
+fn app04_production_foundation_claims_six_modes_and_defers_toolkits_channels() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.4")
+            .expect("APP0.4 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    let modes = [
+        "application.chatbot",
+        "application.chatflow",
+        "application.classic-agent",
+        "application.new-agent",
+        "application.text-generator",
+        "application.workflow",
+    ];
+    for mode in modes {
+        let capability = by_id[mode];
+        assert_eq!(capability.gate(), "APP0.4");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Internal
+        );
+    }
+
+    let deferred = [
+        "publication.internal",
+        "publication.mcp",
+        "toolkit.acl-import-export",
+        "toolkit.collaborative-revision",
+        "toolkit.error-policy",
+        "toolkit.global-discovery",
+        "toolkit.hosted-mcp-facade",
+        "toolkit.internal-invocation",
+        "toolkit.moderation",
+        "toolkit.new-agent-build-chat",
+        "toolkit.new-agent-skill-files",
+        "toolkit.node-test",
+        "toolkit.snippets",
+        "toolkit.stt",
+        "toolkit.templates-catalog",
+        "toolkit.tts",
+        "toolkit.variable-inspection",
+        "toolkit.version-control",
+    ];
+    for capability_id in deferred {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "APP0.4");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Unavailable
+        );
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn app05_production_foundation_claims_feedback_usage_and_defers_ops_monitoring() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.5")
+            .expect("APP0.5 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    for capability_id in ["monitoring.feedback-review", "monitoring.usage-cost"] {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "APP0.5");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Internal
+        );
+    }
+
+    let deferred = [
+        "monitoring.alerts",
+        "monitoring.latency-failure",
+        "monitoring.retention-redaction",
+        "monitoring.run-history",
+        "monitoring.telemetry-export",
+    ];
+    for capability_id in deferred {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "APP0.5");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Unavailable
+        );
+        assert_eq!(capability.owner(), "operations_telemetry");
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn app06_production_foundation_claims_custom_domain_and_isolation_quota() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "APP0.6")
+            .expect("APP0.6 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    for capability_id in [
+        "enterprise.custom-domain-branding",
+        "enterprise.isolation-quota-retention",
+    ] {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "APP0.6");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Internal
+        );
+    }
+
+    // Remaining enterprise inventory stays on foreign gates; APP0.6 does not
+    // own SSO/HA/BYOK/audit-security/external-identity close-out.
+    let foreign_gate_enterprise = [
+        ("enterprise.audit-security", "C0.5"),
+        ("enterprise.byok-residency-airgap", "S0"),
+        ("enterprise.external-identity", "C0.3"),
+        ("enterprise.ha-disaster-recovery", "H0.5"),
+        ("enterprise.saml-oidc-scim", "C0.5"),
+    ];
+    for (capability_id, gate_id) in foreign_gate_enterprise {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), gate_id);
+        assert_ne!(capability.gate(), "APP0.6");
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn c05_production_foundation_claims_oidc_and_audit_security() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "C0.5")
+            .expect("C0.5 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    for capability_id in ["enterprise.saml-oidc-scim", "enterprise.audit-security"] {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "C0.5");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Internal
+        );
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn c03_production_foundation_claims_orgs_and_external_identity() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "C0.3")
+            .expect("C0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    for capability_id in [
+        "enterprise.organizations-workspaces",
+        "enterprise.external-identity",
+    ] {
+        let capability = by_id[capability_id];
+        assert_eq!(capability.gate(), "C0.3");
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Internal
+        );
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn w03_c1_claims_iteration_internal_without_closing_gate() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "W0.3")
+            .expect("W0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    let capability = by_id["node.iteration"];
+    assert_eq!(capability.gate(), "W0.3");
+    assert_eq!(capability.owner(), "workflow");
+    assert_eq!(
+        capability.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert!(capability.evidence().iter().any(|item| {
+        item.contains("0242-w03-iteration-internal-claim-path.md")
+    }));
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn w03_c2_claims_loop_internal_without_closing_gate() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "W0.3")
+            .expect("W0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    let capability = by_id["node.loop"];
+    assert_eq!(capability.gate(), "W0.3");
+    assert_eq!(capability.owner(), "workflow");
+    assert_eq!(
+        capability.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert!(capability.evidence().iter().any(|item| {
+        item.contains("0243-w03-loop-internal-claim-path.md")
+    }));
+
+    assert_eq!(
+        by_id["node.iteration"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert_eq!(
+        by_id["node.answer"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn w03_c3_claims_answer_internal_without_closing_gate() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "W0.3")
+            .expect("W0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    let capability = by_id["node.answer"];
+    assert_eq!(capability.gate(), "W0.3");
+    assert_eq!(capability.owner(), "applications");
+    assert!(
+        capability
+            .dependencies()
+            .iter()
+            .any(|dependency| dependency == "APP0.2")
+    );
+    assert_eq!(
+        capability.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert!(capability.evidence().iter().any(|item| {
+        item.contains("0244-w03-answer-internal-claim-path.md")
+    }));
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn w03_c4_production_foundation_closes_gate_without_public_claim() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "W0.3")
+            .expect("W0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let w03: Vec<_> = manifest
+        .capabilities()
+        .iter()
+        .filter(|capability| capability.gate() == "W0.3")
+        .collect();
+    assert_eq!(w03.len(), 10);
+    assert!(w03.iter().all(|capability| {
+        capability.availability() == AppPlatformCapabilityAvailability::Internal
+    }));
+    assert!(manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "W0.3")
+        .expect("W0.3 gate")
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0245-w03-production-foundation.md")));
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn aut05_production_foundation_closes_gate_without_inventing_dependents() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "AUT0.5")
+            .expect("AUT0.5 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    assert!(manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "AUT0.5")
+        .expect("AUT0.5 gate")
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0246-aut05-production-foundation.md")));
+
+    // No capability is gated on AUT0.5; foreign dependents stay unavailable.
+    assert!(manifest
+        .capabilities()
+        .iter()
+        .filter(|capability| capability.gate() == "AUT0.5")
+        .count()
+        == 0);
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+    assert_eq!(
+        by_id["knowledge.datasource-web"].availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        by_id["toolkit.moderation"].availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        by_id["node.http-request"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn w04_production_foundation_claims_http_request_and_defers_foreign_nodes() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "W0.4")
+            .expect("W0.4 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    assert!(manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "W0.4")
+        .expect("W0.4 gate")
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0247-w04-production-foundation.md")));
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+    assert_eq!(
+        by_id["node.http-request"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    for deferred in [
+        "node.agent",
+        "node.code",
+        "node.document-extractor",
+        "node.knowledge-retrieval",
+        "node.llm",
+        "node.parameter-extractor",
+        "node.question-classifier",
+        "node.tool",
+        "node.variable-assigner",
+    ] {
+        assert_eq!(
+            by_id[deferred].availability(),
+            AppPlatformCapabilityAvailability::Unavailable,
+            "{deferred}"
+        );
+    }
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn a05_production_foundation_closes_gate_without_external_provider_verification() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "A0.5")
+        .expect("A0.5 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0248-a05-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("skill_release_admission.rs")
+            || item.contains("067_skill_workload_revision_bindings.sql")
+    }));
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("skill_lifecycle.rs")));
+
+    // No app-platform capability invents an A0.5 owning gate on this close-out.
+    assert!(
+        manifest
+            .capabilities()
+            .iter()
+            .all(|capability| capability.gate() != "A0.5"),
+        "A0.5 must not invent capability ownership"
+    );
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn aut02_production_foundation_claims_webhook_trigger_internal() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "AUT0.2")
+            .expect("AUT0.2 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+    assert_eq!(
+        by_id["node.webhook-trigger"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert_eq!(by_id["node.webhook-trigger"].gate(), "AUT0.2");
+    assert_eq!(
+        by_id["node.integration-trigger"].availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn aut03_production_foundation_claims_schedule_trigger_internal() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "AUT0.3")
+            .expect("AUT0.3 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+    assert_eq!(
+        by_id["node.schedule-trigger"].availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert_eq!(by_id["node.schedule-trigger"].gate(), "AUT0.3");
+    assert_eq!(
+        by_id["node.integration-trigger"].availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+
+#[test]
+fn a13_production_foundation_closes_gate_without_inventing_capabilities() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "A1.3")
+        .expect("A1.3 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0252-a13-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("agent_provider_contract.rs")
+            || item.contains("a3s-code-provider-profile.acl")
+    }));
+    assert!(
+        manifest
+            .capabilities()
+            .iter()
+            .all(|capability| capability.gate() != "A1.3"),
+        "A1.3 must not invent capability ownership"
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn a14_production_foundation_closes_gate_without_inventing_capabilities() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "A1.4")
+        .expect("A1.4 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0253-a14-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("agent_provider_contract.rs")
+            || item.contains("invocation.rs")
+            || item.contains("agent_execution_flow/binding.rs")
+    }));
+    assert!(
+        manifest
+            .capabilities()
+            .iter()
+            .all(|capability| capability.gate() != "A1.4"),
+        "A1.4 must not invent capability ownership"
+    );
+    assert_eq!(
+        manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == "toolkit.new-agent-build-chat")
+            .expect("toolkit.new-agent-build-chat")
+            .availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn h05_production_foundation_claims_ha_disaster_recovery() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "H0.5")
+            .expect("H0.5 gate")
+            .state(),
+        AppPlatformGateState::Implemented
+    );
+
+    let by_id: BTreeMap<_, _> = manifest
+        .capabilities()
+        .iter()
+        .map(|capability| (capability.id(), capability))
+        .collect();
+
+    let capability = by_id["enterprise.ha-disaster-recovery"];
+    assert_eq!(capability.gate(), "H0.5");
+    assert_eq!(
+        capability.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+
+    // S0 BYOK remains unavailable until a non-invented claim path exists.
+    assert_eq!(
+        by_id["enterprise.byok-residency-airgap"].availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "S0")
+            .expect("S0 gate")
+            .state(),
+        AppPlatformGateState::Planned
+    );
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
 }

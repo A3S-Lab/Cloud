@@ -13,157 +13,197 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::{application_error_response, request_identity};
 use a3s_boot::{
-    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
-    Result,
+    controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+    BootResponse, CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn inference_route_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    let publish_bus = Arc::clone(&bus);
-    let revise_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::INFERENCE_WRITE])?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&publish_bus);
-                async move {
-                    let body: PublishInferenceRouteRequest = request.json_with_content_type()?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    let (router, models, grants, binding) =
-                        body.into_parts().map_err(BootError::BadRequest)?;
-                    let access = inference_access(&resource_access_evaluator(
-                        &request.require_auth_principal()?,
-                    )?);
-                    match bus
-                        .execute(PublishInferenceRoute {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
-                            access,
-                            router,
-                            models,
-                            grants,
-                            binding,
-                            idempotency_key,
-                            request_id,
-                            requested_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(route) => Ok(BootResponse::json_with_status(
-                            202,
-                            &InferenceRouteResponse::from(route),
-                        )?
-                        .with_header("cache-control", "no-store")
-                        .with_header("pragma", "no-cache")
-                        .with_header("referrer-policy", "no-referrer")),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/revisions",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&revise_bus);
-                async move {
-                    let body: ReviseInferenceRouteRequest = request.json_with_content_type()?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    let (expected_aggregate_version, router, models, grants, binding) =
-                        body.into_parts().map_err(BootError::BadRequest)?;
-                    let access = inference_access(&resource_access_evaluator(
-                        &request.require_auth_principal()?,
-                    )?);
-                    match bus
-                        .execute(ReviseInferenceRoute {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
-                            access,
-                            route_id: InferenceRouteId::from_uuid(
-                                request.param_as::<Uuid>("route_id")?,
-                            ),
-                            expected_aggregate_version,
-                            router,
-                            models,
-                            grants,
-                            binding,
-                            idempotency_key,
-                            request_id,
-                            requested_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(route) => Ok(BootResponse::json_with_status(
-                            202,
-                            &InferenceRouteResponse::from(route),
-                        )?
-                        .with_header("cache-control", "no-store")
-                        .with_header("pragma", "no-cache")
-                        .with_header("referrer-policy", "no-referrer")),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/retire",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let body: RetireInferenceRouteRequest = request.json_with_content_type()?;
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    let access = inference_access(&resource_access_evaluator(
-                        &request.require_auth_principal()?,
-                    )?);
-                    match bus
-                        .execute(RetireInferenceRoute {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
-                            access,
-                            route_id: InferenceRouteId::from_uuid(
-                                request.param_as::<Uuid>("route_id")?,
-                            ),
-                            expected_aggregate_version: body.expected_aggregate_version,
-                            idempotency_key,
-                            request_id,
-                            requested_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(route) => Ok(BootResponse::json_with_status(
-                            202,
-                            &InferenceRouteResponse::from(route),
-                        )?
-                        .with_header("cache-control", "no-store")
-                        .with_header("pragma", "no-cache")
-                        .with_header("referrer-policy", "no-referrer")),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )
+    Arc::new(InferenceRouteCommandsController { bus }).controller()
+}
+
+#[derive(Debug, Clone)]
+struct InferenceRouteCommandsController {
+    bus: Arc<CommandBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::INFERENCE_WRITE])]
+impl InferenceRouteCommandsController {
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes",
+        raw
+    )]
+    async fn publish(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: PublishInferenceRouteRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        let (router, models, grants, binding) = body.into_parts().map_err(BootError::BadRequest)?;
+        let access = inference_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        match self
+            .bus
+            .execute(PublishInferenceRoute {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                environment_id: EnvironmentId::from_uuid(
+                    request.param_as::<Uuid>("environment_id")?,
+                ),
+                access,
+                router,
+                models,
+                grants,
+                binding,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(route) => Ok(BootResponse::json_with_status(
+                202,
+                &InferenceRouteResponse::from(route),
+            )?
+            .with_header("cache-control", "no-store")
+            .with_header("pragma", "no-cache")
+            .with_header("referrer-policy", "no-referrer")),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/revisions",
+        raw
+    )]
+    async fn revise(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: ReviseInferenceRouteRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        let (expected_aggregate_version, router, models, grants, binding) =
+            body.into_parts().map_err(BootError::BadRequest)?;
+        let access = inference_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        match self
+            .bus
+            .execute(ReviseInferenceRoute {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                environment_id: EnvironmentId::from_uuid(
+                    request.param_as::<Uuid>("environment_id")?,
+                ),
+                access,
+                route_id: InferenceRouteId::from_uuid(request.param_as::<Uuid>("route_id")?),
+                expected_aggregate_version,
+                router,
+                models,
+                grants,
+                binding,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(route) => Ok(BootResponse::json_with_status(
+                202,
+                &InferenceRouteResponse::from(route),
+            )?
+            .with_header("cache-control", "no-store")
+            .with_header("pragma", "no-cache")
+            .with_header("referrer-policy", "no-referrer")),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/retire",
+        raw
+    )]
+    async fn retire(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: RetireInferenceRouteRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        let access = inference_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        match self
+            .bus
+            .execute(RetireInferenceRoute {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                environment_id: EnvironmentId::from_uuid(
+                    request.param_as::<Uuid>("environment_id")?,
+                ),
+                access,
+                route_id: InferenceRouteId::from_uuid(request.param_as::<Uuid>("route_id")?),
+                expected_aggregate_version: body.expected_aggregate_version,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(route) => Ok(BootResponse::json_with_status(
+                202,
+                &InferenceRouteResponse::from(route),
+            )?
+            .with_header("cache-control", "no-store")
+            .with_header("pragma", "no-cache")
+            .with_header("referrer-policy", "no-referrer")),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_inference_route_commands_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+    use std::collections::BTreeSet;
+
+    #[test]
+    fn inference_route_commands_register_scoped_guarded_posts_via_nest_macros() {
+        let controller = inference_route_commands_controller(Arc::new(CommandBus::new()))
+            .expect("inference route nest command controller");
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 3);
+        let paths: BTreeSet<_> = routes
+            .iter()
+            .map(|route| (route.method(), route.path().to_string()))
+            .collect();
+        assert!(paths.contains(&(
+            HttpMethod::Post,
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes"
+                .into()
+        )));
+        assert!(paths.contains(&(
+            HttpMethod::Post,
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/revisions"
+                .into()
+        )));
+        assert!(paths.contains(&(
+            HttpMethod::Post,
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/inference/routes/{route_id}/retire"
+                .into()
+        )));
+        for route in routes {
+            assert_eq!(
+                route
+                    .metadata()
+                    .get(AUTH_SCOPES_METADATA)
+                    .cloned()
+                    .expect("auth.scopes"),
+                serde_json::json!([ApiTokenScope::INFERENCE_WRITE])
+            );
+        }
+    }
 }

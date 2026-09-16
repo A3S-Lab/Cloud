@@ -36,68 +36,68 @@ parity_manifest "application-platform-core-2026-08-13" {
     url = "https://github.com/A3S-Lab/Cloud/blob/main/docs/decisions/app-platform/0009-workflow-node-catalog-projection.md"
   }
   gate "A0.5" {
-    evidence = ["doc:ROADMAP.md"]
-    state = "in_progress"
+    evidence = ["doc:ROADMAP.md", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0248-a05-production-foundation.md", "implementation:crates/control-plane/src/modules/workloads/infrastructure/skill_release_admission.rs", "implementation:migrations/067_skill_workload_revision_bindings.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/tests/support/agent_code_recovery/real_box_release/skill_lifecycle.rs"]
+    state = "implemented"
   }
   gate "A1.3" {
-    evidence = ["doc:ROADMAP.md"]
-    state = "planned"
+    evidence = ["contract:contracts/a1.3/a3s-code-provider-profile.acl", "contract:contracts/a1.3/reference-echo-provider-profile.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0252-a13-production-foundation.md", "implementation:crates/control-plane/src/modules/agents/infrastructure/agent_provider/registry.rs", "test:crates/contracts/tests/agent_provider_contract.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs"]
+    state = "implemented"
   }
   gate "A1.4" {
-    evidence = ["doc:ROADMAP.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0253-a14-production-foundation.md", "implementation:crates/contracts/src/agent_provider/invocation.rs", "implementation:crates/control-plane/src/modules/agents/infrastructure/agent_execution_flow/binding.rs", "test:crates/contracts/tests/agent_provider_contract.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs"]
+    state = "implemented"
   }
   gate "APP0.1" {
     evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "contract:contracts/app0.1/application-release.acl", "contract:openapi/v1.json", "doc:docs/decisions/app-platform/0002-application-delivery.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md", "doc:docs/decisions/app-platform/0027-atomic-application-release-persistence.md", "doc:docs/decisions/app-platform/0028-authorized-application-release-cqrs.md", "doc:docs/decisions/app-platform/0029-single-application-management-interface.md", "implementation:cli/src/application-commands.ts", "implementation:crates/control-plane/src/modules/applications/application/mod.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/persistence/postgres.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_revision.rs", "implementation:crates/control-plane/src/modules/applications/presentation/controller.rs", "implementation:crates/control-plane/src/presentation/management_mcp/applications.rs", "implementation:migrations/124_application_releases.sql", "implementation:packages/cloud-client/src/applications.ts", "test:cli/test/application-commands.test.ts", "test:crates/control-plane/src/app/tests/application_tests.rs", "test:crates/control-plane/src/modules/applications/application/tests.rs", "test:crates/control-plane/tests/support/applications.rs", "test:packages/cloud-client/src/api.test.ts"]
     state = "verified"
   }
   gate "APP0.2" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0031-single-application-session-authority.md", "doc:docs/decisions/app-platform/0032-atomic-application-session-persistence.md", "doc:docs/decisions/app-platform/0033-typed-application-workflow-run-composition.md", "doc:docs/decisions/app-platform/0034-deterministic-application-preset-workflows.md", "doc:docs/decisions/app-platform/0035-durable-application-invocation-execution-authority.md", "doc:docs/decisions/app-platform/0036-authorized-application-delivery-cqrs.md", "doc:docs/decisions/app-platform/0037-workflow-application-semantic-effect-port.md", "doc:docs/decisions/app-platform/0038-project-member-application-delivery-admission.md", "doc:docs/decisions/app-platform/0039-versioned-application-workflow-lifecycle-projection.md", "doc:docs/decisions/app-platform/0040-descriptor-bound-application-answer-effects.md", "doc:docs/decisions/app-platform/0041-descriptor-bound-application-variable-effects.md", "doc:docs/decisions/app-platform/0042-project-member-application-lifecycle-replay.md", "doc:docs/decisions/app-platform/0043-root-bound-repeated-application-answer-frames.md", "doc:docs/decisions/app-platform/0044-replay-pinned-bounded-flow-step-retries.md", "doc:docs/decisions/app-platform/0045-descriptor-bound-application-variable-failure-routes.md", "doc:docs/decisions/app-platform/0046-descriptor-bound-application-answer-failure-routes.md", "implementation:crates/control-plane/src/app.rs", "implementation:crates/control-plane/src/infrastructure/flow.rs", "implementation:crates/control-plane/src/infrastructure/flow_retry.rs", "implementation:crates/control-plane/src/modules/applications/application/invocation_composition.rs", "implementation:crates/control-plane/src/modules/applications/application/workflow_effects.rs", "implementation:crates/control-plane/src/modules/applications/application/workflow_run_port.rs", "implementation:crates/control-plane/src/modules/applications/domain/application_invocation.rs", "implementation:crates/control-plane/src/modules/applications/domain/session_repository.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/persistence/session_postgres.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_revision.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_run.rs", "implementation:crates/control-plane/src/modules/workflow/application/workflow_composite_execution_port.rs", "implementation:crates/control-plane/src/modules/workflow/domain/services/workflow_run_compiler.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_answer_hook.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_frame_authority.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_variable_hook.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_failure_routing.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_run_contract.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_step_failure.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/readers.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/workflow.rs", "implementation:migrations/125_application_sessions.sql", "implementation:migrations/126_application_invocation_workflow_authority.sql", "implementation:migrations/127_application_invocation_timeout_policy.sql", "implementation:migrations/143_workflow_application_answer_step_projections.sql", "test:crates/control-plane/src/infrastructure/flow_retry.rs", "test:crates/control-plane/src/modules/applications/application/invocation_composition_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_repository_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_tests.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_revision_semantic_contracts_tests.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_run_contract_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/application_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs", "test:crates/control-plane/tests/postgres_integration.rs", "test:crates/control-plane/tests/support/application_delivery_recovery.rs", "test:crates/control-plane/tests/support/application_sessions.rs", "test:crates/control-plane/tests/support/application_workflow_runs.rs"]
-    state = "in_progress"
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0031-single-application-session-authority.md", "doc:docs/decisions/app-platform/0032-atomic-application-session-persistence.md", "doc:docs/decisions/app-platform/0033-typed-application-workflow-run-composition.md", "doc:docs/decisions/app-platform/0034-deterministic-application-preset-workflows.md", "doc:docs/decisions/app-platform/0035-durable-application-invocation-execution-authority.md", "doc:docs/decisions/app-platform/0036-authorized-application-delivery-cqrs.md", "doc:docs/decisions/app-platform/0037-workflow-application-semantic-effect-port.md", "doc:docs/decisions/app-platform/0038-project-member-application-delivery-admission.md", "doc:docs/decisions/app-platform/0039-versioned-application-workflow-lifecycle-projection.md", "doc:docs/decisions/app-platform/0040-descriptor-bound-application-answer-effects.md", "doc:docs/decisions/app-platform/0041-descriptor-bound-application-variable-effects.md", "doc:docs/decisions/app-platform/0042-project-member-application-lifecycle-replay.md", "doc:docs/decisions/app-platform/0043-root-bound-repeated-application-answer-frames.md", "doc:docs/decisions/app-platform/0044-replay-pinned-bounded-flow-step-retries.md", "doc:docs/decisions/app-platform/0045-descriptor-bound-application-variable-failure-routes.md", "doc:docs/decisions/app-platform/0046-descriptor-bound-application-answer-failure-routes.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "doc:docs/decisions/app-platform/0164-app02-production-foundation-opener-follow-up-deferral.md", "implementation:crates/control-plane/src/app.rs", "implementation:crates/control-plane/src/infrastructure/flow.rs", "implementation:crates/control-plane/src/infrastructure/flow_retry.rs", "implementation:crates/control-plane/src/modules/applications/application/invocation_composition.rs", "implementation:crates/control-plane/src/modules/applications/application/workflow_effects.rs", "implementation:crates/control-plane/src/modules/applications/application/workflow_run_port.rs", "implementation:crates/control-plane/src/modules/applications/domain/application_invocation.rs", "implementation:crates/control-plane/src/modules/applications/domain/session_repository.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/persistence/session_postgres.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_revision.rs", "implementation:crates/control-plane/src/modules/applications/infrastructure/workflow_run.rs", "implementation:crates/control-plane/src/modules/workflow/application/workflow_composite_execution_port.rs", "implementation:crates/control-plane/src/modules/workflow/domain/services/workflow_run_compiler.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_answer_hook.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_frame_authority.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_variable_hook.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_failure_routing.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_run_contract.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_step_failure.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/readers.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/workflow.rs", "implementation:migrations/125_application_sessions.sql", "implementation:migrations/126_application_invocation_workflow_authority.sql", "implementation:migrations/127_application_invocation_timeout_policy.sql", "implementation:migrations/143_workflow_application_answer_step_projections.sql", "test:crates/control-plane/src/infrastructure/flow_retry.rs", "test:crates/control-plane/src/modules/applications/application/invocation_composition_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_repository_tests.rs", "test:crates/control-plane/src/modules/applications/domain/session_tests.rs", "test:crates/control-plane/src/modules/applications/presentation/toolkit_claim_path_tests.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_revision_semantic_contracts_tests.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_run_contract_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/application_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs", "test:crates/control-plane/tests/postgres_integration.rs", "test:crates/control-plane/tests/support/application_delivery_recovery.rs", "test:crates/control-plane/tests/support/application_sessions.rs", "test:crates/control-plane/tests/support/application_workflow_runs.rs"]
+    state = "implemented"
   }
   gate "APP0.3" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0130-application-resource-grant-scope.md", "doc:docs/decisions/app-platform/0131-process-role-delivery.md", "doc:docs/decisions/app-platform/0134-process-role-delivery-authenticated-http.md", "doc:docs/decisions/app-platform/0137-delivery-process-drain.md", "doc:docs/decisions/app-platform/0139-application-publication-route-intent.md", "doc:docs/decisions/app-platform/0154-gateway-publication-http-admit.md", "doc:docs/decisions/app-platform/0157-gateway-rate-shaping-durable-postgres-catalog.md", "doc:docs/decisions/app-platform/0159-managed-rollback-publication-route-intent-acl.md", "doc:docs/decisions/app-platform/0160-app03-production-release-audit.md", "doc:docs/decisions/app-platform/0161-delivery-traffic-owner-publication-api-claim-path.md", "doc:docs/decisions/app-platform/0162-app03-production-release-api-channels-embed-web-deferral.md", "implementation:migrations/209_resource_grant_application_scope.sql", "implementation:migrations/210_application_publication_route_intents.sql", "implementation:migrations/211_gateway_rate_shaping_profiles.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/applications/presentation/publication_api_channel_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "APP0.4" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "doc:docs/decisions/app-platform/0166-app04-chatflow-workflow-claim-path.md", "doc:docs/decisions/app-platform/0167-app04-production-foundation-toolkit-channel-deferral.md", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "APP0.5" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0168-app05-feedback-annotation-review-claim-path.md", "doc:docs/decisions/app-platform/0169-app05-usage-cost-showback-claim-path.md", "doc:docs/decisions/app-platform/0170-app05-production-foundation-ops-monitoring-deferral.md", "test:crates/control-plane/src/modules/applications/presentation/monitoring_feedback_review_claim_path_tests.rs", "test:crates/control-plane/src/modules/inference/presentation/monitoring_usage_cost_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "APP0.6" {
-    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["contract:contracts/app-platform/v1/parity-manifest.acl", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0171-app06-custom-domain-claim-path.md", "doc:docs/decisions/app-platform/0172-app06-isolation-quota-retention-claim-path.md", "doc:docs/decisions/app-platform/0173-app06-production-foundation.md", "doc:docs/decisions/app-platform/0251-production-release-honesty-refusals.md", "test:crates/control-plane/src/modules/edge/presentation/controllers/enterprise_custom_domain_claim_path_tests.rs", "test:crates/control-plane/src/modules/enterprise_isolation_quota_retention_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "AUT0.2" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0223-nest-automation-webhooks-controller.md", "doc:docs/decisions/app-platform/0249-aut02-production-foundation.md", "implementation:crates/control-plane/src/modules/automations/application/webhook_admission.rs", "implementation:crates/control-plane/src/modules/automations/presentation/webhook_controller.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/contracts/tests/automation_contract.rs"]
+    state = "implemented"
   }
   gate "AUT0.3" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0250-aut03-production-foundation.md", "implementation:crates/control-plane/src/modules/automations/application/schedule_dispatch.rs", "implementation:crates/control-plane/src/modules/automations/domain/schedule.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/automations/application/schedule_dispatch_tests.rs"]
+    state = "implemented"
   }
   gate "AUT0.4" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     state = "planned"
   }
   gate "AUT0.5" {
-    evidence = ["contract:openapi/v1.json", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0058-terminal-connector-attempt-resolution.md", "implementation:crates/control-plane/src/modules/connectors/domain/attempt_resolution.rs", "implementation:crates/control-plane/src/modules/connectors/infrastructure/attempt_resolution_postgres.rs", "implementation:migrations/155_connector_execution_attempt_resolutions.sql", "test:crates/control-plane/src/infrastructure/postgres_tests/connector_execution_attempt_resolution_migration.rs", "test:crates/control-plane/src/modules/connectors/application/execution_service.rs", "test:crates/control-plane/tests/support/connectors.rs"]
-    state = "in_progress"
+    evidence = ["contract:openapi/v1.json", "doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0058-terminal-connector-attempt-resolution.md", "doc:docs/decisions/app-platform/0246-aut05-production-foundation.md", "implementation:crates/control-plane/src/modules/connectors/domain/attempt_resolution.rs", "implementation:crates/control-plane/src/modules/connectors/infrastructure/attempt_resolution_postgres.rs", "implementation:migrations/155_connector_execution_attempt_resolutions.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/infrastructure/postgres_tests/connector_execution_attempt_resolution_migration.rs", "test:crates/control-plane/src/modules/connectors/application/execution_service.rs", "test:crates/control-plane/tests/support/connectors.rs"]
+    state = "implemented"
   }
   gate "C0.3" {
-    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "doc:docs/decisions/app-platform/0087-one-workload-runtime-evidence-authority.md", "implementation:crates/control-plane/src/modules/identity/domain/entities/workload_runtime_evidence_binding.rs", "implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs", "test:crates/control-plane/src/modules/architecture_tests.rs"]
-    state = "in_progress"
+    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "doc:docs/decisions/app-platform/0087-one-workload-runtime-evidence-authority.md", "doc:docs/decisions/app-platform/0177-c03-external-identity-claim-path.md", "doc:docs/decisions/app-platform/0178-c03-production-foundation.md", "implementation:crates/control-plane/src/modules/identity/domain/entities/workload_runtime_evidence_binding.rs", "implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs", "test:crates/control-plane/src/modules/architecture_tests.rs", "test:crates/control-plane/src/modules/identity/presentation/controllers/enterprise_external_identity_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "C0.5" {
-    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md", "doc:docs/decisions/app-platform/0081-one-privileged-authorization-evidence-model.md", "doc:docs/decisions/app-platform/0082-one-installation-scoped-fact-rail.md", "doc:docs/decisions/app-platform/0083-one-platform-rbac-persistence-authority.md", "doc:docs/decisions/app-platform/0084-one-tenant-support-approval-authority.md", "doc:docs/decisions/app-platform/0085-one-atomic-privileged-authorization-authority.md", "doc:docs/decisions/app-platform/0086-one-atomic-identity-bootstrap-authority.md", "implementation:crates/contracts/src/cloud_scope_ref.rs", "implementation:crates/control-plane/src/infrastructure/postgres.rs", "implementation:crates/control-plane/src/modules/identity/application/commands/authorize_privileged_access/handler.rs", "implementation:crates/control-plane/src/modules/identity/domain/entities/tenant_support_grant.rs", "implementation:crates/control-plane/src/modules/identity/domain/repositories/privileged_authorization_decision_repository.rs", "implementation:crates/control-plane/src/modules/identity/domain/repositories/tenant_support_grant_repository.rs", "implementation:crates/control-plane/src/modules/identity/domain/services/privileged_authorization_decision.rs", "implementation:crates/control-plane/src/modules/identity/domain/value_objects/tenant_support_grant_contract.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_privileged_authorization_decisions.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs", "implementation:migrations/174_installation_scoped_facts.sql", "implementation:migrations/177_platform_rbac_authority.sql", "implementation:migrations/178_tenant_support_grant_approvals.sql", "test:crates/control-plane/src/infrastructure/postgres_tests/installation_scoped_facts_migration.rs", "test:crates/control-plane/src/modules/architecture_tests.rs", "test:crates/control-plane/tests/postgres_integration.rs", "test:crates/control-plane/tests/support/platform_rbac.rs", "test:crates/control-plane/tests/support/privileged_authorization_decisions.rs", "test:crates/control-plane/tests/support/tenant_support_grants.rs"]
-    state = "planned"
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0080-identity-owned-platform-scope-and-rbac.md", "doc:docs/decisions/app-platform/0081-one-privileged-authorization-evidence-model.md", "doc:docs/decisions/app-platform/0082-one-installation-scoped-fact-rail.md", "doc:docs/decisions/app-platform/0083-one-platform-rbac-persistence-authority.md", "doc:docs/decisions/app-platform/0084-one-tenant-support-approval-authority.md", "doc:docs/decisions/app-platform/0085-one-atomic-privileged-authorization-authority.md", "doc:docs/decisions/app-platform/0086-one-atomic-identity-bootstrap-authority.md", "doc:docs/decisions/app-platform/0174-c05-oidc-federation-claim-path.md", "doc:docs/decisions/app-platform/0175-c05-audit-security-claim-path.md", "doc:docs/decisions/app-platform/0176-c05-production-foundation.md", "implementation:crates/contracts/src/cloud_scope_ref.rs", "implementation:crates/control-plane/src/infrastructure/postgres.rs", "implementation:crates/control-plane/src/modules/identity/application/commands/authorize_privileged_access/handler.rs", "implementation:crates/control-plane/src/modules/identity/domain/entities/tenant_support_grant.rs", "implementation:crates/control-plane/src/modules/identity/domain/repositories/privileged_authorization_decision_repository.rs", "implementation:crates/control-plane/src/modules/identity/domain/repositories/tenant_support_grant_repository.rs", "implementation:crates/control-plane/src/modules/identity/domain/services/privileged_authorization_decision.rs", "implementation:crates/control-plane/src/modules/identity/domain/value_objects/tenant_support_grant_contract.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_platform_rbac.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_privileged_authorization_decisions.rs", "implementation:crates/control-plane/src/modules/identity/infrastructure/persistence/postgres_tenant_support_grants.rs", "implementation:migrations/174_installation_scoped_facts.sql", "implementation:migrations/177_platform_rbac_authority.sql", "implementation:migrations/178_tenant_support_grant_approvals.sql", "test:crates/control-plane/src/infrastructure/postgres_tests/installation_scoped_facts_migration.rs", "test:crates/control-plane/src/modules/architecture_tests.rs", "test:crates/control-plane/src/modules/audit/presentation/enterprise_audit_security_claim_path_tests.rs", "test:crates/control-plane/src/modules/identity/presentation/controllers/enterprise_saml_oidc_scim_claim_path_tests.rs", "test:crates/control-plane/tests/postgres_integration.rs", "test:crates/control-plane/tests/support/platform_rbac.rs", "test:crates/control-plane/tests/support/privileged_authorization_decisions.rs", "test:crates/control-plane/tests/support/tenant_support_grants.rs"]
+    state = "implemented"
   }
   gate "H0.5" {
-    evidence = ["doc:ROADMAP.md"]
-    state = "planned"
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0180-h05-ha-disaster-recovery-claim-path.md", "doc:docs/decisions/app-platform/0181-h05-production-foundation.md", "test:crates/control-plane/src/modules/data/enterprise_ha_disaster_recovery_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "I0.2" {
     evidence = ["doc:docs/inference-plan.md"]
@@ -136,78 +136,78 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "planned"
   }
   gate "W0.3" {
-    evidence = ["doc:docs/decisions/app-platform/0047-descriptor-bound-transform-failure-routes.md", "doc:docs/decisions/app-platform/0048-descriptor-bound-output-failure-routes.md", "doc:docs/decisions/app-platform/0062-exact-finite-execution-dispatch-authority.md", "doc:docs/decisions/app-platform/0064-flow-owned-connector-cancellation-compensation.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_graph.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/cancellation.rs", "implementation:migrations/145_workflow_transform_failure_step_projections.sql", "implementation:migrations/158_workflow_cancellation_compensation_policy.sql", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector_compensation_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
-    state = "in_progress"
+    evidence = ["doc:docs/decisions/app-platform/0047-descriptor-bound-transform-failure-routes.md", "doc:docs/decisions/app-platform/0048-descriptor-bound-output-failure-routes.md", "doc:docs/decisions/app-platform/0062-exact-finite-execution-dispatch-authority.md", "doc:docs/decisions/app-platform/0064-flow-owned-connector-cancellation-compensation.md", "doc:docs/decisions/app-platform/0245-w03-production-foundation.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_graph.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/cancellation.rs", "implementation:migrations/145_workflow_transform_failure_step_projections.sql", "implementation:migrations/158_workflow_cancellation_compensation_policy.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/connector_compensation_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/mod.rs"]
+    state = "implemented"
   }
   gate "W0.4" {
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0054-internal-connector-workflow-capability.md", "doc:docs/decisions/app-platform/0247-w04-production-foundation.md", "test:crates/contracts/tests/app_platform_parity_manifest.rs"]
+    state = "implemented"
   }
   capability "application.chatbot" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["I0.2", "W0.4"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    gate = "APP0.2"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0101-application-authoring-profile-publication.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/authoring_profile_commands.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
+    gate = "APP0.4"
     label = "Chatbot"
     owner = "applications"
     references = ["workflow-chatflow"]
   }
   capability "application.chatflow" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["W0.3"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    gate = "APP0.2"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md", "doc:docs/decisions/app-platform/0166-app04-chatflow-workflow-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/commands.rs", "test:crates/control-plane/src/modules/applications/application/application_chatflow_workflow_claim_path_tests.rs"]
+    gate = "APP0.4"
     label = "Chatflow"
     owner = "applications"
     references = ["workflow-chatflow"]
   }
   capability "application.classic-agent" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["A1.3", "I0.2", "U0.4", "W0.4"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0101-application-authoring-profile-publication.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/authoring_profile_commands.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
     gate = "APP0.4"
     label = "Classic Agent"
     owner = "applications"
     references = ["workflow-chatflow"]
   }
   capability "application.new-agent" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["A0.5", "A1.4", "W0.4"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0101-application-authoring-profile-publication.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/authoring_profile_commands.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
     gate = "APP0.4"
     label = "New Agent"
     owner = "applications"
     references = ["new-agent", "workflow-chatflow"]
   }
   capability "application.text-generator" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["I0.2", "W0.4"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    gate = "APP0.2"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0101-application-authoring-profile-publication.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/authoring_profile_commands.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
+    gate = "APP0.4"
     label = "Text Generator"
     owner = "applications"
     references = ["workflow-chatflow"]
   }
   capability "application.workflow" {
-    availability = "unavailable"
+    availability = "internal"
     category = "application_mode"
     dependencies = ["W0.3"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
-    gate = "APP0.2"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0026-single-application-release-authority.md", "doc:docs/decisions/app-platform/0166-app04-chatflow-workflow-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/commands.rs", "test:crates/control-plane/src/modules/applications/application/application_chatflow_workflow_claim_path_tests.rs"]
+    gate = "APP0.4"
     label = "Workflow Application"
     owner = "applications"
     references = ["workflow-chatflow"]
   }
   capability "enterprise.audit-security" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0175-c05-audit-security-claim-path.md", "implementation:crates/control-plane/src/modules/audit/presentation/controller.rs", "test:crates/control-plane/src/modules/audit/presentation/enterprise_audit_security_claim_path_tests.rs"]
     gate = "C0.5"
     label = "Audit, SIEM, Investigation, and PII Redaction"
     owner = "identity"
@@ -224,40 +224,40 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["enterprise"]
   }
   capability "enterprise.custom-domain-branding" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0171-app06-custom-domain-claim-path.md", "doc:docs/decisions/app-platform/0184-nest-gateway-scope-queries-controller.md", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/domain_claim_commands_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/domain_claim_queries_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/gateway_scope_queries_controller.rs", "test:crates/control-plane/src/modules/edge/presentation/controllers/enterprise_custom_domain_claim_path_tests.rs"]
     gate = "APP0.6"
     label = "Custom Domain and Branding"
     owner = "edge_gateway"
     references = ["enterprise"]
   }
   capability "enterprise.external-identity" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = []
-    evidence = ["doc:ROADMAP.md"]
+    evidence = ["doc:docs/decisions/app-platform/0079-identity-owned-workload-trust-contract.md", "doc:docs/decisions/app-platform/0087-one-workload-runtime-evidence-authority.md", "doc:docs/decisions/app-platform/0177-c03-external-identity-claim-path.md", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/privileged_management_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/resource_grant_controller.rs", "test:crates/control-plane/src/modules/identity/presentation/controllers/enterprise_external_identity_claim_path_tests.rs"]
     gate = "C0.3"
     label = "External Identity and Fine-Grained Access"
     owner = "identity"
     references = ["enterprise"]
   }
   capability "enterprise.ha-disaster-recovery" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = ["S0"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0180-h05-ha-disaster-recovery-claim-path.md", "implementation:crates/control-plane/src/modules/data/application/object_namespace_recovery_operation.rs", "implementation:crates/control-plane/src/modules/data/infrastructure/object_namespace_recovery_flow/mod.rs", "test:crates/control-plane/src/modules/data/enterprise_ha_disaster_recovery_claim_path_tests.rs"]
     gate = "H0.5"
     label = "High Availability and Disaster Recovery"
     owner = "platform"
     references = ["enterprise"]
   }
   capability "enterprise.isolation-quota-retention" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = ["C0.5"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0172-app06-isolation-quota-retention-claim-path.md", "doc:docs/decisions/app-platform/0183-nest-usage-retention-controller.md", "implementation:crates/control-plane/src/modules/audit/presentation/controller.rs", "implementation:crates/control-plane/src/modules/files/presentation/controller.rs", "implementation:crates/control-plane/src/modules/inference/presentation/usage_retention_controller.rs", "test:crates/control-plane/src/modules/enterprise_isolation_quota_retention_claim_path_tests.rs"]
     gate = "APP0.6"
     label = "Tenant Isolation, Quotas, and Retention"
     owner = "platform"
@@ -267,17 +267,17 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "internal"
     category = "enterprise"
     dependencies = []
-    evidence = ["implementation:crates/control-plane/src/modules/identity/mod.rs", "test:crates/control-plane/src/app/tests.rs"]
+    evidence = ["doc:docs/checklists/NEST-macros-anonymous-delivery-zh.md", "doc:docs/checklists/NEST-macros-application-delivery-zh.md", "doc:docs/checklists/NEST-macros-application-zh.md", "doc:docs/checklists/NEST-macros-authenticated-delivery-zh.md", "doc:docs/checklists/NEST-macros-automation-github-webhooks-zh.md", "doc:docs/checklists/NEST-macros-automation-management-zh.md", "doc:docs/checklists/NEST-macros-build-plan-zh.md", "doc:docs/checklists/NEST-macros-connector-zh.md", "doc:docs/checklists/NEST-macros-domain-claim-mcp-credential-commands-zh.md", "doc:docs/checklists/NEST-macros-durable-cell-zh.md", "doc:docs/checklists/NEST-macros-feedback-delivery-credential-publication-zh.md", "doc:docs/checklists/NEST-macros-knowledge-zh.md", "doc:docs/checklists/NEST-macros-membership-invitation-zh.md", "doc:docs/checklists/NEST-macros-membership-resource-grant-zh.md", "doc:docs/checklists/NEST-macros-message-delivery-zh.md", "doc:docs/checklists/NEST-macros-node-node-pool-management-zh.md", "doc:docs/checklists/NEST-macros-preview-management-zh.md", "doc:docs/checklists/NEST-macros-privileged-management-zh.md", "doc:docs/checklists/NEST-macros-projects-github-subscription-commands-zh.md", "doc:docs/checklists/NEST-macros-routes-mcp-source-enrollment-zh.md", "doc:docs/checklists/NEST-macros-security-investigation-zh.md", "doc:docs/decisions/app-platform/0182-nest-organizations-query-controller.md", "doc:docs/decisions/app-platform/0185-nest-source-revision-queries-controller.md", "doc:docs/decisions/app-platform/0186-nest-search-controller.md", "doc:docs/decisions/app-platform/0187-nest-github-repository-subscription-queries-controller.md", "doc:docs/decisions/app-platform/0188-nest-blocking-observation-controller.md", "doc:docs/decisions/app-platform/0189-nest-asynchronous-observation-controller.md", "doc:docs/decisions/app-platform/0190-nest-streaming-observation-controller.md", "doc:docs/decisions/app-platform/0191-nest-node-queries-controller.md", "doc:docs/decisions/app-platform/0192-nest-node-pool-queries-controller.md", "doc:docs/decisions/app-platform/0193-nest-usage-queries-controller.md", "doc:docs/decisions/app-platform/0194-nest-inference-route-queries-controller.md", "doc:docs/decisions/app-platform/0195-nest-project-queries-controller.md", "doc:docs/decisions/app-platform/0196-nest-authenticated-observation-controller.md", "doc:docs/decisions/app-platform/0197-nest-anonymous-observation-controller.md", "doc:docs/decisions/app-platform/0198-nest-audit-query-controller.md", "doc:docs/decisions/app-platform/0199-nest-plugin-plan-projection-controller.md", "doc:docs/decisions/app-platform/0200-nest-plugin-registry-queries-controller.md", "doc:docs/decisions/app-platform/0201-nest-api-token-controller.md", "doc:docs/decisions/app-platform/0202-nest-plugin-assignment-controller.md", "doc:docs/decisions/app-platform/0203-nest-workload-profile-controller.md", "doc:docs/decisions/app-platform/0204-nest-gateway-scope-commands-controller.md", "doc:docs/decisions/app-platform/0205-nest-plugin-registry-commands-controller.md", "doc:docs/decisions/app-platform/0206-nest-organization-controller.md", "doc:docs/decisions/app-platform/0207-nest-inference-route-commands-controller.md", "doc:docs/decisions/app-platform/0208-nest-recipient-contact-controller.md", "doc:docs/decisions/app-platform/0209-nest-routes-controller.md", "doc:docs/decisions/app-platform/0210-nest-mcp-route-policy-commands-controller.md", "doc:docs/decisions/app-platform/0211-nest-source-revisions-controller.md", "doc:docs/decisions/app-platform/0212-nest-enrollment-controller.md", "doc:docs/decisions/app-platform/0213-nest-domain-claim-commands-controller.md", "doc:docs/decisions/app-platform/0214-nest-mcp-credential-commands-controller.md", "doc:docs/decisions/app-platform/0215-nest-projects-commands-controller.md", "doc:docs/decisions/app-platform/0216-nest-github-repository-subscription-commands-controller.md", "doc:docs/decisions/app-platform/0217-nest-node-management-controller.md", "doc:docs/decisions/app-platform/0218-nest-node-pool-management-controller.md", "doc:docs/decisions/app-platform/0219-nest-membership-controller.md", "doc:docs/decisions/app-platform/0220-nest-resource-grant-controller.md", "doc:docs/decisions/app-platform/0221-nest-membership-invitation-controller.md", "doc:docs/decisions/app-platform/0222-nest-security-investigation-controller.md", "doc:docs/decisions/app-platform/0223-nest-automation-webhooks-controller.md", "doc:docs/decisions/app-platform/0224-nest-github-webhooks-controller.md", "doc:docs/decisions/app-platform/0225-nest-build-plan-controller.md", "doc:docs/decisions/app-platform/0226-nest-preview-management-controller.md", "doc:docs/decisions/app-platform/0227-nest-message-variant-delivery-controller.md", "doc:docs/decisions/app-platform/0228-nest-message-citation-delivery-controller.md", "doc:docs/decisions/app-platform/0229-nest-message-file-reference-delivery-controller.md", "doc:docs/decisions/app-platform/0230-nest-feedback-delivery-controller.md", "doc:docs/decisions/app-platform/0231-nest-delivery-credential-controller.md", "doc:docs/decisions/app-platform/0232-nest-publication-route-intent-controller.md", "doc:docs/decisions/app-platform/0233-nest-automation-management-controller.md", "doc:docs/decisions/app-platform/0234-nest-anonymous-delivery-controller.md", "doc:docs/decisions/app-platform/0235-nest-authenticated-delivery-controller.md", "doc:docs/decisions/app-platform/0236-nest-application-delivery-controller.md", "doc:docs/decisions/app-platform/0237-nest-durable-cell-controller.md", "doc:docs/decisions/app-platform/0238-nest-connector-controller.md", "doc:docs/decisions/app-platform/0239-nest-application-controller.md", "doc:docs/decisions/app-platform/0240-nest-knowledge-controller.md", "doc:docs/decisions/app-platform/0241-nest-privileged-management-controller.md", "implementation:crates/control-plane/src/modules/applications/presentation/anonymous_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/anonymous_observation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/asynchronous_observation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/authenticated_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/authenticated_observation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/blocking_observation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/delivery_credential_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/message_citation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/message_file_reference_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/message_variant_delivery_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/publication_route_intent_controller.rs", "implementation:crates/control-plane/src/modules/applications/presentation/streaming_observation_delivery_controller.rs", "implementation:crates/control-plane/src/modules/audit/presentation/controller.rs", "implementation:crates/control-plane/src/modules/automations/presentation/management_controller.rs", "implementation:crates/control-plane/src/modules/automations/presentation/webhook_controller.rs", "implementation:crates/control-plane/src/modules/connectors/presentation/controller.rs", "implementation:crates/control-plane/src/modules/developer_workflows/presentation/controller.rs", "implementation:crates/control-plane/src/modules/developer_workflows/presentation/preview_management_controller.rs", "implementation:crates/control-plane/src/modules/developer_workflows/presentation/workload_profile_controller.rs", "implementation:crates/control-plane/src/modules/durable_cells/presentation/controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/domain_claim_commands_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/gateway_scope_commands_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/mcp_credential_commands_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/mcp_route_policy_commands_controller.rs", "implementation:crates/control-plane/src/modules/edge/presentation/controllers/routes_controller.rs", "implementation:crates/control-plane/src/modules/fleet/presentation/controllers/enrollment_controller.rs", "implementation:crates/control-plane/src/modules/fleet/presentation/controllers/node_management_controller.rs", "implementation:crates/control-plane/src/modules/fleet/presentation/controllers/node_pool_management_controller.rs", "implementation:crates/control-plane/src/modules/fleet/presentation/controllers/node_pool_queries_controller.rs", "implementation:crates/control-plane/src/modules/fleet/presentation/controllers/node_queries_controller.rs", "implementation:crates/control-plane/src/modules/identity/mod.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/api_token_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/membership_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/membership_invitation_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/organization_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/organizations_query_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/privileged_management_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/recipient_contact_controller.rs", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/resource_grant_controller.rs", "implementation:crates/control-plane/src/modules/inference/presentation/inference_route_commands_controller.rs", "implementation:crates/control-plane/src/modules/inference/presentation/inference_route_queries_controller.rs", "implementation:crates/control-plane/src/modules/inference/presentation/usage_queries_controller.rs", "implementation:crates/control-plane/src/modules/knowledge/presentation/controller.rs", "implementation:crates/control-plane/src/modules/plugins/presentation/controllers/plugin_assignment_controller.rs", "implementation:crates/control-plane/src/modules/plugins/presentation/controllers/plugin_plan_projection_controller.rs", "implementation:crates/control-plane/src/modules/plugins/presentation/controllers/plugin_registry_commands_controller.rs", "implementation:crates/control-plane/src/modules/plugins/presentation/controllers/plugin_registry_queries_controller.rs", "implementation:crates/control-plane/src/modules/projects/presentation/controllers/project_queries_controller.rs", "implementation:crates/control-plane/src/modules/projects/presentation/controllers/projects_controller.rs", "implementation:crates/control-plane/src/modules/search/presentation/controllers/search_controller.rs", "implementation:crates/control-plane/src/modules/security/presentation/controller.rs", "implementation:crates/control-plane/src/modules/sources/presentation/controllers/github_repository_subscription_queries_controller.rs", "implementation:crates/control-plane/src/modules/sources/presentation/controllers/github_repository_subscriptions_controller.rs", "implementation:crates/control-plane/src/modules/sources/presentation/controllers/github_webhooks_controller.rs", "implementation:crates/control-plane/src/modules/sources/presentation/controllers/source_revision_queries_controller.rs", "implementation:crates/control-plane/src/modules/sources/presentation/controllers/source_revisions_controller.rs", "test:crates/control-plane/src/app/tests.rs"]
     gate = "C0.3"
     label = "Organizations, Workspaces, Projects, and Environments"
     owner = "identity"
     references = ["enterprise"]
   }
   capability "enterprise.saml-oidc-scim" {
-    availability = "unavailable"
+    availability = "internal"
     category = "enterprise"
     dependencies = []
-    evidence = ["doc:ROADMAP.md"]
+    evidence = ["doc:ROADMAP.md", "doc:docs/decisions/app-platform/0174-c05-oidc-federation-claim-path.md", "implementation:crates/control-plane/src/modules/identity/presentation/controllers/oidc_controller.rs", "test:crates/control-plane/src/modules/identity/presentation/controllers/enterprise_saml_oidc_scim_claim_path_tests.rs"]
     gate = "C0.5"
     label = "SAML, OIDC, SCIM, and Session Policy"
     owner = "identity"
@@ -424,10 +424,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["monitoring"]
   }
   capability "monitoring.feedback-review" {
-    availability = "unavailable"
+    availability = "internal"
     category = "monitoring"
     dependencies = ["APP0.2"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "doc:docs/decisions/app-platform/0168-app05-feedback-annotation-review-claim-path.md", "implementation:crates/control-plane/src/modules/applications/presentation/feedback_delivery_controller.rs", "test:crates/control-plane/src/modules/applications/presentation/monitoring_feedback_review_claim_path_tests.rs"]
     gate = "APP0.5"
     label = "Feedback and Annotation Review"
     owner = "applications"
@@ -474,10 +474,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["monitoring"]
   }
   capability "monitoring.usage-cost" {
-    availability = "unavailable"
+    availability = "internal"
     category = "monitoring"
     dependencies = ["I0.2c"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0169-app05-usage-cost-showback-claim-path.md", "doc:docs/inference-plan.md", "implementation:crates/control-plane/src/modules/inference/presentation/usage_queries_controller.rs", "test:crates/control-plane/src/modules/inference/presentation/monitoring_usage_cost_claim_path_tests.rs"]
     gate = "APP0.5"
     label = "Usage and Cost Correlation"
     owner = "inference"
@@ -494,10 +494,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.answer" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = ["APP0.2"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/decisions/app-platform/0040-descriptor-bound-application-answer-effects.md", "doc:docs/decisions/app-platform/0043-root-bound-repeated-application-answer-frames.md", "doc:docs/decisions/app-platform/0046-descriptor-bound-application-answer-failure-routes.md", "doc:docs/decisions/app-platform/0244-w03-answer-internal-claim-path.md", "implementation:crates/control-plane/src/modules/applications/application/workflow_effects.rs", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_application_answer_hook.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/application_answers.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/application_tests.rs"]
     gate = "W0.3"
     label = "Answer"
     owner = "applications"
@@ -564,10 +564,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.iteration" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0053-bounded-parallel-iteration-waves.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite_wave.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/parallel_iteration_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/parallel_iteration_tests.rs"]
+    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0053-bounded-parallel-iteration-waves.md", "doc:docs/decisions/app-platform/0242-w03-iteration-internal-claim-path.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite_wave.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_wave_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/parallel_iteration_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/parallel_iteration_tests.rs"]
     gate = "W0.3"
     label = "Iteration"
     owner = "workflow"
@@ -604,10 +604,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.loop" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0060-exact-composite-profile-and-evidence-authority.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/projection.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/loop_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/runtime_tests.rs"]
+    evidence = ["contract:contracts/w0.3/composite-regions.acl", "doc:docs/decisions/app-platform/0060-exact-composite-profile-and-evidence-authority.md", "doc:docs/decisions/app-platform/0243-w03-loop-internal-claim-path.md", "implementation:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/composite.rs", "implementation:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/projection.rs", "test:crates/control-plane/src/modules/workflow/domain/workflow_composite_regions_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/coordinator/loop_tests.rs", "test:crates/control-plane/src/modules/workflow/infrastructure/workflow_run_flow/runtime_tests.rs"]
     gate = "W0.3"
     label = "Loop"
     owner = "workflow"
@@ -644,10 +644,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.schedule-trigger" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/decisions/app-platform/0250-aut03-production-foundation.md", "implementation:crates/control-plane/src/modules/automations/application/schedule_dispatch.rs", "implementation:crates/control-plane/src/modules/automations/domain/schedule.rs", "test:crates/control-plane/src/modules/automations/application/schedule_dispatch_tests.rs"]
     gate = "AUT0.3"
     label = "Schedule Trigger"
     owner = "automations"
@@ -704,10 +704,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["workflow-chatflow"]
   }
   capability "node.webhook-trigger" {
-    availability = "unavailable"
+    availability = "internal"
     category = "node"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/decisions/app-platform/0223-nest-automation-webhooks-controller.md", "doc:docs/decisions/app-platform/0249-aut02-production-foundation.md", "implementation:crates/control-plane/src/modules/automations/application/webhook_admission.rs", "implementation:crates/control-plane/src/modules/automations/presentation/webhook_controller.rs", "test:crates/contracts/tests/automation_contract.rs"]
     gate = "AUT0.2"
     label = "Webhook Trigger"
     owner = "automations"
@@ -774,20 +774,20 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["plugin-types"]
   }
   capability "publication.api-blocking" {
-    availability = "unavailable"
+    availability = "internal"
     category = "publication_channel"
     dependencies = ["APP0.2"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0134-process-role-delivery-authenticated-http.md", "doc:docs/decisions/app-platform/0135-process-role-delivery-authenticated-observation.md", "doc:docs/decisions/app-platform/0161-delivery-traffic-owner-publication-api-claim-path.md", "doc:docs/decisions/app-platform/0162-app03-production-release-api-channels-embed-web-deferral.md", "implementation:crates/control-plane/src/modules/applications/presentation/authenticated_observation_delivery_controller.rs", "implementation:docs/decisions/app-platform/0161-delivery-traffic-owner-publication-api-claim-path.md", "test:crates/control-plane/src/modules/applications/presentation/publication_api_channel_claim_path_tests.rs"]
     gate = "APP0.3"
     label = "Blocking API"
     owner = "applications"
     references = ["publication"]
   }
   capability "publication.api-streaming" {
-    availability = "unavailable"
+    availability = "internal"
     category = "publication_channel"
     dependencies = ["APP0.2"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0134-process-role-delivery-authenticated-http.md", "doc:docs/decisions/app-platform/0135-process-role-delivery-authenticated-observation.md", "doc:docs/decisions/app-platform/0161-delivery-traffic-owner-publication-api-claim-path.md", "doc:docs/decisions/app-platform/0162-app03-production-release-api-channels-embed-web-deferral.md", "implementation:crates/control-plane/src/modules/applications/presentation/authenticated_observation_delivery_controller.rs", "implementation:docs/decisions/app-platform/0161-delivery-traffic-owner-publication-api-claim-path.md", "test:crates/control-plane/src/modules/applications/presentation/publication_api_channel_claim_path_tests.rs"]
     gate = "APP0.3"
     label = "Streaming API"
     owner = "applications"
@@ -844,20 +844,20 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["docs-index"]
   }
   capability "toolkit.annotation-reply" {
-    availability = "unavailable"
+    availability = "internal"
     category = "authoring_toolkit"
     dependencies = ["I0.2"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0093-application-feedback-annotation-authority.md", "doc:docs/decisions/app-platform/0096-application-feedback-annotation-delivery.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "implementation:crates/control-plane/src/modules/applications/presentation/feedback_delivery_controller.rs", "test:crates/control-plane/src/modules/applications/presentation/toolkit_claim_path_tests.rs"]
     gate = "APP0.2"
     label = "Annotation Reply"
     owner = "applications"
     references = ["docs-index"]
   }
   capability "toolkit.citations" {
-    availability = "unavailable"
+    availability = "internal"
     category = "authoring_toolkit"
     dependencies = ["K0.3"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0107-application-message-citation-authority.md", "doc:docs/decisions/app-platform/0110-application-message-citation-delivery.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "implementation:crates/control-plane/src/modules/applications/presentation/message_citation_delivery_controller.rs", "test:crates/control-plane/src/modules/applications/presentation/toolkit_claim_path_tests.rs"]
     gate = "APP0.2"
     label = "Citations"
     owner = "applications"
@@ -884,10 +884,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["docs-index"]
   }
   capability "toolkit.file-input" {
-    availability = "unavailable"
+    availability = "internal"
     category = "authoring_toolkit"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0075-single-user-file-lifecycle-authority.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0075-single-user-file-lifecycle-authority.md", "doc:docs/decisions/app-platform/0103-application-message-file-reference-authority.md", "doc:docs/decisions/app-platform/0106-application-message-file-reference-delivery.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "implementation:crates/control-plane/src/modules/applications/presentation/message_file_reference_delivery_controller.rs", "test:crates/control-plane/src/modules/applications/presentation/toolkit_claim_path_tests.rs"]
     gate = "APP0.2"
     label = "File Input"
     owner = "files"
@@ -897,7 +897,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "unavailable"
     category = "authoring_toolkit"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0164-app02-production-foundation-opener-follow-up-deferral.md"]
     gate = "APP0.2"
     label = "Suggested Follow-Up Prompts"
     owner = "applications"
@@ -944,10 +944,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["docs-index"]
   }
   capability "toolkit.more-like-this" {
-    availability = "unavailable"
+    availability = "internal"
     category = "authoring_toolkit"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0097-application-message-variant-authority.md", "doc:docs/decisions/app-platform/0100-application-message-variant-delivery.md", "doc:docs/decisions/app-platform/0163-app02-proven-toolkit-claim-path.md", "implementation:crates/control-plane/src/modules/applications/presentation/message_variant_delivery_controller.rs", "test:crates/control-plane/src/modules/applications/presentation/toolkit_claim_path_tests.rs"]
     gate = "APP0.2"
     label = "More Like This Message Variants"
     owner = "applications"
@@ -987,7 +987,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     availability = "unavailable"
     category = "authoring_toolkit"
     dependencies = []
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0164-app02-production-foundation-opener-follow-up-deferral.md"]
     gate = "APP0.2"
     label = "Personalized Opener"
     owner = "applications"

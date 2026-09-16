@@ -130,6 +130,32 @@ pub const APPLICATION_MESSAGE_VARIANTS_CREATE: &str =
     "a3s_cloud_application_message_variants_create";
 pub const APPLICATION_MESSAGE_VARIANTS_LIST: &str = "a3s_cloud_application_message_variants_list";
 pub const APPLICATION_MESSAGE_VARIANTS_GET: &str = "a3s_cloud_application_message_variants_get";
+pub const APPLICATION_ANONYMOUS_SESSIONS_OPEN: &str =
+    "a3s_cloud_application_anonymous_sessions_open";
+pub const APPLICATION_ANONYMOUS_INVOCATIONS_REQUEST: &str =
+    "a3s_cloud_application_anonymous_invocations_request";
+pub const APPLICATION_ANONYMOUS_BLOCKING_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_anonymous_blocking_observation_observe";
+pub const APPLICATION_ANONYMOUS_STREAMING_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_anonymous_streaming_observation_observe";
+pub const APPLICATION_ANONYMOUS_ASYNCHRONOUS_OBSERVATION_OBSERVE: &str =
+    "a3s_cloud_application_anonymous_asynchronous_observation_observe";
+pub const APPLICATION_ANONYMOUS_SESSIONS_CLOSE: &str =
+    "a3s_cloud_application_anonymous_sessions_close";
+pub const APPLICATION_ANONYMOUS_INVOCATIONS_CANCEL: &str =
+    "a3s_cloud_application_anonymous_invocations_cancel";
+pub const APPLICATION_DELIVERY_CREDENTIALS_REGISTER: &str =
+    "a3s_cloud_application_delivery_credentials_register";
+pub const APPLICATION_DELIVERY_CREDENTIALS_LIST: &str =
+    "a3s_cloud_application_delivery_credentials_list";
+pub const APPLICATION_DELIVERY_CREDENTIALS_GET: &str =
+    "a3s_cloud_application_delivery_credentials_get";
+pub const APPLICATION_DELIVERY_CREDENTIALS_DISABLE: &str =
+    "a3s_cloud_application_delivery_credentials_disable";
+pub const APPLICATION_DELIVERY_CREDENTIALS_ENABLE: &str =
+    "a3s_cloud_application_delivery_credentials_enable";
+pub const APPLICATION_DELIVERY_CREDENTIALS_REVOKE: &str =
+    "a3s_cloud_application_delivery_credentials_revoke";
 pub const APPLICATION_MESSAGE_FILE_REFERENCES_CREATE: &str =
     "a3s_cloud_application_message_file_references_create";
 pub const APPLICATION_MESSAGE_FILE_REFERENCES_LIST: &str =
@@ -138,10 +164,8 @@ pub const APPLICATION_MESSAGE_FILE_REFERENCES_GET: &str =
     "a3s_cloud_application_message_file_references_get";
 pub const APPLICATION_MESSAGE_CITATIONS_CREATE: &str =
     "a3s_cloud_application_message_citations_create";
-pub const APPLICATION_MESSAGE_CITATIONS_LIST: &str =
-    "a3s_cloud_application_message_citations_list";
-pub const APPLICATION_MESSAGE_CITATIONS_GET: &str =
-    "a3s_cloud_application_message_citations_get";
+pub const APPLICATION_MESSAGE_CITATIONS_LIST: &str = "a3s_cloud_application_message_citations_list";
+pub const APPLICATION_MESSAGE_CITATIONS_GET: &str = "a3s_cloud_application_message_citations_get";
 pub const APPLICATION_BLOCKING_OBSERVATION_OBSERVE: &str =
     "a3s_cloud_application_blocking_observation_observe";
 pub const APPLICATION_STREAMING_OBSERVATION_OBSERVE: &str =
@@ -376,6 +400,19 @@ pub enum ManagementTool {
     ApplicationMessageVariantsCreate,
     ApplicationMessageVariantsList,
     ApplicationMessageVariantsGet,
+    ApplicationAnonymousSessionsOpen,
+    ApplicationAnonymousInvocationsRequest,
+    ApplicationAnonymousBlockingObservationObserve,
+    ApplicationAnonymousStreamingObservationObserve,
+    ApplicationAnonymousAsynchronousObservationObserve,
+    ApplicationAnonymousSessionsClose,
+    ApplicationAnonymousInvocationsCancel,
+    ApplicationDeliveryCredentialsRegister,
+    ApplicationDeliveryCredentialsList,
+    ApplicationDeliveryCredentialsGet,
+    ApplicationDeliveryCredentialsDisable,
+    ApplicationDeliveryCredentialsEnable,
+    ApplicationDeliveryCredentialsRevoke,
     ApplicationMessageFileReferencesCreate,
     ApplicationMessageFileReferencesList,
     ApplicationMessageFileReferencesGet,
@@ -604,7 +641,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 235] = [
+    const ALL: [Self; 248] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -630,6 +667,19 @@ impl ManagementTool {
         Self::ApplicationMessageVariantsCreate,
         Self::ApplicationMessageVariantsList,
         Self::ApplicationMessageVariantsGet,
+        Self::ApplicationAnonymousSessionsOpen,
+        Self::ApplicationAnonymousInvocationsRequest,
+        Self::ApplicationAnonymousBlockingObservationObserve,
+        Self::ApplicationAnonymousStreamingObservationObserve,
+        Self::ApplicationAnonymousAsynchronousObservationObserve,
+        Self::ApplicationAnonymousSessionsClose,
+        Self::ApplicationAnonymousInvocationsCancel,
+        Self::ApplicationDeliveryCredentialsRegister,
+        Self::ApplicationDeliveryCredentialsList,
+        Self::ApplicationDeliveryCredentialsGet,
+        Self::ApplicationDeliveryCredentialsDisable,
+        Self::ApplicationDeliveryCredentialsEnable,
+        Self::ApplicationDeliveryCredentialsRevoke,
         Self::ApplicationMessageFileReferencesCreate,
         Self::ApplicationMessageFileReferencesList,
         Self::ApplicationMessageFileReferencesGet,
@@ -892,15 +942,46 @@ impl ManagementTool {
             Self::ApplicationMessageVariantsCreate => APPLICATION_MESSAGE_VARIANTS_CREATE,
             Self::ApplicationMessageVariantsList => APPLICATION_MESSAGE_VARIANTS_LIST,
             Self::ApplicationMessageVariantsGet => APPLICATION_MESSAGE_VARIANTS_GET,
-            Self::ApplicationMessageFileReferencesCreate => APPLICATION_MESSAGE_FILE_REFERENCES_CREATE,
+            Self::ApplicationAnonymousSessionsOpen => APPLICATION_ANONYMOUS_SESSIONS_OPEN,
+            Self::ApplicationAnonymousInvocationsRequest => {
+                APPLICATION_ANONYMOUS_INVOCATIONS_REQUEST
+            }
+            Self::ApplicationAnonymousBlockingObservationObserve => {
+                APPLICATION_ANONYMOUS_BLOCKING_OBSERVATION_OBSERVE
+            }
+            Self::ApplicationAnonymousStreamingObservationObserve => {
+                APPLICATION_ANONYMOUS_STREAMING_OBSERVATION_OBSERVE
+            }
+            Self::ApplicationAnonymousAsynchronousObservationObserve => {
+                APPLICATION_ANONYMOUS_ASYNCHRONOUS_OBSERVATION_OBSERVE
+            }
+            Self::ApplicationAnonymousSessionsClose => APPLICATION_ANONYMOUS_SESSIONS_CLOSE,
+            Self::ApplicationAnonymousInvocationsCancel => {
+                APPLICATION_ANONYMOUS_INVOCATIONS_CANCEL
+            }
+            Self::ApplicationDeliveryCredentialsRegister => {
+                APPLICATION_DELIVERY_CREDENTIALS_REGISTER
+            }
+            Self::ApplicationDeliveryCredentialsList => APPLICATION_DELIVERY_CREDENTIALS_LIST,
+            Self::ApplicationDeliveryCredentialsGet => APPLICATION_DELIVERY_CREDENTIALS_GET,
+            Self::ApplicationDeliveryCredentialsDisable => APPLICATION_DELIVERY_CREDENTIALS_DISABLE,
+            Self::ApplicationDeliveryCredentialsEnable => APPLICATION_DELIVERY_CREDENTIALS_ENABLE,
+            Self::ApplicationDeliveryCredentialsRevoke => APPLICATION_DELIVERY_CREDENTIALS_REVOKE,
+            Self::ApplicationMessageFileReferencesCreate => {
+                APPLICATION_MESSAGE_FILE_REFERENCES_CREATE
+            }
             Self::ApplicationMessageFileReferencesList => APPLICATION_MESSAGE_FILE_REFERENCES_LIST,
             Self::ApplicationMessageFileReferencesGet => APPLICATION_MESSAGE_FILE_REFERENCES_GET,
             Self::ApplicationMessageCitationsCreate => APPLICATION_MESSAGE_CITATIONS_CREATE,
             Self::ApplicationMessageCitationsList => APPLICATION_MESSAGE_CITATIONS_LIST,
             Self::ApplicationMessageCitationsGet => APPLICATION_MESSAGE_CITATIONS_GET,
             Self::ApplicationBlockingObservationObserve => APPLICATION_BLOCKING_OBSERVATION_OBSERVE,
-            Self::ApplicationStreamingObservationObserve => APPLICATION_STREAMING_OBSERVATION_OBSERVE,
-            Self::ApplicationAsynchronousObservationObserve => APPLICATION_ASYNCHRONOUS_OBSERVATION_OBSERVE,
+            Self::ApplicationStreamingObservationObserve => {
+                APPLICATION_STREAMING_OBSERVATION_OBSERVE
+            }
+            Self::ApplicationAsynchronousObservationObserve => {
+                APPLICATION_ASYNCHRONOUS_OBSERVATION_OBSERVE
+            }
             Self::ConnectorProfilesCreate => CONNECTOR_PROFILES_CREATE,
             Self::ConnectorProfilesRevise => CONNECTOR_PROFILES_REVISE,
             Self::ConnectorProfilesList => CONNECTOR_PROFILES_LIST,
@@ -1141,6 +1222,19 @@ impl ManagementTool {
             | Self::ApplicationMessageVariantsCreate
             | Self::ApplicationMessageVariantsList
             | Self::ApplicationMessageVariantsGet
+            | Self::ApplicationAnonymousSessionsOpen
+            | Self::ApplicationAnonymousInvocationsRequest
+            | Self::ApplicationAnonymousBlockingObservationObserve
+            | Self::ApplicationAnonymousStreamingObservationObserve
+            | Self::ApplicationAnonymousAsynchronousObservationObserve
+            | Self::ApplicationAnonymousSessionsClose
+            | Self::ApplicationAnonymousInvocationsCancel
+            | Self::ApplicationDeliveryCredentialsRegister
+            | Self::ApplicationDeliveryCredentialsList
+            | Self::ApplicationDeliveryCredentialsGet
+            | Self::ApplicationDeliveryCredentialsDisable
+            | Self::ApplicationDeliveryCredentialsEnable
+            | Self::ApplicationDeliveryCredentialsRevoke
             | Self::ApplicationMessageFileReferencesCreate
             | Self::ApplicationMessageFileReferencesList
             | Self::ApplicationMessageFileReferencesGet
@@ -1149,7 +1243,9 @@ impl ManagementTool {
             | Self::ApplicationMessageCitationsGet
             | Self::ApplicationBlockingObservationObserve
             | Self::ApplicationStreamingObservationObserve
-            | Self::ApplicationAsynchronousObservationObserve => Some(ApiTokenScope::APPLICATION_WRITE),
+            | Self::ApplicationAsynchronousObservationObserve => {
+                Some(ApiTokenScope::APPLICATION_WRITE)
+            }
             Self::ConnectorProfilesCreate | Self::ConnectorProfilesRevise => {
                 Some(ApiTokenScope::CONNECTOR_WRITE)
             }
@@ -1528,6 +1624,19 @@ impl ManagementTool {
             | Self::ApplicationMessageVariantsCreate
             | Self::ApplicationMessageVariantsList
             | Self::ApplicationMessageVariantsGet
+            | Self::ApplicationAnonymousSessionsOpen
+            | Self::ApplicationAnonymousInvocationsRequest
+            | Self::ApplicationAnonymousBlockingObservationObserve
+            | Self::ApplicationAnonymousStreamingObservationObserve
+            | Self::ApplicationAnonymousAsynchronousObservationObserve
+            | Self::ApplicationAnonymousSessionsClose
+            | Self::ApplicationAnonymousInvocationsCancel
+            | Self::ApplicationDeliveryCredentialsRegister
+            | Self::ApplicationDeliveryCredentialsList
+            | Self::ApplicationDeliveryCredentialsGet
+            | Self::ApplicationDeliveryCredentialsDisable
+            | Self::ApplicationDeliveryCredentialsEnable
+            | Self::ApplicationDeliveryCredentialsRevoke
             | Self::ApplicationMessageFileReferencesCreate
             | Self::ApplicationMessageFileReferencesList
             | Self::ApplicationMessageFileReferencesGet
@@ -1784,6 +1893,84 @@ impl ManagementTool {
                 "Get one Application message variant by session and variant identity.",
                 application_message_variant_schema(),
                 true,
+            ),
+            Self::ApplicationAnonymousSessionsOpen => (
+                "Open anonymous Application delivery session",
+                "Open one anonymous Application delivery session using an operator-supplied opaque lookup key. Calls the same CQRS admission as public /anonymous-delivery.",
+                open_anonymous_application_session_schema(),
+                false,
+            ),
+            Self::ApplicationAnonymousInvocationsRequest => (
+                "Request anonymous Application delivery invocation",
+                "Request one anonymous Application delivery invocation using an operator-supplied opaque lookup key. Calls the same CQRS admission as public /anonymous-delivery.",
+                request_anonymous_application_invocation_schema(),
+                false,
+            ),
+            Self::ApplicationAnonymousBlockingObservationObserve => (
+                "Observe anonymous Application blocking invocation",
+                "Poll one anonymous Application blocking observation using an operator-supplied opaque lookup key. Calls the same CQRS as public /anonymous-delivery.",
+                observe_anonymous_application_invocation_schema(),
+                true,
+            ),
+            Self::ApplicationAnonymousStreamingObservationObserve => (
+                "Observe anonymous Application streaming invocation",
+                "Poll one anonymous Application streaming observation using an operator-supplied opaque lookup key. Calls the same CQRS as public /anonymous-delivery.",
+                observe_anonymous_application_streaming_schema(),
+                true,
+            ),
+            Self::ApplicationAnonymousAsynchronousObservationObserve => (
+                "Observe anonymous Application asynchronous invocation",
+                "Poll one anonymous Application asynchronous observation using an operator-supplied opaque lookup key. Calls the same CQRS as public /anonymous-delivery.",
+                observe_anonymous_application_invocation_schema(),
+                true,
+            ),
+            Self::ApplicationAnonymousSessionsClose => (
+                "Close anonymous Application delivery session",
+                "Close one anonymous Application delivery session using an operator-supplied opaque lookup key. Calls the same CQRS as public /anonymous-delivery.",
+                close_anonymous_application_session_schema(),
+                false,
+            ),
+            Self::ApplicationAnonymousInvocationsCancel => (
+                "Cancel anonymous Application delivery invocation",
+                "Cancel one anonymous Application delivery invocation using an operator-supplied opaque lookup key. Calls the same CQRS as public /anonymous-delivery.",
+                cancel_anonymous_application_invocation_schema(),
+                false,
+            ),
+            Self::ApplicationDeliveryCredentialsRegister => (
+                "Register Application delivery credential",
+                "Register one opaque Application delivery credential binding. Never returns plaintext secret material.",
+                register_application_delivery_credential_schema(),
+                false,
+            ),
+            Self::ApplicationDeliveryCredentialsList => (
+                "List Application delivery credentials",
+                "List Application delivery credentials for one application. Returns opaque lookup keys and secret version references only.",
+                application_delivery_credential_list_schema(),
+                true,
+            ),
+            Self::ApplicationDeliveryCredentialsGet => (
+                "Get Application delivery credential",
+                "Get one Application delivery credential by identity. Returns opaque lookup key and secret version reference only.",
+                application_delivery_credential_schema(),
+                true,
+            ),
+            Self::ApplicationDeliveryCredentialsDisable => (
+                "Disable Application delivery credential",
+                "Disable one Application delivery credential with expected generation concurrency control.",
+                application_delivery_credential_lifecycle_schema(),
+                false,
+            ),
+            Self::ApplicationDeliveryCredentialsEnable => (
+                "Enable Application delivery credential",
+                "Enable one Application delivery credential with expected generation concurrency control.",
+                application_delivery_credential_lifecycle_schema(),
+                false,
+            ),
+            Self::ApplicationDeliveryCredentialsRevoke => (
+                "Revoke Application delivery credential",
+                "Revoke one Application delivery credential with expected generation concurrency control.",
+                application_delivery_credential_lifecycle_schema(),
+                false,
             ),
             Self::ApplicationMessageFileReferencesCreate => (
                 "Create Application message file reference",
@@ -3056,6 +3243,8 @@ impl ManagementTool {
                 | Self::RecipientContactsRevoke
                 | Self::ApplicationSessionsClose
                 | Self::ApplicationInvocationsCancel
+                | Self::ApplicationAnonymousSessionsClose
+                | Self::ApplicationAnonymousInvocationsCancel
                 | Self::WorkloadsStop
                 | Self::DeploymentsCancel
                 | Self::BuildRunsCancel
@@ -4461,7 +4650,6 @@ fn create_application_annotation_schema() -> Value {
     })
 }
 
-
 fn create_application_message_citation_schema() -> Value {
     json!({
         "type": "object",
@@ -4569,6 +4757,190 @@ fn application_message_variant_schema() -> Value {
             "variantId": {"type": "string", "format": "uuid"}
         },
         "required": ["projectId", "applicationId", "sessionId", "variantId"],
+        "additionalProperties": false
+    })
+}
+
+fn close_anonymous_application_session_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "expectedVersion", "lookupKey"],
+        "additionalProperties": false
+    })
+}
+
+fn cancel_anonymous_application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512}
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "invocationId",
+            "expectedVersion",
+            "lookupKey"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn open_anonymous_application_session_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "releaseId": {"type": "string", "format": "uuid"},
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+            "initialVariables": {"type": "object"}
+        },
+        "required": ["projectId", "applicationId", "sessionId", "releaseId", "lookupKey"],
+        "additionalProperties": false
+    })
+}
+
+fn observe_anonymous_application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "applicationId", "sessionId", "invocationId", "lookupKey"],
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512}
+        }
+    })
+}
+
+fn observe_anonymous_application_streaming_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["projectId", "applicationId", "sessionId", "invocationId", "lookupKey"],
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+            "afterSequence": {"type": "integer", "minimum": 0, "default": 0}
+        }
+    })
+}
+
+fn request_anonymous_application_invocation_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "sessionId": {"type": "string", "format": "uuid"},
+            "invocationId": {"type": "string", "format": "uuid"},
+            "expectedSessionVersion": {"type": "integer", "minimum": 1},
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+            "responseMode": {"type": "string", "enum": ["blocking", "streaming", "asynchronous"]},
+            "input": {"type": "object"},
+            "ontologyId": {"type": "string", "format": "uuid"},
+            "ontologyRevisionId": {"type": "string", "format": "uuid"},
+            "ontologyDigest": {"type": "string", "minLength": 1},
+            "environmentId": {"type": "string", "format": "uuid"},
+            "timeoutSeconds": {"type": "integer", "minimum": 1}
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "sessionId",
+            "invocationId",
+            "expectedSessionVersion",
+            "lookupKey",
+            "responseMode",
+            "input",
+            "ontologyId",
+            "ontologyRevisionId",
+            "ontologyDigest"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn register_application_delivery_credential_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "credentialId": {"type": "string", "format": "uuid"},
+            "applicationReleaseId": {"type": "string", "format": "uuid"},
+            "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+            "secretId": {"type": "string", "format": "uuid"},
+            "secretVersion": {"type": "integer", "minimum": 1}
+        },
+        "required": [
+            "projectId",
+            "applicationId",
+            "credentialId",
+            "applicationReleaseId",
+            "lookupKey",
+            "secretId",
+            "secretVersion"
+        ],
+        "additionalProperties": false
+    })
+}
+
+fn application_delivery_credential_list_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_delivery_credential_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "credentialId": {"type": "string", "format": "uuid"}
+        },
+        "required": ["projectId", "applicationId", "credentialId"],
+        "additionalProperties": false
+    })
+}
+
+fn application_delivery_credential_lifecycle_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "projectId": {"type": "string", "format": "uuid"},
+            "applicationId": {"type": "string", "format": "uuid"},
+            "credentialId": {"type": "string", "format": "uuid"},
+            "expectedGeneration": {"type": "integer", "minimum": 1}
+        },
+        "required": ["projectId", "applicationId", "credentialId", "expectedGeneration"],
         "additionalProperties": false
     })
 }
@@ -5494,6 +5866,16 @@ fn resource_grant_scope_schema() -> Value {
                     "environmentId": {"type": "string", "format": "uuid"}
                 },
                 "required": ["kind", "projectId", "environmentId"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["application"]},
+                    "projectId": {"type": "string", "format": "uuid"},
+                    "applicationId": {"type": "string", "format": "uuid"}
+                },
+                "required": ["kind", "projectId", "applicationId"],
                 "additionalProperties": false
             },
             {

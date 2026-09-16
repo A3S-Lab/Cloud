@@ -22,37 +22,46 @@ use crate::modules::agents::{
     WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
-    AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler, ApplicationsModule,
+    AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler,
+    ApplicationAuthenticatedDeliveryModule, DeliveryProcessDrain, ApplicationPublicDeliveryModule, ApplicationsModule,
     CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
     CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
     CreateApplicationAnnotationHandler, CreateApplicationFeedbackHandler, CreateApplicationHandler,
     CreateApplicationMessageCitationHandler, CreateApplicationMessageFileReferenceHandler,
-    CreateApplicationMessageVariantHandler,
-    GetApplicationAnnotationHandler,
-    GetApplicationFeedbackHandler, GetApplicationHandler, GetApplicationInvocationHandler,
-    GetApplicationMessageCitationHandler, GetApplicationMessageFileReferenceHandler,
-    GetApplicationMessageVariantHandler,
-    GetApplicationReleaseHandler,
-    GetApplicationSessionHandler, IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    ObserveApplicationBlockingInvocationHandler,
-    ObserveApplicationStreamingInvocationHandler,
-    ObserveApplicationAsynchronousInvocationHandler,
+    CreateApplicationMessageVariantHandler, CreateApplicationPublicationRouteIntentHandler,
+    DisableApplicationDeliveryCredentialHandler,
+    EnableApplicationDeliveryCredentialHandler, GetApplicationAnnotationHandler,
+    GetApplicationDeliveryCredentialHandler, GetApplicationFeedbackHandler, GetApplicationHandler,
+    GetApplicationInvocationHandler, GetApplicationMessageCitationHandler,
+    GetApplicationMessageFileReferenceHandler, GetApplicationMessageVariantHandler,
+    GetApplicationPublicationRouteIntentHandler,
+    GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationAnnotationRepository,
+    IApplicationDeliveryCredentialRepository, IApplicationFeedbackRepository,
+    IApplicationPublicationRouteIntentRepository,
     IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
-    IApplicationMessageVariantRepository,
-    IApplicationOntologyRevisionPort,
+    IApplicationMessageVariantRepository, IApplicationOntologyRevisionPort,
     IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
     IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess,
     IWorkflowApplicationEffectsPort, ListApplicationAnnotationsBySessionHandler,
-    ListApplicationFeedbackBySessionHandler,
+    ListApplicationDeliveryCredentialsHandler, ListApplicationFeedbackBySessionHandler,
     ListApplicationMessageCitationsBySessionHandler,
     ListApplicationMessageFileReferencesBySessionHandler,
     ListApplicationMessageVariantsBySessionHandler,
-    ListApplicationReleasesHandler, ListApplicationsHandler, OpenApplicationSessionHandler,
+    ListApplicationPublicationRouteIntentsByReleaseHandler, ListApplicationReleasesHandler,
+    ListApplicationsHandler, ObserveAnonymousApplicationAsynchronousInvocationHandler,
+    ObserveAnonymousApplicationBlockingInvocationHandler,
+    ObserveAnonymousApplicationStreamingInvocationHandler,
+    ObserveApplicationAsynchronousInvocationHandler, ObserveApplicationBlockingInvocationHandler,
+    ObserveApplicationStreamingInvocationHandler, CancelAnonymousApplicationInvocationHandler, CloseAnonymousApplicationSessionHandler,
+    OpenAnonymousApplicationSessionHandler,
+    OpenApplicationSessionHandler,
     ProjectsApplicationsEnvironmentAccessAdapter, PublishApplicationReleaseHandler,
-    ReplayApplicationSessionHandler, RequestApplicationInvocationHandler,
-    WorkflowApplicationEffectsService, WorkflowApplicationOntologyRevisionReader,
-    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
-    WorkflowApplicationRunService,
+    RegisterApplicationDeliveryCredentialHandler, ReplayApplicationSessionHandler,
+    RequestAnonymousApplicationInvocationHandler, RequestApplicationInvocationHandler,
+    RevokeApplicationDeliveryCredentialHandler, WorkflowApplicationEffectsService,
+    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
+    ApplicationPublicationRouteIntentAclProjectionAdapter,
+    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::{
     BuildRunReconciler, ExternalSourceBuildOutcomeQueryService,
@@ -164,6 +173,7 @@ use crate::modules::edge::domain::services::{
 };
 use crate::modules::edge::{
     AssetsEdgeMcpServiceProfileAccessAdapter, CreateDomainClaimHandler, CreateGatewayScopeHandler,
+    EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
     CreateMcpCredentialHandler, CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier,
     EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
     EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule, FleetEdgeNodeAccessAdapter,
@@ -171,8 +181,17 @@ use crate::modules::edge::{
     FleetGatewayObservationQueue, GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner,
     GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
     GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
+    RegisterGatewayRateShapingProfileHandler,
+    InMemoryGatewayRateShapingProfileCatalog,
+    IGatewayRateShapingProfileCatalog,
+    IGatewayRateShapingProfileDurableStore,
+    PostgresGatewayRateShapingProfileDurableStore,
+    install_gateway_rate_shaping_catalog,
+    IApplicationPublicationRateShapingBindingAdmissionPort,
     GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
-    IEdgeEnvironmentAccess, IEdgeManagedInferenceAclAccess, IEdgeMcpCredentialEncryption,
+    ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter,
+    IEdgeEnvironmentAccess, IEdgeManagedApplicationPublicationRouteIntentAccess,
+    IEdgeManagedInferenceAclAccess, IEdgeMcpCredentialEncryption,
     IEdgeMcpServiceProfileAccess, IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess,
     IEdgeRuntimeObservationAccess, IdentityInferenceEdgeManagedAclAccessAdapter,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
@@ -261,7 +280,8 @@ use crate::modules::identity::{
     GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
     GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
     GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IIdentityEnvironmentAccess,
+    GetWorkloadIdentityPolicyRevisionHandler, IIdentityApplicationAccess,
+    IIdentityEnvironmentAccess,
     IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
     IdentityInferenceGrantCredentialAdmissionAdapter, IdentityModule, InferenceCredentialIssuer,
     InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler, ListInferenceKeysHandler,
@@ -269,7 +289,8 @@ use crate::modules::identity::{
     ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
     OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
-    ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
+    ApplicationsIdentityApplicationAccessAdapter, ProjectsIdentityProjectAccessAdapter,
+    ProposeTenantSupportGrantHandler,
     RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
     RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
     RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
@@ -461,7 +482,7 @@ use std::time::Duration;
 
 mod postgres_adapters;
 
-use postgres_adapters::{ApiWorkerPostgresAdapters, PostgresAdapterFactory, RelayPostgresAdapters};
+use postgres_adapters::{ApiWorkerPostgresAdapters, DeliveryPostgresAdapters, PostgresAdapterFactory, RelayPostgresAdapters};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ControlPlaneStartupError {
@@ -559,6 +580,9 @@ async fn build_application_with_overrides(
     if config.server.role == ProcessRole::Relay {
         return build_relay_application(config).await;
     }
+    if config.server.role == ProcessRole::Delivery {
+        return build_delivery_application(config).await;
+    }
 
     let management_adapters = if config.server.role.serves_management_api() {
         let source_resolver = match source_resolver {
@@ -603,6 +627,8 @@ struct ManagementAdapterOverrides {
     oidc_provider: Arc<dyn IOidcProviderService>,
     workload_identity_provider: Arc<dyn IWorkloadIdentityProviderService>,
 }
+
+
 
 async fn build_api_worker_application(
     config: CloudConfig,
@@ -844,8 +870,10 @@ async fn build_api_worker_application(
     let applications = adapters.applications;
     let application_sessions = adapters.application_sessions;
     let application_feedbacks = adapters.application_feedbacks;
+    let application_publication_route_intents = adapters.application_publication_route_intents;
     let application_annotations = adapters.application_annotations;
     let application_message_variants = adapters.application_message_variants;
+    let application_delivery_credentials = adapters.application_delivery_credentials;
     let application_message_file_references = adapters.application_message_file_references;
     let application_message_citations = adapters.application_message_citations;
     let developer_workflow_build_plans = adapters.developer_workflows.build_plans;
@@ -1067,6 +1095,21 @@ async fn build_api_worker_application(
     let route_commands: Arc<dyn IGatewayCommandQueue> = Arc::new(FleetGatewayCommandQueue::new(
         Arc::clone(&fleet_gateway_commands),
     ));
+    let gateway_rate_shaping_profile_store: Arc<dyn IGatewayRateShapingProfileDurableStore> =
+        Arc::new(PostgresGatewayRateShapingProfileDurableStore::new(executor.clone()));
+    let gateway_rate_shaping_catalog = InMemoryGatewayRateShapingProfileCatalog::empty();
+    install_gateway_rate_shaping_catalog(
+        gateway_rate_shaping_catalog.as_ref(),
+        gateway_rate_shaping_profile_store.as_ref(),
+        &config.edge.rate_shaping_profiles,
+    )
+    .await
+    .map_err(ControlPlaneStartupError::NodeControl)?;
+    let gateway_rate_shaping_bindings: Arc<
+        dyn IApplicationPublicationRateShapingBindingAdmissionPort,
+    > = Arc::new(EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(
+        Arc::clone(&gateway_rate_shaping_catalog) as Arc<dyn IGatewayRateShapingProfileCatalog>,
+    ));
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -1076,7 +1119,8 @@ async fn build_api_worker_application(
         certificate_directory: config.edge.certificate_directory.clone(),
         managed_state_file: config.edge.managed_state_file.clone(),
     })
-    .map_err(ControlPlaneStartupError::NodeControl)?;
+    .map_err(ControlPlaneStartupError::NodeControl)?
+    .with_rate_shaping_bindings(Arc::clone(&gateway_rate_shaping_bindings));
     let mcp_profile_access: Arc<dyn IEdgeMcpServiceProfileAccess> = Arc::new(
         AssetsEdgeMcpServiceProfileAccessAdapter::new(Arc::clone(&mcp_profiles)),
     );
@@ -1107,10 +1151,21 @@ async fn build_api_worker_application(
         mcp_projection_set_planner,
         McpGatewayProjectionAssembler,
     ));
+    let application_publication_route_intent_acl_projections = Arc::new(
+        ApplicationPublicationRouteIntentAclProjectionAdapter::new(Arc::clone(
+            &application_publication_route_intents,
+        )),
+    );
+    let edge_managed_publication_route_intent_acl: Arc<
+        dyn IEdgeManagedApplicationPublicationRouteIntentAccess,
+    > = Arc::new(ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter::new(
+        application_publication_route_intent_acl_projections,
+    ));
     let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
         Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&mcp_node_projection_planner),
-    );
+    )
+    .with_publication_route_intent_access(Arc::clone(&edge_managed_publication_route_intent_acl));
     let edge_managed_inference_acl: Arc<dyn IEdgeManagedInferenceAclAccess> =
         Arc::new(IdentityInferenceEdgeManagedAclAccessAdapter::new(
             Arc::clone(&inference_credential_acl_projections),
@@ -1762,7 +1817,10 @@ async fn build_api_worker_application(
                 chrono_duration(config.edge.command_ttl_ms)?,
                 100,
             )
-            .map_err(ControlPlaneStartupError::Edge)?,
+            .map_err(ControlPlaneStartupError::Edge)?
+            .with_publication_route_intent_access(Arc::clone(
+                &edge_managed_publication_route_intent_acl,
+            )),
             mcp_gateway_snapshot_reconciler: McpGatewaySnapshotReconciler::new(
                 Arc::clone(&mcp_gateway_snapshots),
                 Arc::clone(&route_commands),
@@ -2146,8 +2204,10 @@ async fn build_api_worker_application(
                 applications,
                 application_sessions,
                 application_feedbacks,
+                application_publication_route_intents,
                 application_annotations,
                 application_message_variants,
+                application_delivery_credentials,
                 application_message_file_references,
                 application_message_citations,
                 developer_workflow_build_plans,
@@ -2198,6 +2258,8 @@ async fn build_api_worker_application(
                 node_pools,
                 node_control,
                 log_chunks,
+                gateway_rate_shaping_catalog: Arc::clone(&gateway_rate_shaping_catalog),
+                gateway_rate_shaping_profile_store: Arc::clone(&gateway_rate_shaping_profile_store),
                 readiness,
             },
         )?
@@ -2214,6 +2276,229 @@ async fn build_api_worker_application(
         }
         workers
     }))
+}
+
+async fn build_delivery_application(
+    config: CloudConfig,
+) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
+    if !config.server.role.serves_application_delivery() || config.server.role.serves_management_api()
+    {
+        return Err(ControlPlaneStartupError::Framework(BootError::Internal(
+            "delivery composition requires ProcessRole::Delivery".into(),
+        )));
+    }
+    let serving_postgres_url = config.serving_postgres_url()?;
+    let executor = connect_postgres(&serving_postgres_url, config.postgres.max_connections).await?;
+    let DeliveryPostgresAdapters {
+        applications,
+        application_sessions,
+        application_delivery_credentials,
+        api_tokens,
+        resource_grants,
+        environments,
+        ontologies,
+        workflow_definitions,
+        workflow_goals,
+        workflow_runs,
+    } = PostgresAdapterFactory::new(executor.clone()).delivery();
+    let application_ontology_evidence: Arc<dyn IApplicationOntologyRevisionPort> = Arc::new(
+        WorkflowApplicationOntologyRevisionReader::new(Arc::clone(&ontologies)),
+    );
+    let admit_application_environments: Arc<dyn IApplicationsEnvironmentAccess> = Arc::new(
+        ProjectsApplicationsEnvironmentAccessAdapter::new(environments),
+    );
+    let application_workflow_runs: Arc<dyn IApplicationWorkflowRunPort> =
+        Arc::new(WorkflowApplicationRunService::new(
+            workflow_definitions,
+            ontologies,
+            workflow_goals,
+            workflow_runs,
+        ));
+    let readiness = postgres_readiness(executor);
+    let application = build_application_delivery_http(
+        &config,
+        readiness,
+        DeliveryHttpDependencies {
+            applications,
+            application_sessions,
+            application_delivery_credentials,
+            application_workflow_runs,
+            application_ontology_evidence,
+            admit_application_environments,
+            api_tokens,
+            resource_grants,
+            drain: DeliveryProcessDrain::new(),
+        },
+    )?;
+    Ok(ControlPlane::new(application, ControlPlaneWorkers::default()))
+}
+
+struct DeliveryHttpDependencies {
+    applications: Arc<dyn IApplicationRepository>,
+    application_sessions: Arc<dyn IApplicationSessionRepository>,
+    application_delivery_credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
+    application_workflow_runs: Arc<dyn IApplicationWorkflowRunPort>,
+    application_ontology_evidence: Arc<dyn IApplicationOntologyRevisionPort>,
+    admit_application_environments: Arc<dyn IApplicationsEnvironmentAccess>,
+    api_tokens: Arc<dyn IApiTokenRepository>,
+    resource_grants: Arc<dyn IResourceGrantRepository>,
+    /// Shared process-local admission drain latch (APP0.3-C8).
+    drain: DeliveryProcessDrain,
+}
+
+fn build_application_delivery_http(
+    config: &CloudConfig,
+    readiness: HealthModule,
+    dependencies: DeliveryHttpDependencies,
+) -> Result<BootApplication> {
+    if !config.server.role.serves_application_delivery() || config.server.role.serves_management_api()
+    {
+        return Err(BootError::Internal(
+            "application delivery HTTP requires ProcessRole::Delivery".into(),
+        ));
+    }
+    let DeliveryHttpDependencies {
+        applications,
+        application_sessions,
+        application_delivery_credentials,
+        application_workflow_runs,
+        application_ontology_evidence,
+        admit_application_environments,
+        api_tokens,
+        resource_grants,
+        drain,
+    } = dependencies;
+    let readiness_drain = drain.clone();
+    let readiness = readiness.indicator("delivery-drain", move || {
+        let drain = readiness_drain.clone();
+        async move {
+            if drain.is_draining() {
+                Ok(HealthIndicatorResult::down())
+            } else {
+                Ok(HealthIndicatorResult::up())
+            }
+        }
+    });
+    BootApplication::builder()
+        .import(
+            AuthModule::new("delivery-auth")
+                .bearer(ApiTokenVerifier::new(api_tokens, resource_grants))
+                .global(),
+        )
+        .import(
+            CqrsModule::new("application-delivery-cqrs")
+                .command_handler::<crate::modules::applications::OpenAnonymousApplicationSession, _>(
+                    OpenAnonymousApplicationSessionHandler::new(
+                        Arc::clone(&applications),
+                        Arc::clone(&application_sessions),
+                        Arc::clone(&application_delivery_credentials),
+                    ),
+                )
+                .command_handler::<
+                    crate::modules::applications::RequestAnonymousApplicationInvocation,
+                    _,
+                >(RequestAnonymousApplicationInvocationHandler::new(
+                    Arc::clone(&applications),
+                    Arc::clone(&application_sessions),
+                    Arc::clone(&application_delivery_credentials),
+                    Arc::clone(&application_workflow_runs),
+                ))
+                .command_handler::<
+                    crate::modules::applications::CloseAnonymousApplicationSession,
+                    _,
+                >(CloseAnonymousApplicationSessionHandler::new(
+                    Arc::clone(&applications),
+                    Arc::clone(&application_sessions),
+                    Arc::clone(&application_delivery_credentials),
+                ))
+                .command_handler::<
+                    crate::modules::applications::CancelAnonymousApplicationInvocation,
+                    _,
+                >(CancelAnonymousApplicationInvocationHandler::new(
+                    Arc::clone(&applications),
+                    Arc::clone(&application_sessions),
+                    Arc::clone(&application_delivery_credentials),
+                    Arc::clone(&application_workflow_runs),
+                ))
+                .command_handler::<crate::modules::applications::AdmitApplicationSession, _>(
+                    AdmitApplicationSessionHandler::new(
+                        Arc::clone(&applications),
+                        Arc::clone(&application_sessions),
+                    ),
+                )
+                .command_handler::<crate::modules::applications::AdmitApplicationInvocation, _>(
+                    AdmitApplicationInvocationHandler::new(
+                        Arc::clone(&applications),
+                        Arc::clone(&application_sessions),
+                        Arc::clone(&application_ontology_evidence),
+                        Arc::clone(&admit_application_environments),
+                        Arc::clone(&application_workflow_runs),
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CloseApplicationSession, _>(
+                    CloseApplicationSessionHandler::new(
+                        Arc::clone(&applications),
+                        Arc::clone(&application_sessions),
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CancelApplicationInvocation, _>(
+                    CancelApplicationInvocationHandler::new(
+                        applications,
+                        Arc::clone(&application_sessions),
+                        Arc::clone(&application_workflow_runs),
+                    ),
+                )
+                .query_handler::<crate::modules::applications::ObserveApplicationBlockingInvocation, _>(
+                    ObserveApplicationBlockingInvocationHandler::new(Arc::clone(
+                        &application_sessions,
+                    )),
+                )
+                .query_handler::<
+                    crate::modules::applications::ObserveApplicationStreamingInvocation,
+                    _,
+                >(ObserveApplicationStreamingInvocationHandler::new(Arc::clone(
+                    &application_sessions,
+                )))
+                .query_handler::<
+                    crate::modules::applications::ObserveApplicationAsynchronousInvocation,
+                    _,
+                >(ObserveApplicationAsynchronousInvocationHandler::new(
+                    Arc::clone(&application_sessions),
+                ))
+                .query_handler::<
+                    crate::modules::applications::ObserveAnonymousApplicationBlockingInvocation,
+                    _,
+                >(ObserveAnonymousApplicationBlockingInvocationHandler::new(
+                    Arc::clone(&application_sessions),
+                    Arc::clone(&application_delivery_credentials),
+                ))
+                .query_handler::<
+                    crate::modules::applications::ObserveAnonymousApplicationStreamingInvocation,
+                    _,
+                >(ObserveAnonymousApplicationStreamingInvocationHandler::new(
+                    Arc::clone(&application_sessions),
+                    Arc::clone(&application_delivery_credentials),
+                ))
+                .query_handler::<
+                    crate::modules::applications::ObserveAnonymousApplicationAsynchronousInvocation,
+                    _,
+                >(ObserveAnonymousApplicationAsynchronousInvocationHandler::new(
+                    application_sessions,
+                    application_delivery_credentials,
+                ))
+                .global(),
+        )
+        .import(ApplicationPublicDeliveryModule::new(drain.clone()))
+        .import(ApplicationAuthenticatedDeliveryModule::new(drain))
+        .import(process_liveness_module())
+        .import(PublicHealthModule::new(readiness))
+        .import(PlatformModule::new(config))
+        .use_global_auth()
+        .use_global_middleware(RequestIdMiddleware)
+        .use_global_interceptor(ApiResponseInterceptor)
+        .use_global_filter(ApiErrorFilter)
+        .global_prefix(API_PREFIX)
+        .build()
 }
 
 async fn build_relay_application(
@@ -2417,8 +2702,10 @@ struct ManagementApplicationDependencies {
     applications: Arc<dyn IApplicationRepository>,
     application_sessions: Arc<dyn IApplicationSessionRepository>,
     application_feedbacks: Arc<dyn IApplicationFeedbackRepository>,
+    application_publication_route_intents: Arc<dyn IApplicationPublicationRouteIntentRepository>,
     application_annotations: Arc<dyn IApplicationAnnotationRepository>,
     application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
+    application_delivery_credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
     application_message_file_references: Arc<dyn IApplicationMessageFileReferenceRepository>,
     application_message_citations: Arc<dyn IApplicationMessageCitationRepository>,
     developer_workflow_build_plans: Arc<dyn IBuildPlanRepository>,
@@ -2469,6 +2756,8 @@ struct ManagementApplicationDependencies {
     node_pools: Arc<dyn INodePoolRepository>,
     node_control: Arc<dyn INodeControlRepository>,
     log_chunks: Arc<dyn ILogChunkStore>,
+    gateway_rate_shaping_catalog: Arc<InMemoryGatewayRateShapingProfileCatalog>,
+    gateway_rate_shaping_profile_store: Arc<dyn IGatewayRateShapingProfileDurableStore>,
     readiness: HealthModule,
 }
 
@@ -2539,8 +2828,10 @@ fn build_management_application_with_health(
         applications,
         application_sessions,
         application_feedbacks,
+        application_publication_route_intents,
         application_annotations,
         application_message_variants,
+        application_delivery_credentials,
         application_message_file_references,
         application_message_citations,
         developer_workflow_build_plans,
@@ -2591,6 +2882,8 @@ fn build_management_application_with_health(
         node_pools,
         node_control,
         log_chunks,
+        gateway_rate_shaping_catalog,
+        gateway_rate_shaping_profile_store,
         readiness,
     } = dependencies;
     let ManagementSurfaceDependencies {
@@ -2817,6 +3110,20 @@ fn build_management_application_with_health(
     let cancel_application_releases = Arc::clone(&applications);
     let cancel_application_invocation_records = Arc::clone(&application_sessions);
     let cancel_application_workflow_runs = Arc::clone(&application_workflow_runs);
+    let open_anonymous_application_releases = Arc::clone(&applications);
+    let open_anonymous_application_sessions = Arc::clone(&application_sessions);
+    let open_anonymous_application_credentials = Arc::clone(&application_delivery_credentials);
+    let request_anonymous_application_releases = Arc::clone(&applications);
+    let request_anonymous_application_sessions = Arc::clone(&application_sessions);
+    let request_anonymous_application_credentials = Arc::clone(&application_delivery_credentials);
+    let request_anonymous_application_workflow_runs = Arc::clone(&application_workflow_runs);
+    let close_anonymous_application_releases = Arc::clone(&applications);
+    let close_anonymous_application_sessions = Arc::clone(&application_sessions);
+    let close_anonymous_application_credentials = Arc::clone(&application_delivery_credentials);
+    let cancel_anonymous_application_releases = Arc::clone(&applications);
+    let cancel_anonymous_application_sessions = Arc::clone(&application_sessions);
+    let cancel_anonymous_application_credentials = Arc::clone(&application_delivery_credentials);
+    let cancel_anonymous_application_workflow_runs = Arc::clone(&application_workflow_runs);
     let admit_application_releases = Arc::clone(&applications);
     let admit_application_sessions = Arc::clone(&application_sessions);
     let admit_application_invocation_releases = Arc::clone(&applications);
@@ -2836,32 +3143,49 @@ fn build_management_application_with_health(
     let list_application_annotation_sessions = Arc::clone(&application_sessions);
     let get_application_message_variant_sessions = Arc::clone(&application_sessions);
     let list_application_message_variant_sessions = Arc::clone(&application_sessions);
-    let create_application_message_file_reference_sessions =
-        Arc::clone(&application_sessions);
-    let get_application_message_file_reference_sessions =
-        Arc::clone(&application_sessions);
-    let list_application_message_file_reference_sessions =
-        Arc::clone(&application_sessions);
+    let create_application_message_file_reference_sessions = Arc::clone(&application_sessions);
+    let get_application_message_file_reference_sessions = Arc::clone(&application_sessions);
+    let list_application_message_file_reference_sessions = Arc::clone(&application_sessions);
     let create_application_message_citation_sessions = Arc::clone(&application_sessions);
     let get_application_message_citation_sessions = Arc::clone(&application_sessions);
     let list_application_message_citation_sessions = Arc::clone(&application_sessions);
     let observe_application_blocking_sessions = Arc::clone(&application_sessions);
     let observe_application_streaming_sessions = Arc::clone(&application_sessions);
     let observe_application_asynchronous_sessions = Arc::clone(&application_sessions);
+    let observe_anonymous_blocking_sessions = Arc::clone(&application_sessions);
+    let observe_anonymous_streaming_sessions = Arc::clone(&application_sessions);
+    let observe_anonymous_asynchronous_sessions = Arc::clone(&application_sessions);
     let replay_application_sessions = application_sessions;
     let create_application_feedbacks = Arc::clone(&application_feedbacks);
     let get_application_feedbacks = Arc::clone(&application_feedbacks);
     let list_application_feedbacks = application_feedbacks;
+    let create_application_publication_route_intent_applications = Arc::clone(&applications);
+    let list_application_publication_route_intent_applications = Arc::clone(&applications);
+    let create_application_publication_route_intents =
+        Arc::clone(&application_publication_route_intents);
+    let get_application_publication_route_intents =
+        Arc::clone(&application_publication_route_intents);
+    let list_application_publication_route_intents = application_publication_route_intents;
     let create_application_annotations = Arc::clone(&application_annotations);
     let get_application_annotations = Arc::clone(&application_annotations);
     let list_application_annotations = application_annotations;
     let create_application_message_variants = Arc::clone(&application_message_variants);
     let get_application_message_variants = Arc::clone(&application_message_variants);
     let list_application_message_variants = application_message_variants;
+    let register_application_delivery_credential_applications = Arc::clone(&applications);
+    let list_application_delivery_credential_applications = Arc::clone(&applications);
+    let register_application_delivery_credentials = Arc::clone(&application_delivery_credentials);
+    let disable_application_delivery_credentials = Arc::clone(&application_delivery_credentials);
+    let enable_application_delivery_credentials = Arc::clone(&application_delivery_credentials);
+    let revoke_application_delivery_credentials = Arc::clone(&application_delivery_credentials);
+    let get_application_delivery_credentials = Arc::clone(&application_delivery_credentials);
+    let observe_anonymous_blocking_credentials = Arc::clone(&application_delivery_credentials);
+    let observe_anonymous_streaming_credentials = Arc::clone(&application_delivery_credentials);
+    let observe_anonymous_asynchronous_credentials = Arc::clone(&application_delivery_credentials);
+    let list_application_delivery_credentials = application_delivery_credentials;
     let create_application_message_file_references =
         Arc::clone(&application_message_file_references);
-    let get_application_message_file_references =
-        Arc::clone(&application_message_file_references);
+    let get_application_message_file_references = Arc::clone(&application_message_file_references);
     let list_application_message_file_references = application_message_file_references;
     let create_application_message_citations = Arc::clone(&application_message_citations);
     let get_application_message_citations = Arc::clone(&application_message_citations);
@@ -2869,7 +3193,7 @@ fn build_management_application_with_health(
     let list_applications = Arc::clone(&applications);
     let get_applications = Arc::clone(&applications);
     let list_application_releases = Arc::clone(&applications);
-    let get_application_releases = applications;
+    let get_application_releases = Arc::clone(&applications);
     let create_connector_secrets = exact_secret_version_access(Arc::clone(&secrets));
     let revise_connector_secrets = Arc::clone(&create_connector_secrets);
     let create_durable_cell_environments: Arc<dyn IDurableCellsEnvironmentAccess> = Arc::new(
@@ -3071,6 +3395,9 @@ fn build_management_application_with_health(
         ProjectsIdentityProjectAccessAdapter::new(Arc::clone(&projects)),
     );
     let resource_grant_environments = Arc::clone(&identity_environments);
+    let resource_grant_applications: Arc<dyn IIdentityApplicationAccess> = Arc::new(
+        ApplicationsIdentityApplicationAccessAdapter::new(Arc::clone(&applications)),
+    );
     let resource_grant_nodes: Arc<dyn IIdentityNodeAccess> =
         Arc::new(FleetIdentityNodeAccessAdapter::new(Arc::clone(&nodes)));
     let revoke_resource_grants = Arc::clone(&resource_grants);
@@ -3303,6 +3630,11 @@ fn build_management_application_with_health(
         certificate_ttl,
     )
     .map_err(BootError::Internal)?;
+    let gateway_rate_shaping_bindings: Arc<
+        dyn IApplicationPublicationRateShapingBindingAdmissionPort,
+    > = Arc::new(EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(
+        Arc::clone(&gateway_rate_shaping_catalog) as Arc<dyn IGatewayRateShapingProfileCatalog>,
+    ));
     let route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -3312,7 +3644,8 @@ fn build_management_application_with_health(
         certificate_directory: config.edge.certificate_directory.clone(),
         managed_state_file: config.edge.managed_state_file.clone(),
     })
-    .map_err(BootError::Internal)?;
+    .map_err(BootError::Internal)?
+    .with_rate_shaping_bindings(Arc::clone(&gateway_rate_shaping_bindings));
     let publish_route_handler = match (mcp_gateway_snapshots, gateway_node_desired_state_planner) {
         (Some(mcp_gateway_snapshots), Some(gateway_node_desired_state_planner)) => {
             PublishRouteHandler::new_managed(
@@ -3431,6 +3764,7 @@ fn build_management_application_with_health(
                         create_resource_grants,
                         resource_grant_projects,
                         resource_grant_environments,
+                        resource_grant_applications,
                         resource_grant_nodes,
                     ),
                 )
@@ -3639,6 +3973,36 @@ fn build_management_application_with_health(
                         request_application_workflow_runs,
                     ),
                 )
+                .command_handler::<crate::modules::applications::OpenAnonymousApplicationSession, _>(
+                    OpenAnonymousApplicationSessionHandler::new(
+                        open_anonymous_application_releases,
+                        open_anonymous_application_sessions,
+                        open_anonymous_application_credentials,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::RequestAnonymousApplicationInvocation, _>(
+                    RequestAnonymousApplicationInvocationHandler::new(
+                        request_anonymous_application_releases,
+                        request_anonymous_application_sessions,
+                        request_anonymous_application_credentials,
+                        request_anonymous_application_workflow_runs,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CloseAnonymousApplicationSession, _>(
+                    CloseAnonymousApplicationSessionHandler::new(
+                        close_anonymous_application_releases,
+                        close_anonymous_application_sessions,
+                        close_anonymous_application_credentials,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::CancelAnonymousApplicationInvocation, _>(
+                    CancelAnonymousApplicationInvocationHandler::new(
+                        cancel_anonymous_application_releases,
+                        cancel_anonymous_application_sessions,
+                        cancel_anonymous_application_credentials,
+                        cancel_anonymous_application_workflow_runs,
+                    ),
+                )
                 .command_handler::<crate::modules::applications::CancelApplicationInvocation, _>(
                     CancelApplicationInvocationHandler::new(
                         cancel_application_releases,
@@ -3652,6 +4016,12 @@ fn build_management_application_with_health(
                         create_application_feedbacks,
                     ),
                 )
+                .command_handler::<crate::modules::applications::CreateApplicationPublicationRouteIntent, _>(
+                    CreateApplicationPublicationRouteIntentHandler::new(
+                        create_application_publication_route_intent_applications,
+                        create_application_publication_route_intents,
+                    ),
+                )
                 .command_handler::<crate::modules::applications::CreateApplicationAnnotation, _>(
                     CreateApplicationAnnotationHandler::new(
                         create_application_annotation_sessions,
@@ -3662,6 +4032,27 @@ fn build_management_application_with_health(
                     CreateApplicationMessageVariantHandler::new(
                         create_application_message_variant_sessions,
                         create_application_message_variants,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::RegisterApplicationDeliveryCredential, _>(
+                    RegisterApplicationDeliveryCredentialHandler::new(
+                        register_application_delivery_credential_applications,
+                        register_application_delivery_credentials,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::DisableApplicationDeliveryCredential, _>(
+                    DisableApplicationDeliveryCredentialHandler::new(
+                        disable_application_delivery_credentials,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::EnableApplicationDeliveryCredential, _>(
+                    EnableApplicationDeliveryCredentialHandler::new(
+                        enable_application_delivery_credentials,
+                    ),
+                )
+                .command_handler::<crate::modules::applications::RevokeApplicationDeliveryCredential, _>(
+                    RevokeApplicationDeliveryCredentialHandler::new(
+                        revoke_application_delivery_credentials,
                     ),
                 )
                 .command_handler::<crate::modules::applications::CreateApplicationMessageFileReference, _>(
@@ -4091,6 +4482,13 @@ fn build_management_application_with_health(
                         Arc::clone(&edge_environments),
                         edge_nodes,
                         create_gateway_scopes,
+                    ),
+                )
+                .command_handler::<crate::modules::edge::RegisterGatewayRateShapingProfile, _>(
+                    RegisterGatewayRateShapingProfileHandler::new(
+                        Arc::clone(&gateway_rate_shaping_catalog)
+                            as Arc<dyn IGatewayRateShapingProfileCatalog>,
+                        Arc::clone(&gateway_rate_shaping_profile_store),
                     ),
                 )
                 .command_handler::<crate::modules::edge::CreateMcpCredential, _>(
@@ -4534,6 +4932,24 @@ fn build_management_application_with_health(
                         observe_application_asynchronous_sessions,
                     ),
                 )
+                .query_handler::<crate::modules::applications::ObserveAnonymousApplicationBlockingInvocation, _>(
+                    ObserveAnonymousApplicationBlockingInvocationHandler::new(
+                        observe_anonymous_blocking_sessions,
+                        observe_anonymous_blocking_credentials,
+                    ),
+                )
+                .query_handler::<crate::modules::applications::ObserveAnonymousApplicationStreamingInvocation, _>(
+                    ObserveAnonymousApplicationStreamingInvocationHandler::new(
+                        observe_anonymous_streaming_sessions,
+                        observe_anonymous_streaming_credentials,
+                    ),
+                )
+                .query_handler::<crate::modules::applications::ObserveAnonymousApplicationAsynchronousInvocation, _>(
+                    ObserveAnonymousApplicationAsynchronousInvocationHandler::new(
+                        observe_anonymous_asynchronous_sessions,
+                        observe_anonymous_asynchronous_credentials,
+                    ),
+                )
                 .query_handler::<crate::modules::applications::ReplayApplicationSession, _>(
                     ReplayApplicationSessionHandler::new(replay_application_sessions),
                 )
@@ -4549,6 +4965,18 @@ fn build_management_application_with_health(
                         list_application_feedbacks,
                     ),
                 )
+                .query_handler::<crate::modules::applications::GetApplicationPublicationRouteIntent, _>(
+                    GetApplicationPublicationRouteIntentHandler::new(
+                        get_application_publication_route_intents,
+                    ),
+                )
+                .query_handler::<
+                    crate::modules::applications::ListApplicationPublicationRouteIntentsByRelease,
+                    _,
+                >(ListApplicationPublicationRouteIntentsByReleaseHandler::new(
+                    list_application_publication_route_intent_applications,
+                    list_application_publication_route_intents,
+                ))
                 .query_handler::<crate::modules::applications::GetApplicationAnnotation, _>(
                     GetApplicationAnnotationHandler::new(
                         get_application_annotation_sessions,
@@ -4575,6 +5003,17 @@ fn build_management_application_with_health(
                     list_application_message_variant_sessions,
                     list_application_message_variants,
                 ))
+                .query_handler::<crate::modules::applications::GetApplicationDeliveryCredential, _>(
+                    GetApplicationDeliveryCredentialHandler::new(
+                        get_application_delivery_credentials,
+                    ),
+                )
+                .query_handler::<crate::modules::applications::ListApplicationDeliveryCredentials, _>(
+                    ListApplicationDeliveryCredentialsHandler::new(
+                        list_application_delivery_credential_applications,
+                        list_application_delivery_credentials,
+                    ),
+                )
                 .query_handler::<crate::modules::applications::GetApplicationMessageFileReference, _>(
                     GetApplicationMessageFileReferenceHandler::new(
                         get_application_message_file_reference_sessions,

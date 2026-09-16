@@ -8,8 +8,8 @@ use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_SCOPES_METADATA,
+    controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+    BootResponse, CommandBus, ControllerDefinition, Result,
 };
 use chrono::{Duration, Utc};
 use std::sync::Arc;
@@ -19,107 +19,99 @@ pub fn node_management_controller(
     bus: Arc<CommandBus>,
     heartbeat_timeout: Duration,
 ) -> Result<ControllerDefinition> {
-    let ready_bus = Arc::clone(&bus);
-    let drain_bus = Arc::clone(&bus);
-    let revoke_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::NODE_WRITE])?
-        .post(
-            "/{organization_id}/enrollment-tokens",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let body: IssueEnrollmentTokenRequest = request.json_with_content_type()?;
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(IssueEnrollmentToken {
-                            organization_id,
-                            name: body.name,
-                            token_secret: body.token,
-                            expires_at: body.expires_at,
-                            idempotency_key,
-                            request_id,
-                            requested_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
-                            BootResponse::json_with_status(
-                                status,
-                                &EnrollmentTokenResponse::from(result),
-                            )
-                        }
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .post(
-            "/{organization_id}/nodes/{node_id}/actions/ready",
-            move |request: BootRequest| {
-                change_state(
-                    Arc::clone(&ready_bus),
-                    request,
-                    NodeState::Ready,
-                    heartbeat_timeout,
-                )
-            },
-        )?
-        .post(
-            "/{organization_id}/nodes/{node_id}/actions/drain",
-            move |request: BootRequest| {
-                change_state(
-                    Arc::clone(&drain_bus),
-                    request,
-                    NodeState::Draining,
-                    heartbeat_timeout,
-                )
-            },
-        )?
-        .post(
-            "/{organization_id}/nodes/{node_id}/actions/revoke",
-            move |request: BootRequest| {
-                change_state(
-                    Arc::clone(&revoke_bus),
-                    request,
-                    NodeState::Revoked,
-                    heartbeat_timeout,
-                )
-            },
-        )
+    Arc::new(NodeManagementController {
+        bus,
+        heartbeat_timeout,
+    })
+    .controller()
 }
 
-async fn change_state(
+#[derive(Debug, Clone)]
+struct NodeManagementController {
     bus: Arc<CommandBus>,
-    request: BootRequest,
-    state: NodeState,
     heartbeat_timeout: Duration,
-) -> Result<BootResponse> {
-    let body: ChangeNodeStateRequest = request.json_with_content_type()?;
-    let organization_id = OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-    let node_id = NodeId::from_uuid(request.param_as::<Uuid>("node_id")?);
-    let (idempotency_key, request_id) = request_identity(&request)?;
-    match bus
-        .execute(ChangeNodeState {
-            organization_id,
-            node_id,
-            state,
-            expected_version: body.expected_version,
-            idempotency_key,
-            request_id,
-            requested_at: Utc::now(),
-        })
-        .await?
-    {
-        Ok(result) => {
-            let availability = result.node.availability_at(Utc::now(), heartbeat_timeout);
-            BootResponse::json(&NodeResponse::from((result, availability)))
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::NODE_WRITE])]
+impl NodeManagementController {
+    #[post("/{organization_id}/enrollment-tokens", raw)]
+    async fn issue_enrollment_token(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: IssueEnrollmentTokenRequest = request.json_with_content_type()?;
+        let organization_id =
+            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(IssueEnrollmentToken {
+                organization_id,
+                name: body.name,
+                token_secret: body.token,
+                expires_at: body.expires_at,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => {
+                let status = if result.replayed { 200 } else { 201 };
+                BootResponse::json_with_status(status, &EnrollmentTokenResponse::from(result))
+            }
+            Err(error) => application_error_response(error, request_id),
         }
-        Err(error) => application_error_response(error, request_id),
+    }
+
+    #[post("/{organization_id}/nodes/{node_id}/actions/ready", raw)]
+    async fn ready(&self, request: BootRequest) -> Result<BootResponse> {
+        self.change_state(request, NodeState::Ready).await
+    }
+
+    #[post("/{organization_id}/nodes/{node_id}/actions/drain", raw)]
+    async fn drain(&self, request: BootRequest) -> Result<BootResponse> {
+        self.change_state(request, NodeState::Draining).await
+    }
+
+    #[post("/{organization_id}/nodes/{node_id}/actions/revoke", raw)]
+    async fn revoke(&self, request: BootRequest) -> Result<BootResponse> {
+        self.change_state(request, NodeState::Revoked).await
+    }
+}
+
+impl NodeManagementController {
+    async fn change_state(
+        &self,
+        request: BootRequest,
+        state: NodeState,
+    ) -> Result<BootResponse> {
+        let body: ChangeNodeStateRequest = request.json_with_content_type()?;
+        let organization_id =
+            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+        let node_id = NodeId::from_uuid(request.param_as::<Uuid>("node_id")?);
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(ChangeNodeState {
+                organization_id,
+                node_id,
+                state,
+                expected_version: body.expected_version,
+                idempotency_key,
+                request_id,
+                requested_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => {
+                let availability =
+                    result
+                        .node
+                        .availability_at(Utc::now(), self.heartbeat_timeout);
+                BootResponse::json(&NodeResponse::from((result, availability)))
+            }
+            Err(error) => application_error_response(error, request_id),
+        }
     }
 }
 
@@ -137,4 +129,47 @@ fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })?;
     Ok((idempotency_key, request_id))
+}
+
+#[cfg(test)]
+mod nest_macro_node_management_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn node_management_controller_registers_scoped_posts_via_nest_macros() {
+        let controller = node_management_controller(
+            Arc::new(CommandBus::new()),
+            Duration::seconds(30),
+        )
+        .expect("node management nest command controller");
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 4);
+        assert_eq!(routes[0].method(), HttpMethod::Post);
+        assert_eq!(
+            routes[0].path(),
+            "/organizations/{organization_id}/enrollment-tokens"
+        );
+        assert_eq!(
+            routes[1].path(),
+            "/organizations/{organization_id}/nodes/{node_id}/actions/ready"
+        );
+        assert_eq!(
+            routes[2].path(),
+            "/organizations/{organization_id}/nodes/{node_id}/actions/drain"
+        );
+        assert_eq!(
+            routes[3].path(),
+            "/organizations/{organization_id}/nodes/{node_id}/actions/revoke"
+        );
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::NODE_WRITE])
+        );
+    }
 }

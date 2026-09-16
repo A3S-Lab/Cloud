@@ -6,10 +6,10 @@
 
 use super::delivery_access::{invocation_not_found, project_member_session};
 use super::delivery_queries::MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT;
-use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationBlockingObservation, ApplicationMessage, IApplicationSessionRepository,
 };
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationSessionId, OrganizationId, PrincipalId,
@@ -134,7 +134,7 @@ impl QueryHandler<ObserveApplicationBlockingInvocation>
     }
 }
 
-async fn load_invocation_messages(
+pub(super) async fn load_invocation_messages(
     sessions: &dyn IApplicationSessionRepository,
     session: &crate::modules::applications::domain::ApplicationSession,
     invocation_id: ApplicationInvocationId,

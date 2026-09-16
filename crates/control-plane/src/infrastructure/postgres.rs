@@ -204,8 +204,8 @@ pub async fn migrate_postgres(
     Ok(PostgresMigrationReport { applied })
 }
 
-pub const CLOUD_MIGRATION_COUNT: i64 = 207;
-pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "207";
+pub const CLOUD_MIGRATION_COUNT: i64 = 211;
+pub const LATEST_CLOUD_MIGRATION_VERSION: &str = "211";
 
 fn cloud_migrations() -> Vec<Migration> {
     vec![
@@ -1873,6 +1873,30 @@ fn cloud_migrations() -> Vec<Migration> {
                 "/../../migrations/208_application_message_citations.sql"
             )),
         ),
+        Migration::new(
+            "209",
+            "Resource grant application scope",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/209_resource_grant_application_scope.sql"
+            )),
+        ),
+        Migration::new(
+            "210",
+            "Application publication route intents",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/210_application_publication_route_intents.sql"
+            )),
+        ),
+        Migration::new(
+            "211",
+            "Gateway rate-shaping profile durable catalog",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../../migrations/211_gateway_rate_shaping_profiles.sql"
+            )),
+        ),
     ]
 }
 
@@ -1899,6 +1923,18 @@ mod application_message_file_reference_migration_tests;
 #[cfg(test)]
 #[path = "postgres_tests/application_message_citation_migration.rs"]
 mod application_message_citation_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/resource_grant_application_scope_migration.rs"]
+mod resource_grant_application_scope_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/application_publication_route_intent_migration.rs"]
+mod application_publication_route_intent_migration_tests;
+
+#[cfg(test)]
+#[path = "postgres_tests/gateway_rate_shaping_profile_migration.rs"]
+mod gateway_rate_shaping_profile_migration_tests;
 
 #[cfg(test)]
 #[path = "postgres_tests/cloud_migration_manifest.rs"]

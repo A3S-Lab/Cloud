@@ -34,3 +34,5 @@ pub use platform::PlatformModule;
 
 #[cfg(test)]
 mod architecture_tests;
+#[cfg(test)]
+mod enterprise_isolation_quota_retention_claim_path_tests;

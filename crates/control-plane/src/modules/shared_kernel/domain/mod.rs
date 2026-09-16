@@ -22,7 +22,7 @@ pub use identifiers::{
     AgentApprovalCheckpointId, AgentApprovalDecisionId, AgentConversationId,
     AgentExecutionCheckpointId, AgentExecutionId, ApiTokenId, ApplicationAnnotationId,
     ApplicationDeliveryCredentialId, ApplicationEndUserId, ApplicationFeedbackId, ApplicationId,
-    ApplicationInvocationId, ApplicationMessageId, ApplicationAuthoringProfileId, ApplicationMessageVariantId, ApplicationMessageFileReferenceId, ApplicationMessageCitationId,
+    ApplicationInvocationId, ApplicationMessageId, ApplicationAuthoringProfileId, ApplicationMessageVariantId, ApplicationMessageFileReferenceId, ApplicationMessageCitationId, ApplicationPublicationRouteIntentId,
     ApplicationReleaseId, ApplicationSessionId, AssetId, AssetReleaseId, BuildPlanId, BuildRunId,
     ConnectorProfileId, ConnectorRevisionId, ConversationVariableRevisionId, DeploymentId,
     DomainClaimId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnrollmentTokenId,

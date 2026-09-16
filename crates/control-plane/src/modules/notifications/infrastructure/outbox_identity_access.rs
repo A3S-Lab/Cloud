@@ -79,18 +79,19 @@ fn notification_access_for_membership(
     grants: impl IntoIterator<Item = ResourceGrantScope>,
 ) -> NotificationAccess {
     if role == MembershipRole::Restricted {
-        NotificationAccess::restricted(grants.into_iter().map(|scope| match scope {
+        NotificationAccess::restricted(grants.into_iter().filter_map(|scope| match scope {
             ResourceGrantScope::Project { project_id } => {
-                NotificationAccessScope::Project { project_id }
+                Some(NotificationAccessScope::Project { project_id })
             }
             ResourceGrantScope::Environment {
                 project_id,
                 environment_id,
-            } => NotificationAccessScope::Environment {
+            } => Some(NotificationAccessScope::Environment {
                 project_id,
                 environment_id,
-            },
-            ResourceGrantScope::Node { node_id } => NotificationAccessScope::Node { node_id },
+            }),
+            ResourceGrantScope::Node { node_id } => Some(NotificationAccessScope::Node { node_id }),
+            ResourceGrantScope::Application { .. } => None,
         }))
     } else {
         NotificationAccess::organization_wide()

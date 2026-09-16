@@ -1,5 +1,5 @@
 use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
-use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
+use crate::modules::shared_kernel::domain::{ApplicationId, EnvironmentId, NodeId, ProjectId};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
@@ -77,6 +77,17 @@ impl ResourceAccessEvaluator {
 
     pub fn node_is_visible(&self, node_id: NodeId) -> bool {
         self.allows(ResourceGrantScope::Node { node_id })
+    }
+
+    pub fn application_is_visible(
+        &self,
+        project_id: ProjectId,
+        application_id: ApplicationId,
+    ) -> bool {
+        self.allows(ResourceGrantScope::Application {
+            project_id,
+            application_id,
+        })
     }
 
     pub fn projected_resource_is_visible(
@@ -171,6 +182,27 @@ mod tests {
         assert!(!evaluator.allows(ResourceGrantScope::Project { project_id }));
         assert!(evaluator.environment_is_visible(project_id, environment_id));
         assert!(!evaluator.environment_is_visible(project_id, EnvironmentId::new()));
+    }
+
+    #[test]
+    fn application_grants_are_exact_and_do_not_expand_from_project() {
+        let project_id = ProjectId::new();
+        let application_id = ApplicationId::new();
+        let project_only = ResourceAccessEvaluator::restricted([ResourceGrantScope::Project {
+            project_id,
+        }]);
+        assert!(project_only.project_is_visible_in_collection(project_id));
+        assert!(!project_only.application_is_visible(project_id, application_id));
+
+        let application_only =
+            ResourceAccessEvaluator::restricted([ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            }]);
+        assert!(application_only.project_is_visible_in_collection(project_id));
+        assert!(application_only.application_is_visible(project_id, application_id));
+        assert!(!application_only.application_is_visible(project_id, ApplicationId::new()));
+        assert!(!application_only.allows(ResourceGrantScope::Project { project_id }));
     }
 
     #[test]

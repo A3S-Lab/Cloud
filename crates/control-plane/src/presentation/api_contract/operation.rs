@@ -43,9 +43,10 @@ use crate::modules::applications::{
     APPLICATION_ANNOTATION_CONTENT_MAX_BYTES, APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
     APPLICATION_DESCRIPTION_MAX_CHARS, APPLICATION_FEEDBACK_COMMENT_MAX_CHARS,
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES,
-    APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES, DEFAULT_APPLICATION_LIST_LIMIT,
-    DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT, MAXIMUM_APPLICATION_LIST_LIMIT,
-    MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    APPLICATION_PUBLICATION_EMBED_ORIGIN_MAX_ENTRIES,
+    APPLICATION_PUBLICATION_RATE_PROFILE_ID_MAX_CHARS, APPLICATION_RELEASE_CONTRACT_MAX_ACL_BYTES,
+    DEFAULT_APPLICATION_LIST_LIMIT, DEFAULT_APPLICATION_MESSAGE_REPLAY_LIMIT,
+    MAXIMUM_APPLICATION_LIST_LIMIT, MAXIMUM_APPLICATION_MESSAGE_REPLAY_LIMIT,
 };
 use crate::modules::audit::{
     DEFAULT_AUDIT_EXPORT_MANIFEST_PAGE_SIZE, DEFAULT_AUDIT_RECORD_LIMIT, MAXIMUM_AUDIT_RECORD_LIMIT,
@@ -316,6 +317,17 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
+    if method == "get" && is_application_publication_route_intent_release_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "applicationReleaseDigest",
+                "in": "query",
+                "required": true,
+                "schema": { "type": "string", "minLength": 1 }
+            }),
+        );
+    }
     for parameter in developer_workflow_query_parameters(method, path) {
         upsert_parameter(parameters, parameter);
     }
@@ -534,6 +546,28 @@ fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &s
                 "in": "query",
                 "required": false,
                 "description": "Return messages strictly after this session sequence.",
+                "schema": {"type": "integer", "minimum": 0, "default": 0}
+            }),
+        );
+    }
+    if method == "get" && is_anonymous_delivery_observation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "lookupKey",
+                "in": "query",
+                "required": true,
+                "schema": {"type": "string", "minLength": 1, "maxLength": 512}
+            }),
+        );
+    }
+    if method == "get" && is_application_streaming_observation_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "afterSequence",
+                "in": "query",
+                "required": false,
                 "schema": {"type": "integer", "minimum": 0, "default": 0}
             }),
         );
@@ -935,6 +969,16 @@ fn describe_request_body(
                                         "kind": {"type": "string", "enum": ["environment"]},
                                         "projectId": {"type": "string", "format": "uuid"},
                                         "environmentId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId", "applicationId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["application"]},
+                                        "projectId": {"type": "string", "format": "uuid"},
+                                        "applicationId": {"type": "string", "format": "uuid"}
                                     }
                                 },
                                 {
@@ -1628,6 +1672,8 @@ fn requires_idempotency_key(method: &str, path: &str) -> bool {
             && !is_automation_webhook_endpoint_mutation_path(path)
             && !is_application_feedback_collection_path(path)
             && !is_application_message_variant_collection_path(path)
+            && !is_application_delivery_credential_mutation_path(path)
+            && !is_application_publication_route_intent_mutation_path(path)
             && !is_application_message_file_reference_collection_path(path)
             && !is_application_message_citation_collection_path(path)
             && !is_application_annotation_collection_path(path))
@@ -1978,6 +2024,8 @@ fn is_application_mutation_path(path: &str) -> bool {
         || is_application_invocation_collection_path(path)
         || is_application_feedback_collection_path(path)
         || is_application_message_variant_collection_path(path)
+        || is_application_delivery_credential_mutation_path(path)
+        || is_application_publication_route_intent_mutation_path(path)
         || is_application_message_file_reference_collection_path(path)
         || is_application_message_citation_collection_path(path)
         || is_application_annotation_collection_path(path)
@@ -2088,6 +2136,34 @@ fn is_application_release_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/") && path.ends_with("/releases")
 }
 
+fn is_anonymous_delivery_session_collection_path(path: &str) -> bool {
+    path.starts_with("/anonymous-delivery/")
+        && path.contains("/applications/{application_id}/")
+        && path.ends_with("/sessions")
+}
+
+fn is_anonymous_delivery_invocation_collection_path(path: &str) -> bool {
+    path.starts_with("/anonymous-delivery/")
+        && path.contains("/applications/{application_id}/sessions/{session_id}/")
+        && path.ends_with("/invocations")
+}
+
+fn is_anonymous_delivery_observation_path(path: &str) -> bool {
+    path.starts_with("/anonymous-delivery/")
+        && path.contains(
+            "/applications/{application_id}/sessions/{session_id}/invocations/{invocation_id}/",
+        )
+        && (path.ends_with("/blocking-observation")
+            || path.ends_with("/streaming-observation")
+            || path.ends_with("/asynchronous-observation"))
+}
+
+fn is_application_streaming_observation_path(path: &str) -> bool {
+    path.contains(
+        "/applications/{application_id}/sessions/{session_id}/invocations/{invocation_id}/",
+    ) && path.ends_with("/streaming-observation")
+}
+
 fn is_application_session_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/") && path.ends_with("/sessions")
 }
@@ -2117,6 +2193,29 @@ fn is_application_message_variant_collection_path(path: &str) -> bool {
         && path.ends_with("/message-variants")
 }
 
+fn is_application_delivery_credential_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/") && path.ends_with("/delivery-credentials")
+}
+
+fn is_application_delivery_credential_lifecycle_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/delivery-credentials/{credential_id}/")
+        && (path.ends_with("/disable") || path.ends_with("/enable") || path.ends_with("/revoke"))
+}
+
+fn is_application_delivery_credential_mutation_path(path: &str) -> bool {
+    is_application_delivery_credential_collection_path(path)
+        || is_application_delivery_credential_lifecycle_path(path)
+}
+
+fn is_application_publication_route_intent_release_collection_path(path: &str) -> bool {
+    path.contains("/applications/{application_id}/releases/{release_id}/")
+        && path.ends_with("/publication-route-intents")
+}
+
+fn is_application_publication_route_intent_mutation_path(path: &str) -> bool {
+    is_application_publication_route_intent_release_collection_path(path)
+}
+
 fn is_application_message_file_reference_collection_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/message-file-references")
@@ -2130,6 +2229,14 @@ fn is_application_message_citation_collection_path(path: &str) -> bool {
 fn is_application_session_close_path(path: &str) -> bool {
     path.contains("/applications/{application_id}/sessions/{session_id}/")
         && path.ends_with("/close")
+}
+
+fn is_anonymous_delivery_session_close_path(path: &str) -> bool {
+    path.starts_with("/anonymous-delivery/") && is_application_session_close_path(path)
+}
+
+fn is_anonymous_delivery_invocation_cancel_path(path: &str) -> bool {
+    path.starts_with("/anonymous-delivery/") && is_application_invocation_cancel_path(path)
 }
 
 fn is_application_session_replay_path(path: &str) -> bool {
@@ -2160,6 +2267,19 @@ fn application_request_schema(path: &str) -> Value {
             }
         });
     }
+    if is_anonymous_delivery_session_close_path(path)
+        || is_anonymous_delivery_invocation_cancel_path(path)
+    {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedVersion", "lookupKey"],
+            "properties": {
+                "expectedVersion": {"type": "integer", "minimum": 1},
+                "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512}
+            }
+        });
+    }
     if is_application_session_close_path(path) || is_application_invocation_cancel_path(path) {
         return json!({
             "type": "object",
@@ -2167,6 +2287,66 @@ fn application_request_schema(path: &str) -> Value {
             "required": ["expectedVersion"],
             "properties": {
                 "expectedVersion": {"type": "integer", "minimum": 1}
+            }
+        });
+    }
+    if is_anonymous_delivery_session_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["sessionId", "releaseId", "lookupKey"],
+            "properties": {
+                "sessionId": {"type": "string", "format": "uuid"},
+                "releaseId": {"type": "string", "format": "uuid"},
+                "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+                "initialVariables": {
+                    "type": "object",
+                    "x-a3s-max-canonical-bytes": APPLICATION_CONVERSATION_VARIABLES_MAX_BYTES,
+                    "default": {}
+                }
+            }
+        });
+    }
+    if is_anonymous_delivery_invocation_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "invocationId",
+                "expectedSessionVersion",
+                "lookupKey",
+                "responseMode",
+                "input",
+                "ontologyId",
+                "ontologyRevisionId",
+                "ontologyDigest"
+            ],
+            "properties": {
+                "invocationId": {"type": "string", "format": "uuid"},
+                "expectedSessionVersion": {"type": "integer", "minimum": 1},
+                "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+                "responseMode": {
+                    "type": "string",
+                    "enum": ["asynchronous", "blocking", "streaming"]
+                },
+                "input": {
+                    "type": "object",
+                    "x-a3s-max-canonical-bytes": APPLICATION_INVOCATION_INPUT_MAX_BYTES
+                },
+                "ontologyId": {"type": "string", "format": "uuid"},
+                "ontologyRevisionId": {"type": "string", "format": "uuid"},
+                "ontologyDigest": {"type": "string", "minLength": 1},
+                "environmentId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "nullable": true
+                },
+                "timeoutSeconds": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": WORKFLOW_RUN_MAX_TIMEOUT_SECONDS,
+                    "default": WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS
+                }
             }
         });
     }
@@ -2274,6 +2454,85 @@ fn application_request_schema(path: &str) -> Value {
                     "type": "object",
                     "nullable": true,
                     "x-a3s-max-canonical-bytes": APPLICATION_MESSAGE_VARIANT_INSTRUCTION_MAX_BYTES
+                }
+            }
+        });
+    }
+    if is_application_delivery_credential_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "credentialId",
+                "applicationReleaseId",
+                "lookupKey",
+                "secretId",
+                "secretVersion"
+            ],
+            "properties": {
+                "credentialId": {"type": "string", "format": "uuid"},
+                "applicationReleaseId": {"type": "string", "format": "uuid"},
+                "lookupKey": {"type": "string", "minLength": 1, "maxLength": 512},
+                "secretId": {"type": "string", "format": "uuid"},
+                "secretVersion": {"type": "integer", "minimum": 1}
+            }
+        });
+    }
+    if is_application_delivery_credential_lifecycle_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["expectedGeneration"],
+            "properties": {
+                "expectedGeneration": {"type": "integer", "minimum": 1}
+            }
+        });
+    }
+    if is_application_publication_route_intent_release_collection_path(path) {
+        return json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "applicationReleaseDigest",
+                "channels",
+                "rateShapingPolicy"
+            ],
+            "properties": {
+                "applicationReleaseDigest": {"type": "string", "minLength": 1},
+                "channels": {
+                    "type": "array",
+                    "minItems": 1,
+                    "uniqueItems": true,
+                    "items": {
+                        "type": "string",
+                        "enum": [
+                            "api_blocking",
+                            "api_streaming",
+                            "embed",
+                            "mcp",
+                            "web",
+                            "internal"
+                        ]
+                    }
+                },
+                "embedOriginAllowlist": {
+                    "type": "array",
+                    "maxItems": APPLICATION_PUBLICATION_EMBED_ORIGIN_MAX_ENTRIES,
+                    "items": {"type": "string", "minLength": 1},
+                    "default": []
+                },
+                "rateShapingPolicy": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["profileId", "policyRevisionDigest"],
+                    "properties": {
+                        "profileId": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": APPLICATION_PUBLICATION_RATE_PROFILE_ID_MAX_CHARS
+                        },
+                        "policyRevisionDigest": {"type": "string", "minLength": 1}
+                    }
                 }
             }
         });

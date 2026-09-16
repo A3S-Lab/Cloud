@@ -17,8 +17,8 @@ use crate::modules::shared_kernel::domain::{
 };
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
-    AUTH_SCOPES_METADATA,
+    controller, get, metadata, use_guard, BootError, BootRequest, BootResponse,
+    ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
 };
 use chrono::{DateTime, Utc};
 use serde::Deserialize;
@@ -26,111 +26,100 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn audit_query_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    let export_bus = Arc::clone(&bus);
-    let manifest_bus = Arc::clone(&bus);
-    let retention_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_guard(OrganizationAdministratorGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::CLOUD_READ])?
-        .get(
-            "/{organization_id}/audit-records/export/manifest",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&manifest_bus);
-                async move {
-                    let parameters: AuditExportManifestParameters = request.query()?;
-                    parameters.validate_page_size()?;
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ExportAuditManifest {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            filter: parameters.filter(),
-                            page_size: parameters.page_size,
-                        })
-                        .await?
-                    {
-                        Ok(bundle) => {
-                            BootResponse::json(&AuditExportManifestBundleResponse::from(bundle))
-                        }
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/audit-records/export",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&export_bus);
-                async move {
-                    let parameters: AuditRecordParameters = request.query()?;
-                    parameters.validate_limit()?;
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ExportAuditRecords {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            filter: parameters.filter(),
-                            cursor: parameters.cursor,
-                            limit: parameters.limit,
-                        })
-                        .await?
-                    {
-                        Ok(export) => BootResponse::json(&AuditExportResponse::from(export)),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/audit-records/retention",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&retention_bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetAuditRetentionStatus {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                        })
-                        .await?
-                    {
-                        Ok(status) => {
-                            BootResponse::json(&AuditRetentionStatusResponse::from(status))
-                        }
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .get(
-            "/{organization_id}/audit-records",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let parameters: AuditRecordParameters = request.query()?;
-                    parameters.validate_limit()?;
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(ListAuditRecords {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            filter: parameters.filter(),
-                            cursor: parameters.cursor,
-                            limit: parameters.limit,
-                        })
-                        .await?
-                    {
-                        Ok(page) => BootResponse::json(&AuditRecordPageResponse::from(page)),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )
+    Arc::new(AuditQueryController { bus }).controller()
+}
+
+#[derive(Debug, Clone)]
+struct AuditQueryController {
+    bus: Arc<QueryBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[use_guard(OrganizationAdministratorGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::CLOUD_READ])]
+impl AuditQueryController {
+    #[get("/{organization_id}/audit-records/export/manifest", raw)]
+    async fn export_manifest(&self, request: BootRequest) -> Result<BootResponse> {
+        let parameters: AuditExportManifestParameters = request.query()?;
+        parameters.validate_page_size()?;
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(ExportAuditManifest {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                filter: parameters.filter(),
+                page_size: parameters.page_size,
+            })
+            .await?
+        {
+            Ok(bundle) => BootResponse::json(&AuditExportManifestBundleResponse::from(bundle)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[get("/{organization_id}/audit-records/export", raw)]
+    async fn export_records(&self, request: BootRequest) -> Result<BootResponse> {
+        let parameters: AuditRecordParameters = request.query()?;
+        parameters.validate_limit()?;
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(ExportAuditRecords {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                filter: parameters.filter(),
+                cursor: parameters.cursor,
+                limit: parameters.limit,
+            })
+            .await?
+        {
+            Ok(export) => BootResponse::json(&AuditExportResponse::from(export)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[get("/{organization_id}/audit-records/retention", raw)]
+    async fn retention(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(GetAuditRetentionStatus {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+            })
+            .await?
+        {
+            Ok(status) => BootResponse::json(&AuditRetentionStatusResponse::from(status)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[get("/{organization_id}/audit-records", raw)]
+    async fn list_records(&self, request: BootRequest) -> Result<BootResponse> {
+        let parameters: AuditRecordParameters = request.query()?;
+        parameters.validate_limit()?;
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(ListAuditRecords {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                filter: parameters.filter(),
+                cursor: parameters.cursor,
+                limit: parameters.limit,
+            })
+            .await?
+        {
+            Ok(page) => BootResponse::json(&AuditRecordPageResponse::from(page)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -261,4 +250,39 @@ fn request_id(request: &BootRequest) -> Result<Uuid> {
             Uuid::parse_str(value)
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })
+}
+
+#[cfg(test)]
+mod nest_macro_audit_query_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+    use std::collections::HashSet;
+
+    #[test]
+    fn audit_queries_register_admin_scoped_gets_via_nest_macros() {
+        let controller =
+            audit_query_controller(Arc::new(QueryBus::new())).expect("audit nest queries");
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 4);
+        assert!(routes.iter().all(|route| route.method() == HttpMethod::Get));
+        let paths: HashSet<_> = routes.iter().map(|route| route.path().to_string()).collect();
+        assert_eq!(
+            paths,
+            HashSet::from([
+                "/organizations/{organization_id}/audit-records".to_string(),
+                "/organizations/{organization_id}/audit-records/export".to_string(),
+                "/organizations/{organization_id}/audit-records/export/manifest".to_string(),
+                "/organizations/{organization_id}/audit-records/retention".to_string(),
+            ])
+        );
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::CLOUD_READ])
+        );
+    }
 }

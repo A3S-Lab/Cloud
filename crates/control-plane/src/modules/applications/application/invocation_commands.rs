@@ -2,7 +2,6 @@ use super::delivery_access::project_member_session;
 use super::delivery_commands::{RequestApplicationInvocation, RequestApplicationInvocationHandler};
 use super::delivery_identity::{idempotency, invocation_id};
 use super::environment_access::{ApplicationsEnvironmentScope, IApplicationsEnvironmentAccess};
-use super::resource_access::environment;
 use super::{
     ApplicationWorkflowRunEvidence, IApplicationOntologyRevisionPort, IApplicationWorkflowRunPort,
 };
@@ -109,9 +108,16 @@ impl CommandHandler<AdmitApplicationInvocation> for AdmitApplicationInvocationHa
                 return Ok(Err(error));
             }
             if let Some(environment_id) = command.environment_id {
-                if let Err(error) = environment(command.project_id, environment_id, &command.access)
-                {
-                    return Ok(Err(error));
+                let environment_authorized = command
+                    .access
+                    .environment_is_visible(command.project_id, environment_id)
+                    || command
+                        .access
+                        .exact_application_is_authorized(command.project_id, command.application_id);
+                if !environment_authorized {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "Application environment not found".into(),
+                    )));
                 }
                 let scope = match ApplicationsEnvironmentScope::new(
                     command.organization_id,

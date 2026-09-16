@@ -399,6 +399,16 @@ function requireResourceGrantCreateCommand(arguments_: ParsedArguments): {
         },
         idempotencyKey,
       };
+    case 'application':
+      return {
+        membershipId,
+        scope: {
+          kind,
+          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
+          applicationId: positionalUuid(arguments_.positionals, 5, 'application ID'),
+        },
+        idempotencyKey,
+      };
     case 'node':
       return {
         membershipId,
@@ -409,7 +419,9 @@ function requireResourceGrantCreateCommand(arguments_: ParsedArguments): {
         idempotencyKey,
       };
     default:
-      throw usageError('Resource Grant scope kind must be project, environment, or node');
+      throw usageError(
+        'Resource Grant scope kind must be project, environment, application, or node',
+      );
   }
 }
 

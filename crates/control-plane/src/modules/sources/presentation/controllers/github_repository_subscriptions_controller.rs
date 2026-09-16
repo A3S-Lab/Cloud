@@ -12,8 +12,8 @@ use crate::modules::sources::{
 };
 use crate::presentation::{application_error_response, source_access};
 use a3s_boot::{
-    AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
-    Result,
+    controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+    BootResponse, CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -22,101 +22,104 @@ use uuid::Uuid;
 pub fn github_repository_subscriptions_controller(
     bus: Arc<CommandBus>,
 ) -> Result<ControllerDefinition> {
-    let create_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .with_metadata(AUTH_SCOPES_METADATA, vec![ApiTokenScope::SOURCE_WRITE])?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&create_bus);
-                async move {
-                    let body: CreateGithubRepositorySubscriptionRequest =
-                        request.json_with_content_type()?;
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let project_id =
-                        ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
-                    let environment_id =
-                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
-                    let access = source_access(&resource_access_evaluator(
-                        &request.require_auth_principal()?,
-                    )?);
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(CreateGithubRepositorySubscription {
-                            organization_id,
-                            project_id,
-                            environment_id,
-                            access,
-                            repository_provider: body.repository.provider,
-                            repository_url: body.repository.url,
-                            branch: body.branch,
-                            recipe: DockerfileBuildRecipeInput {
-                                schema: body.recipe.schema,
-                                kind: body.recipe.kind,
-                                context_path: body.recipe.context_path,
-                                dockerfile_path: body.recipe.dockerfile_path,
-                                target: body.recipe.target,
-                                platforms: body.recipe.platforms,
-                            },
-                            idempotency_key,
-                            request_id,
-                            created_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(result) => {
-                            let status = if result.replayed { 200 } else { 201 };
-                            BootResponse::json_with_status(
-                                status,
-                                &GithubRepositorySubscriptionResponse::from_create(result),
-                            )
-                        }
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .post(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github/{subscription_id}/deactivate",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let organization_id =
-                        OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
-                    let project_id =
-                        ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
-                    let environment_id =
-                        EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
-                    let subscription_id = SourceSubscriptionId::from_uuid(
-                        request.param_as::<Uuid>("subscription_id")?,
-                    );
-                    let access = source_access(&resource_access_evaluator(
-                        &request.require_auth_principal()?,
-                    )?);
-                    let (idempotency_key, request_id) = request_identity(&request)?;
-                    match bus
-                        .execute(DeactivateGithubRepositorySubscription {
-                            organization_id,
-                            project_id,
-                            environment_id,
-                            access,
-                            subscription_id,
-                            idempotency_key,
-                            request_id,
-                            deactivated_at: Utc::now(),
-                        })
-                        .await?
-                    {
-                        Ok(result) => BootResponse::json(
-                            &GithubRepositorySubscriptionResponse::from_deactivation(result),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )
+    Arc::new(GithubRepositorySubscriptionsController { bus }).controller()
+}
+
+#[derive(Debug, Clone)]
+struct GithubRepositorySubscriptionsController {
+    bus: Arc<CommandBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+#[metadata("auth.scopes", vec![ApiTokenScope::SOURCE_WRITE])]
+impl GithubRepositorySubscriptionsController {
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github",
+        raw
+    )]
+    async fn create(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: CreateGithubRepositorySubscriptionRequest = request.json_with_content_type()?;
+        let organization_id =
+            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+        let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+        let environment_id =
+            EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+        let access = source_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(CreateGithubRepositorySubscription {
+                organization_id,
+                project_id,
+                environment_id,
+                access,
+                repository_provider: body.repository.provider,
+                repository_url: body.repository.url,
+                branch: body.branch,
+                recipe: DockerfileBuildRecipeInput {
+                    schema: body.recipe.schema,
+                    kind: body.recipe.kind,
+                    context_path: body.recipe.context_path,
+                    dockerfile_path: body.recipe.dockerfile_path,
+                    target: body.recipe.target,
+                    platforms: body.recipe.platforms,
+                },
+                idempotency_key,
+                request_id,
+                created_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => {
+                let status = if result.replayed { 200 } else { 201 };
+                BootResponse::json_with_status(
+                    status,
+                    &GithubRepositorySubscriptionResponse::from_create(result),
+                )
+            }
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github/{subscription_id}/deactivate",
+        raw
+    )]
+    async fn deactivate(&self, request: BootRequest) -> Result<BootResponse> {
+        let organization_id =
+            OrganizationId::from_uuid(request.param_as::<Uuid>("organization_id")?);
+        let project_id = ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?);
+        let environment_id =
+            EnvironmentId::from_uuid(request.param_as::<Uuid>("environment_id")?);
+        let subscription_id =
+            SourceSubscriptionId::from_uuid(request.param_as::<Uuid>("subscription_id")?);
+        let access = source_access(&resource_access_evaluator(
+            &request.require_auth_principal()?,
+        )?);
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(DeactivateGithubRepositorySubscription {
+                organization_id,
+                project_id,
+                environment_id,
+                access,
+                subscription_id,
+                idempotency_key,
+                request_id,
+                deactivated_at: Utc::now(),
+            })
+            .await?
+        {
+            Ok(result) => BootResponse::json(
+                &GithubRepositorySubscriptionResponse::from_deactivation(result),
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
 }
 
 fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
@@ -133,4 +136,36 @@ fn request_identity(request: &BootRequest) -> Result<(String, Uuid)> {
                 .map_err(|error| BootError::Internal(format!("invalid request ID: {error}")))
         })?;
     Ok((idempotency_key, request_id))
+}
+
+#[cfg(test)]
+mod nest_macro_github_repository_subscriptions_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn github_repository_subscriptions_controller_registers_scoped_posts_via_nest_macros() {
+        let controller = github_repository_subscriptions_controller(Arc::new(CommandBus::new()))
+            .expect("github subscription nest command controller");
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 2);
+        assert_eq!(routes[0].method(), HttpMethod::Post);
+        assert_eq!(
+            routes[0].path(),
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github"
+        );
+        assert_eq!(
+            routes[1].path(),
+            "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/source-subscriptions/github/{subscription_id}/deactivate"
+        );
+        assert_eq!(
+            routes[0]
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::SOURCE_WRITE])
+        );
+    }
 }

@@ -73,6 +73,7 @@ identifier!(ApplicationAnnotationId);
 identifier!(ApplicationMessageVariantId);
 identifier!(ApplicationMessageFileReferenceId);
 identifier!(ApplicationMessageCitationId);
+identifier!(ApplicationPublicationRouteIntentId);
 identifier!(ApplicationAuthoringProfileId);
 identifier!(ApplicationReleaseId);
 identifier!(ApplicationSessionId);

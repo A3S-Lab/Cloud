@@ -15,7 +15,10 @@ mod gateway_rollout_rollback_reconciler;
 mod gateway_route_rollout_compiler;
 mod gateway_route_rollout_planner;
 mod gateway_snapshot_compiler;
+mod gateway_rate_shaping_profile_catalog;
+mod gateway_rate_shaping_profile_durable_store;
 mod identity_inference_managed_acl_access;
+mod applications_publication_route_intent_managed_acl_access;
 mod inference_credential_scope;
 mod inference_edge_route_binding_admission;
 mod inference_route_scope;
@@ -108,10 +111,19 @@ pub use gateway_snapshot_compiler::{
     GatewaySnapshotMetadata, GatewaySnapshotRouteInput,
 };
 pub use identity_inference_managed_acl_access::IdentityInferenceEdgeManagedAclAccessAdapter;
+pub use applications_publication_route_intent_managed_acl_access::ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter;
 pub use inference_credential_scope::{
     inference_credential_scopes_from_routes, load_inference_credential_projections_for_routes,
 };
 pub use inference_edge_route_binding_admission::EdgeInferenceRouteBindingAdmissionAdapter;
+pub use gateway_rate_shaping_profile_catalog::{
+    EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
+    IGatewayRateShapingProfileCatalog, InMemoryGatewayRateShapingProfileCatalog,
+};
+pub use gateway_rate_shaping_profile_durable_store::{
+    install_gateway_rate_shaping_catalog, IGatewayRateShapingProfileDurableStore,
+    InMemoryGatewayRateShapingProfileDurableStore, PostgresGatewayRateShapingProfileDurableStore,
+};
 pub use inference_route_scope::{
     inference_route_scopes_from_routes, load_inference_route_projections_for_routes,
 };

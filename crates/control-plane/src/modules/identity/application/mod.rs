@@ -1,4 +1,5 @@
 mod active_human_membership;
+mod application_access;
 pub mod commands;
 mod empty_inference_credential_acl_projection;
 mod environment_access;
@@ -26,6 +27,7 @@ mod workload_runtime_execution_authorization;
 mod empty_inference_credential_acl_projection_tests;
 
 pub use active_human_membership::{ActiveHumanMembershipScope, IActiveHumanMembershipQueryPort};
+pub use application_access::{IIdentityApplicationAccess, IdentityApplicationScope};
 pub use empty_inference_credential_acl_projection::EmptyInferenceCredentialAclProjectionPort;
 pub use environment_access::{IIdentityEnvironmentAccess, IdentityEnvironmentScope};
 pub use inference_credential_delivery::{

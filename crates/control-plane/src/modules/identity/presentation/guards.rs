@@ -2,7 +2,7 @@ use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::identity::domain::value_objects::BootstrapCredential;
 use crate::modules::identity::domain::value_objects::ResourceGrantScope;
 use crate::modules::identity::presentation::resource_access_evaluator;
-use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
+use crate::modules::shared_kernel::domain::{ApplicationId, EnvironmentId, NodeId, ProjectId};
 use a3s_boot::{
     BootError, BootRequest, BoxFuture, ExecutionContext, Guard, HttpMethod, Result, RouteDefinition,
 };
@@ -166,21 +166,32 @@ fn resource_scope(request: &BootRequest) -> Result<Option<ResourceGrantScope>> {
         .map(parse_uuid)
         .transpose()?
         .map(EnvironmentId::from_uuid);
+    let application_id = request
+        .param("application_id")
+        .map(parse_uuid)
+        .transpose()?
+        .map(ApplicationId::from_uuid);
     let node_id = request
         .param("node_id")
         .map(parse_uuid)
         .transpose()?
         .map(NodeId::from_uuid);
-    match (project_id, environment_id, node_id) {
-        (Some(project_id), Some(environment_id), None) => {
+    match (project_id, environment_id, application_id, node_id) {
+        (Some(project_id), Some(environment_id), None, None) => {
             Ok(Some(ResourceGrantScope::Environment {
                 project_id,
                 environment_id,
             }))
         }
-        (Some(project_id), None, None) => Ok(Some(ResourceGrantScope::Project { project_id })),
-        (None, None, Some(node_id)) => Ok(Some(ResourceGrantScope::Node { node_id })),
-        (None, None, None) => Ok(None),
+        (Some(project_id), None, Some(application_id), None) => {
+            Ok(Some(ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            }))
+        }
+        (Some(project_id), None, None, None) => Ok(Some(ResourceGrantScope::Project { project_id })),
+        (None, None, None, Some(node_id)) => Ok(Some(ResourceGrantScope::Node { node_id })),
+        (None, None, None, None) => Ok(None),
         _ => Err(BootError::Internal(
             "resource-scoped route parameters are inconsistent".into(),
         )),
@@ -286,6 +297,30 @@ mod tests {
             DeferredResourceScope::Any,
             &node
         ));
+    }
+
+    #[test]
+    fn resource_scope_maps_application_path_param() {
+        let project_id = ProjectId::new();
+        let application_id = ApplicationId::new();
+        let request = BootRequest::new(
+            HttpMethod::Post,
+            format!(
+                "/api/v1/delivery/organizations/{}/projects/{}/applications/{}/sessions",
+                Uuid::now_v7(),
+                project_id.as_uuid(),
+                application_id.as_uuid()
+            ),
+        )
+        .with_param("project_id", project_id.to_string())
+        .with_param("application_id", application_id.to_string());
+        assert_eq!(
+            resource_scope(&request).expect("application resource scope"),
+            Some(ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            })
+        );
     }
 
     #[test]

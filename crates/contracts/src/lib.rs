@@ -7,6 +7,8 @@ mod app_platform_manifest;
 mod automation;
 mod cloud_scope_ref;
 mod event;
+mod application_publication_route_intent_acl;
+mod gateway_rate_shaping_bound_profile_acl;
 mod function;
 mod inference;
 mod mcp;
@@ -117,6 +119,15 @@ pub use function::{
     FUNCTION_INVOCATION_ENVELOPE_MAX_BYTES, FUNCTION_INVOCATION_FAILURE_SCHEMA_V1,
     FUNCTION_INVOCATION_INLINE_MAX_BYTES, FUNCTION_INVOCATION_SCHEMA_V1, FUNCTION_MAX_CONCURRENCY,
     FUNCTION_PROFILE_MAX_ACL_BYTES, FUNCTION_PROFILE_SCHEMA_V1,
+};
+pub use application_publication_route_intent_acl::{
+    render_application_publication_route_intent_acl_blocks,
+    ApplicationPublicationRouteIntentAclProjection,
+};
+pub use gateway_rate_shaping_bound_profile_acl::{
+    render_gateway_rate_shaping_bound_profile_acl_blocks, GatewayRateShapingBoundParametersAcl,
+    GatewayRateShapingBoundProfileAclProjection, GatewayRateShapingGcraAcl,
+    GatewayRateShapingTokenBucketAcl,
 };
 pub use inference::{
     inference_tokenizer_revision_acl_attr, render_inference_policy_acl,

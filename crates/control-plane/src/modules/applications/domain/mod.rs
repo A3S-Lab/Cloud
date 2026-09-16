@@ -8,6 +8,7 @@ mod application_delivery_credential;
 mod application_effect;
 mod application_end_user;
 mod application_feedback;
+mod application_publication_route_intent;
 mod application_invocation;
 mod application_invocation_workflow_authority;
 mod application_message;
@@ -20,6 +21,7 @@ mod conversation_variables;
 mod delivery_credential_repository;
 mod events;
 mod feedback_repository;
+mod publication_route_intent_repository;
 mod message_citation_repository;
 mod message_file_reference_repository;
 mod message_variant_repository;
@@ -48,6 +50,12 @@ pub use application_end_user::ApplicationEndUser;
 pub use application_feedback::{
     APPLICATION_FEEDBACK_COMMENT_MAX_CHARS, ApplicationFeedback, ApplicationFeedbackRating,
 };
+pub use application_publication_route_intent::{
+    APPLICATION_PUBLICATION_EMBED_ORIGIN_MAX_ENTRIES,
+    APPLICATION_PUBLICATION_RATE_PROFILE_ID_MAX_CHARS,
+    APPLICATION_PUBLICATION_ROUTE_INTENT_IDENTITY, ApplicationPublicationChannel,
+    ApplicationPublicationRateShapingPolicyRef, ApplicationPublicationRouteIntent,
+};
 pub use application_invocation::{
     APPLICATION_INVOCATION_INPUT_MAX_BYTES, ApplicationInvocation, ApplicationInvocationStatus,
 };
@@ -75,6 +83,7 @@ pub use conversation_variables::{
 pub use delivery_credential_repository::IApplicationDeliveryCredentialRepository;
 pub use events::ApplicationReleasePublished;
 pub use feedback_repository::IApplicationFeedbackRepository;
+pub use publication_route_intent_repository::IApplicationPublicationRouteIntentRepository;
 pub use message_citation_repository::IApplicationMessageCitationRepository;
 pub use message_file_reference_repository::IApplicationMessageFileReferenceRepository;
 pub use message_variant_repository::IApplicationMessageVariantRepository;

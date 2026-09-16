@@ -1,23 +1,32 @@
+use crate::modules::edge::application::{
+    ApplicationPublicationRateShapingBindingAdmissionRequest,
+    IApplicationPublicationRateShapingBindingAdmissionPort,
+};
 use crate::modules::edge::domain::{
     DomainClaim, DomainClaimState, GatewayRouteVersion, GatewayScopeState,
     GatewaySnapshotRuntimeSettings, Route, RouteState,
 };
+use crate::modules::edge::infrastructure::gateway_rate_shaping_profile_catalog::EdgeApplicationPublicationRateShapingBindingAdmissionAdapter;
 use crate::modules::edge::infrastructure::{
     McpGatewayIngressRoute, McpGatewayProjectionCompiler, PlannedGatewayNodeDesiredState,
     PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{
-    canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId,
+    canonical_timestamp, DomainClaimId, GatewayCertificateId, NodeId, RouteId, Sha256Digest,
 };
 use a3s_cloud_contracts::{
+    render_application_publication_route_intent_acl_blocks,
+    render_gateway_rate_shaping_bound_profile_acl_blocks,
     render_inference_policy_acl_with_routes_and_workers, require_inference_tokenizer_revision,
-    GatewayCertificateRequest, GatewaySnapshot, InferenceCredentialAclProjection,
+    ApplicationPublicationRouteIntentAclProjection, GatewayCertificateRequest,
+    GatewayRateShapingBoundProfileAclProjection, GatewaySnapshot, InferenceCredentialAclProjection,
     InferenceRouteAclProjection, InferenceWorkerAclProjection, McpGatewayProjection,
 };
 use chrono::{DateTime, Utc};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GatewaySnapshotCompilerConfig {
@@ -55,6 +64,7 @@ pub struct CompileMcpGatewaySnapshot {
     pub inference_credentials: Vec<InferenceCredentialAclProjection>,
     pub inference_routes: Vec<InferenceRouteAclProjection>,
     pub inference_workers: Vec<InferenceWorkerAclProjection>,
+    pub publication_route_intents: Vec<ApplicationPublicationRouteIntentAclProjection>,
 }
 
 #[derive(Debug, Clone)]
@@ -208,13 +218,37 @@ pub(super) fn managed_snapshot_expires_at(
     Ok(expires_at)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GatewaySnapshotCompiler {
     config: GatewaySnapshotCompilerConfig,
+    rate_shaping_bindings: Arc<dyn IApplicationPublicationRateShapingBindingAdmissionPort>,
+}
+
+impl std::fmt::Debug for GatewaySnapshotCompiler {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("GatewaySnapshotCompiler")
+            .field("config", &self.config)
+            .finish_non_exhaustive()
+    }
 }
 
 impl GatewaySnapshotCompiler {
     pub fn new(config: GatewaySnapshotCompilerConfig) -> Result<Self, String> {
+        Self::with_rate_shaping_binding_admission(
+            config,
+            Arc::new(EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::empty()),
+        )
+    }
+
+    /// Bind publication route intent rate-shaping refs against a Gateway catalog.
+    ///
+    /// Production may inject an empty in-memory catalog (fail closed until profiles
+    /// are registered). Tests seed profiles through the in-memory catalog adapter.
+    pub fn with_rate_shaping_binding_admission(
+        config: GatewaySnapshotCompilerConfig,
+        rate_shaping_bindings: Arc<dyn IApplicationPublicationRateShapingBindingAdmissionPort>,
+    ) -> Result<Self, String> {
         GatewaySnapshotRuntimeSettings {
             entrypoint_address: &config.entrypoint_address,
             management_address: &config.management_address,
@@ -225,7 +259,18 @@ impl GatewaySnapshotCompiler {
             managed_state_file: &config.managed_state_file,
         }
         .validate()?;
-        Ok(Self { config })
+        Ok(Self {
+            config,
+            rate_shaping_bindings,
+        })
+    }
+
+    pub fn with_rate_shaping_bindings(
+        mut self,
+        rate_shaping_bindings: Arc<dyn IApplicationPublicationRateShapingBindingAdmissionPort>,
+    ) -> Self {
+        self.rate_shaping_bindings = rate_shaping_bindings;
+        self
     }
 
     /// Composes one complete physical Gateway snapshot from the ordinary
@@ -245,6 +290,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             inference_routes,
             inference_workers,
+            publication_route_intents,
         } = request;
         for planned in mcp.scope_sets() {
             planned.scope().validate()?;
@@ -395,6 +441,7 @@ impl GatewaySnapshotCompiler {
             &inference_credentials,
             &inference_routes,
             &inference_workers,
+            &publication_route_intents,
         )?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
@@ -443,6 +490,7 @@ impl GatewaySnapshotCompiler {
                 "managed retained snapshot certificate reuse identity is inconsistent".into(),
             );
         }
+        let publication_route_intents = desired_state.publication_route_intents().to_vec();
         let (physical_scope, active_routes, mcp) = desired_state.into_parts();
         let mut candidate = self.compile_mcp_reconciliation(CompileMcpGatewaySnapshot {
             metadata,
@@ -453,6 +501,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials: inference_credentials.clone(),
             inference_routes: inference_routes.clone(),
             inference_workers: inference_workers.clone(),
+            publication_route_intents: publication_route_intents.clone(),
         })?;
         if let Some(certificate_request) = reused_certificate_request {
             let routes = active_routes
@@ -473,6 +522,7 @@ impl GatewaySnapshotCompiler {
                 &inference_credentials,
                 &inference_routes,
                 &inference_workers,
+                &publication_route_intents,
             )?;
         }
         Ok(candidate)
@@ -504,6 +554,7 @@ impl GatewaySnapshotCompiler {
         {
             return Err("managed certificate convergence reuse identity is inconsistent".into());
         }
+        let publication_route_intents = desired_state.publication_route_intents().to_vec();
         let (physical_scope, active_routes, mcp) = desired_state.into_parts();
         let retained = retained_routes
             .iter()
@@ -569,6 +620,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials: inference_credentials.clone(),
             inference_routes: inference_routes.clone(),
             inference_workers: inference_workers.clone(),
+            publication_route_intents: publication_route_intents.clone(),
         })?;
         candidate.active_route_versions = observed_versions.into_values().collect();
         if let Some(certificate_request) = reused_certificate_request {
@@ -592,6 +644,7 @@ impl GatewaySnapshotCompiler {
                 &inference_credentials,
                 &inference_routes,
                 &inference_workers,
+                &publication_route_intents,
             )?;
         }
         Ok(candidate)
@@ -615,6 +668,7 @@ impl GatewaySnapshotCompiler {
             inference_routes,
             inference_workers,
         } = request;
+        let publication_route_intents = desired_state.publication_route_intents().to_vec();
         let (physical_scope, active_routes, mcp) = desired_state.into_parts();
         for planned in mcp.scope_sets() {
             planned.scope().validate()?;
@@ -835,6 +889,7 @@ impl GatewaySnapshotCompiler {
             &inference_credentials,
             &inference_routes,
             &inference_workers,
+            &publication_route_intents,
         )?;
         Ok(CompiledMcpGatewaySnapshot {
             snapshot,
@@ -856,6 +911,12 @@ impl GatewaySnapshotCompiler {
         })
     }
 
+    /// Low-level snapshot compile without Applications publication route intents.
+    ///
+    /// Intentionally omits publication-route-intent ACL (`&[]`). Callers that need
+    /// declare-only publication ACL must pass intents through
+    /// [`Self::compile_with_application_publication_route_intent_policy`] or use
+    /// managed desired-state paths that load via Edge ACA (APP0.3-C17/C18/C19).
     pub fn compile(
         &self,
         metadata: GatewaySnapshotMetadata,
@@ -869,6 +930,7 @@ impl GatewaySnapshotCompiler {
             true,
             None,
             None,
+            &[],
             &[],
             &[],
             &[],
@@ -896,6 +958,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             &[],
             &[],
+            &[],
         )
     }
 
@@ -921,10 +984,16 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             inference_routes,
             &[],
+            &[],
         )
     }
 
     /// Compile with credentials, Inference routes, and Inference workers.
+    ///
+    /// Low-level helper: publication route intents stay empty (`&[]`). Prefer
+    /// [`Self::compile_with_application_publication_route_intent_policy`] or managed
+    /// desired-state compile when declare-only publication ACL is required
+    /// (APP0.3-C19 audit).
     pub fn compile_with_inference_policy_and_workers(
         &self,
         metadata: GatewaySnapshotMetadata,
@@ -944,6 +1013,37 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             inference_routes,
             inference_workers,
+            &[],
+        )
+    }
+
+    /// Compile with inference policy/workers plus declare-only publication route intents.
+    ///
+    /// Empty intents preserve inference-only snapshots. Managed desired-state
+    /// planning and MCP reconciliation load Applications projections through the
+    /// Edge ACA (APP0.3-C17 / APP0.3-C18). Sibling `compile*` helpers that pass
+    /// `&[]` remain intentional low-level APIs (APP0.3-C19 audit).
+    pub fn compile_with_application_publication_route_intent_policy(
+        &self,
+        metadata: GatewaySnapshotMetadata,
+        certificate_id: GatewayCertificateId,
+        routes: &[Route],
+        inference_credentials: &[InferenceCredentialAclProjection],
+        inference_routes: &[InferenceRouteAclProjection],
+        inference_workers: &[InferenceWorkerAclProjection],
+        publication_route_intents: &[ApplicationPublicationRouteIntentAclProjection],
+    ) -> Result<GatewaySnapshot, String> {
+        self.compile_snapshot(
+            metadata,
+            Some(certificate_id),
+            routes,
+            true,
+            None,
+            None,
+            inference_credentials,
+            inference_routes,
+            inference_workers,
+            publication_route_intents,
         )
     }
 
@@ -969,6 +1069,7 @@ impl GatewaySnapshotCompiler {
             &[],
             &[],
             &[],
+            &[],
         )
     }
 
@@ -986,6 +1087,7 @@ impl GatewaySnapshotCompiler {
             false,
             Some(certificate_request),
             None,
+            &[],
             &[],
             &[],
             &[],
@@ -1017,6 +1119,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             &[],
             &[],
+            &[],
         )
     }
 
@@ -1044,6 +1147,7 @@ impl GatewaySnapshotCompiler {
             None,
             inference_credentials,
             inference_routes,
+            &[],
             &[],
         )
     }
@@ -1074,6 +1178,7 @@ impl GatewaySnapshotCompiler {
             inference_credentials,
             inference_routes,
             inference_workers,
+            &[],
         )
     }
 
@@ -1104,6 +1209,7 @@ impl GatewaySnapshotCompiler {
         inference_credentials: &[InferenceCredentialAclProjection],
         inference_routes: &[InferenceRouteAclProjection],
         inference_workers: &[InferenceWorkerAclProjection],
+        publication_route_intents: &[ApplicationPublicationRouteIntentAclProjection],
     ) -> Result<GatewaySnapshot, String> {
         let mut routes = routes.iter().collect::<Vec<_>>();
         routes.sort_by(|left, right| {
@@ -1247,6 +1353,12 @@ impl GatewaySnapshotCompiler {
             inference_routes,
             inference_workers,
         )?;
+        let bound_rate_profiles = admit_publication_rate_shaping_bindings(
+            self.rate_shaping_bindings.as_ref(),
+            publication_route_intents,
+        )?;
+        append_application_publication_route_intent_acl(&mut acl, publication_route_intents)?;
+        append_gateway_rate_shaping_bound_profile_acl(&mut acl, &bound_rate_profiles)?;
         acl.push_str(&format!(
             "management {{\n  enabled = true\n  address = {}\n  path_prefix = {}\n  auth_token_env = {}\n  allowed_ips = [\"127.0.0.1\", \"::1\"]\n}}\n",
             acl_string(&self.config.management_address),
@@ -1266,6 +1378,65 @@ impl GatewaySnapshotCompiler {
         )
     }
 }
+
+
+fn append_application_publication_route_intent_acl(
+    acl: &mut String,
+    intents: &[ApplicationPublicationRouteIntentAclProjection],
+) -> Result<(), String> {
+    let block = render_application_publication_route_intent_acl_blocks(intents)?;
+    if block.is_empty() {
+        return Ok(());
+    }
+    acl.push_str(block.trim_end_matches(['\r', '\n']));
+    acl.push_str("\n\n");
+    Ok(())
+}
+
+
+fn append_gateway_rate_shaping_bound_profile_acl(
+    acl: &mut String,
+    profiles: &[GatewayRateShapingBoundProfileAclProjection],
+) -> Result<(), String> {
+    let block = render_gateway_rate_shaping_bound_profile_acl_blocks(profiles)?;
+    if block.is_empty() {
+        return Ok(());
+    }
+    acl.push_str(block.trim_end_matches(['\r', '\n']));
+    acl.push_str("\n\n");
+    Ok(())
+}
+
+fn admit_publication_rate_shaping_bindings(
+    admission: &dyn IApplicationPublicationRateShapingBindingAdmissionPort,
+    intents: &[ApplicationPublicationRouteIntentAclProjection],
+) -> Result<Vec<GatewayRateShapingBoundProfileAclProjection>, String> {
+    if intents.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut bound = Vec::new();
+    let mut seen = BTreeSet::new();
+    for intent in intents {
+        intent.validate()?;
+        let digest = Sha256Digest::parse(&intent.rate_shaping_policy_revision_digest)?;
+        let key = (
+            intent.rate_shaping_profile_id.clone(),
+            digest.as_str().to_owned(),
+        );
+        if !seen.insert(key) {
+            continue;
+        }
+        let profile = admission.admit(
+            ApplicationPublicationRateShapingBindingAdmissionRequest::new(
+                intent.rate_shaping_profile_id.clone(),
+                digest,
+            ),
+        )?;
+        bound.push(profile.into_acl_projection());
+    }
+    Ok(bound)
+}
+
 
 fn append_inference_policy_acl(
     acl: &mut String,

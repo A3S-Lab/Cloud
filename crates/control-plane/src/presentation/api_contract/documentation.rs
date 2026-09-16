@@ -635,6 +635,17 @@ fn operation_summary(method: &str, path: &str) -> String {
         _ => {}
     }
 
+    if method == "get" {
+        if path.starts_with("/delivery/") && path.ends_with("/blocking-observation") {
+            return "Observe an authenticated application blocking invocation".into();
+        }
+        if path.starts_with("/delivery/") && path.ends_with("/streaming-observation") {
+            return "Observe an authenticated application streaming invocation".into();
+        }
+        if path.starts_with("/delivery/") && path.ends_with("/asynchronous-observation") {
+            return "Observe an authenticated application asynchronous invocation".into();
+        }
+    }
     if path.ends_with("/git/info/refs") {
         return "Advertise Git references".into();
     }
@@ -700,6 +711,18 @@ fn operation_summary(method: &str, path: &str) -> String {
         if path.contains("/applications/") && path.contains("/releases/") && path.ends_with('}') {
             return "Get an application release".into();
         }
+        if path.contains("/applications/")
+            && path.contains("/publication-route-intents/")
+            && path.ends_with('}')
+        {
+            return "Get an application publication route intent".into();
+        }
+        if path.contains("/applications/")
+            && path.contains("/releases/")
+            && path.ends_with("/publication-route-intents")
+        {
+            return "List application publication route intents for an exact release".into();
+        }
         if path.contains("/connector-profiles/")
             && path.contains("/revisions/")
             && path.ends_with('}')
@@ -755,6 +778,18 @@ fn operation_summary(method: &str, path: &str) -> String {
     if method == "post" {
         if path == "/organizations/{organization_id}/recipient-contacts" {
             return "Request recipient contact verification".into();
+        }
+        if path.starts_with("/anonymous-delivery/") && path.ends_with("/sessions") {
+            return "Open an anonymous application delivery session".into();
+        }
+        if path.starts_with("/anonymous-delivery/") && path.ends_with("/invocations") {
+            return "Request an anonymous application delivery invocation".into();
+        }
+        if path.starts_with("/delivery/") && path.ends_with("/sessions") {
+            return "Open an authenticated application delivery session".into();
+        }
+        if path.starts_with("/delivery/") && path.ends_with("/invocations") {
+            return "Request an authenticated application delivery invocation".into();
         }
         if let Some(summary) = mutation_action_summary(path) {
             return summary.into();
@@ -937,6 +972,26 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "/message-variants",
             "Create an application session message variant",
         ),
+        (
+            "/delivery-credentials",
+            "Register an application delivery credential",
+        ),
+        (
+            "/delivery-credentials/{credential_id}/disable",
+            "Disable an application delivery credential",
+        ),
+        (
+            "/delivery-credentials/{credential_id}/enable",
+            "Enable an application delivery credential",
+        ),
+        (
+            "/delivery-credentials/{credential_id}/revoke",
+            "Revoke an application delivery credential",
+        ),
+        (
+            "/publication-route-intents",
+            "Create an application publication route intent",
+        ),
         ("/versions", "Create a secret version"),
         ("/executions", "Start an execution"),
         ("/deployments", "Create a deployment"),
@@ -1049,6 +1104,14 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
             "application message variant",
             "application message variants",
         ),
+        "delivery-credentials" => (
+            "application delivery credential",
+            "application delivery credentials",
+        ),
+        "publication-route-intents" => (
+            "application publication route intent",
+            "application publication route intents",
+        ),
         "attribution-profiles" => (
             "project attribution profile",
             "project attribution profiles",
@@ -1084,6 +1147,8 @@ fn parameter_description(name: &str, location: &str, path: &str) -> String {
         "limit" => "Maximum number of records to return in this bounded response.".into(),
         "q" => "Case-insensitive search text matched against authorized resource projections.".into(),
         "afterSequence" => "Return records whose monotonic sequence is strictly greater than this value.".into(),
+        "lookupKey" => "Opaque Application delivery credential lookup key that authorizes this anonymous request.".into(),
+        "applicationReleaseDigest" => "Exact application release content digest that must match the addressed release identity.".into(),
         "timeoutSeconds" => "Maximum number of seconds for the bounded wait operation.".into(),
         "status" => "Optional lifecycle status used to filter the result set.".into(),
         "stream" => "Optional output stream filter for workload log records.".into(),

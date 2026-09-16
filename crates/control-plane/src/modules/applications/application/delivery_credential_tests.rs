@@ -1,7 +1,9 @@
 use super::{
     ApplicationAccess, ApplicationAccessScope, DisableApplicationDeliveryCredential,
     DisableApplicationDeliveryCredentialHandler, EnableApplicationDeliveryCredential,
-    EnableApplicationDeliveryCredentialHandler, OpenAnonymousApplicationSession,
+    EnableApplicationDeliveryCredentialHandler, GetApplicationDeliveryCredential,
+    GetApplicationDeliveryCredentialHandler, ListApplicationDeliveryCredentials,
+    ListApplicationDeliveryCredentialsHandler, OpenAnonymousApplicationSession,
     OpenAnonymousApplicationSessionHandler, RegisterApplicationDeliveryCredential,
     RegisterApplicationDeliveryCredentialHandler, RevokeApplicationDeliveryCredential,
     RevokeApplicationDeliveryCredentialHandler,
@@ -23,7 +25,7 @@ use crate::modules::shared_kernel::domain::{
     IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName, SecretId,
     SecretVersionReference, Sha256Digest, WorkflowDefinitionId, WorkflowRevisionId,
 };
-use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use a3s_boot::{CommandHandler, CqrsContext, ModuleRef, QueryHandler};
 use chrono::{Duration, TimeZone, Utc};
 use serde_json::json;
 use std::sync::Arc;
@@ -76,6 +78,17 @@ impl Fixture {
 
     fn revoke_handler(&self) -> RevokeApplicationDeliveryCredentialHandler {
         RevokeApplicationDeliveryCredentialHandler::new(self.credentials.clone())
+    }
+
+    fn get_handler(&self) -> GetApplicationDeliveryCredentialHandler {
+        GetApplicationDeliveryCredentialHandler::new(self.credentials.clone())
+    }
+
+    fn list_handler(&self) -> ListApplicationDeliveryCredentialsHandler {
+        ListApplicationDeliveryCredentialsHandler::new(
+            self.applications.clone(),
+            self.credentials.clone(),
+        )
     }
 
     fn open_handler(&self) -> OpenAnonymousApplicationSessionHandler {
@@ -430,4 +443,162 @@ async fn delivery_credential_handlers_are_send_sync() {
     assert_send_sync::<DisableApplicationDeliveryCredentialHandler>();
     assert_send_sync::<EnableApplicationDeliveryCredentialHandler>();
     assert_send_sync::<RevokeApplicationDeliveryCredentialHandler>();
+    assert_send_sync::<GetApplicationDeliveryCredentialHandler>();
+    assert_send_sync::<ListApplicationDeliveryCredentialsHandler>();
+}
+
+#[tokio::test]
+async fn gets_and_lists_registered_delivery_credentials() {
+    let fixture = anonymous_fixture().await;
+    let first_id = ApplicationDeliveryCredentialId::new();
+    let second_id = ApplicationDeliveryCredentialId::new();
+    let first = fixture
+        .register_handler()
+        .execute(fixture.register(first_id, "list-key-a"), context())
+        .await
+        .expect("command framework")
+        .expect("register first");
+    let second = fixture
+        .register_handler()
+        .execute(
+            RegisterApplicationDeliveryCredential {
+                created_at: fixture.created_at + Duration::seconds(1),
+                ..fixture.register(second_id, "list-key-b")
+            },
+            context(),
+        )
+        .await
+        .expect("command framework")
+        .expect("register second");
+
+    let got = fixture
+        .get_handler()
+        .execute(
+            GetApplicationDeliveryCredential {
+                organization_id: fixture.release.organization_id,
+                project_id: fixture.release.project_id,
+                application_id: fixture.release.application_id,
+                credential_id: first_id,
+                actor_principal_id: fixture.actor,
+                access: fixture.access.clone(),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework")
+        .expect("get");
+    assert_eq!(got.id, first.credential.id);
+    assert_eq!(got.lookup_key, "list-key-a");
+
+    let listed = fixture
+        .list_handler()
+        .execute(
+            ListApplicationDeliveryCredentials {
+                organization_id: fixture.release.organization_id,
+                project_id: fixture.release.project_id,
+                application_id: fixture.release.application_id,
+                actor_principal_id: fixture.actor,
+                access: fixture.access.clone(),
+            },
+            context(),
+        )
+        .await
+        .expect("query framework")
+        .expect("list");
+    assert_eq!(
+        listed
+            .iter()
+            .map(|credential| credential.id)
+            .collect::<Vec<_>>(),
+        vec![first.credential.id, second.credential.id]
+    );
+}
+
+#[tokio::test]
+async fn missing_and_unauthorized_delivery_credential_reads_fail_closed() {
+    let fixture = anonymous_fixture().await;
+    let credential_id = ApplicationDeliveryCredentialId::new();
+    fixture
+        .register_handler()
+        .execute(fixture.register(credential_id, "read-key"), context())
+        .await
+        .expect("command framework")
+        .expect("register");
+
+    assert!(matches!(
+        fixture
+            .get_handler()
+            .execute(
+                GetApplicationDeliveryCredential {
+                    organization_id: fixture.release.organization_id,
+                    project_id: fixture.release.project_id,
+                    application_id: fixture.release.application_id,
+                    credential_id: ApplicationDeliveryCredentialId::new(),
+                    actor_principal_id: fixture.actor,
+                    access: fixture.access.clone(),
+                },
+                context(),
+            )
+            .await
+            .expect("query framework"),
+        Err(ApplicationError::NotFound(_))
+    ));
+
+    let unauthorized_access = ApplicationAccess::restricted([ApplicationAccessScope::Project {
+        project_id: ProjectId::new(),
+    }]);
+    assert!(matches!(
+        fixture
+            .get_handler()
+            .execute(
+                GetApplicationDeliveryCredential {
+                    organization_id: fixture.release.organization_id,
+                    project_id: fixture.release.project_id,
+                    application_id: fixture.release.application_id,
+                    credential_id,
+                    actor_principal_id: fixture.actor,
+                    access: unauthorized_access.clone(),
+                },
+                context(),
+            )
+            .await
+            .expect("query framework"),
+        Err(ApplicationError::NotFound(_))
+    ));
+
+    assert!(matches!(
+        fixture
+            .list_handler()
+            .execute(
+                ListApplicationDeliveryCredentials {
+                    organization_id: fixture.release.organization_id,
+                    project_id: fixture.release.project_id,
+                    application_id: fixture.release.application_id,
+                    actor_principal_id: fixture.actor,
+                    access: unauthorized_access,
+                },
+                context(),
+            )
+            .await
+            .expect("query framework"),
+        Err(ApplicationError::NotFound(_))
+    ));
+
+    assert!(matches!(
+        fixture
+            .list_handler()
+            .execute(
+                ListApplicationDeliveryCredentials {
+                    organization_id: fixture.release.organization_id,
+                    project_id: fixture.release.project_id,
+                    application_id: ApplicationId::new(),
+                    actor_principal_id: fixture.actor,
+                    access: fixture.access.clone(),
+                },
+                context(),
+            )
+            .await
+            .expect("query framework"),
+        Err(ApplicationError::NotFound(_))
+    ));
 }

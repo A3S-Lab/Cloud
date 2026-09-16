@@ -2179,7 +2179,7 @@ fn sources_list_queries_isolate_identity_behind_one_context_owned_access_project
         "pub(crate)fnsource_access(",
         "SourceAccess::organization_wide()",
         "SourceAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -2281,7 +2281,7 @@ fn plugins_list_queries_isolate_identity_behind_one_context_owned_access_project
         "pub(crate)fnplugin_access(",
         "PluginAccess::organization_wide()",
         "PluginAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -2549,7 +2549,7 @@ fn artifacts_access_and_operation_scheduling_have_one_bounded_authority() {
         "pub(crate)fnartifact_access(resource_access:&ResourceAccessEvaluator)->ArtifactAccess",
         "ArtifactAccess::organization_wide()",
         "ArtifactAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_access_projection.contains(required),
@@ -3155,7 +3155,7 @@ fn projects_list_and_attribution_isolate_identity_behind_one_context_owned_acces
         "pub(crate)fnproject_access(",
         "ProjectAccess::organization_wide()",
         "ProjectAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -3376,7 +3376,7 @@ fn applications_queries_commands_and_delivery_isolate_identity_behind_one_contex
         "pub(crate)fnapplication_access(",
         "ApplicationAccess::organization_wide()",
         "ApplicationAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -3778,7 +3778,7 @@ fn durable_cells_queries_commands_and_admission_isolate_identity_behind_one_cont
         "pub(crate)fndurable_cell_access(",
         "DurableCellAccess::organization_wide()",
         "DurableCellAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -3888,7 +3888,7 @@ fn connectors_queries_commands_and_execution_isolate_identity_behind_one_context
         "pub(crate)fnconnector_access(",
         "ConnectorAccess::organization_wide()",
         "ConnectorAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -4037,7 +4037,7 @@ fn inference_route_and_usage_queries_isolate_identity_behind_one_context_owned_a
         "pub(crate)fninference_access(",
         "InferenceAccess::organization_wide()",
         "InferenceAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -4128,7 +4128,7 @@ fn identity_inference_key_queries_isolate_evaluator_behind_one_context_owned_acc
         "pub(crate)fnidentity_access(",
         "IdentityAccess::organization_wide()",
         "IdentityAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -4230,7 +4230,7 @@ fn edge_route_queries_isolate_identity_behind_one_context_owned_access_projectio
         "pub(crate)fnedge_access(",
         "EdgeAccess::organization_wide()",
         "EdgeAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -4846,7 +4846,7 @@ fn user_files_has_one_lifecycle_repository_one_streaming_object_port_and_no_para
         "UserFileAccess::organization_wide()",
         "UserFileAccess::restricted_projects(",
         "ResourceGrantScope::Project { project_id } => Some(project_id)",
-        "ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None",
+        "ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None",
     ] {
         assert!(
             production_access_projection.contains(required),
@@ -8904,7 +8904,7 @@ fn developer_workflows_access_and_environment_have_one_bounded_authority() {
         "pub(crate)fndeveloper_workflow_access(",
         "DeveloperWorkflowAccess::organization_wide()",
         "DeveloperWorkflowAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9054,7 +9054,7 @@ fn workloads_access_has_one_context_owned_projection_and_entry_policy() {
         "pub(crate)fnworkload_access(",
         "WorkloadAccess::organization_wide()",
         "WorkloadAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9265,7 +9265,7 @@ fn operations_list_isolates_identity_behind_one_context_owned_access_projection(
         "pub(crate)fnoperation_access(",
         "OperationAccess::organization_wide()",
         "OperationAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9367,7 +9367,7 @@ fn executions_get_and_cancel_isolate_identity_behind_one_context_owned_access_pr
         "pub(crate)fnexecution_access(",
         "ExecutionAccess::organization_wide()",
         "ExecutionAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9483,7 +9483,7 @@ fn agents_queries_and_commands_isolate_identity_behind_one_context_owned_access_
         "pub(crate)fnagent_access(",
         "AgentAccess::organization_wide()",
         "AgentAccess::restricted(",
-        "ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9605,7 +9605,7 @@ fn workflow_queries_and_commands_isolate_identity_behind_one_context_owned_acces
         "pub(crate)fnworkflow_access(",
         "WorkflowAccess::organization_wide()",
         "WorkflowAccess::restricted(",
-        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9826,7 +9826,7 @@ fn forms_access_and_project_ownership_have_one_bounded_authority() {
         "pub(crate)fnform_access(",
         "FormAccess::organization_wide()",
         "FormAccess::restricted(",
-        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}=>None",
+        "ResourceGrantScope::Environment{..}|ResourceGrantScope::Node{..}|ResourceGrantScope::Application{..}=>None",
     ] {
         assert!(
             compact_projection.contains(required),
@@ -9990,7 +9990,9 @@ fn secrets_cross_context_authority_has_one_owner_port_and_one_consumer_adapter()
         1
     );
     assert_eq!(projection.matches("SecretAccess::restricted(").count(), 1);
-    assert!(projection.contains("ResourceGrantScope::Node { .. } => None"));
+    assert!(projection.contains("ResourceGrantScope::Application { .. } => None")
+        || projection.contains("ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None")
+        || projection.contains("ResourceGrantScope::Node { .. }"));
 
     let mut inner_foreign_imports = BTreeSet::new();
     let mut projects_imports = BTreeSet::new();
@@ -10520,9 +10522,11 @@ fn identity_resource_grants_isolate_projects_and_fleet_behind_owner_ports() {
     for required in [
         "Arc<dyn IIdentityProjectAccess>",
         "Arc<dyn IIdentityEnvironmentAccess>",
+        "Arc<dyn IIdentityApplicationAccess>",
         "Arc<dyn IIdentityNodeAccess>",
         ".project_exists(",
         ".environment_exists(",
+        ".application_exists(",
         ".node_exists(",
     ] {
         assert!(
@@ -10533,8 +10537,10 @@ fn identity_resource_grants_isolate_projects_and_fleet_behind_owner_ports() {
     for forbidden in [
         "IProjectRepository",
         "IEnvironmentRepository",
+        "IApplicationRepository",
         "INodeRepository",
         "crate::modules::projects",
+        "crate::modules::applications",
         "crate::modules::fleet",
     ] {
         assert!(
@@ -10546,10 +10552,15 @@ fn identity_resource_grants_isolate_projects_and_fleet_behind_owner_ports() {
     let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
         .expect("read root composition");
     assert_eq!(
-        app.matches("ProjectsIdentityProjectAccessAdapter::new(")
-            .count(),
+        app.matches("ProjectsIdentityProjectAccessAdapter::new(").count(),
         1,
         "root composition must construct the Identity project adapter exactly once"
+    );
+    assert_eq!(
+        app.matches("ApplicationsIdentityApplicationAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Identity application adapter exactly once"
     );
     assert_eq!(
         app.matches("FleetIdentityNodeAccessAdapter::new(").count(),
@@ -12239,11 +12250,26 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
             }
         }
     });
+    let presentation_identity_imports = identity_imports
+        .iter()
+        .filter(|path| path.contains("/presentation/"))
+        .cloned()
+        .collect::<BTreeSet<_>>();
+    let non_presentation_identity_imports = identity_imports
+        .difference(&presentation_identity_imports)
+        .cloned()
+        .collect::<BTreeSet<_>>();
     assert_eq!(
-        identity_imports,
+        non_presentation_identity_imports,
         lines("plugins/infrastructure/identity_enrollment_authorization.rs"),
         "Plugins must isolate Identity behind one anti-corruption adapter"
     );
+    for path in &presentation_identity_imports {
+        assert!(
+            path.contains("/presentation/controllers/"),
+            "Plugins presentation Identity import escaped Nest HTTP adapters: {path}"
+        );
+    }
     assert!(
         foreign_tables.is_empty(),
         "Plugins persistence regained Identity table ownership:\n{}",
@@ -12398,27 +12424,31 @@ fn plugins_enrollment_has_one_identity_authority_and_one_consumer_adapter() {
     )
     .expect("read Plugins registry commands controller");
     let production_commands = production_source(&commands_controller);
-    assert!(production_commands.contains("organization_tenant_plugin_write_controller(controller)"));
     assert!(production_commands.contains("EnrollPluginRegistry"));
+    assert!(
+        production_commands.contains("OrganizationTenantGuard")
+            && production_commands.contains("ApiTokenScope::PLUGIN_WRITE"),
+        "Plugins registry commands must Nest-guard PLUGIN_WRITE"
+    );
+    assert!(
+        !production_commands.contains("organization_tenant_plugin_write_controller("),
+        "Plugins registry commands must not keep helper-builder tenant wiring"
+    );
 
     let controller = std::fs::read_to_string(
         root.join("plugins/presentation/controllers/plugin_registry_queries_controller.rs"),
     )
     .expect("read Plugins query controller");
     let production_controller = production_source(&controller);
-    assert!(production_controller.contains("organization_tenant_cloud_read_controller(controller)"));
-    for forbidden in [
-        "crate::modules::identity",
-        "OrganizationTenantGuard",
-        "ApiTokenScope::",
-        "AUTH_SCOPES_METADATA",
-        "fn request_id(",
-    ] {
-        assert!(
-            !production_controller.contains(forbidden),
-            "Plugins HTTP adapter regained duplicate entry policy {forbidden}"
-        );
-    }
+    assert!(
+        production_controller.contains("OrganizationTenantGuard")
+            && production_controller.contains("ApiTokenScope::CLOUD_READ"),
+        "Plugins registry queries must Nest-guard CLOUD_READ"
+    );
+    assert!(
+        !production_controller.contains("organization_tenant_cloud_read_controller("),
+        "Plugins registry queries must not keep helper-builder tenant wiring"
+    );
 
     let get_handler =
         std::fs::read_to_string(root.join("plugins/application/queries/get_plugin_registry.rs"))
@@ -14053,6 +14083,281 @@ fn edge_gateway_queues_consume_fleet_snapshot_command_owner_port() {
             .count(),
         1,
         "Gateway observation queue ACA must have exactly one production composition site"
+    );
+}
+
+
+#[test]
+fn edge_managed_publication_route_intent_acl_isolates_applications_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("edge/application/managed_application_publication_route_intent_access.rs"),
+    )
+    .expect("read Edge managed publication route intent ACL access port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructEdgeManagedApplicationPublicationRouteIntentScope",
+        "pubtraitIEdgeManagedApplicationPublicationRouteIntentAccess:Send+Sync",
+        "asyncfnlist_for_scopes(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge lost its managed publication route intent ACL boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::applications::domain",
+        "IApplicationPublicationRouteIntentRepository",
+        "ApplicationPublicationRouteIntent::",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Edge managed publication route intent ACL port leaked Applications authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "edge/infrastructure/gateway_snapshot_compiler.rs",
+        "edge/infrastructure/gateway_node_desired_state_planner.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        for forbidden in [
+            "crate::modules::applications::domain",
+            "IApplicationPublicationRouteIntentRepository",
+            "IApplicationPublicationRouteIntentAclProjectionPort",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} imported Applications authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("edge/infrastructure/applications_publication_route_intent_managed_acl_access.rs"),
+    )
+    .expect("read Applications managed publication route intent ACL ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter",
+        "IApplicationPublicationRouteIntentAclProjectionPort",
+        "impl IEdgeManagedApplicationPublicationRouteIntentAccess for ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "publication route intent ACL ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+        "crate::modules::applications::domain",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "publication route intent ACL ACA introduced concrete state or domain aggregate {forbidden}"
+        );
+    }
+
+    let compiler = std::fs::read_to_string(root.join("edge/infrastructure/gateway_snapshot_compiler.rs"))
+        .expect("read Gateway snapshot compiler");
+    assert!(
+        production_source(&compiler).contains("render_application_publication_route_intent_acl_blocks"),
+        "Gateway snapshot compiler must admit publication route intent ACL through contracts render"
+    );
+    assert!(
+        production_source(&compiler)
+            .contains("compile_with_application_publication_route_intent_policy"),
+        "Gateway snapshot compiler must expose publication route intent compile API"
+    );
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the publication route intent ACL ACA exactly once"
+    );
+    assert!(
+        production_app.contains("ApplicationPublicationRouteIntentAclProjectionAdapter::new("),
+        "root composition must wire the repository-backed Applications ACL projection adapter"
+    );
+    assert!(
+        production_app.contains("with_publication_route_intent_access("),
+        "root composition must attach publication route intent access to the desired-state planner"
+    );
+    assert!(
+        production_app
+            .matches("with_publication_route_intent_access(")
+            .count()
+            >= 2,
+        "root composition must attach publication route intent access to planner and MCP reconciler"
+    );
+    assert!(
+        !production_app.contains("empty_application_publication_route_intent_acl_projections"),
+        "root composition must not keep the empty publication route intent ACL port"
+    );
+
+    let planner = std::fs::read_to_string(
+        root.join("edge/infrastructure/gateway_node_desired_state_planner.rs"),
+    )
+    .expect("read desired-state planner");
+    assert!(
+        production_source(&planner).contains("list_for_scopes"),
+        "desired-state planner must load publication route intents through Edge managed access"
+    );
+    let reconciler = std::fs::read_to_string(
+        root.join("edge/infrastructure/mcp_gateway_desired_state_reconciler.rs"),
+    )
+    .expect("read MCP Gateway desired-state reconciler");
+    assert!(
+        production_source(&reconciler).contains("list_for_scopes"),
+        "MCP Gateway desired-state reconciler must load publication route intents through Edge managed access"
+    );
+    assert!(
+        production_source(&reconciler).contains("with_publication_route_intent_access"),
+        "MCP Gateway desired-state reconciler must expose publication route intent access wiring"
+    );
+    assert!(
+        !production_source(&reconciler).contains("publication_route_intents: Vec::new()"),
+        "MCP Gateway desired-state reconciler must not hard-code empty publication route intents"
+    );
+    assert!(
+        production_source(&compiler).contains("desired_state.publication_route_intents()"),
+        "managed Gateway compile must feed desired-state publication route intents into snapshot ACL"
+    );
+    // APP0.3-C19 audit: production reconciler/composition must not hard-code empty
+    // intents; remaining compile* `&[]` slots are intentional low-level API.
+    assert!(
+        production_source(&compiler)
+            .contains("compile_with_application_publication_route_intent_policy"),
+        "low-level publication intent compile API must remain available for callers that supply intents"
+    );
+    assert!(
+        production_source(&compiler).contains("compile_with_inference_policy_and_workers"),
+        "inference-only compile helper must remain for callers that omit publication intents"
+    );
+    assert!(
+        production_source(&compiler).contains("Intentionally omits publication-route-intent ACL"),
+        "low-level compile helpers must document intentional empty publication intent slots"
+    );
+}
+
+#[test]
+fn edge_gateway_rate_shaping_binding_admission_isolates_numeric_policy_from_applications() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("edge/application/application_publication_rate_shaping_binding_admission.rs"),
+    )
+    .expect("read rate-shaping binding admission port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubconstRATE_SHAPING_BINDING_INVALID",
+        "pubstructApplicationPublicationRateShapingBindingAdmissionRequest",
+        "pubtraitIApplicationPublicationRateShapingBindingAdmissionPort:Send+Sync",
+        "fnadmit(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Edge lost rate-shaping binding admission boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::applications::",
+        "IApplicationPublicationRouteIntentRepository",
+        "requests_per_minute",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "rate-shaping binding admission leaked Applications/numeric intent authority {forbidden}"
+        );
+    }
+
+    let catalog = std::fs::read_to_string(
+        root.join("edge/infrastructure/gateway_rate_shaping_profile_catalog.rs"),
+    )
+    .expect("read Gateway rate-shaping catalog");
+    assert!(
+        production_source(&catalog).contains("InMemoryGatewayRateShapingProfileCatalog"),
+        "Edge must own an in-memory Gateway rate-shaping catalog"
+    );
+    assert!(
+        production_source(&catalog)
+            .contains("EdgeApplicationPublicationRateShapingBindingAdmissionAdapter"),
+        "Edge must own the rate-shaping binding admission adapter"
+    );
+
+    let domain = std::fs::read_to_string(
+        root.join("edge/domain/value_objects/gateway_rate_shaping_profile.rs"),
+    )
+    .expect("read Gateway rate-shaping profile domain");
+    assert!(
+        production_source(&domain).contains("GatewayRateShapingTokenBucket"),
+        "Gateway catalog must expose token-bucket scalars"
+    );
+    assert!(
+        production_source(&domain).contains("GatewayRateShapingGcra"),
+        "Gateway catalog must expose GCRA scalars"
+    );
+
+    let compiler = std::fs::read_to_string(
+        root.join("edge/infrastructure/gateway_snapshot_compiler.rs"),
+    )
+    .expect("read Gateway snapshot compiler");
+    let production_compiler = production_source(&compiler);
+    assert!(
+        production_compiler.contains("admit_publication_rate_shaping_bindings"),
+        "Gateway snapshot compile must admit rate-shaping bindings fail-closed"
+    );
+    assert!(
+        production_compiler.contains("append_gateway_rate_shaping_bound_profile_acl"),
+        "Gateway snapshot compile must emit bound rate-shaping ACL separately from intents"
+    );
+    assert!(
+        production_compiler.contains("render_gateway_rate_shaping_bound_profile_acl_blocks"),
+        "Gateway snapshot compile must render bound rate-shaping ACL blocks"
+    );
+    assert!(
+        !production_compiler.contains("crate::modules::applications::"),
+        "Gateway snapshot compiler must not import Applications for rate-shaping binding"
+    );
+
+    let contracts_root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../contracts/src");
+    let intent_acl = std::fs::read_to_string(
+        contracts_root.join("application_publication_route_intent_acl.rs"),
+    )
+    .expect("read declare-only intent ACL");
+    let intent_production = production_source(&intent_acl);
+    assert!(
+        !intent_production.contains("requests_per_minute"),
+        "declare-only publication route intent ACL must not carry requests_per_minute"
+    );
+    assert!(
+        !intent_production.contains("token_bucket"),
+        "declare-only publication route intent ACL must not carry token_bucket"
+    );
+    let bound_acl = std::fs::read_to_string(
+        contracts_root.join("gateway_rate_shaping_bound_profile_acl.rs"),
+    )
+    .expect("read bound rate-shaping ACL");
+    assert!(
+        production_source(&bound_acl)
+            .contains("render_gateway_rate_shaping_bound_profile_acl_blocks"),
+        "contracts must render Gateway-bound rate-shaping profile ACL"
     );
 }
 

@@ -1,5 +1,5 @@
 use super::delivery_access::{invocation_not_found, project_member_session};
-use super::resource_access::{project, release_not_found};
+use super::resource_access::{published_application, release_not_found};
 use super::{
     ApplicationWorkflowRunEvidence, ApplicationWorkflowRunRequest,
     ComposeApplicationInvocationWorkflowRun, ComposeApplicationInvocationWorkflowRunHandler,
@@ -26,7 +26,7 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-const APPLICATION_INVOCATION_CANCELLATION_REASON: &str = "Application invocation cancellation";
+pub(super) const APPLICATION_INVOCATION_CANCELLATION_REASON: &str = "Application invocation cancellation";
 
 /// Open one exact-release project-member session.
 ///
@@ -87,7 +87,11 @@ impl CommandHandler<OpenApplicationSession> for OpenApplicationSessionHandler {
         let applications = Arc::clone(&self.applications);
         let sessions = Arc::clone(&self.sessions);
         Box::pin(async move {
-            if let Err(error) = project(command.project_id, &command.access) {
+            if let Err(error) = published_application(
+                command.project_id,
+                command.application_id,
+                &command.access,
+            ) {
                 return Ok(Err(error));
             }
             if command.organization_id.as_uuid().is_nil()
@@ -1115,7 +1119,7 @@ pub(super) fn same_invocation_request(
         && current.requested_at == expected.requested_at
 }
 
-async fn load_workflow_request(
+pub(super) async fn load_workflow_request(
     sessions: &dyn IApplicationSessionRepository,
     release: &ApplicationRelease,
     session: &ApplicationSession,

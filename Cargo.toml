@@ -21,6 +21,7 @@ a3s-boot = { version = "=0.2.0", default-features = false, features = [
     "cqrs",
     "health",
     "logging",
+    "macros",
     "openapi-schemas",
     "queue-postgres",
     "security",

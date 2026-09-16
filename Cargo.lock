@@ -22,6 +22,7 @@ name = "a3s-boot"
 version = "0.2.0"
 source = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88"
 dependencies = [
+ "a3s-boot-macros",
  "a3s-lane",
  "a3s-orm",
  "axum",
@@ -38,6 +39,16 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "a3s-boot-macros"
+version = "0.1.2"
+source = "git+https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb2274ab8e0d277ccd87461cc35c1a9b88"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

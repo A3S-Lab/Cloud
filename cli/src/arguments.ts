@@ -10,6 +10,7 @@ export interface ParsedArguments {
   timeoutMs?: string;
   cursor?: string;
   afterSequence?: string;
+  lookupKey?: string;
   limit?: string;
   stream?: string;
   idempotencyKey?: string;
@@ -82,6 +83,7 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--timeout': 'timeoutMs',
   '--cursor': 'cursor',
   '--after-sequence': 'afterSequence',
+  '--lookup-key': 'lookupKey',
   '--limit': 'limit',
   '--stream': 'stream',
   '--idempotency-key': 'idempotencyKey',

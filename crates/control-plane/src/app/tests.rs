@@ -1291,6 +1291,7 @@ fn config() -> CloudConfig {
             certificate_reconciliation_interval_ms: 60_000,
             upstream_request_timeout_ms: 30_000,
             command_ttl_ms: 10_000,
+            rate_shaping_profiles: Vec::new(),
         },
         fleet: FleetConfig {
             heartbeat_interval_ms: 1_000,
@@ -2336,11 +2337,17 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             application_feedbacks: Arc::new(
                 crate::modules::applications::InMemoryApplicationFeedbackRepository::new(),
             ),
+            application_publication_route_intents: Arc::new(
+                crate::modules::applications::InMemoryApplicationPublicationRouteIntentRepository::new(),
+            ),
             application_annotations: Arc::new(
                 crate::modules::applications::InMemoryApplicationAnnotationRepository::new(),
             ),
             application_message_variants: Arc::new(
                 crate::modules::applications::InMemoryApplicationMessageVariantRepository::new(),
+            ),
+            application_delivery_credentials: Arc::new(
+                crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
             ),
             application_message_file_references: Arc::new(
                 crate::modules::applications::InMemoryApplicationMessageFileReferenceRepository::new(),
@@ -2427,6 +2434,9 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             node_pools: nodes.clone(),
             node_control,
             log_chunks: Arc::new(TestLogChunkStore),
+            gateway_rate_shaping_catalog: InMemoryGatewayRateShapingProfileCatalog::empty(),
+            gateway_rate_shaping_profile_store: crate::modules::edge::InMemoryGatewayRateShapingProfileDurableStore::empty()
+                as Arc<dyn crate::modules::edge::IGatewayRateShapingProfileDurableStore>,
             readiness: HealthModule::new("readiness")
                 .with_route("/health/ready")
                 .indicator("repositories", || async { Ok(HealthIndicatorResult::up()) }),

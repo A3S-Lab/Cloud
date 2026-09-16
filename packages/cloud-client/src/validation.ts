@@ -267,11 +267,17 @@ export function validateResourceGrantInput(input: CreateResourceGrantInput): voi
       validateNonNilUuid(scope.projectId, 'Resource Grant project ID');
       validateNonNilUuid(scope.environmentId, 'Resource Grant environment ID');
       return;
+    case 'application':
+      validateNonNilUuid(scope.projectId, 'Resource Grant project ID');
+      validateNonNilUuid(scope.applicationId, 'Resource Grant application ID');
+      return;
     case 'node':
       validateNonNilUuid(scope.nodeId, 'Resource Grant node ID');
       return;
     default:
-      throw new TypeError('Resource Grant scope kind must be project, environment, or node');
+      throw new TypeError(
+        'Resource Grant scope kind must be project, environment, application, or node',
+      );
   }
 }
 

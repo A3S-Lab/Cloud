@@ -1,4 +1,4 @@
-use super::resource_access::project;
+use super::resource_access::published_application;
 use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationAudience, ApplicationEndUser, ApplicationSession, IApplicationSessionRepository,
@@ -26,7 +26,7 @@ pub(super) async fn project_member_session(
     actor_principal_id: PrincipalId,
     access: &ApplicationAccess,
 ) -> ApplicationResult<AuthorizedApplicationSession> {
-    project(project_id, access)?;
+    published_application(project_id, application_id, access)?;
     if organization_id.as_uuid().is_nil()
         || project_id.as_uuid().is_nil()
         || application_id.as_uuid().is_nil()

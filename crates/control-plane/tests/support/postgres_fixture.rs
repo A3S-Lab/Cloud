@@ -440,6 +440,7 @@ pub(super) fn config() -> CloudConfig {
             certificate_reconciliation_interval_ms: 60_000,
             upstream_request_timeout_ms: 30_000,
             command_ttl_ms: 10_000,
+            rate_shaping_profiles: Vec::new(),
         },
         fleet: FleetConfig {
             heartbeat_interval_ms: 1_000,

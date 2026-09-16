@@ -28,6 +28,7 @@ impl ApiTokenScope {
     pub const NOTIFICATION_WRITE: &'static str = "notification:write";
     pub const CONNECTOR_WRITE: &'static str = "connector:write";
     pub const APPLICATION_WRITE: &'static str = "application:write";
+    pub const APPLICATION_INVOKE: &'static str = "application:invoke";
     pub const FILE_WRITE: &'static str = "file:write";
     pub const KNOWLEDGE_WRITE: &'static str = "knowledge:write";
     pub const PLUGIN_WRITE: &'static str = "plugin:write";
@@ -82,6 +83,7 @@ impl ApiTokenScope {
             Self::NOTIFICATION_WRITE,
             Self::CONNECTOR_WRITE,
             Self::APPLICATION_WRITE,
+            Self::APPLICATION_INVOKE,
             Self::FILE_WRITE,
             Self::KNOWLEDGE_WRITE,
             Self::PLUGIN_WRITE,
@@ -103,6 +105,20 @@ impl ApiTokenScope {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bootstrap_scopes_admit_application_invoke_for_rule8_credentials() {
+        let scopes = ApiTokenScope::bootstrap_scopes();
+        assert!(
+            scopes
+                .iter()
+                .any(|scope| scope.as_str() == ApiTokenScope::APPLICATION_INVOKE),
+            "application:invoke must be issuable on Principal-bound Identity tokens"
+        );
+        assert!(ApiTokenScope::interactive_scopes()
+            .iter()
+            .any(|scope| scope.as_str() == ApiTokenScope::APPLICATION_INVOKE));
+    }
 
     #[test]
     fn interactive_credentials_never_receive_platform_authority() {

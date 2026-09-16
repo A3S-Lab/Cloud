@@ -1,16 +1,16 @@
 use super::delivery_commands::load_release;
 use super::resource_access::project;
-use crate::modules::applications::ApplicationAccess;
 use crate::modules::applications::domain::{
     ApplicationAudience, ApplicationDeliveryCredential, ApplicationDeliveryCredentialStatus,
     IApplicationDeliveryCredentialRepository, IApplicationRepository,
 };
+use crate::modules::applications::ApplicationAccess;
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
     ApplicationDeliveryCredentialId, ApplicationId, ApplicationReleaseId, OrganizationId,
     PrincipalId, ProjectId, RepositoryError, SecretVersionReference,
 };
-use a3s_boot::{Command, CommandHandler, CqrsContext};
+use a3s_boot::{Command, CommandHandler, CqrsContext, Query, QueryHandler};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use std::sync::Arc;
@@ -450,6 +450,145 @@ async fn transition_credential(
             replayed: false,
         })),
         Err(error) => Ok(Err(error.into())),
+    }
+}
+
+/// Get one Applications-owned anonymous delivery credential binding.
+#[derive(Debug, Clone)]
+pub struct GetApplicationDeliveryCredential {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub application_id: ApplicationId,
+    pub credential_id: ApplicationDeliveryCredentialId,
+    pub actor_principal_id: PrincipalId,
+    pub access: ApplicationAccess,
+}
+
+impl Query for GetApplicationDeliveryCredential {
+    type Output = ApplicationResult<ApplicationDeliveryCredential>;
+}
+
+/// List Applications-owned anonymous delivery credential bindings for one application.
+#[derive(Debug, Clone)]
+pub struct ListApplicationDeliveryCredentials {
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub application_id: ApplicationId,
+    pub actor_principal_id: PrincipalId,
+    pub access: ApplicationAccess,
+}
+
+impl Query for ListApplicationDeliveryCredentials {
+    type Output = ApplicationResult<Vec<ApplicationDeliveryCredential>>;
+}
+
+pub struct GetApplicationDeliveryCredentialHandler {
+    credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
+}
+
+impl GetApplicationDeliveryCredentialHandler {
+    pub fn new(credentials: Arc<dyn IApplicationDeliveryCredentialRepository>) -> Self {
+        Self { credentials }
+    }
+}
+
+impl QueryHandler<GetApplicationDeliveryCredential> for GetApplicationDeliveryCredentialHandler {
+    fn execute(
+        &self,
+        query: GetApplicationDeliveryCredential,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<ApplicationDeliveryCredential>>,
+    > {
+        let credentials = Arc::clone(&self.credentials);
+        Box::pin(async move {
+            if let Err(error) =
+                authorize_actor(&query.access, query.project_id, query.actor_principal_id)
+            {
+                return Ok(Err(error));
+            }
+            Ok(load_credential(
+                credentials.as_ref(),
+                query.organization_id,
+                query.project_id,
+                query.application_id,
+                query.credential_id,
+            )
+            .await)
+        })
+    }
+}
+
+pub struct ListApplicationDeliveryCredentialsHandler {
+    applications: Arc<dyn IApplicationRepository>,
+    credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
+}
+
+impl ListApplicationDeliveryCredentialsHandler {
+    pub fn new(
+        applications: Arc<dyn IApplicationRepository>,
+        credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
+    ) -> Self {
+        Self {
+            applications,
+            credentials,
+        }
+    }
+}
+
+impl QueryHandler<ListApplicationDeliveryCredentials>
+    for ListApplicationDeliveryCredentialsHandler
+{
+    fn execute(
+        &self,
+        query: ListApplicationDeliveryCredentials,
+        _context: CqrsContext,
+    ) -> a3s_boot::BoxFuture<
+        'static,
+        a3s_boot::Result<ApplicationResult<Vec<ApplicationDeliveryCredential>>>,
+    > {
+        let applications = Arc::clone(&self.applications);
+        let credentials = Arc::clone(&self.credentials);
+        Box::pin(async move {
+            if let Err(error) =
+                authorize_actor(&query.access, query.project_id, query.actor_principal_id)
+            {
+                return Ok(Err(error));
+            }
+            if query.organization_id.as_uuid().is_nil() || query.application_id.as_uuid().is_nil() {
+                return Ok(Err(ApplicationError::Invalid(
+                    "Application delivery credential request identity is invalid".into(),
+                )));
+            }
+            match applications
+                .find(
+                    query.organization_id,
+                    query.project_id,
+                    query.application_id,
+                )
+                .await
+            {
+                Ok(Some(_)) => {}
+                Ok(None) | Err(RepositoryError::NotFound) => {
+                    return Ok(Err(ApplicationError::NotFound(
+                        "Application not found".into(),
+                    )));
+                }
+                Err(error) => return Ok(Err(error.into())),
+            }
+            match credentials
+                .list_delivery_credentials_by_application(
+                    query.organization_id,
+                    query.project_id,
+                    query.application_id,
+                )
+                .await
+            {
+                Ok(values) => Ok(Ok(values)),
+                Err(error) => Ok(Err(error.into())),
+            }
+        })
     }
 }
 

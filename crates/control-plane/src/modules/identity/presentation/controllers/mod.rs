@@ -4,6 +4,8 @@ mod inference_key_controller;
 mod membership_controller;
 mod membership_invitation_controller;
 mod oidc_controller;
+#[cfg(test)]
+mod enterprise_saml_oidc_scim_claim_path_tests;
 mod organization_controller;
 mod organizations_query_controller;
 mod privileged_management_controller;
@@ -32,3 +34,7 @@ pub use recipient_contact_controller::{
     recipient_contact_commands_controller, recipient_contact_queries_controller,
 };
 pub use resource_grant_controller::resource_grant_controller;
+
+#[cfg(test)]
+mod enterprise_external_identity_claim_path_tests;
+

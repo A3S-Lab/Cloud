@@ -10,6 +10,10 @@ use super::{
     McpGatewaySnapshotStageResult, McpGatewaySnapshotStatus, PlanMcpGatewayNodeProjection,
     PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjectionSet, StageMcpGatewaySnapshot,
 };
+use crate::modules::edge::application::{
+    EdgeManagedApplicationPublicationRouteIntentScope,
+    IEdgeManagedApplicationPublicationRouteIntentAccess,
+};
 use crate::modules::edge::domain::{
     DomainClaim, DomainNamePattern, GatewayCertificate, GatewayCertificateMaterial,
     GatewayPublication, GatewayPublicationState, GatewayScope, GatewayScopeState, Route,
@@ -29,10 +33,11 @@ use crate::modules::shared_kernel::domain::{
     WorkloadId, WorkloadRevisionId,
 };
 use a3s_cloud_contracts::{
-    GatewayAckState, GatewayCertificateRequest, GatewayManagementProtocol, GatewaySnapshot,
-    InferenceCredentialAclProjection, InferenceEndpointAcl, InferenceGrantAclProjection,
-    InferenceLimitsAclProjection, InferenceModelAclProjection, InferenceRouteAclProjection,
-    InferenceTargetAclProjection, NodeGatewayAck, INFERENCE_CREDENTIAL_AUDIENCE,
+    ApplicationPublicationRouteIntentAclProjection, GatewayAckState, GatewayCertificateRequest,
+    GatewayManagementProtocol, GatewaySnapshot, InferenceCredentialAclProjection,
+    InferenceEndpointAcl, InferenceGrantAclProjection, InferenceLimitsAclProjection,
+    InferenceModelAclProjection, InferenceRouteAclProjection, InferenceTargetAclProjection,
+    NodeGatewayAck, INFERENCE_CREDENTIAL_AUDIENCE,
 };
 use async_trait::async_trait;
 use chrono::{DateTime, Duration as ChronoDuration, Utc};
@@ -492,6 +497,118 @@ async fn changed_empty_desired_state_stages_one_route_less_removal_snapshot() {
 }
 
 #[tokio::test]
+async fn mcp_desired_state_loads_publication_route_intents_into_snapshot_acl() {
+    let now = Utc::now();
+    let scope = scope(now);
+    let node_id = scope.node_id;
+    let intent = sample_publication_route_intent(scope.organization_id, scope.project_id);
+    let access = Arc::new(FakePublicationRouteIntentAccess {
+        projections: vec![intent.clone()],
+        scopes_seen: Mutex::new(Vec::new()),
+    });
+    let repository = Arc::new(FakeDesiredStateRepository::new(
+        scope.clone(),
+        McpGatewaySnapshotReconciliationState {
+            pending_publication: false,
+            latest_mcp_snapshot: Some(status(
+                &scope,
+                digest('a'),
+                GatewayPublicationState::Applied,
+                1,
+                now - ChronoDuration::minutes(2),
+                1,
+            )),
+        },
+        GatewayScopeState {
+            node_id,
+            last_issued_revision: 1,
+            installed_revision: Some(1),
+            aggregate_version: 1,
+        },
+    ));
+    let planner = Arc::new(EmptyProjectionPlanner::default());
+    let report = reconciler(repository.clone(), planner)
+        .with_publication_route_intent_access(access.clone())
+        .run_once(now)
+        .await
+        .expect("publication route intent desired-state reconciliation");
+
+    assert_eq!(report.staged_snapshots, 1);
+    assert!(report.failures.is_empty(), "failures: {:?}", report.failures);
+    let staged = repository.staged();
+    assert_eq!(staged.len(), 1);
+    let acl = &staged[0].publication().acl;
+    assert!(
+        acl.contains("application_publication_route_intents {"),
+        "staged ACL must embed Applications publication route intent block"
+    );
+    assert!(
+        acl.contains(&format!("intents \"{}\"", intent.publication_route_intent_id)),
+        "staged ACL must carry the loaded publication route intent id"
+    );
+    assert!(
+        acl.contains("application_publication_rate_shaping_bound_profiles {"),
+        "staged ACL must emit Gateway-bound rate-shaping profiles"
+    );
+    assert!(
+        acl.contains("token_bucket {"),
+        "bound rate-shaping ACL must carry catalog token_bucket scalars"
+    );
+    let seen = access.scopes_seen.lock().expect("scopes");
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].len(), 1);
+    assert_eq!(seen[0][0].organization_id(), scope.organization_id);
+    assert_eq!(seen[0][0].project_id(), scope.project_id);
+}
+
+#[tokio::test]
+async fn mcp_desired_state_compiles_with_empty_publication_route_intent_repository() {
+    let now = Utc::now();
+    let scope = scope(now);
+    let node_id = scope.node_id;
+    let access = Arc::new(FakePublicationRouteIntentAccess {
+        projections: Vec::new(),
+        scopes_seen: Mutex::new(Vec::new()),
+    });
+    let repository = Arc::new(FakeDesiredStateRepository::new(
+        scope.clone(),
+        McpGatewaySnapshotReconciliationState {
+            pending_publication: false,
+            latest_mcp_snapshot: Some(status(
+                &scope,
+                digest('a'),
+                GatewayPublicationState::Applied,
+                1,
+                now - ChronoDuration::minutes(2),
+                1,
+            )),
+        },
+        GatewayScopeState {
+            node_id,
+            last_issued_revision: 1,
+            installed_revision: Some(1),
+            aggregate_version: 1,
+        },
+    ));
+    let planner = Arc::new(EmptyProjectionPlanner::default());
+    let report = reconciler(repository.clone(), planner)
+        .with_publication_route_intent_access(access.clone())
+        .run_once(now)
+        .await
+        .expect("empty publication route intent repository reconciliation");
+
+    assert_eq!(report.staged_snapshots, 1);
+    assert!(report.failures.is_empty(), "failures: {:?}", report.failures);
+    let staged = repository.staged();
+    assert_eq!(staged.len(), 1);
+    assert!(!staged[0]
+        .publication()
+        .acl
+        .contains("application_publication_route_intents"));
+    assert_eq!(access.scopes_seen.lock().expect("scopes").len(), 1);
+}
+
+#[tokio::test]
 async fn any_pending_physical_publication_defers_planning_and_staging() {
     let now = Utc::now();
     let scope = scope(now);
@@ -598,6 +715,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
             inference_workers: Vec::new(),
+            publication_route_intents: Vec::new(),
         })
         .expect("first complete snapshot");
     let second = compiler()
@@ -625,6 +743,7 @@ fn desired_state_digest_excludes_physical_revision_and_observation_time() {
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
             inference_workers: Vec::new(),
+            publication_route_intents: Vec::new(),
         })
         .expect("second complete snapshot");
 
@@ -893,6 +1012,30 @@ fn target(
 }
 
 fn compiler() -> GatewaySnapshotCompiler {
+    use crate::modules::edge::domain::{
+        GatewayRateShapingAlgorithm, GatewayRateShapingProfile, GatewayRateShapingTokenBucket,
+    };
+    use crate::modules::edge::infrastructure::{
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
+        InMemoryGatewayRateShapingProfileCatalog,
+    };
+    use crate::modules::shared_kernel::domain::Sha256Digest;
+    use std::sync::Arc;
+
+    let catalog = InMemoryGatewayRateShapingProfileCatalog::new();
+    catalog
+        .register(
+            GatewayRateShapingProfile::new(
+                "public-api-default",
+                Sha256Digest::parse(format!("sha256:{}", "b".repeat(64))).expect("digest"),
+                GatewayRateShapingAlgorithm::TokenBucket(GatewayRateShapingTokenBucket {
+                    capacity: 120,
+                    refill_tokens_per_second: 60,
+                }),
+            )
+            .expect("profile"),
+        )
+        .expect("register");
     GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: "0.0.0.0:8443".into(),
         management_address: "127.0.0.1:9090".into(),
@@ -903,6 +1046,9 @@ fn compiler() -> GatewaySnapshotCompiler {
         managed_state_file: "/var/lib/a3s-gateway/managed-snapshot.json".into(),
     })
     .expect("Gateway snapshot compiler")
+    .with_rate_shaping_bindings(Arc::new(
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(Arc::new(catalog)),
+    ))
 }
 
 fn scope(now: DateTime<Utc>) -> GatewayScope {
@@ -1101,4 +1247,56 @@ fn status_with_certificate_expiry(
 fn digest(character: char) -> Sha256Digest {
     Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
         .expect("SHA-256 digest")
+}
+
+struct FakePublicationRouteIntentAccess {
+    projections: Vec<ApplicationPublicationRouteIntentAclProjection>,
+    scopes_seen: Mutex<Vec<Vec<EdgeManagedApplicationPublicationRouteIntentScope>>>,
+}
+
+#[async_trait]
+impl IEdgeManagedApplicationPublicationRouteIntentAccess for FakePublicationRouteIntentAccess {
+    async fn list_for_scopes(
+        &self,
+        scopes: &[EdgeManagedApplicationPublicationRouteIntentScope],
+    ) -> Result<Vec<ApplicationPublicationRouteIntentAclProjection>, RepositoryError> {
+        self.scopes_seen
+            .lock()
+            .expect("scopes")
+            .push(scopes.to_vec());
+        let wanted = scopes
+            .iter()
+            .map(|scope| (scope.organization_id(), scope.project_id()))
+            .collect::<std::collections::BTreeSet<_>>();
+        Ok(self
+            .projections
+            .iter()
+            .filter(|projection| {
+                wanted.contains(&(
+                    OrganizationId::from_uuid(projection.organization_id),
+                    ProjectId::from_uuid(projection.project_id),
+                ))
+            })
+            .cloned()
+            .collect())
+    }
+}
+
+fn sample_publication_route_intent(
+    organization_id: OrganizationId,
+    project_id: ProjectId,
+) -> ApplicationPublicationRouteIntentAclProjection {
+    ApplicationPublicationRouteIntentAclProjection {
+        organization_id: organization_id.as_uuid(),
+        project_id: project_id.as_uuid(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .unwrap(),
+        channels: vec!["api_blocking".into()],
+        embed_origin_allowlist: Vec::new(),
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    }
 }

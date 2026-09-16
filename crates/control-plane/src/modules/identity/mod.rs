@@ -6,11 +6,11 @@ pub mod published;
 
 pub use application::{
     ActiveHumanMembershipScope, EmptyInferenceCredentialAclProjectionPort,
-    IActiveHumanMembershipQueryPort, IIdentityEnvironmentAccess,
+    IActiveHumanMembershipQueryPort, IIdentityApplicationAccess, IIdentityEnvironmentAccess,
     IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
     IInferenceCredentialAclProjectionPort, IRecipientContactVerificationDispatcher,
     IWorkloadRuntimeEvidenceCandidatePort, IWorkloadRuntimeExecutionAuthorizationQueryPort,
-    IdentityAccess, IdentityAccessScope, IdentityEnvironmentScope, IdentityNodeScope,
+    IdentityAccess, IdentityAccessScope, IdentityApplicationScope, IdentityEnvironmentScope, IdentityNodeScope,
     IdentityProjectScope, InferenceCredentialDeliveryReceiptSweeper,
     InferenceCredentialDeliveryResult, InferenceCredentialEnvironmentScope,
     InferenceCredentialMutationResult, RecipientContactVerificationDeliveryDispatcher,
@@ -159,7 +159,8 @@ pub use infrastructure::{
     IdentityInferenceGrantCredentialAdmissionAdapter, InferenceCredentialAclProjectionAdapter,
     InferenceCredentialIssuanceError, InferenceCredentialIssueRequest, InferenceCredentialIssuer,
     IssuedInferenceCredential, OwnerWorkloadRuntimeEvidenceAdapter,
-    ProjectsIdentityEnvironmentAccessAdapter, ProjectsIdentityProjectAccessAdapter,
+    ApplicationsIdentityApplicationAccessAdapter, ProjectsIdentityEnvironmentAccessAdapter,
+    ProjectsIdentityProjectAccessAdapter,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
     SecretsIdentityInferenceCredentialEncryptionAdapter,
     SmtpRecipientContactVerificationCredentials, SmtpRecipientContactVerificationDeliveryOptions,

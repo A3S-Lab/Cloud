@@ -1,6 +1,8 @@
 pub mod commands;
 mod environment_access;
 mod managed_inference_acl_access;
+mod managed_application_publication_route_intent_access;
+mod application_publication_rate_shaping_binding_admission;
 mod mcp_credential_delivery;
 mod mcp_credential_delivery_receipt_sweeper;
 mod mcp_credential_encryption;
@@ -16,6 +18,15 @@ pub use environment_access::{EdgeEnvironmentScope, IEdgeEnvironmentAccess};
 pub use managed_inference_acl_access::{
     EdgeManagedInferenceAclEnvironment, EdgeManagedInferenceAclSnapshot,
     IEdgeManagedInferenceAclAccess,
+};
+pub use managed_application_publication_route_intent_access::{
+    EdgeManagedApplicationPublicationRouteIntentScope,
+    IEdgeManagedApplicationPublicationRouteIntentAccess,
+};
+pub use application_publication_rate_shaping_binding_admission::{
+    ApplicationPublicationRateShapingBindingAdmissionRequest,
+    ApplicationPublicationRateShapingBoundProfile,
+    IApplicationPublicationRateShapingBindingAdmissionPort, RATE_SHAPING_BINDING_INVALID,
 };
 pub use mcp_credential_delivery::{
     MCP_CREDENTIAL_DELIVERY_RECEIPT_TTL_SECONDS, McpCredentialDeliveryResult,
@@ -38,8 +49,10 @@ pub use commands::{
     CreateDomainClaim, CreateDomainClaimHandler, CreateDomainClaimResult, CreateGatewayScope,
     CreateGatewayScopeHandler, CreateGatewayScopeResult, CreateMcpCredential,
     CreateMcpCredentialHandler, CreateMcpRoutePolicy, CreateMcpRoutePolicyHandler, PublishRoute,
-    PublishRouteHandler, PublishRouteResult, ReviseMcpRoutePolicy, ReviseMcpRoutePolicyHandler,
-    RevokeDomainClaim, RevokeDomainClaimHandler, RevokeDomainClaimResult, RevokeMcpCredential,
+    PublishRouteHandler, PublishRouteResult, RegisterGatewayRateShapingProfile,
+    RegisterGatewayRateShapingProfileHandler, RegisterGatewayRateShapingProfileResult,
+    ReviseMcpRoutePolicy, ReviseMcpRoutePolicyHandler, RevokeDomainClaim,
+    RevokeDomainClaimHandler, RevokeDomainClaimResult, RevokeMcpCredential,
     RevokeMcpCredentialHandler, RotateMcpCredential, RotateMcpCredentialHandler,
     SignGatewayCertificate, SignGatewayCertificateHandler, VerifyDomainClaim,
     VerifyDomainClaimHandler, VerifyDomainClaimResult,

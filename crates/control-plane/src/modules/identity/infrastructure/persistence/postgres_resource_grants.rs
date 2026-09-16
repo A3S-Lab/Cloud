@@ -16,8 +16,8 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::domain::services::MembershipAdministration;
 use crate::modules::identity::domain::value_objects::{MembershipRole, ResourceGrantScope};
 use crate::modules::shared_kernel::domain::{
-    EnvironmentId, IdempotentWrite, MembershipId, NodeId, OrganizationId, ProjectId,
-    RepositoryError, ResourceGrantId,
+    ApplicationId, EnvironmentId, IdempotentWrite, MembershipId, NodeId, OrganizationId,
+    ProjectId, RepositoryError, ResourceGrantId,
 };
 use a3s_orm::{sql_query, Database, DecodeError, FromRow, PostgresDialect, Row};
 use async_trait::async_trait;
@@ -31,6 +31,7 @@ struct ResourceGrantRow {
     scope_kind: String,
     project_id: Option<Uuid>,
     environment_id: Option<Uuid>,
+    application_id: Option<Uuid>,
     node_id: Option<Uuid>,
     aggregate_version: u64,
     created_at: DateTime<Utc>,
@@ -47,34 +48,42 @@ impl FromRow for ResourceGrantRow {
             scope_kind: decode_column(row, 3)?,
             project_id: decode_column(row, 4)?,
             environment_id: decode_column(row, 5)?,
-            node_id: decode_column(row, 6)?,
-            aggregate_version: decode_column(row, 7)?,
-            created_at: decode_column(row, 8)?,
-            updated_at: decode_column(row, 9)?,
-            revoked_at: decode_column(row, 10)?,
+            application_id: decode_column(row, 6)?,
+            node_id: decode_column(row, 7)?,
+            aggregate_version: decode_column(row, 8)?,
+            created_at: decode_column(row, 9)?,
+            updated_at: decode_column(row, 10)?,
+            revoked_at: decode_column(row, 11)?,
         })
     }
 }
 
-const SELECT_RESOURCE_GRANTS: &str = "select id, organization_id, membership_id, scope_kind, project_id, environment_id, node_id, aggregate_version, created_at, updated_at, revoked_at from resource_grants";
+const SELECT_RESOURCE_GRANTS: &str = "select id, organization_id, membership_id, scope_kind, project_id, environment_id, application_id, node_id, aggregate_version, created_at, updated_at, revoked_at from resource_grants";
 
 fn decode_resource_grant(row: ResourceGrantRow) -> Result<ResourceGrant, RepositoryError> {
     let scope = match (
         row.scope_kind.as_str(),
         row.project_id,
         row.environment_id,
+        row.application_id,
         row.node_id,
     ) {
-        ("project", Some(project_id), None, None) => ResourceGrantScope::Project {
+        ("project", Some(project_id), None, None, None) => ResourceGrantScope::Project {
             project_id: ProjectId::from_uuid(project_id),
         },
-        ("environment", Some(project_id), Some(environment_id), None) => {
+        ("environment", Some(project_id), Some(environment_id), None, None) => {
             ResourceGrantScope::Environment {
                 project_id: ProjectId::from_uuid(project_id),
                 environment_id: EnvironmentId::from_uuid(environment_id),
             }
         }
-        ("node", None, None, Some(node_id)) => ResourceGrantScope::Node {
+        ("application", Some(project_id), None, Some(application_id), None) => {
+            ResourceGrantScope::Application {
+                project_id: ProjectId::from_uuid(project_id),
+                application_id: ApplicationId::from_uuid(application_id),
+            }
+        }
+        ("node", None, None, None, Some(node_id)) => ResourceGrantScope::Node {
             node_id: NodeId::from_uuid(node_id),
         },
         _ => {
@@ -153,7 +162,7 @@ async fn insert_resource_grant(
     let rows = execute(
         transaction,
         sql_query::<()>(
-            "insert into resource_grants (id, organization_id, membership_id, scope_kind, project_id, environment_id, node_id, aggregate_version, created_at, updated_at, revoked_at) values (",
+            "insert into resource_grants (id, organization_id, membership_id, scope_kind, project_id, environment_id, application_id, node_id, aggregate_version, created_at, updated_at, revoked_at) values (",
         )
         .bind(grant.id.as_uuid())
         .append(", ")
@@ -166,6 +175,8 @@ async fn insert_resource_grant(
         .bind(grant.scope.project_id().map(|id| id.as_uuid()))
         .append(", ")
         .bind(grant.scope.environment_id().map(|id| id.as_uuid()))
+        .append(", ")
+        .bind(grant.scope.application_id().map(|id| id.as_uuid()))
         .append(", ")
         .bind(grant.scope.node_id().map(|id| id.as_uuid()))
         .append(", ")
@@ -218,6 +229,7 @@ async fn store_resource_grant_audit(
                 "scopeKind": grant.scope.kind(),
                 "projectId": grant.scope.project_id(),
                 "environmentId": grant.scope.environment_id(),
+                "applicationId": grant.scope.application_id(),
                 "nodeId": grant.scope.node_id(),
                 "aggregateVersion": grant.aggregate_version,
                 "revokedAt": grant.revoked_at,

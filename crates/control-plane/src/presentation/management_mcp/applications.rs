@@ -2,46 +2,52 @@ use super::tool_result;
 use crate::access_projection::application_access;
 use crate::modules::applications::presentation::{
     ApplicationAnnotationMutationResponse, ApplicationAnnotationResponse,
-    ApplicationBlockingObservationResponse,
-    ApplicationStreamingObservationResponse,
-    ApplicationAsynchronousObservationResponse,
+    ApplicationAsynchronousObservationResponse, ApplicationBlockingObservationResponse,
+    ApplicationDeliveryCredentialMutationResponse, ApplicationDeliveryCredentialResponse,
     ApplicationFeedbackMutationResponse, ApplicationFeedbackResponse,
     ApplicationInvocationCancellationResponse, ApplicationInvocationMutationResponse,
-    ApplicationInvocationResponse, ApplicationMessageResponse,
-    ApplicationMessageCitationMutationResponse, ApplicationMessageCitationResponse,
-    ApplicationMessageFileReferenceMutationResponse, ApplicationMessageFileReferenceResponse,
+    ApplicationInvocationResponse, ApplicationMessageCitationMutationResponse,
+    ApplicationMessageCitationResponse, ApplicationMessageFileReferenceMutationResponse,
+    ApplicationMessageFileReferenceResponse, ApplicationMessageResponse,
     ApplicationMessageVariantMutationResponse, ApplicationMessageVariantResponse,
     ApplicationMutationResponse, ApplicationReleaseResponse, ApplicationResponse,
     ApplicationSessionMutationResponse, ApplicationSessionReplayResponse,
-    ApplicationSessionResponse,
+    ApplicationSessionResponse, ApplicationStreamingObservationResponse,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocation, AdmitApplicationSession, ApplicationFeedbackRating,
-    ApplicationResponseMode, CancelApplicationInvocation, CloseApplicationSession,
+    ApplicationResponseMode, CancelAnonymousApplicationInvocation, CancelApplicationInvocation,
+    CloseAnonymousApplicationSession, CloseApplicationSession,
     CreateApplication, CreateApplicationAnnotation, CreateApplicationFeedback,
     CreateApplicationMessageCitation, CreateApplicationMessageFileReference,
-    CreateApplicationMessageVariant, GetApplication,
-    GetApplicationAnnotation, GetApplicationFeedback, GetApplicationInvocation,
-    ObserveApplicationBlockingInvocation,
-    ObserveApplicationStreamingInvocation,
-    ObserveApplicationAsynchronousInvocation,
+    CreateApplicationMessageVariant, DisableApplicationDeliveryCredential,
+    EnableApplicationDeliveryCredential, GetApplication, GetApplicationAnnotation,
+    GetApplicationDeliveryCredential, GetApplicationFeedback, GetApplicationInvocation,
     GetApplicationMessageCitation, GetApplicationMessageFileReference,
-    GetApplicationMessageVariant,
-    GetApplicationRelease, GetApplicationSession, ListApplicationAnnotationsBySession,
+    GetApplicationMessageVariant, GetApplicationRelease, GetApplicationSession,
+    ListApplicationAnnotationsBySession, ListApplicationDeliveryCredentials,
     ListApplicationFeedbackBySession, ListApplicationMessageCitationsBySession,
-    ListApplicationMessageFileReferencesBySession,
-    ListApplicationMessageVariantsBySession,
-    ListApplicationReleases, ListApplications, PublishApplicationRelease, ReplayApplicationSession,
+    ListApplicationMessageFileReferencesBySession, ListApplicationMessageVariantsBySession,
+    ListApplicationReleases, ListApplications,
+    ObserveAnonymousApplicationAsynchronousInvocation,
+    ObserveAnonymousApplicationBlockingInvocation,
+    ObserveAnonymousApplicationStreamingInvocation,
+    ObserveApplicationAsynchronousInvocation, ObserveApplicationBlockingInvocation,
+    ObserveApplicationStreamingInvocation,
+    OpenAnonymousApplicationSession, PublishApplicationRelease,
+    RegisterApplicationDeliveryCredential, ReplayApplicationSession,
+    RequestAnonymousApplicationInvocation,
+    RevokeApplicationDeliveryCredential,
 };
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
-    ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationInvocationId,
-    ApplicationMessageCitationId, ApplicationMessageFileReferenceId, ApplicationMessageId,
-    ApplicationMessageVariantId,
-    ApplicationReleaseId, ApplicationSessionId, KnowledgeBaseId, KnowledgeBaseRevisionId,
-    KnowledgeChunkId, KnowledgeDocumentId, Sha256Digest, UserFileId,
-    EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId,
+    ApplicationAnnotationId, ApplicationDeliveryCredentialId, ApplicationFeedbackId, ApplicationId,
+    ApplicationInvocationId, ApplicationMessageCitationId, ApplicationMessageFileReferenceId,
+    ApplicationMessageId, ApplicationMessageVariantId, ApplicationReleaseId, ApplicationSessionId,
+    EnvironmentId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId, KnowledgeDocumentId,
+    OntologyId, OntologyRevisionId, OrganizationId, PrincipalId, ProjectId, SecretId,
+    SecretVersionReference, Sha256Digest, UserFileId,
 };
 use a3s_boot::{CommandBus, QueryBus, Result};
 use chrono::Utc;
@@ -311,7 +317,6 @@ pub struct ApplicationMessageCitationArguments {
     citation_id: Uuid,
 }
 
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApplicationMessageVariantArguments {
@@ -319,6 +324,107 @@ pub struct ApplicationMessageVariantArguments {
     application_id: Uuid,
     session_id: Uuid,
     variant_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloseAnonymousApplicationSessionArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    lookup_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelAnonymousApplicationInvocationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    invocation_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    lookup_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenAnonymousApplicationSessionArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    release_id: Uuid,
+    lookup_key: String,
+    #[serde(default = "empty_object")]
+    initial_variables: Value,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ObserveAnonymousApplicationInvocationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    invocation_id: Uuid,
+    lookup_key: String,
+    #[serde(default)]
+    after_sequence: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RequestAnonymousApplicationInvocationArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    session_id: Uuid,
+    invocation_id: Uuid,
+    expected_session_version: u64,
+    lookup_key: String,
+    response_mode: String,
+    input: Value,
+    ontology_id: Uuid,
+    ontology_revision_id: Uuid,
+    ontology_digest: String,
+    environment_id: Option<Uuid>,
+    timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegisterApplicationDeliveryCredentialArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    credential_id: Uuid,
+    application_release_id: Uuid,
+    lookup_key: String,
+    secret_id: Uuid,
+    secret_version: u64,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationDeliveryCredentialListArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationDeliveryCredentialArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    credential_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationDeliveryCredentialLifecycleArguments {
+    project_id: Uuid,
+    application_id: Uuid,
+    credential_id: Uuid,
+    expected_generation: u64,
 }
 
 pub async fn create(
@@ -1320,6 +1426,413 @@ pub async fn get_message_variant(
         Ok(variant) => tool_result::success(
             200,
             ApplicationMessageVariantResponse::from(variant),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn open_anonymous_session(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: OpenAnonymousApplicationSessionArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(OpenAnonymousApplicationSession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            application_release_id: ApplicationReleaseId::from_uuid(arguments.release_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            credential_lookup_key: arguments.lookup_key,
+            initial_variables: arguments.initial_variables,
+            opened_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationSessionMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+
+pub async fn close_anonymous_session(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: CloseAnonymousApplicationSessionArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CloseAnonymousApplicationSession {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            expected_version: arguments.expected_version,
+            credential_lookup_key: arguments.lookup_key,
+            closed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationSessionMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn cancel_anonymous_invocation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: CancelAnonymousApplicationInvocationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(CancelAnonymousApplicationInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            expected_version: arguments.expected_version,
+            credential_lookup_key: arguments.lookup_key,
+            requested_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationInvocationCancellationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn request_anonymous_invocation(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    arguments: RequestAnonymousApplicationInvocationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    let response_mode = match ApplicationResponseMode::parse(&arguments.response_mode) {
+        Ok(value) => value,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id);
+        }
+    };
+    let ontology_digest = match Sha256Digest::parse(arguments.ontology_digest) {
+        Ok(value) => value,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id);
+        }
+    };
+    match bus
+        .execute(RequestAnonymousApplicationInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            expected_session_version: arguments.expected_session_version,
+            credential_lookup_key: arguments.lookup_key,
+            response_mode,
+            input: arguments.input,
+            ontology_id: OntologyId::from_uuid(arguments.ontology_id),
+            ontology_revision_id: OntologyRevisionId::from_uuid(arguments.ontology_revision_id),
+            ontology_digest,
+            environment_id: arguments.environment_id.map(EnvironmentId::from_uuid),
+            timeout_seconds: arguments
+                .timeout_seconds
+                .unwrap_or(crate::modules::workflow::WORKFLOW_RUN_DEFAULT_TIMEOUT_SECONDS),
+            requested_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.invocation_replayed { 200 } else { 201 },
+            ApplicationInvocationMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn observe_anonymous_blocking_invocation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ObserveAnonymousApplicationInvocationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ObserveAnonymousApplicationBlockingInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            credential_lookup_key: arguments.lookup_key,
+            observed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(observation) => tool_result::success(
+            200,
+            ApplicationBlockingObservationResponse::from(observation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn observe_anonymous_streaming_invocation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ObserveAnonymousApplicationInvocationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ObserveAnonymousApplicationStreamingInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            credential_lookup_key: arguments.lookup_key,
+            after_sequence: arguments.after_sequence,
+            observed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(observation) => tool_result::success(
+            200,
+            ApplicationStreamingObservationResponse::from(observation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn observe_anonymous_asynchronous_invocation(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ObserveAnonymousApplicationInvocationArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ObserveAnonymousApplicationAsynchronousInvocation {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            session_id: ApplicationSessionId::from_uuid(arguments.session_id),
+            invocation_id: ApplicationInvocationId::from_uuid(arguments.invocation_id),
+            credential_lookup_key: arguments.lookup_key,
+            observed_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(observation) => tool_result::success(
+            200,
+            ApplicationAsynchronousObservationResponse::from(observation),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+
+pub async fn register_delivery_credential(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RegisterApplicationDeliveryCredentialArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    let secret = match SecretVersionReference::new(
+        SecretId::from_uuid(arguments.secret_id),
+        arguments.secret_version,
+    ) {
+        Ok(value) => value,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id);
+        }
+    };
+    match bus
+        .execute(RegisterApplicationDeliveryCredential {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            application_release_id: ApplicationReleaseId::from_uuid(
+                arguments.application_release_id,
+            ),
+            credential_id: ApplicationDeliveryCredentialId::from_uuid(arguments.credential_id),
+            lookup_key: arguments.lookup_key,
+            secret,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            created_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            if result.replayed { 200 } else { 201 },
+            ApplicationDeliveryCredentialMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_delivery_credentials(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationDeliveryCredentialListArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListApplicationDeliveryCredentials {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(items) => tool_result::success(
+            200,
+            items
+                .into_iter()
+                .map(ApplicationDeliveryCredentialResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_delivery_credential(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationDeliveryCredentialArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetApplicationDeliveryCredential {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            credential_id: ApplicationDeliveryCredentialId::from_uuid(arguments.credential_id),
+            actor_principal_id,
+            access: application_access(&resource_access),
+        })
+        .await?
+    {
+        Ok(credential) => tool_result::success(
+            200,
+            ApplicationDeliveryCredentialResponse::from(credential),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn disable_delivery_credential(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationDeliveryCredentialLifecycleArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(DisableApplicationDeliveryCredential {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            credential_id: ApplicationDeliveryCredentialId::from_uuid(arguments.credential_id),
+            expected_generation: arguments.expected_generation,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            updated_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationDeliveryCredentialMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn enable_delivery_credential(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationDeliveryCredentialLifecycleArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(EnableApplicationDeliveryCredential {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            credential_id: ApplicationDeliveryCredentialId::from_uuid(arguments.credential_id),
+            expected_generation: arguments.expected_generation,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            updated_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationDeliveryCredentialMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_delivery_credential(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ApplicationDeliveryCredentialLifecycleArguments,
+    resource_access: ResourceAccessEvaluator,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeApplicationDeliveryCredential {
+            organization_id,
+            project_id: ProjectId::from_uuid(arguments.project_id),
+            application_id: ApplicationId::from_uuid(arguments.application_id),
+            credential_id: ApplicationDeliveryCredentialId::from_uuid(arguments.credential_id),
+            expected_generation: arguments.expected_generation,
+            actor_principal_id,
+            access: application_access(&resource_access),
+            revoked_at: Utc::now(),
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            ApplicationDeliveryCredentialMutationResponse::from(result),
             request_id,
         ),
         Err(error) => tool_result::application_error(error, request_id),

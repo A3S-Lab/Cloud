@@ -21,6 +21,43 @@ fn compiler() -> GatewaySnapshotCompiler {
     .expect("compiler")
 }
 
+fn rate_digest(byte: u8) -> crate::modules::shared_kernel::domain::Sha256Digest {
+    crate::modules::shared_kernel::domain::Sha256Digest::parse(format!(
+        "sha256:{}",
+        format!("{:02x}", byte).repeat(32)
+    ))
+    .expect("digest")
+}
+
+fn compiler_with_public_api_rate_profile() -> GatewaySnapshotCompiler {
+    use crate::modules::edge::domain::{
+        GatewayRateShapingAlgorithm, GatewayRateShapingProfile, GatewayRateShapingTokenBucket,
+    };
+    use crate::modules::edge::infrastructure::{
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
+        InMemoryGatewayRateShapingProfileCatalog,
+    };
+    use std::sync::Arc;
+
+    let catalog = InMemoryGatewayRateShapingProfileCatalog::new();
+    catalog
+        .register(
+            GatewayRateShapingProfile::new(
+                "public-api-default",
+                rate_digest(0xbb),
+                GatewayRateShapingAlgorithm::TokenBucket(GatewayRateShapingTokenBucket {
+                    capacity: 120,
+                    refill_tokens_per_second: 60,
+                }),
+            )
+            .expect("profile"),
+        )
+        .expect("register");
+    compiler().with_rate_shaping_bindings(Arc::new(
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(Arc::new(catalog)),
+    ))
+}
+
 fn route(node_id: NodeId, hostname: &str, path: &str, port: u16) -> Route {
     let workload_id = WorkloadId::new();
     let workload_revision_id = WorkloadRevisionId::new();
@@ -637,4 +674,315 @@ fn assert_inference_policy_shell(acl: &str, expires_at: chrono::DateTime<Utc>) {
     assert!(!acl.contains("credentials "));
     assert!(!acl.contains("\n  routes "));
     assert!(!acl.contains("\n  workers "));
+}
+
+
+#[test]
+fn projects_application_publication_route_intent_acl_through_managed_compiler() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+    use uuid::Uuid;
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let intent_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: intent_id,
+        channels: vec!["api_blocking".into(), "embed".into()],
+        embed_origin_allowlist: vec!["https://app.example.com".into()],
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    };
+
+    let snapshot = compiler_with_public_api_rate_profile()
+        .compile_with_application_publication_route_intent_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[],
+            &[],
+            &[],
+            &[intent],
+        )
+        .expect("publication route intent snapshot");
+
+    assert!(snapshot
+        .acl
+        .contains("application_publication_route_intents {"));
+    assert!(snapshot.acl.contains(&format!("intents \"{}\" {{", intent_id)));
+    assert!(snapshot.acl.contains("profile_id = \"public-api-default\""));
+    assert!(snapshot.acl.contains("policy_revision_digest = \"sha256:"));
+    assert!(!snapshot.acl.contains("PublishRoute"));
+    // Declare-only intent block must not carry numeric shaping scalars.
+    let intent_block = snapshot
+        .acl
+        .split("application_publication_route_intents {")
+        .nth(1)
+        .expect("intent block")
+        .split("application_publication_rate_shaping_bound_profiles {")
+        .next()
+        .expect("intent before bound");
+    assert!(!intent_block.contains("requests_per_minute"));
+    assert!(!intent_block.contains("token_bucket"));
+    assert!(!intent_block.contains("capacity ="));
+    // Bound profiles ACL is separate and carries catalog scalars.
+    assert!(snapshot
+        .acl
+        .contains("application_publication_rate_shaping_bound_profiles {"));
+    assert!(snapshot.acl.contains("token_bucket {"));
+    assert!(snapshot.acl.contains("capacity = 120"));
+    assert!(snapshot.acl.contains("refill_tokens_per_second = 60"));
+}
+
+#[test]
+fn empty_publication_route_intents_leave_inference_only_snapshot() {
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+
+    let snapshot = compiler()
+        .compile_with_application_publication_route_intent_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[],
+            &[],
+            &[],
+            &[],
+        )
+        .expect("empty intents");
+
+    assert!(!snapshot.acl.contains("application_publication_route_intents"));
+    assert!(!snapshot
+        .acl
+        .contains("application_publication_rate_shaping_bound_profiles"));
+    assert_inference_policy_shell(&snapshot.acl, expires_at);
+}
+
+#[test]
+fn rate_shaping_binding_rejects_unknown_profile_fail_closed() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+    use uuid::Uuid;
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .unwrap(),
+        channels: vec!["api_blocking".into()],
+        embed_origin_allowlist: Vec::new(),
+        rate_shaping_profile_id: "missing-profile".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    };
+
+    let error = compiler_with_public_api_rate_profile()
+        .compile_with_application_publication_route_intent_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[],
+            &[],
+            &[],
+            &[intent],
+        )
+        .expect_err("unknown profile must fail closed");
+    assert!(
+        error.contains("RATE_SHAPING_BINDING_INVALID"),
+        "error={error}"
+    );
+    assert!(
+        error.contains("rate shaping profile not found"),
+        "error={error}"
+    );
+}
+
+#[test]
+fn rate_shaping_binding_rejects_digest_mismatch_fail_closed() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+    use uuid::Uuid;
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .unwrap(),
+        channels: vec!["api_blocking".into()],
+        embed_origin_allowlist: Vec::new(),
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "c".repeat(64)),
+    };
+
+    let error = compiler_with_public_api_rate_profile()
+        .compile_with_application_publication_route_intent_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[],
+            &[],
+            &[],
+            &[intent],
+        )
+        .expect_err("digest mismatch must fail closed");
+    assert!(
+        error.contains("RATE_SHAPING_BINDING_INVALID"),
+        "error={error}"
+    );
+    assert!(
+        error.contains("rate shaping policy revision digest mismatch"),
+        "error={error}"
+    );
+}
+
+#[test]
+fn empty_catalog_fails_closed_when_intents_declare_rate_profile() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+    use uuid::Uuid;
+
+    let node_id = NodeId::new();
+    let certificate_id = GatewayCertificateId::new();
+    let mut owned = route(node_id, "api.example.com", "/v1", 49152);
+    owned.state = RouteState::Pending;
+    owned.gateway_certificate_id = Some(certificate_id);
+    let issued_at = Utc::now();
+    let expires_at = issued_at + Duration::minutes(10);
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa")
+            .unwrap(),
+        channels: vec!["api_blocking".into()],
+        embed_origin_allowlist: Vec::new(),
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    };
+
+    // Default compiler uses empty catalog — fail closed until profiles register.
+    let error = compiler()
+        .compile_with_application_publication_route_intent_policy(
+            GatewaySnapshotMetadata::new(node_id, 2, Some(1), issued_at, expires_at),
+            certificate_id,
+            &[owned],
+            &[],
+            &[],
+            &[],
+            &[intent],
+        )
+        .expect_err("empty catalog must fail closed");
+    assert!(error.contains("RATE_SHAPING_BINDING_INVALID"), "error={error}");
+}
+
+
+#[test]
+fn retained_snapshot_retains_application_publication_route_intent_acl() {
+    use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
+    use crate::modules::edge::domain::{GatewayScope, GatewayScopeState};
+    use crate::modules::edge::infrastructure::{
+        CompileManagedGatewayRetainedSnapshot, PlannedGatewayNodeDesiredState,
+        PlannedMcpGatewayNodeProjection, PlannedMcpGatewayProjectionSet,
+    };
+    use crate::modules::shared_kernel::domain::{
+        EnvironmentId, GatewayScopeId, OrganizationId, ProjectId,
+    };
+    use uuid::Uuid;
+
+    let node_id = NodeId::new();
+    let raw_now = Utc::now();
+    let intent_id = Uuid::parse_str("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa").unwrap();
+    let intent = ApplicationPublicationRouteIntentAclProjection {
+        organization_id: Uuid::parse_str("11111111-1111-4111-8111-111111111111").unwrap(),
+        project_id: Uuid::parse_str("22222222-2222-4222-8222-222222222222").unwrap(),
+        application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+        application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444").unwrap(),
+        application_release_digest: format!("sha256:{}", "a".repeat(64)),
+        publication_route_intent_id: intent_id,
+        channels: vec!["api_blocking".into(), "embed".into()],
+        embed_origin_allowlist: vec!["https://app.example.com".into()],
+        rate_shaping_profile_id: "public-api-default".into(),
+        rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+    };
+
+    let logical_scope = GatewayScope::create(
+        GatewayScopeId::new(),
+        OrganizationId::new(),
+        ProjectId::new(),
+        EnvironmentId::new(),
+        node_id,
+        raw_now,
+    )
+    .expect("scope");
+    let mcp = PlannedMcpGatewayNodeProjection::single(
+        PlannedMcpGatewayProjectionSet::empty(logical_scope, node_id, raw_now)
+            .expect("empty MCP projection"),
+    )
+    .expect("empty MCP desired state");
+    // Align snapshot metadata to MCP observed_at (canonical) and empty physical next revision.
+    let issued_at = mcp.observed_at();
+    let expires_at = issued_at + Duration::minutes(10);
+    let desired_state = PlannedGatewayNodeDesiredState::new(
+        GatewayScopeState::empty(node_id),
+        Vec::new(),
+        mcp,
+    )
+    .expect("desired state")
+    .with_publication_route_intents(vec![intent]);
+
+    let candidate = compiler_with_public_api_rate_profile()
+        .compile_managed_retained_snapshot(CompileManagedGatewayRetainedSnapshot {
+            metadata: GatewaySnapshotMetadata::new(node_id, 1, None, issued_at, expires_at),
+            desired_state,
+            certificate_id: None,
+            reused_certificate_request: None,
+            inference_credentials: Vec::new(),
+            inference_routes: Vec::new(),
+            inference_workers: Vec::new(),
+        })
+        .expect("retained snapshot with publication intents");
+
+    let acl = &candidate.snapshot().acl;
+    assert!(
+        acl.contains("application_publication_route_intents {"),
+        "retained/rollback compile must keep publication route intents"
+    );
+    assert!(acl.contains(&format!("intents \"{}\" {{", intent_id)));
+    assert!(acl.contains("profile_id = \"public-api-default\""));
+    assert!(acl.contains("application_publication_rate_shaping_bound_profiles {"));
+    assert!(acl.contains("token_bucket {"));
+    assert!(acl.contains("capacity = 120"));
+    assert!(!acl.contains("PublishRoute"));
 }

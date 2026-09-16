@@ -192,6 +192,7 @@ export interface CreateMembershipInvitationInput {
 export type ResourceGrantScope =
   | { kind: 'project'; projectId: string }
   | { kind: 'environment'; projectId: string; environmentId: string }
+  | { kind: 'application'; projectId: string; applicationId: string }
   | { kind: 'node'; nodeId: string };
 
 export interface ResourceGrant {

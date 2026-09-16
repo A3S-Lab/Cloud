@@ -58,7 +58,7 @@ pub(crate) fn artifact_access(resource_access: &ResourceAccessEvaluator) -> Arti
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -81,7 +81,7 @@ pub(crate) fn developer_workflow_access(
                 project_id,
                 environment_id,
             }),
-            ResourceGrantScope::Node { .. } => None,
+            ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
         }
     }))
 }
@@ -90,16 +90,19 @@ pub(crate) fn search_visibility(resource_access: &ResourceAccessEvaluator) -> Se
     if resource_access.is_organization_wide() {
         return SearchVisibility::organization_wide();
     }
-    SearchVisibility::restricted(resource_access.granted_scopes().map(|scope| match scope {
-        ResourceGrantScope::Project { project_id } => SearchVisibilityScope::Project { project_id },
+    SearchVisibility::restricted(resource_access.granted_scopes().filter_map(|scope| match scope {
+        ResourceGrantScope::Project { project_id } => {
+            Some(SearchVisibilityScope::Project { project_id })
+        }
         ResourceGrantScope::Environment {
             project_id,
             environment_id,
-        } => SearchVisibilityScope::Environment {
+        } => Some(SearchVisibilityScope::Environment {
             project_id,
             environment_id,
-        },
-        ResourceGrantScope::Node { node_id } => SearchVisibilityScope::Node { node_id },
+        }),
+        ResourceGrantScope::Node { node_id } => Some(SearchVisibilityScope::Node { node_id }),
+        ResourceGrantScope::Application { .. } => None,
     }))
 }
 
@@ -121,7 +124,7 @@ pub(crate) fn secret_access(resource_access: &ResourceAccessEvaluator) -> Secret
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -144,7 +147,7 @@ pub(crate) fn source_access(resource_access: &ResourceAccessEvaluator) -> Source
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -167,7 +170,7 @@ pub(crate) fn plugin_access(resource_access: &ResourceAccessEvaluator) -> Plugin
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -179,7 +182,7 @@ pub(crate) fn user_file_access(resource_access: &ResourceAccessEvaluator) -> Use
     UserFileAccess::restricted_projects(resource_access.granted_scopes().filter_map(|scope| {
         match scope {
             ResourceGrantScope::Project { project_id } => Some(project_id),
-            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
         }
     }))
 }
@@ -203,7 +206,7 @@ pub(crate) fn automation_access(resource_access: &ResourceAccessEvaluator) -> Au
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -215,7 +218,7 @@ pub(crate) fn knowledge_access(resource_access: &ResourceAccessEvaluator) -> Kno
     KnowledgeAccess::restricted_projects(resource_access.granted_scopes().filter_map(|scope| {
         match scope {
             ResourceGrantScope::Project { project_id } => Some(project_id),
-            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+            ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
         }
     }))
 }
@@ -231,7 +234,7 @@ pub(crate) fn form_access(resource_access: &ResourceAccessEvaluator) -> FormAcce
                 ResourceGrantScope::Project { project_id } => {
                     Some(FormAccessScope::Project { project_id })
                 }
-                ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -254,7 +257,7 @@ pub(crate) fn workload_access(resource_access: &ResourceAccessEvaluator) -> Work
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -277,7 +280,7 @@ pub(crate) fn operation_access(resource_access: &ResourceAccessEvaluator) -> Ope
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -300,7 +303,7 @@ pub(crate) fn project_access(resource_access: &ResourceAccessEvaluator) -> Proje
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -314,7 +317,9 @@ pub(crate) fn fleet_access(resource_access: &ResourceAccessEvaluator) -> FleetAc
             .granted_scopes()
             .filter_map(|scope| match scope {
                 ResourceGrantScope::Node { node_id } => Some(FleetAccessScope::Node { node_id }),
-                ResourceGrantScope::Project { .. } | ResourceGrantScope::Environment { .. } => None,
+                ResourceGrantScope::Project { .. }
+                | ResourceGrantScope::Environment { .. }
+                | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -335,6 +340,13 @@ pub(crate) fn application_access(resource_access: &ResourceAccessEvaluator) -> A
                 project_id,
                 environment_id,
             }),
+            ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            } => Some(ApplicationAccessScope::Application {
+                project_id,
+                application_id,
+            }),
             ResourceGrantScope::Node { .. } => None,
         },
     ))
@@ -344,18 +356,19 @@ pub(crate) fn notification_access(resource_access: &ResourceAccessEvaluator) -> 
     if resource_access.is_organization_wide() {
         return NotificationAccess::organization_wide();
     }
-    NotificationAccess::restricted(resource_access.granted_scopes().map(|scope| match scope {
+    NotificationAccess::restricted(resource_access.granted_scopes().filter_map(|scope| match scope {
         ResourceGrantScope::Project { project_id } => {
-            NotificationAccessScope::Project { project_id }
+            Some(NotificationAccessScope::Project { project_id })
         }
         ResourceGrantScope::Environment {
             project_id,
             environment_id,
-        } => NotificationAccessScope::Environment {
+        } => Some(NotificationAccessScope::Environment {
             project_id,
             environment_id,
-        },
-        ResourceGrantScope::Node { node_id } => NotificationAccessScope::Node { node_id },
+        }),
+        ResourceGrantScope::Node { node_id } => Some(NotificationAccessScope::Node { node_id }),
+        ResourceGrantScope::Application { .. } => None,
     }))
 }
 
@@ -375,7 +388,7 @@ pub(crate) fn durable_cell_access(resource_access: &ResourceAccessEvaluator) -> 
                 project_id,
                 environment_id,
             }),
-            ResourceGrantScope::Node { .. } => None,
+            ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
         },
     ))
 }
@@ -398,7 +411,7 @@ pub(crate) fn connector_access(resource_access: &ResourceAccessEvaluator) -> Con
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -421,7 +434,7 @@ pub(crate) fn inference_access(resource_access: &ResourceAccessEvaluator) -> Inf
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -444,7 +457,7 @@ pub(crate) fn identity_access(resource_access: &ResourceAccessEvaluator) -> Iden
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -467,7 +480,7 @@ pub(crate) fn edge_access(resource_access: &ResourceAccessEvaluator) -> EdgeAcce
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -490,7 +503,7 @@ pub(crate) fn execution_access(resource_access: &ResourceAccessEvaluator) -> Exe
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -513,7 +526,7 @@ pub(crate) fn agent_access(resource_access: &ResourceAccessEvaluator) -> AgentAc
                     project_id,
                     environment_id,
                 }),
-                ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -529,7 +542,7 @@ pub(crate) fn workflow_access(resource_access: &ResourceAccessEvaluator) -> Work
                 ResourceGrantScope::Project { project_id } => {
                     Some(WorkflowAccessScope::Project { project_id })
                 }
-                ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } => None,
+                ResourceGrantScope::Environment { .. } | ResourceGrantScope::Node { .. } | ResourceGrantScope::Application { .. } => None,
             }),
     )
 }
@@ -546,7 +559,7 @@ mod tests {
     use crate::modules::identity::domain::services::ResourceAccessEvaluator;
     use crate::modules::identity::domain::value_objects::ResourceGrantScope;
     use crate::modules::search::SearchVisibilityScope;
-    use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, ProjectId};
+    use crate::modules::shared_kernel::domain::{ApplicationId, EnvironmentId, NodeId, ProjectId};
 
     #[test]
     fn identity_access_is_narrowed_into_the_assets_owned_projection() {
@@ -922,11 +935,16 @@ mod tests {
     fn identity_access_is_narrowed_into_the_applications_owned_projection() {
         let project_id = ProjectId::new();
         let environment_id = EnvironmentId::new();
+        let application_id = ApplicationId::new();
         let access = application_access(&ResourceAccessEvaluator::restricted([
             ResourceGrantScope::Project { project_id },
             ResourceGrantScope::Environment {
                 project_id,
                 environment_id,
+            },
+            ResourceGrantScope::Application {
+                project_id,
+                application_id,
             },
             ResourceGrantScope::Node {
                 node_id: NodeId::new(),
@@ -936,7 +954,9 @@ mod tests {
         assert!(access.project_is_authorized(project_id));
         assert!(access.environment_is_visible(project_id, environment_id));
         assert!(access.environment_is_visible(project_id, EnvironmentId::new()));
-        assert_eq!(access.granted_scopes().count(), 2);
+        assert!(access.exact_application_is_authorized(project_id, application_id));
+        assert!(!access.exact_application_is_authorized(project_id, ApplicationId::new()));
+        assert_eq!(access.granted_scopes().count(), 3);
 
         let environment_only = application_access(&ResourceAccessEvaluator::restricted([
             ResourceGrantScope::Environment {
@@ -948,9 +968,22 @@ mod tests {
         assert!(environment_only.environment_is_visible(project_id, environment_id));
         assert!(!environment_only.environment_is_visible(project_id, EnvironmentId::new()));
         assert!(
+            !environment_only.exact_application_is_authorized(project_id, ApplicationId::new())
+        );
+        assert!(
             application_access(&ResourceAccessEvaluator::organization_wide())
                 .project_is_authorized(ProjectId::new())
         );
+
+        let application_only = application_access(&ResourceAccessEvaluator::restricted([
+            ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            },
+        ]));
+        assert!(!application_only.project_is_authorized(project_id));
+        assert!(application_only.exact_application_is_authorized(project_id, application_id));
+        assert_eq!(application_only.granted_scopes().count(), 1);
     }
 
     #[test]

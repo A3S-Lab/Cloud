@@ -26,3 +26,6 @@ pub(crate) use infrastructure::object_namespace_recovery_flow_step_names;
 pub(crate) use infrastructure::object_namespace_recovery_flow_workflow_identities;
 pub(crate) use infrastructure::ObjectNamespaceRecoveryFlowRuntime;
 pub use infrastructure::ObjectNamespaceRecoveryOperationRequest;
+
+#[cfg(test)]
+mod enterprise_ha_disaster_recovery_claim_path_tests;

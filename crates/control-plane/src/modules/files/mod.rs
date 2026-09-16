@@ -27,8 +27,9 @@ pub use domain::{
 pub(crate) use infrastructure::InMemoryUserFileRepository;
 pub(crate) use infrastructure::{PostgresUserFileRepository, SharedUserFileObjectStore};
 pub(crate) use presentation::{
-    FilesModule, UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
-    USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE,
-    USER_FILE_EXPIRE_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE,
+    user_file_queries_controller, FilesModule, UserFileMutationResponse,
+    UserFileQuotaResponse, UserFileResponse, USER_FILES_CONTROLLER_PREFIX,
+    USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE, USER_FILE_EXPIRE_ROUTE,
+    USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE,
     USER_FILE_TOMBSTONE_ROUTE,
 };

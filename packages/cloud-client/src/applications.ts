@@ -11,6 +11,16 @@ export const MAX_APPLICATION_ANNOTATION_CONTENT_BYTES = 256 * 1024;
 export const MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES = 4 * 1024;
 export const DEFAULT_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 24 * 60 * 60;
 export const MAX_APPLICATION_INVOCATION_TIMEOUT_SECONDS = 30 * 24 * 60 * 60;
+export const MAX_APPLICATION_PUBLICATION_EMBED_ORIGIN_ENTRIES = 32;
+export const MAX_APPLICATION_PUBLICATION_RATE_PROFILE_ID_CHARACTERS = 128;
+export const APPLICATION_PUBLICATION_CHANNELS = [
+  'api_blocking',
+  'api_streaming',
+  'embed',
+  'mcp',
+  'web',
+  'internal',
+] as const;
 
 export type ApplicationExperience =
   | 'chatbot'
@@ -133,6 +143,27 @@ export interface OpenApplicationSessionInput {
   initialVariables?: Record<string, unknown>;
 }
 
+export interface OpenAnonymousApplicationSessionInput {
+  sessionId: string;
+  releaseId: string;
+  lookupKey: string;
+  initialVariables?: Record<string, unknown>;
+}
+
+export interface ObserveAnonymousApplicationInvocationInput {
+  lookupKey: string;
+}
+
+export interface CloseAnonymousApplicationSessionInput {
+  expectedVersion: number;
+  lookupKey: string;
+}
+
+export interface CancelAnonymousApplicationInvocationInput {
+  expectedVersion: number;
+  lookupKey: string;
+}
+
 export interface ApplicationInvocation {
   organizationId: string;
   projectId: string;
@@ -183,6 +214,19 @@ export interface RequestApplicationInvocationInput {
   environmentId?: string;
   responseMode: ApplicationResponseMode;
   input: Record<string, unknown>;
+  timeoutSeconds?: number;
+}
+
+export interface RequestAnonymousApplicationInvocationInput {
+  invocationId: string;
+  expectedSessionVersion: number;
+  lookupKey: string;
+  responseMode: ApplicationResponseMode;
+  input: Record<string, unknown>;
+  ontologyId: string;
+  ontologyRevisionId: string;
+  ontologyDigest: string;
+  environmentId?: string;
   timeoutSeconds?: number;
 }
 
@@ -358,6 +402,74 @@ export interface CreateApplicationMessageVariantInput {
 
 export interface ApplicationMessageVariantMutationResult {
   variant: ApplicationMessageVariant;
+  replayed: boolean;
+}
+
+export type ApplicationDeliveryCredentialStatus = 'active' | 'disabled' | 'revoked';
+
+export interface ApplicationDeliveryCredential {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  credentialId: string;
+  audience: string;
+  lookupKey: string;
+  secretId: string;
+  secretVersion: number;
+  generation: number;
+  status: ApplicationDeliveryCredentialStatus;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface RegisterApplicationDeliveryCredentialInput {
+  credentialId: string;
+  applicationReleaseId: string;
+  lookupKey: string;
+  secretId: string;
+  secretVersion: number;
+}
+
+export interface ApplicationDeliveryCredentialExpectedGenerationInput {
+  expectedGeneration: number;
+}
+
+export interface ApplicationDeliveryCredentialMutationResult {
+  credential: ApplicationDeliveryCredential;
+  replayed: boolean;
+}
+
+export type ApplicationPublicationChannel =
+  (typeof APPLICATION_PUBLICATION_CHANNELS)[number];
+
+export interface ApplicationPublicationRateShapingPolicyRef {
+  profileId: string;
+  policyRevisionDigest: string;
+}
+
+export interface CreateApplicationPublicationRouteIntentInput {
+  applicationReleaseDigest: string;
+  channels: ApplicationPublicationChannel[];
+  embedOriginAllowlist?: string[];
+  rateShapingPolicy: ApplicationPublicationRateShapingPolicyRef;
+}
+
+export interface ApplicationPublicationRouteIntent {
+  organizationId: string;
+  projectId: string;
+  applicationId: string;
+  applicationReleaseId: string;
+  applicationReleaseDigest: string;
+  intentId: string;
+  channels: ApplicationPublicationChannel[];
+  embedOriginAllowlist: string[];
+  rateShapingPolicy: ApplicationPublicationRateShapingPolicyRef;
+}
+
+export interface ApplicationPublicationRouteIntentMutationResult {
+  intent: ApplicationPublicationRouteIntent;
   replayed: boolean;
 }
 
@@ -613,6 +725,240 @@ export function validateApplicationMessageVariantInput(
       MAX_APPLICATION_MESSAGE_VARIANT_INSTRUCTION_BYTES
     );
   }
+}
+
+export function validateAnonymousDeliveryLookupKey(lookupKey: string): void {
+  if (typeof lookupKey !== 'string' || lookupKey.length === 0) {
+    throw new TypeError('Anonymous delivery lookupKey must be a non-empty string');
+  }
+  if (lookupKey.length > 512) {
+    throw new RangeError('Anonymous delivery lookupKey must be at most 512 characters');
+  }
+}
+
+export function validateOpenAnonymousApplicationSessionInput(
+  input: OpenAnonymousApplicationSessionInput
+): void {
+  for (const [key, value] of [
+    ['sessionId', input.sessionId],
+    ['releaseId', input.releaseId],
+    ['lookupKey', input.lookupKey],
+  ] as const) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new TypeError(`Anonymous application session ${key} must be a non-empty string`);
+    }
+  }
+  validateAnonymousDeliveryLookupKey(input.lookupKey);
+  if (input.initialVariables !== undefined) {
+    validateApplicationObject(
+      input.initialVariables,
+      'Application initial variables',
+      MAX_APPLICATION_CONVERSATION_VARIABLES_BYTES
+    );
+  }
+}
+
+export function validateObserveAnonymousApplicationInvocationInput(
+  input: ObserveAnonymousApplicationInvocationInput
+): void {
+  validateAnonymousDeliveryLookupKey(input.lookupKey);
+}
+
+export function validateCloseAnonymousApplicationSessionInput(
+  input: CloseAnonymousApplicationSessionInput
+): void {
+  validateAnonymousDeliveryLookupKey(input.lookupKey);
+  if (
+    typeof input.expectedVersion !== 'number' ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new TypeError(
+      'Anonymous application session expectedVersion must be a positive safe integer'
+    );
+  }
+}
+
+export function validateCancelAnonymousApplicationInvocationInput(
+  input: CancelAnonymousApplicationInvocationInput
+): void {
+  validateAnonymousDeliveryLookupKey(input.lookupKey);
+  if (
+    typeof input.expectedVersion !== 'number' ||
+    !Number.isSafeInteger(input.expectedVersion) ||
+    input.expectedVersion < 1
+  ) {
+    throw new TypeError(
+      'Anonymous application invocation expectedVersion must be a positive safe integer'
+    );
+  }
+}
+
+export function validateRequestAnonymousApplicationInvocationInput(
+  input: RequestAnonymousApplicationInvocationInput
+): void {
+  for (const [key, value] of [
+    ['invocationId', input.invocationId],
+    ['lookupKey', input.lookupKey],
+    ['ontologyId', input.ontologyId],
+    ['ontologyRevisionId', input.ontologyRevisionId],
+    ['ontologyDigest', input.ontologyDigest],
+  ] as const) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new TypeError(`Anonymous application invocation ${key} must be a non-empty string`);
+    }
+  }
+  validateAnonymousDeliveryLookupKey(input.lookupKey);
+  if (
+    typeof input.expectedSessionVersion !== 'number' ||
+    !Number.isSafeInteger(input.expectedSessionVersion) ||
+    input.expectedSessionVersion < 1
+  ) {
+    throw new TypeError(
+      'Anonymous application invocation expectedSessionVersion must be a positive safe integer'
+    );
+  }
+  validateApplicationResponseMode(input.responseMode);
+  validateApplicationInvocationInput(input.input);
+  if (input.timeoutSeconds !== undefined) {
+    validateApplicationInvocationTimeout(input.timeoutSeconds);
+  }
+}
+
+export function validateRegisterApplicationDeliveryCredentialInput(
+  input: RegisterApplicationDeliveryCredentialInput
+): void {
+  for (const [key, value] of [
+    ['credentialId', input.credentialId],
+    ['applicationReleaseId', input.applicationReleaseId],
+    ['lookupKey', input.lookupKey],
+    ['secretId', input.secretId],
+  ] as const) {
+    if (typeof value !== 'string' || value.length === 0) {
+      throw new TypeError(
+        `Application delivery credential ${key} must be a non-empty string`
+      );
+    }
+  }
+  if (input.lookupKey.length > 512) {
+    throw new RangeError(
+      'Application delivery credential lookupKey must be at most 512 characters'
+    );
+  }
+  if (
+    typeof input.secretVersion !== 'number' ||
+    !Number.isSafeInteger(input.secretVersion) ||
+    input.secretVersion < 1
+  ) {
+    throw new TypeError(
+      'Application delivery credential secretVersion must be a positive safe integer'
+    );
+  }
+}
+
+export function validateApplicationDeliveryCredentialExpectedGeneration(
+  value: unknown
+): asserts value is number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) {
+    throw new TypeError(
+      'Application delivery credential expectedGeneration must be a positive safe integer'
+    );
+  }
+}
+
+const APPLICATION_PUBLICATION_DIGEST_PATTERN = /^sha256:[0-9a-f]{64}$/;
+const APPLICATION_PUBLICATION_CHANNEL_SET = new Set<string>(APPLICATION_PUBLICATION_CHANNELS);
+
+export function validateApplicationPublicationContentDigest(
+  value: unknown,
+  label: string
+): asserts value is string {
+  if (typeof value !== 'string' || !APPLICATION_PUBLICATION_DIGEST_PATTERN.test(value)) {
+    throw new TypeError(`${label} must match ^sha256:[0-9a-f]{64}$`);
+  }
+}
+
+export function validateApplicationPublicationChannel(
+  value: unknown
+): asserts value is ApplicationPublicationChannel {
+  if (typeof value !== 'string' || !APPLICATION_PUBLICATION_CHANNEL_SET.has(value)) {
+    throw new TypeError(
+      'Application publication channel must be one of api_blocking, api_streaming, embed, mcp, web, internal'
+    );
+  }
+}
+
+export function validateApplicationPublicationRateShapingPolicyRef(
+  value: unknown
+): asserts value is ApplicationPublicationRateShapingPolicyRef {
+  if (value === null || Array.isArray(value) || typeof value !== 'object') {
+    throw new TypeError('Application publication rateShapingPolicy must be an object');
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of Object.keys(record)) {
+    if (key !== 'profileId' && key !== 'policyRevisionDigest') {
+      throw new TypeError(`Application publication rateShapingPolicy field '${key}' is not supported`);
+    }
+  }
+  const profileId = record.profileId;
+  if (typeof profileId !== 'string' || profileId.length === 0) {
+    throw new TypeError('Application publication rate profile id must be a non-empty string');
+  }
+  if (profileId.trim() !== profileId) {
+    throw new TypeError('Application publication rate profile id is not canonical');
+  }
+  if (Array.from(profileId).length > MAX_APPLICATION_PUBLICATION_RATE_PROFILE_ID_CHARACTERS) {
+    throw new RangeError(
+      `Application publication rate profile id must be at most ${MAX_APPLICATION_PUBLICATION_RATE_PROFILE_ID_CHARACTERS} characters`
+    );
+  }
+  validateApplicationPublicationContentDigest(
+    record.policyRevisionDigest,
+    'Application publication rate policy revision digest'
+  );
+}
+
+export function validateCreateApplicationPublicationRouteIntentInput(
+  input: CreateApplicationPublicationRouteIntentInput
+): void {
+  validateApplicationPublicationContentDigest(
+    input.applicationReleaseDigest,
+    'Application publication route intent applicationReleaseDigest'
+  );
+  if (!Array.isArray(input.channels) || input.channels.length === 0) {
+    throw new TypeError('Application publication route intent requires at least one channel');
+  }
+  const unique = new Set<string>();
+  for (const channel of input.channels) {
+    validateApplicationPublicationChannel(channel);
+    if (unique.has(channel)) {
+      throw new TypeError('Application publication route intent contains duplicate channels');
+    }
+    unique.add(channel);
+  }
+  const origins = input.embedOriginAllowlist ?? [];
+  if (!Array.isArray(origins)) {
+    throw new TypeError('Application publication embedOriginAllowlist must be an array');
+  }
+  if (origins.length > MAX_APPLICATION_PUBLICATION_EMBED_ORIGIN_ENTRIES) {
+    throw new RangeError(
+      `Application publication embed origin allowlist must contain at most ${MAX_APPLICATION_PUBLICATION_EMBED_ORIGIN_ENTRIES} entries`
+    );
+  }
+  if (origins.length > 0 && !unique.has('embed')) {
+    throw new TypeError('Application publication embed origins require the embed channel');
+  }
+  const uniqueOrigins = new Set<string>();
+  for (const origin of origins) {
+    if (typeof origin !== 'string' || origin.length === 0) {
+      throw new TypeError('Application publication embed origin must be a non-empty string');
+    }
+    if (uniqueOrigins.has(origin)) {
+      throw new TypeError('Application publication embed origin allowlist contains duplicates');
+    }
+    uniqueOrigins.add(origin);
+  }
+  validateApplicationPublicationRateShapingPolicyRef(input.rateShapingPolicy);
 }
 
 function validateApplicationObject(value: unknown, label: string, maximumBytes: number): void {

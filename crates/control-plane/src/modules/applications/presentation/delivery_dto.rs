@@ -1,7 +1,8 @@
 use crate::modules::applications::application::{
     ApplicationInvocationMutationResult, ApplicationSessionMutationResult,
     ApplicationWorkflowRunEvidence, CancelApplicationInvocationResult,
-    CloseApplicationSessionResult, ReplayApplicationSessionResult,
+    CloseApplicationSessionResult, OpenApplicationSessionResult, ReplayApplicationSessionResult,
+    RequestApplicationInvocationResult,
 };
 use crate::modules::applications::domain::{
     ApplicationInvocation, ApplicationMessage, ApplicationSession, ApplicationWorkflowEffect,
@@ -22,6 +23,16 @@ pub struct OpenApplicationSessionRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OpenAnonymousApplicationSessionRequest {
+    pub session_id: Uuid,
+    pub release_id: Uuid,
+    pub lookup_key: String,
+    #[serde(default = "empty_object")]
+    pub initial_variables: Value,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequestApplicationInvocationRequest {
     pub ontology_id: Uuid,
     pub ontology_revision_id: Uuid,
@@ -33,8 +44,37 @@ pub struct RequestApplicationInvocationRequest {
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RequestAnonymousApplicationInvocationRequest {
+    pub invocation_id: Uuid,
+    pub expected_session_version: u64,
+    pub lookup_key: String,
+    pub response_mode: String,
+    pub input: Value,
+    pub ontology_id: Uuid,
+    pub ontology_revision_id: Uuid,
+    pub ontology_digest: String,
+    pub environment_id: Option<Uuid>,
+    pub timeout_seconds: Option<u64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApplicationExpectedVersionRequest {
     pub expected_version: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloseAnonymousApplicationSessionRequest {
+    pub expected_version: u64,
+    pub lookup_key: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CancelAnonymousApplicationInvocationRequest {
+    pub expected_version: u64,
+    pub lookup_key: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -94,6 +134,15 @@ pub struct ApplicationSessionMutationResponse {
 
 impl From<ApplicationSessionMutationResult> for ApplicationSessionMutationResponse {
     fn from(result: ApplicationSessionMutationResult) -> Self {
+        Self {
+            session: result.session.into(),
+            replayed: result.replayed,
+        }
+    }
+}
+
+impl From<OpenApplicationSessionResult> for ApplicationSessionMutationResponse {
+    fn from(result: OpenApplicationSessionResult) -> Self {
         Self {
             session: result.session.into(),
             replayed: result.replayed,
@@ -200,6 +249,16 @@ impl From<ApplicationInvocationMutationResult> for ApplicationInvocationMutation
             invocation: result.invocation.into(),
             workflow: result.workflow.into(),
             replayed: result.replayed,
+        }
+    }
+}
+
+impl From<RequestApplicationInvocationResult> for ApplicationInvocationMutationResponse {
+    fn from(result: RequestApplicationInvocationResult) -> Self {
+        Self {
+            invocation: result.invocation.into(),
+            workflow: result.workflow.into(),
+            replayed: result.invocation_replayed,
         }
     }
 }
@@ -556,7 +615,6 @@ impl From<crate::modules::applications::application::ApplicationMessageVariantMu
     }
 }
 
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateApplicationMessageFileReferenceRequest {
@@ -875,6 +933,92 @@ impl From<crate::modules::applications::domain::ApplicationStreamingObservation>
             next_sequence: observation.next_sequence,
             has_more: observation.has_more,
             observed_at: observation.observed_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegisterApplicationDeliveryCredentialRequest {
+    pub credential_id: Uuid,
+    pub application_release_id: Uuid,
+    pub lookup_key: String,
+    pub secret_id: Uuid,
+    pub secret_version: u64,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ApplicationDeliveryCredentialExpectedGenerationRequest {
+    pub expected_generation: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationDeliveryCredentialResponse {
+    pub organization_id: Uuid,
+    pub project_id: Uuid,
+    pub application_id: Uuid,
+    pub credential_id: Uuid,
+    pub audience: String,
+    pub lookup_key: String,
+    pub secret_id: Uuid,
+    pub secret_version: u64,
+    pub generation: u64,
+    pub status: String,
+    pub created_by: Uuid,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+impl From<crate::modules::applications::domain::ApplicationDeliveryCredential>
+    for ApplicationDeliveryCredentialResponse
+{
+    fn from(
+        credential: crate::modules::applications::domain::ApplicationDeliveryCredential,
+    ) -> Self {
+        use crate::modules::applications::domain::ApplicationDeliveryCredentialStatus;
+        let status = match credential.status {
+            ApplicationDeliveryCredentialStatus::Active => "active",
+            ApplicationDeliveryCredentialStatus::Disabled => "disabled",
+            ApplicationDeliveryCredentialStatus::Revoked => "revoked",
+        };
+        Self {
+            organization_id: credential.organization_id.as_uuid(),
+            project_id: credential.project_id.as_uuid(),
+            application_id: credential.application_id.as_uuid(),
+            credential_id: credential.id.as_uuid(),
+            audience: credential.audience.as_str().to_owned(),
+            lookup_key: credential.lookup_key,
+            secret_id: credential.secret.secret_id.as_uuid(),
+            secret_version: credential.secret.version,
+            generation: credential.generation,
+            status: status.to_owned(),
+            created_by: credential.created_by.as_uuid(),
+            created_at: credential.created_at,
+            updated_at: credential.updated_at,
+            revoked_at: credential.revoked_at,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApplicationDeliveryCredentialMutationResponse {
+    pub credential: ApplicationDeliveryCredentialResponse,
+    pub replayed: bool,
+}
+
+impl From<crate::modules::applications::application::ApplicationDeliveryCredentialMutationResult>
+    for ApplicationDeliveryCredentialMutationResponse
+{
+    fn from(
+        result: crate::modules::applications::application::ApplicationDeliveryCredentialMutationResult,
+    ) -> Self {
+        Self {
+            credential: ApplicationDeliveryCredentialResponse::from(result.credential),
+            replayed: result.replayed,
         }
     }
 }

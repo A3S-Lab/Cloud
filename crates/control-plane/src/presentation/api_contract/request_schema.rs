@@ -7,7 +7,7 @@ use crate::modules::files::{
 use crate::modules::knowledge::KNOWLEDGE_CONTRACT_MAX_ACL_BYTES;
 use a3s_cloud_contracts::NodeEnrollmentRequest;
 use a3s_runtime::contract::RuntimeCapabilities;
-use serde_json::{Value, json};
+use serde_json::{json, Value};
 
 pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
     if let Some(schema) = developer_workflow_request_schema(path) {
@@ -1216,25 +1216,18 @@ mod tests {
                 NodeEnrollmentRequest::LEGACY_RUNTIME_CAPABILITIES_SCHEMA
             ])
         );
-        assert!(
-            schema["properties"]["schema"]["description"]
-                .as_str()
-                .is_some_and(|description| {
-                    description.contains("v5 cannot advertise service_lifecycle")
-                        && description.contains(
-                            "v4 cannot advertise identity_attachment or service_lifecycle",
-                        )
-                })
-        );
-        assert!(
-            schema["properties"]["features"]["items"]["enum"]
-                .as_array()
-                .is_some_and(|features| features.contains(&json!("identity_attachment")))
-        );
-        assert!(
-            schema["properties"]["features"]["items"]["enum"]
-                .as_array()
-                .is_some_and(|features| features.contains(&json!("service_lifecycle")))
-        );
+        assert!(schema["properties"]["schema"]["description"]
+            .as_str()
+            .is_some_and(|description| {
+                description.contains("v5 cannot advertise service_lifecycle")
+                    && description
+                        .contains("v4 cannot advertise identity_attachment or service_lifecycle")
+            }));
+        assert!(schema["properties"]["features"]["items"]["enum"]
+            .as_array()
+            .is_some_and(|features| features.contains(&json!("identity_attachment"))));
+        assert!(schema["properties"]["features"]["items"]["enum"]
+            .as_array()
+            .is_some_and(|features| features.contains(&json!("service_lifecycle"))));
     }
 }

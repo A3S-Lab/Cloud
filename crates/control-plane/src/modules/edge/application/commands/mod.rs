@@ -3,6 +3,7 @@ pub mod create_gateway_scope;
 pub mod create_mcp_credential;
 pub mod create_mcp_route_policy;
 pub mod publish_route;
+pub mod register_gateway_rate_shaping_profile;
 pub mod revise_mcp_route_policy;
 pub mod revoke_domain_claim;
 pub mod revoke_mcp_credential;
@@ -19,6 +20,10 @@ pub use create_gateway_scope::{
 pub use create_mcp_credential::{CreateMcpCredential, CreateMcpCredentialHandler};
 pub use create_mcp_route_policy::{CreateMcpRoutePolicy, CreateMcpRoutePolicyHandler};
 pub use publish_route::{PublishRoute, PublishRouteHandler, PublishRouteResult};
+pub use register_gateway_rate_shaping_profile::{
+    RegisterGatewayRateShapingProfile, RegisterGatewayRateShapingProfileHandler,
+    RegisterGatewayRateShapingProfileResult,
+};
 pub use revise_mcp_route_policy::{ReviseMcpRoutePolicy, ReviseMcpRoutePolicyHandler};
 pub use revoke_domain_claim::{
     RevokeDomainClaim, RevokeDomainClaimHandler, RevokeDomainClaimResult,

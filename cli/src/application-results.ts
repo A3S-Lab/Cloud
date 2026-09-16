@@ -11,6 +11,10 @@ import type {
   ApplicationMessageCitationMutationResult,
   ApplicationMessageFileReference,
   ApplicationMessageFileReferenceMutationResult,
+  ApplicationDeliveryCredential,
+  ApplicationDeliveryCredentialMutationResult,
+  ApplicationPublicationRouteIntent,
+  ApplicationPublicationRouteIntentMutationResult,
   ApplicationMessageVariant,
   ApplicationMessageVariantMutationResult,
   ApplicationInvocation,
@@ -336,6 +340,88 @@ export function applicationMessageVariantMutationResult(
       {
         header: 'REPLAYED',
         value: (row: ApplicationMessageVariant & { replayed: boolean }) => row.replayed,
+      },
+    ]),
+  };
+}
+
+const APPLICATION_DELIVERY_CREDENTIAL_COLUMNS = [
+  { header: 'CREDENTIAL', value: (row: ApplicationDeliveryCredential) => row.credentialId },
+  { header: 'LOOKUP', value: (row: ApplicationDeliveryCredential) => row.lookupKey },
+  { header: 'STATUS', value: (row: ApplicationDeliveryCredential) => row.status },
+  { header: 'GENERATION', value: (row: ApplicationDeliveryCredential) => row.generation },
+  { header: 'SECRET', value: (row: ApplicationDeliveryCredential) => row.secretId },
+  { header: 'VERSION', value: (row: ApplicationDeliveryCredential) => row.secretVersion },
+  { header: 'UPDATED AT', value: (row: ApplicationDeliveryCredential) => row.updatedAt },
+];
+
+export function applicationDeliveryCredentialsResult(
+  rows: ApplicationDeliveryCredential[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_DELIVERY_CREDENTIAL_COLUMNS) };
+}
+
+export function applicationDeliveryCredentialResult(
+  row: ApplicationDeliveryCredential
+): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_DELIVERY_CREDENTIAL_COLUMNS) };
+}
+
+export function applicationDeliveryCredentialMutationResult(
+  result: ApplicationDeliveryCredentialMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.credential, replayed: result.replayed }], [
+      ...APPLICATION_DELIVERY_CREDENTIAL_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationDeliveryCredential & { replayed: boolean }) => row.replayed,
+      },
+    ]),
+  };
+}
+
+const APPLICATION_PUBLICATION_ROUTE_INTENT_COLUMNS = [
+  { header: 'INTENT', value: (row: ApplicationPublicationRouteIntent) => row.intentId },
+  { header: 'APPLICATION', value: (row: ApplicationPublicationRouteIntent) => row.applicationId },
+  { header: 'RELEASE', value: (row: ApplicationPublicationRouteIntent) => row.applicationReleaseId },
+  {
+    header: 'DIGEST',
+    value: (row: ApplicationPublicationRouteIntent) => row.applicationReleaseDigest,
+  },
+  {
+    header: 'CHANNELS',
+    value: (row: ApplicationPublicationRouteIntent) => row.channels.join(','),
+  },
+  {
+    header: 'RATE PROFILE',
+    value: (row: ApplicationPublicationRouteIntent) => row.rateShapingPolicy.profileId,
+  },
+] as const;
+
+export function applicationPublicationRouteIntentsResult(
+  rows: ApplicationPublicationRouteIntent[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, APPLICATION_PUBLICATION_ROUTE_INTENT_COLUMNS) };
+}
+
+export function applicationPublicationRouteIntentResult(
+  row: ApplicationPublicationRouteIntent
+): CommandResult {
+  return { json: row, table: renderTable([row], APPLICATION_PUBLICATION_ROUTE_INTENT_COLUMNS) };
+}
+
+export function applicationPublicationRouteIntentMutationResult(
+  result: ApplicationPublicationRouteIntentMutationResult
+): CommandResult {
+  return {
+    json: result,
+    table: renderTable([{ ...result.intent, replayed: result.replayed }], [
+      ...APPLICATION_PUBLICATION_ROUTE_INTENT_COLUMNS,
+      {
+        header: 'REPLAYED',
+        value: (row: ApplicationPublicationRouteIntent & { replayed: boolean }) => row.replayed,
       },
     ]),
   };

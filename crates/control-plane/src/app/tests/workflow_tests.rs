@@ -89,10 +89,13 @@ async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_sur
             .map(|node| node["capabilityId"].as_str().unwrap_or_default())
             .collect::<Vec<_>>(),
         [
+            "node.answer",
             "node.http-request",
             "node.human-input",
             "node.if-else",
+            "node.iteration",
             "node.list-operator",
+            "node.loop",
             "node.output",
             "node.template",
             "node.user-input",

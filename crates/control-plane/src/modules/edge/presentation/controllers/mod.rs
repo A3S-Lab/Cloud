@@ -1,5 +1,7 @@
 mod domain_claim_commands_controller;
 mod domain_claim_queries_controller;
+#[cfg(test)]
+mod enterprise_custom_domain_claim_path_tests;
 mod gateway_scope_commands_controller;
 mod gateway_scope_queries_controller;
 mod mcp_credential_commands_controller;

@@ -16,6 +16,9 @@ import {
   type ApplicationMessageCitationMutationResult,
   type ApplicationMessageFileReference,
   type ApplicationMessageFileReferenceMutationResult,
+  type ApplicationDeliveryCredential,
+  type ApplicationDeliveryCredentialExpectedGenerationInput,
+  type ApplicationDeliveryCredentialMutationResult,
   type ApplicationMessageVariant,
   type ApplicationMessageVariantMutationResult,
   type ApplicationMutationResult,
@@ -29,10 +32,19 @@ import {
   type CreateApplicationMessageCitationInput,
   type CreateApplicationMessageFileReferenceInput,
   type CreateApplicationMessageVariantInput,
+  type RegisterApplicationDeliveryCredentialInput,
+  type ApplicationPublicationRouteIntent,
+  type ApplicationPublicationRouteIntentMutationResult,
+  type CreateApplicationPublicationRouteIntentInput,
   DEFAULT_APPLICATION_LIST_LIMIT,
   DEFAULT_APPLICATION_MESSAGE_LIST_LIMIT,
+  type CancelAnonymousApplicationInvocationInput,
+  type CloseAnonymousApplicationSessionInput,
+  type ObserveAnonymousApplicationInvocationInput,
+  type OpenAnonymousApplicationSessionInput,
   type OpenApplicationSessionInput,
   type PublishApplicationReleaseInput,
+  type RequestAnonymousApplicationInvocationInput,
   type RequestApplicationInvocationInput,
   validateApplicationAnnotationInput,
   validateApplicationDescription,
@@ -42,6 +54,15 @@ import {
   validateApplicationMessageCitationInput,
   validateApplicationMessageFileReferenceInput,
   validateApplicationMessageVariantInput,
+  validateApplicationDeliveryCredentialExpectedGeneration,
+  validateCancelAnonymousApplicationInvocationInput,
+  validateCloseAnonymousApplicationSessionInput,
+  validateObserveAnonymousApplicationInvocationInput,
+  validateOpenAnonymousApplicationSessionInput,
+  validateRegisterApplicationDeliveryCredentialInput,
+  validateCreateApplicationPublicationRouteIntentInput,
+  validateApplicationPublicationContentDigest,
+  validateRequestAnonymousApplicationInvocationInput,
   validateApplicationInvocationInput,
   validateApplicationInvocationTimeout,
   validateApplicationListLimit,
@@ -2802,6 +2823,158 @@ export class CloudApi {
     );
   }
 
+
+  openDeliveryApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    input: OpenApplicationSessionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    const initialVariables = input.initialVariables ?? {};
+    validateApplicationInitialVariables(initialVariables);
+    return this.postJson(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}/sessions`,
+      idempotencyKey,
+      { ...input, initialVariables },
+      signal
+    );
+  }
+
+  requestDeliveryApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: RequestApplicationInvocationInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationMutationResult> {
+    validateApplicationResponseMode(input.responseMode);
+    validateApplicationInvocationInput(input.input);
+    if (input.timeoutSeconds !== undefined) {
+      validateApplicationInvocationTimeout(input.timeoutSeconds);
+    }
+    return this.postJson(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}/invocations`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  closeDeliveryApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: ApplicationExpectedVersionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    validateApplicationExpectedVersion(input.expectedVersion);
+    return this.postJson(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}/close`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  cancelDeliveryApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: ApplicationExpectedVersionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationCancellationResult> {
+    validateApplicationExpectedVersion(input.expectedVersion);
+    return this.postJson(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/cancel`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  observeDeliveryApplicationBlockingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    signal?: AbortSignal,
+  ): Promise<ApplicationBlockingObservation> {
+    return this.get(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/blocking-observation`,
+      signal,
+    );
+  }
+
+  observeDeliveryApplicationStreamingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    afterSequence?: number,
+    signal?: AbortSignal,
+  ): Promise<ApplicationStreamingObservation> {
+    const parameters = new URLSearchParams();
+    if (afterSequence !== undefined && afterSequence !== 0) {
+      parameters.set('afterSequence', String(afterSequence));
+    }
+    return this.get(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/streaming-observation` +
+        encodeQueryParameters(parameters),
+      signal,
+    );
+  }
+
+  observeDeliveryApplicationAsynchronousInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    signal?: AbortSignal,
+  ): Promise<ApplicationAsynchronousObservation> {
+    return this.get(
+      `${this.deliveryApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/asynchronous-observation`,
+      signal,
+    );
+  }
+
+  openAnonymousApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    input: OpenAnonymousApplicationSessionInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    const initialVariables = input.initialVariables ?? {};
+    validateOpenAnonymousApplicationSessionInput({ ...input, initialVariables });
+    return this.postQueryJson(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}/sessions`,
+      { ...input, initialVariables },
+      signal
+    );
+  }
+
   openApplicationSession(
     organizationId: string,
     projectId: string,
@@ -2843,6 +3016,40 @@ export class CloudApi {
     return this.postJson(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}/close`,
       idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  closeAnonymousApplicationSession(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: CloseAnonymousApplicationSessionInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationSessionMutationResult> {
+    validateCloseAnonymousApplicationSessionInput(input);
+    return this.postQueryJson(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}/close`,
+      input,
+      signal
+    );
+  }
+
+  requestAnonymousApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    input: RequestAnonymousApplicationInvocationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationMutationResult> {
+    validateRequestAnonymousApplicationInvocationInput(input);
+    return this.postQueryJson(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}/invocations`,
       input,
       signal
     );
@@ -2936,6 +3143,73 @@ export class CloudApi {
     );
   }
 
+  observeAnonymousApplicationBlockingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: ObserveAnonymousApplicationInvocationInput,
+    signal?: AbortSignal,
+  ): Promise<ApplicationBlockingObservation> {
+    validateObserveAnonymousApplicationInvocationInput(input);
+    const parameters = new URLSearchParams();
+    parameters.set('lookupKey', input.lookupKey);
+    return this.get(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/blocking-observation` +
+        encodeQueryParameters(parameters),
+      signal,
+    );
+  }
+
+  observeAnonymousApplicationStreamingInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: ObserveAnonymousApplicationInvocationInput,
+    afterSequence?: number,
+    signal?: AbortSignal,
+  ): Promise<ApplicationStreamingObservation> {
+    validateObserveAnonymousApplicationInvocationInput(input);
+    const parameters = new URLSearchParams();
+    parameters.set('lookupKey', input.lookupKey);
+    if (afterSequence !== undefined && afterSequence !== 0) {
+      parameters.set('afterSequence', String(afterSequence));
+    }
+    return this.get(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/streaming-observation` +
+        encodeQueryParameters(parameters),
+      signal,
+    );
+  }
+
+  observeAnonymousApplicationAsynchronousInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: ObserveAnonymousApplicationInvocationInput,
+    signal?: AbortSignal,
+  ): Promise<ApplicationAsynchronousObservation> {
+    validateObserveAnonymousApplicationInvocationInput(input);
+    const parameters = new URLSearchParams();
+    parameters.set('lookupKey', input.lookupKey);
+    return this.get(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/asynchronous-observation` +
+        encodeQueryParameters(parameters),
+      signal,
+    );
+  }
+
   cancelApplicationInvocation(
     organizationId: string,
     projectId: string,
@@ -2951,6 +3225,25 @@ export class CloudApi {
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/invocations/${encodeURIComponent(invocationId)}/cancel`,
       idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  cancelAnonymousApplicationInvocation(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    sessionId: string,
+    invocationId: string,
+    input: CancelAnonymousApplicationInvocationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationInvocationCancellationResult> {
+    validateCancelAnonymousApplicationInvocationInput(input);
+    return this.postQueryJson(
+      `${this.anonymousApplicationPath(organizationId, projectId, applicationId)}` +
+        `/sessions/${encodeURIComponent(sessionId)}` +
+        `/invocations/${encodeURIComponent(invocationId)}/cancel`,
       input,
       signal
     );
@@ -3201,6 +3494,166 @@ export class CloudApi {
     return this.get(
       `${this.applicationSessionPath(organizationId, projectId, applicationId, sessionId)}` +
         `/message-variants/${encodeURIComponent(variantId)}`,
+      signal
+    );
+  }
+
+  registerApplicationDeliveryCredential(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    input: RegisterApplicationDeliveryCredentialInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredentialMutationResult> {
+    validateRegisterApplicationDeliveryCredentialInput(input);
+    return this.postQueryJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}/delivery-credentials`,
+      {
+        credentialId: input.credentialId,
+        applicationReleaseId: input.applicationReleaseId,
+        lookupKey: input.lookupKey,
+        secretId: input.secretId,
+        secretVersion: input.secretVersion,
+      },
+      signal
+    );
+  }
+
+  listApplicationDeliveryCredentials(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredential[]> {
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}/delivery-credentials`,
+      signal
+    );
+  }
+
+  getApplicationDeliveryCredential(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    credentialId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredential> {
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/delivery-credentials/${encodeURIComponent(credentialId)}`,
+      signal
+    );
+  }
+
+  disableApplicationDeliveryCredential(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    credentialId: string,
+    input: ApplicationDeliveryCredentialExpectedGenerationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredentialMutationResult> {
+    validateApplicationDeliveryCredentialExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/delivery-credentials/${encodeURIComponent(credentialId)}/disable`,
+      { expectedGeneration: input.expectedGeneration },
+      signal
+    );
+  }
+
+  enableApplicationDeliveryCredential(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    credentialId: string,
+    input: ApplicationDeliveryCredentialExpectedGenerationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredentialMutationResult> {
+    validateApplicationDeliveryCredentialExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/delivery-credentials/${encodeURIComponent(credentialId)}/enable`,
+      { expectedGeneration: input.expectedGeneration },
+      signal
+    );
+  }
+
+  revokeApplicationDeliveryCredential(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    credentialId: string,
+    input: ApplicationDeliveryCredentialExpectedGenerationInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationDeliveryCredentialMutationResult> {
+    validateApplicationDeliveryCredentialExpectedGeneration(input.expectedGeneration);
+    return this.postQueryJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/delivery-credentials/${encodeURIComponent(credentialId)}/revoke`,
+      { expectedGeneration: input.expectedGeneration },
+      signal
+    );
+  }
+
+  createApplicationPublicationRouteIntent(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    releaseId: string,
+    input: CreateApplicationPublicationRouteIntentInput,
+    signal?: AbortSignal
+  ): Promise<ApplicationPublicationRouteIntentMutationResult> {
+    validateCreateApplicationPublicationRouteIntentInput(input);
+    return this.postQueryJson(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/releases/${encodeURIComponent(releaseId)}/publication-route-intents`,
+      {
+        applicationReleaseDigest: input.applicationReleaseDigest,
+        channels: input.channels,
+        embedOriginAllowlist: input.embedOriginAllowlist ?? [],
+        rateShapingPolicy: {
+          profileId: input.rateShapingPolicy.profileId,
+          policyRevisionDigest: input.rateShapingPolicy.policyRevisionDigest,
+        },
+      },
+      signal
+    );
+  }
+
+  getApplicationPublicationRouteIntent(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    intentId: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationPublicationRouteIntent> {
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/publication-route-intents/${encodeURIComponent(intentId)}`,
+      signal
+    );
+  }
+
+  listApplicationPublicationRouteIntentsByRelease(
+    organizationId: string,
+    projectId: string,
+    applicationId: string,
+    releaseId: string,
+    applicationReleaseDigest: string,
+    signal?: AbortSignal
+  ): Promise<ApplicationPublicationRouteIntent[]> {
+    validateApplicationPublicationContentDigest(
+      applicationReleaseDigest,
+      'Application publication route intent applicationReleaseDigest'
+    );
+    const parameters = new URLSearchParams({
+      applicationReleaseDigest,
+    });
+    return this.get(
+      `${this.applicationPath(organizationId, projectId, applicationId)}` +
+        `/releases/${encodeURIComponent(releaseId)}/publication-route-intents` +
+        encodeQueryParameters(parameters),
       signal
     );
   }
@@ -5659,6 +6112,31 @@ export class CloudApi {
 
   private applicationPath(organizationId: string, projectId: string, applicationId: string): string {
     return `${this.applicationsPath(organizationId, projectId)}/${encodeURIComponent(applicationId)}`;
+  }
+
+
+  private deliveryApplicationPath(
+    organizationId: string,
+    projectId: string,
+    applicationId: string
+  ): string {
+    return (
+      `/delivery/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}` +
+      `/applications/${encodeURIComponent(applicationId)}`
+    );
+  }
+
+  private anonymousApplicationPath(
+    organizationId: string,
+    projectId: string,
+    applicationId: string
+  ): string {
+    return (
+      `/anonymous-delivery/organizations/${encodeURIComponent(organizationId)}` +
+      `/projects/${encodeURIComponent(projectId)}` +
+      `/applications/${encodeURIComponent(applicationId)}`
+    );
   }
 
   private applicationSessionPath(

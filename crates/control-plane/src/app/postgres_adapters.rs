@@ -1,14 +1,15 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
 use crate::modules::applications::{
-    IApplicationAnnotationRepository, IApplicationFeedbackRepository,
-    IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
-    IApplicationMessageVariantRepository,
-    IApplicationRepository, IApplicationSessionRepository,
-    PostgresApplicationAnnotationRepository, PostgresApplicationFeedbackRepository,
+    IApplicationAnnotationRepository, IApplicationDeliveryCredentialRepository,
+    IApplicationFeedbackRepository, IApplicationPublicationRouteIntentRepository,
+    IApplicationMessageCitationRepository,
+    IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository,
+    IApplicationRepository, IApplicationSessionRepository, PostgresApplicationAnnotationRepository,
+    PostgresApplicationDeliveryCredentialRepository, PostgresApplicationFeedbackRepository,
+    PostgresApplicationPublicationRouteIntentRepository,
     PostgresApplicationMessageCitationRepository,
-    PostgresApplicationMessageFileReferenceRepository,
-    PostgresApplicationMessageVariantRepository, PostgresApplicationRepository,
-    PostgresApplicationSessionRepository,
+    PostgresApplicationMessageFileReferenceRepository, PostgresApplicationMessageVariantRepository,
+    PostgresApplicationRepository, PostgresApplicationSessionRepository,
 };
 use crate::modules::artifacts::{
     IArtifactBuildProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
@@ -203,11 +204,17 @@ impl PostgresAdapterFactory {
             application_feedbacks: Arc::new(PostgresApplicationFeedbackRepository::new(
                 self.executor.clone(),
             )),
+            application_publication_route_intents: Arc::new(
+                PostgresApplicationPublicationRouteIntentRepository::new(self.executor.clone()),
+            ),
             application_annotations: Arc::new(PostgresApplicationAnnotationRepository::new(
                 self.executor.clone(),
             )),
             application_message_variants: Arc::new(
                 PostgresApplicationMessageVariantRepository::new(self.executor.clone()),
+            ),
+            application_delivery_credentials: Arc::new(
+                PostgresApplicationDeliveryCredentialRepository::new(self.executor.clone()),
             ),
             application_message_file_references: Arc::new(
                 PostgresApplicationMessageFileReferenceRepository::new(self.executor.clone()),
@@ -222,6 +229,28 @@ impl PostgresAdapterFactory {
                 self.executor.clone(),
             )),
             operations: Arc::new(PostgresOperationRepository::new(self.executor.clone())),
+        }
+    }
+
+    pub(super) fn delivery(&self) -> DeliveryPostgresAdapters {
+        let workflow = WorkflowPostgresAdapters::new(self.executor.clone());
+        let identity = IdentityPostgresAdapters::new(self.executor.clone());
+        let projects = ProjectPostgresAdapters::new(self.executor.clone());
+        DeliveryPostgresAdapters {
+            applications: Arc::new(PostgresApplicationRepository::new(self.executor.clone())),
+            application_sessions: Arc::new(PostgresApplicationSessionRepository::new(
+                self.executor.clone(),
+            )),
+            application_delivery_credentials: Arc::new(
+                PostgresApplicationDeliveryCredentialRepository::new(self.executor.clone()),
+            ),
+            api_tokens: identity.api_tokens,
+            resource_grants: identity.resource_grants,
+            environments: projects.environments,
+            ontologies: workflow.ontologies,
+            workflow_definitions: workflow.workflow_definitions,
+            workflow_goals: workflow.workflow_goals,
+            workflow_runs: workflow.workflow_runs,
         }
     }
 
@@ -330,8 +359,11 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) applications: Arc<dyn IApplicationRepository>,
     pub(super) application_sessions: Arc<dyn IApplicationSessionRepository>,
     pub(super) application_feedbacks: Arc<dyn IApplicationFeedbackRepository>,
+    pub(super) application_publication_route_intents:
+        Arc<dyn IApplicationPublicationRouteIntentRepository>,
     pub(super) application_annotations: Arc<dyn IApplicationAnnotationRepository>,
     pub(super) application_message_variants: Arc<dyn IApplicationMessageVariantRepository>,
+    pub(super) application_delivery_credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
     pub(super) application_message_file_references:
         Arc<dyn IApplicationMessageFileReferenceRepository>,
     pub(super) application_message_citations: Arc<dyn IApplicationMessageCitationRepository>,
@@ -373,6 +405,19 @@ impl AutomationPostgresAdapters {
             schedule_state: Arc::new(PostgresAutomationScheduleStateRepository::new(executor)),
         }
     }
+}
+
+pub(super) struct DeliveryPostgresAdapters {
+    pub(super) applications: Arc<dyn IApplicationRepository>,
+    pub(super) application_sessions: Arc<dyn IApplicationSessionRepository>,
+    pub(super) application_delivery_credentials: Arc<dyn IApplicationDeliveryCredentialRepository>,
+    pub(super) api_tokens: Arc<dyn IApiTokenRepository>,
+    pub(super) resource_grants: Arc<dyn IResourceGrantRepository>,
+    pub(super) environments: Arc<dyn IEnvironmentRepository>,
+    pub(super) ontologies: Arc<dyn IOntologyRepository>,
+    pub(super) workflow_definitions: Arc<dyn IWorkflowDefinitionRepository>,
+    pub(super) workflow_goals: Arc<dyn IWorkflowGoalRepository>,
+    pub(super) workflow_runs: Arc<dyn IWorkflowRunRepository>,
 }
 
 pub(super) struct RelayPostgresAdapters {

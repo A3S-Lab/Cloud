@@ -197,6 +197,7 @@ impl ResourceAuthorizationDecision {
         match self.resource {
             ResourceGrantScope::Project { project_id } => project_id.as_uuid(),
             ResourceGrantScope::Environment { environment_id, .. } => environment_id.as_uuid(),
+            ResourceGrantScope::Application { application_id, .. } => application_id.as_uuid(),
             ResourceGrantScope::Node { node_id } => node_id.as_uuid(),
         }
     }
@@ -298,7 +299,7 @@ fn basis_evaluator(basis: &ResourceAuthorizationBasis) -> Result<ResourceAccessE
 mod tests {
     use super::*;
     use crate::modules::identity::domain::value_objects::ApiTokenName;
-    use crate::modules::shared_kernel::domain::{ApiTokenId, EnvironmentId, ProjectId};
+    use crate::modules::shared_kernel::domain::{ApiTokenId, ApplicationId, EnvironmentId, ProjectId};
     use chrono::TimeZone;
     use std::collections::BTreeSet;
 
@@ -371,6 +372,102 @@ mod tests {
         let reference = decision.reference().expect("reference");
         assert!(reference.id.ends_with(&decision.id.to_string()));
         assert_eq!(reference.digest, decision.digest);
+    }
+
+    #[test]
+    
+    #[test]
+    fn admits_exact_application_invoke_with_application_grant() {
+        let organization_id = OrganizationId::new();
+        let principal_id = PrincipalId::new();
+        let project_id = ProjectId::new();
+        let application_id = ApplicationId::new();
+        let membership = Membership::create(
+            MembershipId::new(),
+            organization_id,
+            principal_id,
+            MembershipRole::Restricted,
+            timestamp(),
+        );
+        let grant = ResourceGrant::create(
+            ResourceGrantId::new(),
+            organization_id,
+            membership.id,
+            ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            },
+            timestamp(),
+        );
+        let request = ResourceAuthorizationDecisionRequest {
+            organization_id,
+            principal_id,
+            credential_id: ApiTokenId::new(),
+            required_scope: ApiTokenScope::parse(ApiTokenScope::APPLICATION_INVOKE).expect("scope"),
+            action: "application.delivery.invoke".into(),
+            resource: ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            },
+            request_id: Uuid::now_v7(),
+        };
+        let decision = ResourceAuthorizationDecision::issue_membership(
+            Uuid::now_v7(),
+            request.clone(),
+            &credential(&request),
+            &membership,
+            [grant],
+            timestamp(),
+        )
+        .expect("decision");
+        decision.validate().expect("valid decision");
+    }
+
+    #[test]
+    fn refuses_application_invoke_when_only_project_grant_exists() {
+        let organization_id = OrganizationId::new();
+        let principal_id = PrincipalId::new();
+        let project_id = ProjectId::new();
+        let application_id = ApplicationId::new();
+        let membership = Membership::create(
+            MembershipId::new(),
+            organization_id,
+            principal_id,
+            MembershipRole::Restricted,
+            timestamp(),
+        );
+        let grant = ResourceGrant::create(
+            ResourceGrantId::new(),
+            organization_id,
+            membership.id,
+            ResourceGrantScope::Project { project_id },
+            timestamp(),
+        );
+        let request = ResourceAuthorizationDecisionRequest {
+            organization_id,
+            principal_id,
+            credential_id: ApiTokenId::new(),
+            required_scope: ApiTokenScope::parse(ApiTokenScope::APPLICATION_INVOKE).expect("scope"),
+            action: "application.delivery.invoke".into(),
+            resource: ResourceGrantScope::Application {
+                project_id,
+                application_id,
+            },
+            request_id: Uuid::now_v7(),
+        };
+        let error = ResourceAuthorizationDecision::issue_membership(
+            Uuid::now_v7(),
+            request.clone(),
+            &credential(&request),
+            &membership,
+            [grant],
+            timestamp(),
+        )
+        .expect_err("project grant must not cover application invoke");
+        assert!(
+            error.contains("resource authorization decision was not allowed"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]

@@ -1,16 +1,19 @@
 use super::applications::{
-    ApplicationAnnotationArguments, ApplicationArguments, ApplicationFeedbackArguments,
-    ApplicationInvocationArguments, ApplicationMessageCitationArguments,
-    ApplicationStreamingObservationArguments,
-    ApplicationMessageFileReferenceArguments,
-    ApplicationMessageVariantArguments,
-    ApplicationReleaseArguments, ApplicationSessionArguments, CancelApplicationInvocationArguments,
+    ApplicationAnnotationArguments, ApplicationArguments, ApplicationDeliveryCredentialArguments,
+    ApplicationDeliveryCredentialLifecycleArguments, ApplicationDeliveryCredentialListArguments,
+    ApplicationFeedbackArguments, ApplicationInvocationArguments,
+    ApplicationMessageCitationArguments, ApplicationMessageFileReferenceArguments,
+    ApplicationMessageVariantArguments, ApplicationReleaseArguments, ApplicationSessionArguments,
+    ApplicationStreamingObservationArguments, CancelApplicationInvocationArguments,
     CloseApplicationSessionArguments, CreateApplicationAnnotationArguments,
     CreateApplicationArguments, CreateApplicationFeedbackArguments,
     CreateApplicationMessageCitationArguments, CreateApplicationMessageFileReferenceArguments,
     CreateApplicationMessageVariantArguments, ListApplicationMessagesArguments,
-    ListApplicationReleasesArguments, ListApplicationsArguments, OpenApplicationSessionArguments,
-    PublishApplicationReleaseArguments, RequestApplicationInvocationArguments,
+    ListApplicationReleasesArguments, ListApplicationsArguments,
+    CancelAnonymousApplicationInvocationArguments, CloseAnonymousApplicationSessionArguments,
+    ObserveAnonymousApplicationInvocationArguments, OpenAnonymousApplicationSessionArguments, OpenApplicationSessionArguments,
+    PublishApplicationReleaseArguments, RegisterApplicationDeliveryCredentialArguments,
+    RequestAnonymousApplicationInvocationArguments, RequestApplicationInvocationArguments,
 };
 use super::arguments::{
     self, BuildRunArguments, BuildRunListArguments, BuildRunLogArguments, DeploymentArguments,
@@ -453,7 +456,8 @@ pub async fn execute(
         }
         ManagementTool::ApplicationMessageFileReferencesCreate => {
             let arguments =
-                arguments::parse::<CreateApplicationMessageFileReferenceArguments>(arguments).ok()?;
+                arguments::parse::<CreateApplicationMessageFileReferenceArguments>(arguments)
+                    .ok()?;
             applications::create_message_file_reference(
                 command_bus,
                 organization_id,
@@ -528,8 +532,7 @@ pub async fn execute(
             .await
         }
         ManagementTool::ApplicationBlockingObservationObserve => {
-            let arguments =
-                arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
+            let arguments = arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
             applications::observe_blocking_invocation(
                 query_bus,
                 organization_id,
@@ -554,8 +557,7 @@ pub async fn execute(
             .await
         }
         ManagementTool::ApplicationAsynchronousObservationObserve => {
-            let arguments =
-                arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
+            let arguments = arguments::parse::<ApplicationInvocationArguments>(arguments).ok()?;
             applications::observe_asynchronous_invocation(
                 query_bus,
                 organization_id,
@@ -596,6 +598,170 @@ pub async fn execute(
                 arguments::parse::<ApplicationMessageVariantArguments>(arguments).ok()?;
             applications::get_message_variant(
                 query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousSessionsOpen => {
+            let arguments =
+                arguments::parse::<OpenAnonymousApplicationSessionArguments>(arguments).ok()?;
+            applications::open_anonymous_session(
+                command_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousInvocationsRequest => {
+            let arguments =
+                arguments::parse::<RequestAnonymousApplicationInvocationArguments>(arguments)
+                    .ok()?;
+            applications::request_anonymous_invocation(
+                command_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousBlockingObservationObserve => {
+            let arguments =
+                arguments::parse::<ObserveAnonymousApplicationInvocationArguments>(arguments)
+                    .ok()?;
+            applications::observe_anonymous_blocking_invocation(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousStreamingObservationObserve => {
+            let arguments =
+                arguments::parse::<ObserveAnonymousApplicationInvocationArguments>(arguments)
+                    .ok()?;
+            applications::observe_anonymous_streaming_invocation(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousAsynchronousObservationObserve => {
+            let arguments =
+                arguments::parse::<ObserveAnonymousApplicationInvocationArguments>(arguments)
+                    .ok()?;
+            applications::observe_anonymous_asynchronous_invocation(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousSessionsClose => {
+            let arguments =
+                arguments::parse::<CloseAnonymousApplicationSessionArguments>(arguments).ok()?;
+            applications::close_anonymous_session(
+                command_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationAnonymousInvocationsCancel => {
+            let arguments =
+                arguments::parse::<CancelAnonymousApplicationInvocationArguments>(arguments)
+                    .ok()?;
+            applications::cancel_anonymous_invocation(
+                command_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsRegister => {
+            let arguments =
+                arguments::parse::<RegisterApplicationDeliveryCredentialArguments>(arguments)
+                    .ok()?;
+            applications::register_delivery_credential(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsList => {
+            let arguments =
+                arguments::parse::<ApplicationDeliveryCredentialListArguments>(arguments).ok()?;
+            applications::list_delivery_credentials(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsGet => {
+            let arguments =
+                arguments::parse::<ApplicationDeliveryCredentialArguments>(arguments).ok()?;
+            applications::get_delivery_credential(
+                query_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsDisable => {
+            let arguments =
+                arguments::parse::<ApplicationDeliveryCredentialLifecycleArguments>(arguments)
+                    .ok()?;
+            applications::disable_delivery_credential(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsEnable => {
+            let arguments =
+                arguments::parse::<ApplicationDeliveryCredentialLifecycleArguments>(arguments)
+                    .ok()?;
+            applications::enable_delivery_credential(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                resource_access,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::ApplicationDeliveryCredentialsRevoke => {
+            let arguments =
+                arguments::parse::<ApplicationDeliveryCredentialLifecycleArguments>(arguments)
+                    .ok()?;
+            applications::revoke_delivery_credential(
+                command_bus,
                 organization_id,
                 actor_principal_id,
                 arguments,

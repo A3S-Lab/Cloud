@@ -1,4 +1,5 @@
 mod api_token_verifier;
+mod applications_application_access;
 mod fleet_node_access;
 mod inference_credential_acl_projection_adapter;
 mod inference_credential_encryption;
@@ -16,6 +17,7 @@ mod vault_recipient_contact_proof;
 mod workload_runtime_evidence;
 
 pub use api_token_verifier::ApiTokenVerifier;
+pub use applications_application_access::ApplicationsIdentityApplicationAccessAdapter;
 pub use fleet_node_access::FleetIdentityNodeAccessAdapter;
 pub use inference_credential_acl_projection_adapter::InferenceCredentialAclProjectionAdapter;
 pub use inference_credential_encryption::SecretsIdentityInferenceCredentialEncryptionAdapter;

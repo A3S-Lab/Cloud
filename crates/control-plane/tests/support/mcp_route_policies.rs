@@ -1408,6 +1408,7 @@ async fn plan_gateway_snapshot(
             inference_credentials: Vec::new(),
             inference_routes: Vec::new(),
             inference_workers: Vec::new(),
+            publication_route_intents: Vec::new(),
         },
     )?;
     Ok(StageMcpGatewaySnapshot::new(

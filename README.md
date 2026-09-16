@@ -279,7 +279,7 @@ evidence and remaining exits live in [ROADMAP.md](ROADMAP.md)):
 | Architecture integrity (Wave 0) | **In progress** — owner <code>*Access</code> at REST/MCP entry; recent: <code>CreateProject</code> / <code>CreateEnvironment</code> → <code>ProjectAccess</code>, Inference publish/revise/retire → <code>InferenceAccess</code>, Edge create domain claim / gateway scope / MCP credential → <code>EdgeAccess</code>; earlier Workloads, Workflow, Executions, Assets, Secrets, and query surfaces |
 | Box-only platform (<code>BX0</code>) | **In progress** (release blocker for Box-backed production claims) |
 | Agent lanes (<code>A0</code>/<code>A1</code>) | **In progress**; A0.4 and selected A1 gates verified—complete AaaS still gate-bound |
-| Workflow / Applications / Automations / Cells / Knowledge | **In progress / unavailable** as complete products |
+| Workflow / Applications / Automations / Cells / Knowledge | **In progress / unavailable** as complete products; Applications publication route intent loads into planner + MCP Gateway desired-state ACL (`APP0.3-C17`/`C18`); empty-compile-site audit closed (`APP0.3-C19` / ADR `0148`) without PublishRoute channel ownership; next residual is Gateway rate-profile apply/binding |
 | Inference (<code>I0</code>) | **Planned** product; Track A control plane in progress (keys, route catalog + <code>InferenceAccess</code> mutations, Edge ACL succession, usage); Power workers and end-to-end data plane wait on <code>BX0</code> + <code>PW0</code> |
 | FaaS / Static Web / Runtime CI/CD / Power | **Planned** or early foundation |
 

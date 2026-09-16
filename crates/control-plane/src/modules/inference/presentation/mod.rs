@@ -5,6 +5,9 @@ mod inference_route_queries_controller;
 mod usage_queries_controller;
 mod usage_retention_controller;
 
+#[cfg(test)]
+mod monitoring_usage_cost_claim_path_tests;
+
 pub use inference_module::InferenceModule;
 pub use inference_route_commands_controller::inference_route_commands_controller;
 pub use inference_route_queries_controller::inference_route_queries_controller;

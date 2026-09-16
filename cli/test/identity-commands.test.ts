@@ -592,7 +592,7 @@ describe('a3s-cloud identity commands', () => {
       },
       {
         argv: ['resource-grants', 'create', MEMBERSHIP_ID, 'cluster', PROJECT_ID, '--idempotency-key=k'],
-        message: 'Resource Grant scope kind must be project, environment, or node',
+        message: 'Resource Grant scope kind must be project, environment, application, or node',
       },
       {
         argv: ['resource-grants', 'revoke', RESOURCE_GRANT_ID, '--idempotency-key=k'],

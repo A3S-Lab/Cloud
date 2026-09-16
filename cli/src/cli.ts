@@ -137,6 +137,29 @@ Commands:
   application-message-variants create APP SESSION Create session message variant from JSON --file
   application-message-variants list APP SESSION List session message variants for the caller project
   application-message-variants get APP SESSION VARIANT Get one session message variant by id
+  application-anonymous-sessions open APP Open anonymous delivery session from JSON --file (lookupKey required)
+  application-anonymous-invocations request APP SESSION Request anonymous invocation from JSON --file (lookupKey required)
+  application-anonymous-blocking-observation observe APP SESSION INVOCATION --lookup-key KEY Poll anonymous blocking observation
+  application-anonymous-streaming-observation observe APP SESSION INVOCATION --lookup-key KEY [--after-sequence N] Poll anonymous streaming observation
+  application-anonymous-asynchronous-observation observe APP SESSION INVOCATION --lookup-key KEY Poll anonymous asynchronous observation
+  application-anonymous-sessions close APP SESSION --expected-version N --lookup-key KEY Close anonymous delivery session
+  application-anonymous-invocations cancel APP SESSION INVOCATION --expected-version N --lookup-key KEY Cancel anonymous delivery invocation
+  application-delivery-sessions open APP RELEASE Open Principal-bound /delivery session; optional variables JSON --file
+  application-delivery-sessions close APP SESSION Close /delivery session with optimistic concurrency
+  application-delivery-invocations request APP SESSION Request /delivery invocation from JSON --file
+  application-delivery-invocations cancel APP SESSION INVOCATION Cancel /delivery invocation with optimistic concurrency
+  application-delivery-blocking-observation observe APP SESSION INVOCATION Poll /delivery blocking observation
+  application-delivery-streaming-observation observe APP SESSION INVOCATION [--after-sequence N] Poll /delivery streaming observation
+  application-delivery-asynchronous-observation observe APP SESSION INVOCATION Poll /delivery asynchronous observation
+  application-delivery-credentials register APP Register opaque delivery credential from JSON --file
+  application-delivery-credentials list APP List delivery credentials for one application
+  application-delivery-credentials get APP CREDENTIAL Get one delivery credential by id
+  application-delivery-credentials disable APP CREDENTIAL Disable with --expected-version
+  application-delivery-credentials enable APP CREDENTIAL Enable with --expected-version
+  application-delivery-credentials revoke APP CREDENTIAL Revoke with --expected-version
+  application-publication-route-intents create APP RELEASE Create publication route intent from JSON --file
+  application-publication-route-intents get APP INTENT Get one publication route intent by id
+  application-publication-route-intents list APP RELEASE DIGEST List publication route intents for exact release digest
   connector-profiles list List Connector profiles in the selected environment
   connector-profiles get ID Get one Connector profile and its current exact revision
   connector-profiles create NAME Create a Connector profile from A3S ACL

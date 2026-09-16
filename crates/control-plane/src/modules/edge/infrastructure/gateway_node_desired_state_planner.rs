@@ -1,9 +1,14 @@
+use crate::modules::edge::application::{
+    EdgeManagedApplicationPublicationRouteIntentScope,
+    IEdgeManagedApplicationPublicationRouteIntentAccess,
+};
 use crate::modules::edge::domain::GatewayScope;
 use crate::modules::edge::infrastructure::{
     GatewaySnapshotRouteInput, IMcpGatewayNodeProjectionPlanner, IMcpGatewaySnapshotRepository,
     PlanMcpGatewayNodeProjection, PlannedMcpGatewayNodeProjection,
 };
 use crate::modules::shared_kernel::domain::{canonical_timestamp, NodeId, RepositoryError};
+use a3s_cloud_contracts::ApplicationPublicationRouteIntentAclProjection;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 
@@ -22,6 +27,8 @@ pub struct PlannedGatewayNodeDesiredState {
     physical_scope: crate::modules::edge::domain::GatewayScopeState,
     active_routes: Vec<GatewaySnapshotRouteInput>,
     mcp: PlannedMcpGatewayNodeProjection,
+    /// Optional declare-only intents loaded via Edge managed Applications ACA (C17).
+    publication_route_intents: Vec<ApplicationPublicationRouteIntentAclProjection>,
 }
 
 impl PlannedGatewayNodeDesiredState {
@@ -41,6 +48,7 @@ impl PlannedGatewayNodeDesiredState {
             physical_scope,
             active_routes,
             mcp,
+            publication_route_intents: Vec::new(),
         })
     }
 
@@ -54,6 +62,19 @@ impl PlannedGatewayNodeDesiredState {
 
     pub const fn mcp(&self) -> &PlannedMcpGatewayNodeProjection {
         &self.mcp
+    }
+
+    pub fn publication_route_intents(&self) -> &[ApplicationPublicationRouteIntentAclProjection] {
+        &self.publication_route_intents
+    }
+
+    /// Inject compile-time publication route intents (tests / later reconciler wiring).
+    pub fn with_publication_route_intents(
+        mut self,
+        publication_route_intents: Vec<ApplicationPublicationRouteIntentAclProjection>,
+    ) -> Self {
+        self.publication_route_intents = publication_route_intents;
+        self
     }
 
     pub fn into_parts(
@@ -71,6 +92,7 @@ impl PlannedGatewayNodeDesiredState {
 pub struct GatewayNodeDesiredStatePlanner {
     repository: Arc<dyn IMcpGatewaySnapshotRepository>,
     projections: Arc<dyn IMcpGatewayNodeProjectionPlanner>,
+    publication_route_intents: Option<Arc<dyn IEdgeManagedApplicationPublicationRouteIntentAccess>>,
 }
 
 impl GatewayNodeDesiredStatePlanner {
@@ -81,7 +103,17 @@ impl GatewayNodeDesiredStatePlanner {
         Self {
             repository,
             projections,
+            publication_route_intents: None,
         }
+    }
+
+    /// Wire Applications-owned publication route intent ACL loading for managed compile.
+    pub fn with_publication_route_intent_access(
+        mut self,
+        publication_route_intents: Arc<dyn IEdgeManagedApplicationPublicationRouteIntentAccess>,
+    ) -> Self {
+        self.publication_route_intents = Some(publication_route_intents);
+        self
     }
 
     pub async fn plan(
@@ -130,6 +162,23 @@ impl GatewayNodeDesiredStatePlanner {
                 ));
             }
         }
+        let mut intent_scopes = Vec::with_capacity(scopes.len());
+        for scope in &scopes {
+            intent_scopes.push(
+                EdgeManagedApplicationPublicationRouteIntentScope::new(
+                    scope.organization_id,
+                    scope.project_id,
+                )
+                .map_err(RepositoryError::Conflict)?,
+            );
+        }
+        intent_scopes.sort();
+        intent_scopes.dedup();
+        let publication_route_intents = if let Some(access) = &self.publication_route_intents {
+            access.list_for_scopes(&intent_scopes).await?
+        } else {
+            Vec::new()
+        };
         let mcp = self
             .projections
             .plan(PlanMcpGatewayNodeProjection {
@@ -138,8 +187,11 @@ impl GatewayNodeDesiredStatePlanner {
                 observed_at,
             })
             .await?;
-        PlannedGatewayNodeDesiredState::new(inputs.physical_scope, inputs.active_routes, mcp)
-            .map_err(RepositoryError::Conflict)
+        Ok(
+            PlannedGatewayNodeDesiredState::new(inputs.physical_scope, inputs.active_routes, mcp)
+                .map_err(RepositoryError::Conflict)?
+                .with_publication_route_intents(publication_route_intents),
+        )
     }
 }
 
@@ -413,5 +465,122 @@ mod tests {
             now,
         )
         .expect("Gateway scope")
+    }
+
+    struct FakePublicationRouteIntentAccess {
+        projections: Vec<ApplicationPublicationRouteIntentAclProjection>,
+        scopes_seen: Mutex<Vec<Vec<EdgeManagedApplicationPublicationRouteIntentScope>>>,
+    }
+
+    #[async_trait]
+    impl IEdgeManagedApplicationPublicationRouteIntentAccess for FakePublicationRouteIntentAccess {
+        async fn list_for_scopes(
+            &self,
+            scopes: &[EdgeManagedApplicationPublicationRouteIntentScope],
+        ) -> Result<Vec<ApplicationPublicationRouteIntentAclProjection>, RepositoryError> {
+            self.scopes_seen
+                .lock()
+                .expect("scopes")
+                .push(scopes.to_vec());
+            let wanted = scopes
+                .iter()
+                .map(|scope| (scope.organization_id(), scope.project_id()))
+                .collect::<std::collections::BTreeSet<_>>();
+            Ok(self
+                .projections
+                .iter()
+                .filter(|projection| {
+                    wanted.contains(&(
+                        crate::modules::shared_kernel::domain::OrganizationId::from_uuid(
+                            projection.organization_id,
+                        ),
+                        crate::modules::shared_kernel::domain::ProjectId::from_uuid(
+                            projection.project_id,
+                        ),
+                    ))
+                })
+                .cloned()
+                .collect())
+        }
+    }
+
+    fn sample_intent(
+        organization_id: OrganizationId,
+        project_id: ProjectId,
+    ) -> ApplicationPublicationRouteIntentAclProjection {
+        use uuid::Uuid;
+        ApplicationPublicationRouteIntentAclProjection {
+            organization_id: organization_id.as_uuid(),
+            project_id: project_id.as_uuid(),
+            application_id: Uuid::parse_str("33333333-3333-4333-8333-333333333333").unwrap(),
+            application_release_id: Uuid::parse_str("44444444-4444-4444-8444-444444444444")
+                .unwrap(),
+            application_release_digest: format!("sha256:{}", "a".repeat(64)),
+            publication_route_intent_id: Uuid::parse_str(
+                "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+            )
+            .unwrap(),
+            channels: vec!["api_blocking".into()],
+            embed_origin_allowlist: Vec::new(),
+            rate_shaping_profile_id: "public-api-default".into(),
+            rate_shaping_policy_revision_digest: format!("sha256:{}", "b".repeat(64)),
+        }
+    }
+
+    #[tokio::test]
+    async fn planner_without_publication_route_intent_access_keeps_intents_empty() {
+        let now = canonical_timestamp(Utc::now());
+        let node_id = NodeId::new();
+        let fallback_scope = scope(now, node_id, OrganizationId::new());
+        let repository = Arc::new(repository(node_id, Vec::new()));
+        let projections = Arc::new(CapturingProjectionPlanner::default());
+
+        let planned = GatewayNodeDesiredStatePlanner::new(repository, projections)
+            .plan(PlanGatewayNodeDesiredState {
+                gateway_node_id: node_id,
+                fallback_scope,
+                observed_at: now,
+            })
+            .await
+            .expect("plan");
+
+        assert!(planned.publication_route_intents().is_empty());
+    }
+
+    #[tokio::test]
+    async fn planner_loads_publication_route_intents_through_edge_managed_access() {
+        let now = canonical_timestamp(Utc::now());
+        let node_id = NodeId::new();
+        let organization_id = OrganizationId::new();
+        let fallback_scope = scope(now, node_id, organization_id);
+        let project_id = fallback_scope.project_id;
+        let intent = sample_intent(organization_id, project_id);
+        let access = Arc::new(FakePublicationRouteIntentAccess {
+            projections: vec![intent.clone()],
+            scopes_seen: Mutex::new(Vec::new()),
+        });
+        let repository = Arc::new(repository(node_id, Vec::new()));
+        let projections = Arc::new(CapturingProjectionPlanner::default());
+
+        let planned = GatewayNodeDesiredStatePlanner::new(repository, projections)
+            .with_publication_route_intent_access(access.clone())
+            .plan(PlanGatewayNodeDesiredState {
+                gateway_node_id: node_id,
+                fallback_scope,
+                observed_at: now,
+            })
+            .await
+            .expect("plan");
+
+        assert_eq!(planned.publication_route_intents().len(), 1);
+        assert_eq!(
+            planned.publication_route_intents()[0].publication_route_intent_id,
+            intent.publication_route_intent_id
+        );
+        let seen = access.scopes_seen.lock().expect("scopes");
+        assert_eq!(seen.len(), 1);
+        assert_eq!(seen[0].len(), 1);
+        assert_eq!(seen[0][0].organization_id(), organization_id);
+        assert_eq!(seen[0][0].project_id(), project_id);
     }
 }

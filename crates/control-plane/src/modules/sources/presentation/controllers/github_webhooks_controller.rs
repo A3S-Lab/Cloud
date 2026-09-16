@@ -7,8 +7,8 @@ use crate::modules::sources::domain::{
 use crate::modules::sources::presentation::dto::SourceWebhookResponse;
 use crate::presentation::application_error_response;
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, Result,
-    AUTH_PUBLIC_METADATA,
+    controller, metadata, post, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+    CommandBus, ControllerDefinition, Result,
 };
 use chrono::Utc;
 use std::sync::Arc;
@@ -18,56 +18,66 @@ pub fn github_webhooks_controller(
     bus: Arc<CommandBus>,
     verifier: Arc<dyn ISourceWebhookVerifier>,
 ) -> Result<ControllerDefinition> {
-    ControllerDefinition::new("/webhooks")?
-        .with_metadata(AUTH_PUBLIC_METADATA, true)?
-        .post("/github", move |request: BootRequest| {
-            let bus = Arc::clone(&bus);
-            let verifier = Arc::clone(&verifier);
-            async move {
-                require_json(&request)?;
-                let event = required_header(&request, "x-github-event")?;
-                let delivery_id = required_header(&request, "x-github-delivery")?;
-                let signature = required_header(&request, "x-hub-signature-256")?;
-                let request_id = request_id(&request)?;
-                let verified = verifier
-                    .verify(SourceWebhookVerificationRequest {
-                        event,
-                        delivery_id,
-                        signature,
-                        body: request.body(),
+    Arc::new(GithubWebhooksController { bus, verifier }).controller()
+}
+
+#[derive(Clone)]
+struct GithubWebhooksController {
+    bus: Arc<CommandBus>,
+    verifier: Arc<dyn ISourceWebhookVerifier>,
+}
+
+#[controller("/webhooks")]
+#[metadata("auth.public", true)]
+impl GithubWebhooksController {
+    #[post("/github", raw)]
+    async fn receive(&self, request: BootRequest) -> Result<BootResponse> {
+        require_json(&request)?;
+        let event = required_header(&request, "x-github-event")?;
+        let delivery_id = required_header(&request, "x-github-delivery")?;
+        let signature = required_header(&request, "x-hub-signature-256")?;
+        let request_id = request_id(&request)?;
+        let verified = self
+            .verifier
+            .verify(SourceWebhookVerificationRequest {
+                event,
+                delivery_id,
+                signature,
+                body: request.body(),
+            })
+            .map_err(verification_error)?;
+        let received_at = Utc::now();
+        match verified {
+            VerifiedSourceWebhook::Ignored => {}
+            VerifiedSourceWebhook::Repository(webhook) => {
+                if let Err(error) = self
+                    .bus
+                    .execute(AcceptSourceWebhookDelivery {
+                        webhook,
+                        received_at,
+                        request_id,
                     })
-                    .map_err(verification_error)?;
-                let received_at = Utc::now();
-                match verified {
-                    VerifiedSourceWebhook::Ignored => {}
-                    VerifiedSourceWebhook::Repository(webhook) => {
-                        if let Err(error) = bus
-                            .execute(AcceptSourceWebhookDelivery {
-                                webhook,
-                                received_at,
-                                request_id,
-                            })
-                            .await?
-                        {
-                            return application_error_response(error, request_id);
-                        }
-                    }
-                    VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) => {
-                        if let Err(error) = bus
-                            .execute(ReconcileGithubConnectionLifecycle {
-                                lifecycle,
-                                received_at,
-                                request_id,
-                            })
-                            .await?
-                        {
-                            return application_error_response(error, request_id);
-                        }
-                    }
+                    .await?
+                {
+                    return application_error_response(error, request_id);
                 }
-                BootResponse::json_with_status(202, &SourceWebhookResponse::received())
             }
-        })
+            VerifiedSourceWebhook::GithubConnectionLifecycle(lifecycle) => {
+                if let Err(error) = self
+                    .bus
+                    .execute(ReconcileGithubConnectionLifecycle {
+                        lifecycle,
+                        received_at,
+                        request_id,
+                    })
+                    .await?
+                {
+                    return application_error_response(error, request_id);
+                }
+            }
+        }
+        BootResponse::json_with_status(202, &SourceWebhookResponse::received())
+    }
 }
 
 fn required_header<'a>(request: &'a BootRequest, name: &str) -> Result<&'a str> {
@@ -118,5 +128,45 @@ fn verification_error(error: SourceWebhookVerificationError) -> BootError {
             tracing::error!(%message, "GitHub webhook verification is unavailable");
             BootError::Adapter("GitHub webhook verification is unavailable".into())
         }
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_github_webhooks_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+    use crate::modules::sources::domain::SourceWebhookVerificationRequest;
+
+    #[derive(Debug)]
+    struct RejectingVerifier;
+
+    impl ISourceWebhookVerifier for RejectingVerifier {
+        fn verify(
+            &self,
+            _request: SourceWebhookVerificationRequest<'_>,
+        ) -> std::result::Result<VerifiedSourceWebhook, SourceWebhookVerificationError> {
+            Err(SourceWebhookVerificationError::Authentication)
+        }
+    }
+
+    #[test]
+    fn github_webhooks_controller_registers_public_post_via_nest_macros() {
+        let controller = github_webhooks_controller(
+            Arc::new(CommandBus::new()),
+            Arc::new(RejectingVerifier),
+        )
+        .expect("github webhook nest controller");
+        assert_eq!(controller.prefix(), "/webhooks");
+        assert_eq!(controller.routes().len(), 1);
+        assert_eq!(controller.routes()[0].method(), HttpMethod::Post);
+        assert_eq!(controller.routes()[0].path(), "/webhooks/github");
+        assert_eq!(
+            controller.routes()[0]
+                .metadata()
+                .get(AUTH_PUBLIC_METADATA)
+                .cloned()
+                .expect("auth.public"),
+            serde_json::json!(true)
+        );
     }
 }
