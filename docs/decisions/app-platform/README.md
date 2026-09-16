@@ -285,3 +285,4 @@ AI application platform parity manifest.
 | [0269](0269-nest-execution-queries.md) | 0269: Nest-macro Executions query controllers | Accepted |
 | [0270](0270-nest-form-commands.md) | 0270: Nest-macro Forms create command | Accepted |
 | [0271](0271-nest-form-queries.md) | 0271: Nest-macro Forms list query | Accepted |
+| [0272](0272-nest-asset-commands.md) | 0272: Nest-macro Assets create command | Accepted |
