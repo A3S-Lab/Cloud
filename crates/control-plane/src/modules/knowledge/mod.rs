@@ -6,7 +6,11 @@
 //! deferred.
 //! `K0.2-C2` freezes built-in plain-text processor output contracts
 //! whose digests feed `output_contract_digest`. Tool/OCR/multimodal
-//! processors remain deferred. No persistence, worker, or availability.
+//! processors remain deferred.
+//! `K0.2-C3` freezes file/text+builtin-text ingestion provenance
+//! whose digests feed document `provenance_digest`. Drive/crawl/
+//! Tool/OCR provenance remains deferred. No persistence, worker, or
+//! availability.
 //!
 //! `K0.1-C3` freezes canonical Knowledge and KnowledgePipeline contracts.
 //! `K0.1-C4a` adds the durable KnowledgeBase/PipelineRelease catalogs without
@@ -107,8 +111,9 @@ pub use domain::{
     KnowledgeChunkRecord, KnowledgeChunkSpecV1, KnowledgeChunkStructureV1, KnowledgeChunkV1,
     KnowledgeContentReferenceV1, KnowledgeDatasourceEntranceKindV1,
     KnowledgeDatasourceEntranceSpecV1, KnowledgeDatasourceEntranceV1,
-    KnowledgeProcessorOutputContractKindV1, KnowledgeProcessorOutputContractSpecV1,
-    KnowledgeProcessorOutputContractV1,
+    KnowledgeIngestionProvenanceKindV1, KnowledgeIngestionProvenanceSpecV1,
+    KnowledgeIngestionProvenanceV1, KnowledgeProcessorOutputContractKindV1,
+    KnowledgeProcessorOutputContractSpecV1, KnowledgeProcessorOutputContractV1,
     KnowledgeDocumentLifecycleChanged, KnowledgeDocumentRecord,
     KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1, KnowledgeDocumentV1,
     KnowledgeDocumentWriteReference, KnowledgeIndexRevisionSpecV1, KnowledgeIndexRevisionV1,
@@ -119,6 +124,7 @@ pub use domain::{
     EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1, KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA,
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1, KNOWLEDGE_DOCUMENT_SCHEMA_V1,
+    KNOWLEDGE_INGESTION_PROVENANCE_SCHEMA_V1,
     KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1,
     KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
     KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,

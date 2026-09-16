@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeProcessorOutputContractId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIngestionProvenanceId, KnowledgeProcessorOutputContractId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -25,6 +25,8 @@ const ENTRANCE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-datasource-entrance.acl");
 const PROCESSOR_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.2/knowledge-processor-output-contract.acl");
+const PROVENANCE_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-ingestion-provenance.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -382,5 +384,74 @@ fn k02_c2_builtin_plain_text_processor_output_matches_fixture_and_rejects_deferr
 
     let deferred = "knowledge_processor_output_contract {\n  contract_id = \"018f0000-0000-7000-8000-000000000503\"\n  name = \"ocr\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  schema = \"cloud.knowledge-processor-output-contract.v1\"\n  kind {\n    name = \"ocr_layout\"\n  }\n}\n";
     let err = KnowledgeProcessorOutputContractV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
+}
+
+#[test]
+fn k02_c3_file_text_ingestion_provenance_matches_fixture_and_rejects_deferred_kinds() {
+    let provenance = KnowledgeIngestionProvenanceV1::from_spec(KnowledgeIngestionProvenanceSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        provenance_id: id(
+            "018f0000-0000-7000-8000-000000000601",
+            KnowledgeIngestionProvenanceId::from_uuid,
+        ),
+        name: "FAQ upload provenance".into(),
+        kind: KnowledgeIngestionProvenanceKindV1::FileUploadBuiltinText {
+            user_file_id: id(
+                "018f0000-0000-7000-8000-000000000203",
+                UserFileId::from_uuid,
+            ),
+            entrance_digest: digest(0x11),
+            processor_output_contract_digest: digest(0x22),
+            admitted_content_digest: digest(0x0a),
+        },
+    })
+    .expect("provenance");
+    assert_eq!(provenance.canonical_acl(), PROVENANCE_FIXTURE);
+    assert_eq!(
+        KnowledgeIngestionProvenanceV1::parse_acl(PROVENANCE_FIXTURE).expect("parse"),
+        provenance
+    );
+    assert!(KnowledgeIngestionProvenanceV1::parse_acl(PROVENANCE_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeIngestionProvenanceV1::restore(PROVENANCE_FIXTURE, digest(0xbb).as_str()).is_err()
+    );
+
+    let inline = KnowledgeIngestionProvenanceV1::from_spec(KnowledgeIngestionProvenanceSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        provenance_id: id(
+            "018f0000-0000-7000-8000-000000000602",
+            KnowledgeIngestionProvenanceId::from_uuid,
+        ),
+        name: "FAQ paste provenance".into(),
+        kind: KnowledgeIngestionProvenanceKindV1::InlineTextBuiltinText {
+            entrance_digest: digest(0x33),
+            processor_output_contract_digest: digest(0x44),
+            admitted_content_digest: digest(0x0c),
+        },
+    })
+    .expect("inline provenance");
+    assert!(inline.digest().as_str().starts_with("sha256:"));
+
+    let deferred = "knowledge_ingestion_provenance {\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl provenance\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  provenance_id = \"018f0000-0000-7000-8000-000000000603\"\n  schema = \"cloud.knowledge-ingestion-provenance.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
+    let err = KnowledgeIngestionProvenanceV1::parse_acl(deferred).expect_err("deferred");
     assert!(err.contains("deferred"), "{err}");
 }

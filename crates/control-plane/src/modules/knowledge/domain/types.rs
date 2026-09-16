@@ -13,6 +13,8 @@ pub const KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1: &str =
     "cloud.knowledge-datasource-entrance.v1";
 pub const KNOWLEDGE_PROCESSOR_OUTPUT_CONTRACT_SCHEMA_V1: &str =
     "cloud.knowledge-processor-output-contract.v1";
+pub const KNOWLEDGE_INGESTION_PROVENANCE_SCHEMA_V1: &str =
+    "cloud.knowledge-ingestion-provenance.v1";
 
 pub const KNOWLEDGE_MAX_NAME_BYTES: usize = 63;
 pub const KNOWLEDGE_MAX_TAG_BYTES: usize = 64;

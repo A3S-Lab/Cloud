@@ -300,3 +300,4 @@ AI application platform parity manifest.
 | [0284](0284-k01-production-foundation.md) | 0284. K0.1 production foundation for Knowledge corpus control plane | Accepted |
 | [0285](0285-k02-c1-file-text-datasource-entrance.md) | 0285. K0.2-C1 file/text datasource entrance contract | Accepted |
 | [0286](0286-k02-c2-builtin-text-processor-output.md) | 0286. K0.2-C2 built-in plain-text processor output contract | Accepted |
+| [0287](0287-k02-c3-ingestion-provenance.md) | 0287. K0.2-C3 file/text ingestion provenance contract | Accepted |
