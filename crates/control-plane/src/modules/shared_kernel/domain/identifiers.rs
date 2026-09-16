@@ -89,6 +89,7 @@ identifier!(KnowledgeRetrievalPolicyRevisionId);
 identifier!(ExternalKnowledgeBindingId);
 identifier!(KnowledgePipelineId);
 identifier!(KnowledgePipelineReleaseId);
+identifier!(KnowledgeDatasourceEntranceId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);

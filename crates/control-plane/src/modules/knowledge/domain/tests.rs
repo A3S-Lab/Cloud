@@ -1,7 +1,7 @@
 use super::*;
 use crate::modules::shared_kernel::domain::{
     ExternalKnowledgeBindingId, KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId,
-    KnowledgeDocumentId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
+    KnowledgeDatasourceEntranceId, KnowledgeDocumentId, KnowledgeIndexRevisionId, KnowledgePipelineId, KnowledgePipelineReleaseId,
     KnowledgeRetrievalPolicyRevisionId, OrganizationId, ProjectId, Sha256Digest, UserFileId,
     WorkflowDefinitionId, WorkflowRevisionId,
 };
@@ -21,6 +21,8 @@ const BINDING_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.1/external-knowledge-binding.acl");
 const PIPELINE_FIXTURE: &str =
     include_str!("../../../../../../contracts/k0.1/knowledge-pipeline-release.acl");
+const ENTRANCE_FIXTURE: &str =
+    include_str!("../../../../../../contracts/k0.2/knowledge-datasource-entrance.acl");
 
 fn ts(value: &str) -> DateTime<Utc> {
     DateTime::parse_from_rfc3339(value)
@@ -227,4 +229,105 @@ fn knowledge_contracts_match_checked_in_fixtures_and_reject_drift() {
         KnowledgePipelineReleaseV1::parse_acl(PIPELINE_FIXTURE).expect("parse"),
         pipeline
     );
+}
+
+
+#[test]
+fn k02_c1_file_text_datasource_entrance_matches_fixture_and_rejects_deferred_kinds() {
+    let entrance = KnowledgeDatasourceEntranceV1::from_spec(KnowledgeDatasourceEntranceSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        entrance_id: id(
+            "018f0000-0000-7000-8000-000000000401",
+            KnowledgeDatasourceEntranceId::from_uuid,
+        ),
+        name: "FAQ upload".into(),
+        provenance_digest: digest(0x44),
+        kind: KnowledgeDatasourceEntranceKindV1::FileUpload {
+            user_file_id: id(
+                "018f0000-0000-7000-8000-000000000203",
+                UserFileId::from_uuid,
+            ),
+            content_digest: digest(0x0a),
+        },
+    })
+    .expect("entrance");
+    assert_eq!(entrance.canonical_acl(), ENTRANCE_FIXTURE);
+    assert_eq!(
+        KnowledgeDatasourceEntranceV1::parse_acl(ENTRANCE_FIXTURE).expect("parse"),
+        entrance
+    );
+    assert!(KnowledgeDatasourceEntranceV1::parse_acl(ENTRANCE_FIXTURE.trim_end()).is_err());
+    assert!(
+        KnowledgeDatasourceEntranceV1::restore(ENTRANCE_FIXTURE, digest(0xbb).as_str()).is_err()
+    );
+
+    let text = KnowledgeDatasourceEntranceV1::from_spec(KnowledgeDatasourceEntranceSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        entrance_id: id(
+            "018f0000-0000-7000-8000-000000000402",
+            KnowledgeDatasourceEntranceId::from_uuid,
+        ),
+        name: "FAQ paste".into(),
+        provenance_digest: digest(0x45),
+        kind: KnowledgeDatasourceEntranceKindV1::InlineText {
+            content: KnowledgeContentReferenceV1 {
+                object_ref: "organizations/org/projects/proj/knowledge/text/faq".into(),
+                digest: digest(0x0c),
+                size_bytes: 128,
+                media_type: "text/plain".into(),
+            },
+        },
+    })
+    .expect("inline text");
+    assert!(text.digest().as_str().starts_with("sha256:"));
+
+    let bad_media = KnowledgeDatasourceEntranceV1::from_spec(KnowledgeDatasourceEntranceSpecV1 {
+        organization_id: org(),
+        project_id: project(),
+        knowledge_base_id: id(
+            "018f0000-0000-7000-8000-000000000301",
+            KnowledgeBaseId::from_uuid,
+        ),
+        knowledge_base_revision_id: id(
+            "018f0000-0000-7000-8000-000000000302",
+            KnowledgeBaseRevisionId::from_uuid,
+        ),
+        entrance_id: id(
+            "018f0000-0000-7000-8000-000000000403",
+            KnowledgeDatasourceEntranceId::from_uuid,
+        ),
+        name: "bad media".into(),
+        provenance_digest: digest(0x46),
+        kind: KnowledgeDatasourceEntranceKindV1::InlineText {
+            content: KnowledgeContentReferenceV1 {
+                object_ref: "organizations/org/projects/proj/knowledge/text/bad".into(),
+                digest: digest(0x0d),
+                size_bytes: 32,
+                media_type: "application/pdf".into(),
+            },
+        },
+    });
+    assert!(bad_media.is_err());
+
+    let deferred = "knowledge_datasource_entrance {\n  entrance_id = \"018f0000-0000-7000-8000-000000000404\"\n  knowledge_base_id = \"018f0000-0000-7000-8000-000000000301\"\n  knowledge_base_revision_id = \"018f0000-0000-7000-8000-000000000302\"\n  name = \"crawl\"\n  organization_id = \"018f0000-0000-7000-8000-000000000201\"\n  project_id = \"018f0000-0000-7000-8000-000000000202\"\n  provenance_digest = \"sha256:4747474747474747474747474747474747474747474747474747474747474747\"\n  schema = \"cloud.knowledge-datasource-entrance.v1\"\n  kind {\n    name = \"web_crawler\"\n  }\n}\n";
+    let err = KnowledgeDatasourceEntranceV1::parse_acl(deferred).expect_err("deferred");
+    assert!(err.contains("deferred"), "{err}");
 }

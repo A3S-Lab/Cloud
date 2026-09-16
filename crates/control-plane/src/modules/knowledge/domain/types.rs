@@ -9,6 +9,8 @@ pub const KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1: &str =
     "cloud.knowledge-retrieval-policy-revision.v1";
 pub const EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1: &str = "cloud.external-knowledge-binding.v1";
 pub const KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1: &str = "cloud.knowledge-pipeline-release.v1";
+pub const KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1: &str =
+    "cloud.knowledge-datasource-entrance.v1";
 
 pub const KNOWLEDGE_MAX_NAME_BYTES: usize = 63;
 pub const KNOWLEDGE_MAX_TAG_BYTES: usize = 64;

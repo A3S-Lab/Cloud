@@ -298,3 +298,4 @@ AI application platform parity manifest.
 | [0282](0282-nest-build-run-queries.md) | 0282: Nest-macro Build Run list query | Accepted |
 | [0283](0283-nest-exhaustion-production-blockers.md) | 0283. Nest claimable-surface exhaustion and production-release foreign blockers | Accepted |
 | [0284](0284-k01-production-foundation.md) | 0284. K0.1 production foundation for Knowledge corpus control plane | Accepted |
+| [0285](0285-k02-c1-file-text-datasource-entrance.md) | 0285. K0.2-C1 file/text datasource entrance contract | Accepted |

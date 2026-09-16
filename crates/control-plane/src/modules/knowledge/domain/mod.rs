@@ -2,6 +2,7 @@ mod acl;
 mod base_revision;
 mod catalog;
 mod chunk;
+mod datasource_entrance;
 mod document;
 mod document_catalog;
 mod index_catalog;
@@ -22,6 +23,10 @@ pub use catalog::{
     KnowledgePipelineRecord, PublishKnowledgePipelineRelease,
 };
 pub use chunk::{KnowledgeChunkSpecV1, KnowledgeChunkV1};
+pub use datasource_entrance::{
+    KnowledgeDatasourceEntranceKindV1, KnowledgeDatasourceEntranceSpecV1,
+    KnowledgeDatasourceEntranceV1,
+};
 pub use document::{
     KnowledgeContentReferenceV1, KnowledgeDocumentSourceV1, KnowledgeDocumentSpecV1,
     KnowledgeDocumentV1,
@@ -45,6 +50,7 @@ pub use retrieval_policy::{
 };
 pub use types::{
     KnowledgeChunkStructureV1, KnowledgeIndexStrategyV1, EXTERNAL_KNOWLEDGE_BINDING_SCHEMA_V1,
+    KNOWLEDGE_DATASOURCE_ENTRANCE_SCHEMA_V1,
     KNOWLEDGE_BASE_REVISION_SCHEMA_V1, KNOWLEDGE_CHUNK_SCHEMA_V1, KNOWLEDGE_CONTRACT_MAX_ACL_BYTES,
     KNOWLEDGE_DOCUMENT_SCHEMA_V1, KNOWLEDGE_INDEX_REVISION_SCHEMA_V1,
     KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1, KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
