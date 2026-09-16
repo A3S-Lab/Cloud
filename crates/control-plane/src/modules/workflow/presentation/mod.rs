@@ -1,4 +1,6 @@
 mod controllers;
+#[cfg(test)]
+mod toolkit_variable_inspection_claim_path_tests;
 mod dto;
 mod workflow_module;
 

@@ -60,7 +60,7 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "implemented"
   }
   gate "APP0.4" {
-    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "doc:docs/decisions/app-platform/0166-app04-chatflow-workflow-claim-path.md", "doc:docs/decisions/app-platform/0167-app04-production-foundation-toolkit-channel-deferral.md", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0165-app04-proven-application-mode-claim-path.md", "doc:docs/decisions/app-platform/0166-app04-chatflow-workflow-claim-path.md", "doc:docs/decisions/app-platform/0167-app04-production-foundation-toolkit-channel-deferral.md", "doc:docs/decisions/app-platform/0293-app04-variable-inspection-claim-path.md", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/applications/application/application_mode_claim_path_tests.rs", "test:crates/control-plane/src/modules/workflow/presentation/toolkit_variable_inspection_claim_path_tests.rs"]
     state = "implemented"
   }
   gate "APP0.5" {
@@ -1038,14 +1038,14 @@ parity_manifest "application-platform-core-2026-08-13" {
     references = ["docs-index"]
   }
   capability "toolkit.variable-inspection" {
-    availability = "unavailable"
+    availability = "internal"
     category = "authoring_toolkit"
     dependencies = ["W0.3"]
-    evidence = ["doc:docs/ai-application-platform-plan.md"]
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0010-flow-derived-variable-inspection.md", "doc:docs/decisions/app-platform/0293-app04-variable-inspection-claim-path.md", "implementation:crates/control-plane/src/modules/workflow/application/queries/get_workflow_run_variables/handler.rs", "implementation:crates/control-plane/src/modules/workflow/presentation/controllers/workflow_queries_controller.rs", "test:crates/control-plane/src/modules/workflow/presentation/toolkit_variable_inspection_claim_path_tests.rs"]
     gate = "APP0.4"
     label = "Variable Inspection"
     owner = "workflow"
-    references = ["docs-index"]
+    references = ["docs-index", "workflow-chatflow"]
   }
   capability "toolkit.version-control" {
     availability = "unavailable"

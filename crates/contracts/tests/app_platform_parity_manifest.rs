@@ -146,6 +146,7 @@ fn checked_in_manifest_is_canonical_complete_and_not_publicly_advertised() {
             "toolkit.citations",
             "toolkit.file-input",
             "toolkit.more-like-this",
+            "toolkit.variable-inspection",
         ]
     );
 }
@@ -530,7 +531,6 @@ fn app04_production_foundation_claims_six_modes_and_defers_toolkits_channels() {
         "toolkit.stt",
         "toolkit.templates-catalog",
         "toolkit.tts",
-        "toolkit.variable-inspection",
         "toolkit.version-control",
     ];
     for capability_id in deferred {
@@ -542,6 +542,62 @@ fn app04_production_foundation_claims_six_modes_and_defers_toolkits_channels() {
         );
     }
 
+    let variable_inspection = by_id["toolkit.variable-inspection"];
+    assert_eq!(variable_inspection.gate(), "APP0.4");
+    assert_eq!(variable_inspection.owner(), "workflow");
+    assert_eq!(
+        variable_inspection.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert!(variable_inspection
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0293-app04-variable-inspection-claim-path.md")));
+
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
+fn app04_c4_variable_inspection_is_internal_without_parity_claim() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let capability = manifest
+        .capabilities()
+        .iter()
+        .find(|capability| capability.id() == "toolkit.variable-inspection")
+        .expect("toolkit.variable-inspection");
+    assert_eq!(
+        capability.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert_eq!(capability.gate(), "APP0.4");
+    assert_eq!(capability.owner(), "workflow");
+    assert!(capability.dependencies().iter().any(|dep| dep == "W0.3"));
+    assert!(capability.evidence().iter().any(|item| {
+        item.contains("0293-app04-variable-inspection-claim-path.md")
+    }));
+    assert!(capability.evidence().iter().any(|item| {
+        item.contains("toolkit_variable_inspection_claim_path_tests.rs")
+            || item.contains("get_workflow_run_variables")
+    }));
+    for capability_id in [
+        "toolkit.moderation",
+        "toolkit.node-test",
+        "toolkit.snippets",
+        "publication.internal",
+        "publication.mcp",
+    ] {
+        let deferred = manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == capability_id)
+            .unwrap_or_else(|| panic!("{capability_id}"));
+        assert_eq!(
+            deferred.availability(),
+            AppPlatformCapabilityAvailability::Unavailable,
+            "{capability_id}"
+        );
+    }
     assert!(!manifest.parity_claim());
     assert_eq!(manifest.public_claim_gate(), "APP0.6");
 }
