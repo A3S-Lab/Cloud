@@ -26,14 +26,16 @@ use crate::presentation::{
     stream_sequence_pages,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result, RouteDefinition,
-    SseStream,
+    controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
+    QueryBus, Result, RouteDefinition, SseStream,
 };
 use serde::Deserialize;
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
+    // Nest macros own list-conversations; org-scoped reads/streams keep deferred
+    // project admission (not a Nest attribute today).
     let get_conversation_bus = Arc::clone(&bus);
     let list_executions_bus = Arc::clone(&bus);
     let get_execution_bus = Arc::clone(&bus);
@@ -46,47 +48,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
     let get_change_set_bus = Arc::clone(&bus);
     let get_events_bus = Arc::clone(&bus);
     let stream_events_bus = Arc::clone(&bus);
-    ControllerDefinition::new("/organizations")?
-        .with_guard(OrganizationTenantGuard)
-        .get(
-            "/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
-            move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    let limit = request
-                        .optional_query_value_as::<usize>("limit")?
-                        .unwrap_or(50);
-                    match bus
-                        .execute(ListAgentConversations {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            environment_id: EnvironmentId::from_uuid(
-                                request.param_as::<Uuid>("environment_id")?,
-                            ),
-                            limit,
-                            access: agent_access(&resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?),
-                        })
-                        .await?
-                    {
-                        Ok(conversations) => BootResponse::json(
-                            &conversations
-                                .into_iter()
-                                .map(AgentConversationResponse::from)
-                                .collect::<Vec<_>>(),
-                        ),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            },
-        )?
-        .route(with_deferred_resource_scope(
+    let mut controller = Arc::new(AgentQueriesController { bus }).controller()?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-conversations/{conversation_id}",
                 move |request: BootRequest| {
@@ -116,8 +79,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-conversations/{conversation_id}/executions",
                 move |request: BootRequest| {
@@ -154,8 +117,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}",
                 move |request: BootRequest| {
@@ -185,8 +148,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/checkpoints",
                 move |request: BootRequest| {
@@ -221,8 +184,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}",
                 move |request: BootRequest| {
@@ -255,8 +218,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}/snapshot",
                 move |request: BootRequest| {
@@ -289,8 +252,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/trajectory",
                 move |request: BootRequest| {
@@ -327,8 +290,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/changes",
                 move |request: BootRequest| {
@@ -358,8 +321,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints",
                 move |request: BootRequest| {
@@ -401,8 +364,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}",
                 move |request: BootRequest| {
@@ -435,8 +398,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller = controller.route(with_deferred_resource_scope(
             RouteDefinition::get(
                 "/{organization_id}/agent-conversations/{conversation_id}/events",
                 move |request: BootRequest| {
@@ -472,8 +435,8 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
                 },
             )?,
             DeferredResourceScope::Project,
-        )?)?
-        .route(with_deferred_resource_scope(
+        )?)?;
+    controller.route(with_deferred_resource_scope(
             RouteDefinition::sse(
                 "/{organization_id}/agent-conversations/{conversation_id}/events/stream",
                 move |request: BootRequest| {
@@ -512,6 +475,72 @@ pub fn agent_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefiniti
             )?,
             DeferredResourceScope::Project,
         )?)
+}
+
+#[derive(Debug, Clone)]
+struct AgentQueriesController {
+    bus: Arc<QueryBus>,
+}
+
+#[controller("/organizations")]
+#[use_guard(OrganizationTenantGuard)]
+impl AgentQueriesController {
+    #[get(
+        "/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations",
+        raw
+    )]
+    async fn list_conversations(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        let limit = request
+            .optional_query_value_as::<usize>("limit")?
+            .unwrap_or(50);
+        match self
+            .bus
+            .execute(ListAgentConversations {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                environment_id: EnvironmentId::from_uuid(
+                    request.param_as::<Uuid>("environment_id")?,
+                ),
+                limit,
+                access: agent_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+            })
+            .await?
+        {
+            Ok(conversations) => BootResponse::json(
+                &conversations
+                    .into_iter()
+                    .map(AgentConversationResponse::from)
+                    .collect::<Vec<_>>(),
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_agent_queries_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn agent_queries_controller_registers_list_via_nest_macros() {
+        let controller = agent_queries_controller(Arc::new(QueryBus::new()))
+            .expect("agent queries nest controller");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert!(routes.len() >= 12);
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/agent-conversations"
+        }));
+    }
 }
 
 #[derive(Debug, Deserialize)]
