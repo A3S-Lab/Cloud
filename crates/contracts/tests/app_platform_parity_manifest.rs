@@ -1068,7 +1068,7 @@ fn i02c_production_foundation_closes_gate_without_inventing_public_usage() {
             .find(|gate| gate.id() == "I0.2")
             .expect("I0.2")
             .state(),
-        AppPlatformGateState::Planned
+        AppPlatformGateState::Implemented
     );
     assert_eq!(
         manifest
@@ -1083,6 +1083,58 @@ fn i02c_production_foundation_closes_gate_without_inventing_public_usage() {
     assert_eq!(manifest.public_claim_gate(), "APP0.6");
 }
 
+
+#[test]
+fn i02_production_foundation_closes_gate_without_inventing_llm_nodes() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "I0.2")
+        .expect("I0.2 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0256-i02-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("0194-nest-inference-route-queries-controller.md")
+            || item.contains("0207-nest-inference-route-commands-controller.md")
+            || item.contains("inference_route_queries_controller.rs")
+            || item.contains("inference_route_commands_controller.rs")
+            || item.contains("inference_route_catalog_tests.rs")
+            || item.contains("inference_route_binding_admission_tests.rs")
+    }));
+    assert_eq!(
+        manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == "node.llm")
+            .expect("node.llm")
+            .availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == "plugin.model")
+            .expect("plugin.model")
+            .availability(),
+        AppPlatformCapabilityAvailability::Unavailable
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "I0.6")
+            .expect("I0.6")
+            .state(),
+        AppPlatformGateState::Planned
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
 
 #[test]
 fn aut04_production_foundation_closes_gate_without_inventing_integration_trigger() {

@@ -18,8 +18,9 @@ planned gates that still own unavailable inventory include:
   (ADR `0240`) is presentation-only and explicitly refuses retrieval
   productization; pipeline entrance digests are not datasource-file /
   transform product claims
-- `U0.4` plugin inventory and `I0.*` inference nodes → foreign owners without
-  a claimable internal slice in this pass
+- `U0.4` plugin inventory and remaining `I0.6` / LLM-node productization →
+  foreign owners without a claimable internal slice in this pass (`I0.2`
+  route control plane is claimed separately in ADR `0256`)
 - `MCP0.5` → joint release gate that requires one Box-hosted MCP Service
   proven end-to-end through real Cloud, Runtime, and Gateway processes at
   exact committed revisions; Nest MCP controllers and `mcp0.1` contracts alone
@@ -34,11 +35,13 @@ owning gates for every public capability.
 
 ## Decision
 
-1. Keep `S0`, `K0.2`, `K0.3`, `K0.5`, `U0.4`, `I0.2`/`I0.6`, and `MCP0.5`
+1. Keep `S0`, `K0.2`, `K0.3`, `K0.5`, `U0.4`, `I0.6`, and `MCP0.5`
    `planned` until a real owning implementation slice exists (for `MCP0.5`,
    that means joint committed-revision evidence, not catalog-only evidence).
    `AUT0.4` component foundations (C1-C4) are claimed separately in ADR
-   `0255` without advertising `node.integration-trigger`.
+   `0255` without advertising `node.integration-trigger`. `I0.2` route
+   control-plane foundations are claimed separately in ADR `0256` without
+   advertising LLM nodes or inventing OpenAI data-plane / `I0.6` productization.
 2. Refuse inventing BYOK/S0, HA/ops console, SAML-SCIM productization beyond
    already-claimed internal C0.5 surfaces, SIEM/PII CMS, Knowledge
    datasource/transform product claims from Nest controllers alone, and

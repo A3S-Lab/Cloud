@@ -27,7 +27,7 @@ Marking `I0.2c` `verified` or flipping availability would overfit.
    controller, focused monitoring claim-path tests, this ADR, and the plan row.
 3. Keep `monitoring.usage-cost` `internal` under `APP0.5`; do not advertise
    public usage/cost or invent LLM node availability.
-4. Keep `I0.2` and `I0.6` `planned` until their own owning evidence lands.
+4. Keep `I0.6` `planned`; `I0.2` route control-plane ownership is claimed separately in ADR `0256`.
 5. Do not mark `I0.2c` `verified` or raise `parity_claim`.
 6. Keep `parity_claim=false` and `public_claim_gate=APP0.6`.
 

@@ -269,3 +269,4 @@ AI application platform parity manifest.
 | [0253](0253-a14-production-foundation.md) | 0253. A1.4 production foundation for Harness invocation profiles | Accepted |
 | [0254](0254-i02c-production-foundation.md) | 0254. I0.2c production foundation for usage/cost showback | Accepted |
 | [0255](0255-aut04-production-foundation.md) | 0255. AUT0.4 production foundation for normalized event dispatch | Accepted |
+| [0256](0256-i02-production-foundation.md) | 0256. I0.2 production foundation for inference route control plane | Accepted |
