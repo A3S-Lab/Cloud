@@ -1,0 +1,16 @@
+knowledge_ingestion_cancellation {
+  cancellation_id = "018f0000-0000-7000-8000-000000000901"
+  knowledge_base_id = "018f0000-0000-7000-8000-000000000301"
+  knowledge_base_revision_id = "018f0000-0000-7000-8000-000000000302"
+  name = "FAQ upload cancellation"
+  organization_id = "018f0000-0000-7000-8000-000000000201"
+  project_id = "018f0000-0000-7000-8000-000000000202"
+  schema = "cloud.knowledge-ingestion-cancellation.v1"
+  kind {
+    content_digest = "sha256:0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a"
+    document_id = "018f0000-0000-7000-8000-000000000501"
+    name = "cancel_admitted_user_file_ingestion"
+    provenance_digest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    user_file_id = "018f0000-0000-7000-8000-000000000203"
+  }
+}

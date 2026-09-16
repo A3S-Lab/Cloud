@@ -19,6 +19,8 @@ pub const KNOWLEDGE_SOURCE_TOMBSTONE_SCHEMA_V1: &str =
     "cloud.knowledge-source-tombstone.v1";
 pub const KNOWLEDGE_DOCUMENT_INCREMENTAL_UPDATE_SCHEMA_V1: &str =
     "cloud.knowledge-document-incremental-update.v1";
+pub const KNOWLEDGE_INGESTION_CANCELLATION_SCHEMA_V1: &str =
+    "cloud.knowledge-ingestion-cancellation.v1";
 
 pub const KNOWLEDGE_MAX_NAME_BYTES: usize = 63;
 pub const KNOWLEDGE_MAX_TAG_BYTES: usize = 64;

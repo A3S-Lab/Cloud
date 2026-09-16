@@ -303,3 +303,4 @@ AI application platform parity manifest.
 | [0287](0287-k02-c3-ingestion-provenance.md) | 0287. K0.2-C3 file/text ingestion provenance contract | Accepted |
 | [0288](0288-k02-c4-source-tombstone.md) | 0288. K0.2-C4 exact source tombstone contract | Accepted |
 | [0289](0289-k02-c5-document-incremental-update.md) | 0289. K0.2-C5 file/text document incremental-update contract | Accepted |
+| [0290](0290-k02-c6-ingestion-cancellation.md) | 0290. K0.2-C6 file/text ingestion-cancellation intent contract | Accepted |

@@ -94,6 +94,7 @@ identifier!(KnowledgeProcessorOutputContractId);
 identifier!(KnowledgeIngestionProvenanceId);
 identifier!(KnowledgeSourceTombstoneId);
 identifier!(KnowledgeDocumentIncrementalUpdateId);
+identifier!(KnowledgeIngestionCancellationId);
 identifier!(ConnectorProfileId);
 identifier!(ConnectorRevisionId);
 identifier!(DurableCellApplicationId);
