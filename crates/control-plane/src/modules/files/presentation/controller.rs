@@ -20,8 +20,8 @@ use crate::presentation::{
     DeferredResourceScope,
 };
 use a3s_boot::{
-    BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
-    RouteDefinition,
+    controller, get, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    QueryBus, Result, RouteDefinition,
 };
 use std::io::Cursor;
 use std::sync::Arc;
@@ -196,49 +196,18 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
 }
 
 pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    let list_bus = Arc::clone(&bus);
-    let get_bus = Arc::clone(&bus);
-    let content_bus = Arc::clone(&bus);
-    let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
-        .get(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&list_bus);
+    // Nest macros own list/get/content; quota keeps deferred resource admission.
+    // Tenant admission stays on the cloud read entry helper (architecture boundary).
+    let mut controller = Arc::new(UserFileQueriesController { bus: Arc::clone(&bus) }).controller()?;
+    controller = controller.route(with_deferred_resource_scope(
+        RouteDefinition::get(USER_FILE_QUOTA_ROUTE, move |request: BootRequest| {
+            let bus = Arc::clone(&bus);
             async move {
                 let request_id = request_id(&request)?;
                 match bus
-                    .execute(ListUserFiles {
+                    .execute(GetUserFileQuota {
                         organization_id: OrganizationId::from_uuid(
                             request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        limit: Some(list_limit(&request)?),
-                        access: user_file_access(&resource_access_evaluator(
-                            &request.require_auth_principal()?,
-                        )?),
-                    })
-                    .await?
-                {
-                    Ok(files) => BootResponse::json(
-                        &files
-                            .into_iter()
-                            .map(UserFileResponse::from)
-                            .collect::<Vec<_>>(),
-                    ),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?
-        .get(USER_FILE_ITEM_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&get_bus);
-            async move {
-                let request_id = request_id(&request)?;
-                match bus
-                    .execute(GetUserFile {
-                        organization_id: OrganizationId::from_uuid(
-                            request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        user_file_id: UserFileId::from_uuid(
-                            request.param_as::<Uuid>("user_file_id")?,
                         ),
                         access: user_file_access(&resource_access_evaluator(
                             &request.require_auth_principal()?,
@@ -246,63 +215,103 @@ pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefi
                     })
                     .await?
                 {
-                    Ok(file) => BootResponse::json(&UserFileResponse::from(file)),
+                    Ok(quota) => BootResponse::json(&UserFileQuotaResponse::from(quota)),
                     Err(error) => application_error_response(error, request_id),
                 }
             }
-        })?
-        .get(USER_FILE_CONTENT_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&content_bus);
-            async move {
-                let request_id = request_id(&request)?;
-                match bus
-                    .execute(GetUserFileContent {
-                        organization_id: OrganizationId::from_uuid(
-                            request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        user_file_id: UserFileId::from_uuid(
-                            request.param_as::<Uuid>("user_file_id")?,
-                        ),
-                        access: user_file_access(&resource_access_evaluator(
-                            &request.require_auth_principal()?,
-                        )?),
-                    })
-                    .await?
-                {
-                    Ok(content) => stream_user_file_content(
-                        content.media_type,
-                        content.size_bytes,
-                        content.reader,
-                    ),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?
-        .route(with_deferred_resource_scope(
-            RouteDefinition::get(USER_FILE_QUOTA_ROUTE, move |request: BootRequest| {
-                let bus = Arc::clone(&bus);
-                async move {
-                    let request_id = request_id(&request)?;
-                    match bus
-                        .execute(GetUserFileQuota {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            access: user_file_access(&resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?),
-                        })
-                        .await?
-                    {
-                        Ok(quota) => BootResponse::json(&UserFileQuotaResponse::from(quota)),
-                        Err(error) => application_error_response(error, request_id),
-                    }
-                }
-            })?,
-            DeferredResourceScope::Any,
-        )?)?;
+        })?,
+        DeferredResourceScope::Any,
+    )?)?;
     organization_tenant_cloud_read_controller(controller)
+}
+
+#[derive(Debug, Clone)]
+struct UserFileQueriesController {
+    bus: Arc<QueryBus>,
+}
+
+#[controller("/organizations")]
+impl UserFileQueriesController {
+    #[get("/{organization_id}/projects/{project_id}/user-files", raw)]
+    async fn list(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(ListUserFiles {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                limit: Some(list_limit(&request)?),
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+            })
+            .await?
+        {
+            Ok(files) => BootResponse::json(
+                &files
+                    .into_iter()
+                    .map(UserFileResponse::from)
+                    .collect::<Vec<_>>(),
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[get(
+        "/{organization_id}/projects/{project_id}/user-files/{user_file_id}",
+        raw
+    )]
+    async fn get(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(GetUserFile {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                user_file_id: UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?),
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+            })
+            .await?
+        {
+            Ok(file) => BootResponse::json(&UserFileResponse::from(file)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[get(
+        "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/content",
+        raw
+    )]
+    async fn content(&self, request: BootRequest) -> Result<BootResponse> {
+        let request_id = request_id(&request)?;
+        match self
+            .bus
+            .execute(GetUserFileContent {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                user_file_id: UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?),
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+            })
+            .await?
+        {
+            Ok(content) => stream_user_file_content(
+                content.media_type,
+                content.size_bytes,
+                content.reader,
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
 }
 
 fn list_limit(request: &BootRequest) -> Result<usize> {
@@ -341,4 +350,39 @@ fn require_octet_stream_content_type(request: &BootRequest) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod nest_macro_user_file_queries_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn user_file_queries_controller_registers_list_get_content_via_nest_macros() {
+        let controller = user_file_queries_controller(Arc::new(QueryBus::new()))
+            .expect("user file queries nest controller");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 4);
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/content"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Get
+                && route.path() == "/organizations/{organization_id}/user-file-quota"
+        }));
+    }
 }
