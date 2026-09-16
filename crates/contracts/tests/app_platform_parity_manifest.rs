@@ -299,6 +299,53 @@ fn every_advertised_public_capability_requires_verified_gates_and_test_evidence(
 }
 
 #[test]
+
+#[test]
+fn prod_r2_nest_exhaustion_keeps_foreign_gates_planned_without_parity_claim() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+    let app06 = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "APP0.6")
+        .expect("APP0.6");
+    assert_eq!(app06.state(), AppPlatformGateState::Implemented);
+    assert!(app06.evidence().iter().any(|item| {
+        item.contains("0283-nest-exhaustion-production-blockers.md")
+    }));
+    for gate_id in ["I0.6", "S0", "K0.2", "K0.3", "K0.5", "U0.4", "MCP0.5"] {
+        assert_eq!(
+            manifest
+                .gates()
+                .iter()
+                .find(|gate| gate.id() == gate_id)
+                .unwrap_or_else(|| panic!("{gate_id}"))
+                .state(),
+            AppPlatformGateState::Planned,
+            "{gate_id}"
+        );
+    }
+    for capability_id in [
+        "enterprise.byok-residency-airgap",
+        "knowledge.datasource-file",
+        "plugin.tool",
+        "node.llm",
+        "node.integration-trigger",
+    ] {
+        assert_eq!(
+            manifest
+                .capabilities()
+                .iter()
+                .find(|capability| capability.id() == capability_id)
+                .unwrap_or_else(|| panic!("{capability_id}"))
+                .availability(),
+            AppPlatformCapabilityAvailability::Unavailable,
+            "{capability_id}"
+        );
+    }
+}
+
 fn authority_decision_register_matches_files_and_latest_decision_is_manifested() {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let decision_directory = repository.join("docs/decisions/app-platform");

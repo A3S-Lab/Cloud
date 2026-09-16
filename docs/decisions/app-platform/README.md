@@ -296,3 +296,4 @@ AI application platform parity manifest.
 | [0280](0280-nest-user-file-queries.md) | 0280: Nest-macro User Files queries | Accepted |
 | [0281](0281-nest-user-file-commands.md) | 0281: Nest-macro User Files commands | Accepted |
 | [0282](0282-nest-build-run-queries.md) | 0282: Nest-macro Build Run list query | Accepted |
+| [0283](0283-nest-exhaustion-production-blockers.md) | 0283. Nest claimable-surface exhaustion and production-release foreign blockers | Accepted |

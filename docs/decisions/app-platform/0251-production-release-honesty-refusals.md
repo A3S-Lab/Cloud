@@ -58,3 +58,5 @@ owning gates for every public capability.
 - Next claimable work must show domain/application/infrastructure proof for
   the specific capability ID before any availability change; `MCP0.5` must
   show joint process evidence at pinned revisions.
+
+- ADR `0283` audits Nest claimable-surface exhaustion and restates the same foreign-blocker set after Nest migrations through `0282`.
