@@ -2,9 +2,7 @@ use super::content_stream::stream_user_file_content;
 use super::{
     ExpireUserFileUploadRequest, RecordUserFileScanRequest, ReserveUserFileRequest,
     TombstoneUserFileRequest, UserFileMutationResponse, UserFileQuotaResponse, UserFileResponse,
-    USER_FILES_CONTROLLER_PREFIX, USER_FILE_COLLECTION_ROUTE, USER_FILE_CONTENT_ROUTE,
-    USER_FILE_EXPIRE_ROUTE, USER_FILE_ITEM_ROUTE, USER_FILE_QUOTA_ROUTE, USER_FILE_SCAN_ROUTE,
-    USER_FILE_TOMBSTONE_ROUTE,
+    USER_FILE_CONTENT_ROUTE, USER_FILE_QUOTA_ROUTE,
 };
 use crate::modules::files::application::{
     ExpireUserFileUpload, GetUserFile, GetUserFileContent, GetUserFileQuota, ListUserFiles,
@@ -20,7 +18,7 @@ use crate::presentation::{
     DeferredResourceScope,
 };
 use a3s_boot::{
-    controller, get, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+    controller, get, post, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
     QueryBus, Result, RouteDefinition,
 };
 use std::io::Cursor;
@@ -28,41 +26,14 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    let reserve_bus = Arc::clone(&bus);
+    // Nest macros own reserve/scan/expire/tombstone; content PUT keeps octet-stream
+    // body limits on an imperative route. Tenant admission stays on the file write
+    // entry helper (architecture boundary).
     let content_bus = Arc::clone(&bus);
-    let scan_bus = Arc::clone(&bus);
-    let expire_bus = Arc::clone(&bus);
-    let controller = ControllerDefinition::new(USER_FILES_CONTROLLER_PREFIX)?
-        .post(USER_FILE_COLLECTION_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&reserve_bus);
-            async move {
-                let body: ReserveUserFileRequest = request.json_with_content_type()?;
-                let (idempotency_key, request_id) = request_identity(&request)?;
-                match bus
-                    .execute(ReserveUserFile {
-                        organization_id: OrganizationId::from_uuid(
-                            request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        admission_acl: body.admission_acl,
-                        actor_principal_id: actor_principal_id(&request)?,
-                        access: user_file_access(&resource_access_evaluator(
-                            &request.require_auth_principal()?,
-                        )?),
-                        idempotency_key,
-                        request_id,
-                    })
-                    .await?
-                {
-                    Ok(result) => BootResponse::json_with_status(
-                        if result.replayed { 200 } else { 201 },
-                        &UserFileMutationResponse::from(result),
-                    ),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?
-        .put(USER_FILE_CONTENT_ROUTE, move |request: BootRequest| {
+    let mut controller = Arc::new(UserFileCommandsController { bus }).controller()?;
+    controller = controller.route(RouteDefinition::put(
+        USER_FILE_CONTENT_ROUTE,
+        move |request: BootRequest| {
             let bus = Arc::clone(&content_bus);
             async move {
                 require_octet_stream_content_type(&request)?;
@@ -98,107 +69,149 @@ pub fn user_file_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerD
                     Err(error) => application_error_response(error, request_id),
                 }
             }
-        })?
-        .post(USER_FILE_SCAN_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&scan_bus);
-            async move {
-                let body: RecordUserFileScanRequest = request.json_with_content_type()?;
-                let (idempotency_key, request_id) = request_identity(&request)?;
-                match bus
-                    .execute(RecordUserFileScan {
-                        transition: UserFileTransition {
-                            organization_id: OrganizationId::from_uuid(
-                                request.param_as::<Uuid>("organization_id")?,
-                            ),
-                            project_id: ProjectId::from_uuid(
-                                request.param_as::<Uuid>("project_id")?,
-                            ),
-                            user_file_id: UserFileId::from_uuid(
-                                request.param_as::<Uuid>("user_file_id")?,
-                            ),
-                            expected_version: body.expected_version,
-                            actor_principal_id: actor_principal_id(&request)?,
-                            access: user_file_access(&resource_access_evaluator(
-                                &request.require_auth_principal()?,
-                            )?),
-                            idempotency_key,
-                            request_id,
-                        },
-                        evidence_digest: body.evidence_digest,
-                        decision: body.decision.into(),
-                    })
-                    .await?
-                {
-                    Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?
-        .post(USER_FILE_EXPIRE_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&expire_bus);
-            async move {
-                let body: ExpireUserFileUploadRequest = request.json_with_content_type()?;
-                let (idempotency_key, request_id) = request_identity(&request)?;
-                match bus
-                    .execute(ExpireUserFileUpload(UserFileTransition {
-                        organization_id: OrganizationId::from_uuid(
-                            request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        user_file_id: UserFileId::from_uuid(
-                            request.param_as::<Uuid>("user_file_id")?,
-                        ),
-                        expected_version: body.expected_version,
-                        actor_principal_id: actor_principal_id(&request)?,
-                        access: user_file_access(&resource_access_evaluator(
-                            &request.require_auth_principal()?,
-                        )?),
-                        idempotency_key,
-                        request_id,
-                    }))
-                    .await?
-                {
-                    Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?
-        .post(USER_FILE_TOMBSTONE_ROUTE, move |request: BootRequest| {
-            let bus = Arc::clone(&bus);
-            async move {
-                let body: TombstoneUserFileRequest = request.json_with_content_type()?;
-                let (idempotency_key, request_id) = request_identity(&request)?;
-                match bus
-                    .execute(TombstoneUserFile(UserFileTransition {
-                        organization_id: OrganizationId::from_uuid(
-                            request.param_as::<Uuid>("organization_id")?,
-                        ),
-                        project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
-                        user_file_id: UserFileId::from_uuid(
-                            request.param_as::<Uuid>("user_file_id")?,
-                        ),
-                        expected_version: body.expected_version,
-                        actor_principal_id: actor_principal_id(&request)?,
-                        access: user_file_access(&resource_access_evaluator(
-                            &request.require_auth_principal()?,
-                        )?),
-                        idempotency_key,
-                        request_id,
-                    }))
-                    .await?
-                {
-                    Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
-                    Err(error) => application_error_response(error, request_id),
-                }
-            }
-        })?;
+        },
+    )?)?;
     organization_tenant_file_write_controller(controller)
+}
+
+#[derive(Debug, Clone)]
+struct UserFileCommandsController {
+    bus: Arc<CommandBus>,
+}
+
+#[controller("/organizations")]
+impl UserFileCommandsController {
+    #[post("/{organization_id}/projects/{project_id}/user-files", raw)]
+    async fn reserve(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: ReserveUserFileRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(ReserveUserFile {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                admission_acl: body.admission_acl,
+                actor_principal_id: actor_principal_id(&request)?,
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+                idempotency_key,
+                request_id,
+            })
+            .await?
+        {
+            Ok(result) => BootResponse::json_with_status(
+                if result.replayed { 200 } else { 201 },
+                &UserFileMutationResponse::from(result),
+            ),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/scan",
+        raw
+    )]
+    async fn scan(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: RecordUserFileScanRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(RecordUserFileScan {
+                transition: UserFileTransition {
+                    organization_id: OrganizationId::from_uuid(
+                        request.param_as::<Uuid>("organization_id")?,
+                    ),
+                    project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                    user_file_id: UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?),
+                    expected_version: body.expected_version,
+                    actor_principal_id: actor_principal_id(&request)?,
+                    access: user_file_access(&resource_access_evaluator(
+                        &request.require_auth_principal()?,
+                    )?),
+                    idempotency_key,
+                    request_id,
+                },
+                evidence_digest: body.evidence_digest,
+                decision: body.decision.into(),
+            })
+            .await?
+        {
+            Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/expire",
+        raw
+    )]
+    async fn expire(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: ExpireUserFileUploadRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(ExpireUserFileUpload(UserFileTransition {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                user_file_id: UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?),
+                expected_version: body.expected_version,
+                actor_principal_id: actor_principal_id(&request)?,
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+                idempotency_key,
+                request_id,
+            }))
+            .await?
+        {
+            Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
+
+    #[post(
+        "/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone",
+        raw
+    )]
+    async fn tombstone(&self, request: BootRequest) -> Result<BootResponse> {
+        let body: TombstoneUserFileRequest = request.json_with_content_type()?;
+        let (idempotency_key, request_id) = request_identity(&request)?;
+        match self
+            .bus
+            .execute(TombstoneUserFile(UserFileTransition {
+                organization_id: OrganizationId::from_uuid(
+                    request.param_as::<Uuid>("organization_id")?,
+                ),
+                project_id: ProjectId::from_uuid(request.param_as::<Uuid>("project_id")?),
+                user_file_id: UserFileId::from_uuid(request.param_as::<Uuid>("user_file_id")?),
+                expected_version: body.expected_version,
+                actor_principal_id: actor_principal_id(&request)?,
+                access: user_file_access(&resource_access_evaluator(
+                    &request.require_auth_principal()?,
+                )?),
+                idempotency_key,
+                request_id,
+            }))
+            .await?
+        {
+            Ok(result) => BootResponse::json(&UserFileMutationResponse::from(result)),
+            Err(error) => application_error_response(error, request_id),
+        }
+    }
 }
 
 pub fn user_file_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
     // Nest macros own list/get/content; quota keeps deferred resource admission.
     // Tenant admission stays on the cloud read entry helper (architecture boundary).
-    let mut controller = Arc::new(UserFileQueriesController { bus: Arc::clone(&bus) }).controller()?;
+    let mut controller = Arc::new(UserFileQueriesController {
+        bus: Arc::clone(&bus),
+    })
+    .controller()?;
     controller = controller.route(with_deferred_resource_scope(
         RouteDefinition::get(USER_FILE_QUOTA_ROUTE, move |request: BootRequest| {
             let bus = Arc::clone(&bus);
@@ -383,6 +396,47 @@ mod nest_macro_user_file_queries_controller_tests {
         assert!(routes.iter().any(|route| {
             route.method() == HttpMethod::Get
                 && route.path() == "/organizations/{organization_id}/user-file-quota"
+        }));
+    }
+}
+
+#[cfg(test)]
+mod nest_macro_user_file_commands_controller_tests {
+    use super::*;
+    use a3s_boot::HttpMethod;
+
+    #[test]
+    fn user_file_commands_controller_registers_mutations_via_nest_macros() {
+        let controller = user_file_commands_controller(Arc::new(CommandBus::new()))
+            .expect("user file commands nest controller");
+
+        assert_eq!(controller.prefix(), "/organizations");
+        let routes = controller.routes();
+        assert_eq!(routes.len(), 5);
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Post
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Put
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/content"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Post
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/scan"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Post
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/expire"
+        }));
+        assert!(routes.iter().any(|route| {
+            route.method() == HttpMethod::Post
+                && route.path()
+                    == "/organizations/{organization_id}/projects/{project_id}/user-files/{user_file_id}/tombstone"
         }));
     }
 }

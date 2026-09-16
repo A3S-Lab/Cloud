@@ -294,3 +294,4 @@ AI application platform parity manifest.
 | [0278](0278-nest-agent-queries.md) | 0278: Nest-macro Agent list-conversations query | Accepted |
 | [0279](0279-nest-workload-queries.md) | 0279: Nest-macro Workloads list query | Accepted |
 | [0280](0280-nest-user-file-queries.md) | 0280: Nest-macro User Files queries | Accepted |
+| [0281](0281-nest-user-file-commands.md) | 0281: Nest-macro User Files commands | Accepted |
