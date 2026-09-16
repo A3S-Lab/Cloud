@@ -104,8 +104,8 @@ parity_manifest "application-platform-core-2026-08-13" {
     state = "planned"
   }
   gate "I0.2c" {
-    evidence = ["doc:docs/inference-plan.md"]
-    state = "planned"
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0169-app05-usage-cost-showback-claim-path.md", "doc:docs/decisions/app-platform/0254-i02c-production-foundation.md", "doc:docs/inference-plan.md", "implementation:crates/control-plane/src/modules/inference/presentation/usage_queries_controller.rs", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/modules/inference/presentation/monitoring_usage_cost_claim_path_tests.rs"]
+    state = "implemented"
   }
   gate "I0.6" {
     evidence = ["doc:docs/inference-plan.md"]

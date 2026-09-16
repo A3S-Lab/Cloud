@@ -1032,6 +1032,57 @@ fn a14_production_foundation_closes_gate_without_inventing_capabilities() {
     assert_eq!(manifest.public_claim_gate(), "APP0.6");
 }
 
+
+#[test]
+fn i02c_production_foundation_closes_gate_without_inventing_public_usage() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "I0.2c")
+        .expect("I0.2c gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0254-i02c-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("0169-app05-usage-cost-showback-claim-path.md")
+            || item.contains("usage_queries_controller.rs")
+            || item.contains("monitoring_usage_cost_claim_path_tests.rs")
+    }));
+    let usage = manifest
+        .capabilities()
+        .iter()
+        .find(|capability| capability.id() == "monitoring.usage-cost")
+        .expect("monitoring.usage-cost");
+    assert_eq!(
+        usage.availability(),
+        AppPlatformCapabilityAvailability::Internal
+    );
+    assert!(usage.dependencies().iter().any(|dep| dep == "I0.2c"));
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "I0.2")
+            .expect("I0.2")
+            .state(),
+        AppPlatformGateState::Planned
+    );
+    assert_eq!(
+        manifest
+            .gates()
+            .iter()
+            .find(|gate| gate.id() == "I0.6")
+            .expect("I0.6")
+            .state(),
+        AppPlatformGateState::Planned
+    );
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
 #[test]
 fn h05_production_foundation_claims_ha_disaster_recovery() {
     let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");

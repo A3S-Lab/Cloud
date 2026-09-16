@@ -267,3 +267,4 @@ AI application platform parity manifest.
 | [0251](0251-production-release-honesty-refusals.md) | 0251. Production-release blockers: refuse inventing AUT0.4, S0, and Knowledge datasource productization | Accepted |
 | [0252](0252-a13-production-foundation.md) | 0252. A1.3 production foundation for provider-neutral Agent execution contracts | Accepted |
 | [0253](0253-a14-production-foundation.md) | 0253. A1.4 production foundation for Harness invocation profiles | Accepted |
+| [0254](0254-i02c-production-foundation.md) | 0254. I0.2c production foundation for usage/cost showback | Accepted |
