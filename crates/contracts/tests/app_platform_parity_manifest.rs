@@ -299,8 +299,6 @@ fn every_advertised_public_capability_requires_verified_gates_and_test_evidence(
 }
 
 #[test]
-
-#[test]
 fn prod_r2_nest_exhaustion_keeps_foreign_gates_planned_without_parity_claim() {
     let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
     assert!(!manifest.parity_claim());
@@ -346,6 +344,63 @@ fn prod_r2_nest_exhaustion_keeps_foreign_gates_planned_without_parity_claim() {
     }
 }
 
+
+#[test]
+fn k01_production_foundation_closes_gate_without_inventing_knowledge_product_caps() {
+    let manifest = AppPlatformParityManifest::parse_acl(MANIFEST).expect("manifest");
+    let gate = manifest
+        .gates()
+        .iter()
+        .find(|gate| gate.id() == "K0.1")
+        .expect("K0.1 gate");
+    assert_eq!(gate.state(), AppPlatformGateState::Implemented);
+    assert!(gate
+        .evidence()
+        .iter()
+        .any(|item| item.contains("0284-k01-production-foundation.md")));
+    assert!(gate.evidence().iter().any(|item| {
+        item.contains("knowledge_catalog.sql")
+            || item.contains("knowledge_postgres.rs")
+            || item.contains("pipeline_release.rs")
+    }));
+    for gate_id in ["K0.2", "K0.3", "K0.5"] {
+        assert_eq!(
+            manifest
+                .gates()
+                .iter()
+                .find(|gate| gate.id() == gate_id)
+                .unwrap_or_else(|| panic!("{gate_id}"))
+                .state(),
+            AppPlatformGateState::Planned,
+            "{gate_id}"
+        );
+    }
+    for capability_id in [
+        "knowledge.datasource-file",
+        "knowledge.transform-general",
+        "knowledge.pipeline-publish-run",
+        "knowledge.sink",
+    ] {
+        let capability = manifest
+            .capabilities()
+            .iter()
+            .find(|capability| capability.id() == capability_id)
+            .unwrap_or_else(|| panic!("{capability_id}"));
+        assert_eq!(
+            capability.availability(),
+            AppPlatformCapabilityAvailability::Unavailable,
+            "{capability_id}"
+        );
+        assert!(
+            capability.dependencies().iter().any(|dep| dep == "K0.1"),
+            "{capability_id} must depend on K0.1"
+        );
+    }
+    assert!(!manifest.parity_claim());
+    assert_eq!(manifest.public_claim_gate(), "APP0.6");
+}
+
+#[test]
 fn authority_decision_register_matches_files_and_latest_decision_is_manifested() {
     let repository = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let decision_directory = repository.join("docs/decisions/app-platform");

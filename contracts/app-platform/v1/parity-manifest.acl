@@ -111,6 +111,10 @@ parity_manifest "application-platform-core-2026-08-13" {
     evidence = ["doc:docs/inference-plan.md"]
     state = "planned"
   }
+  gate "K0.1" {
+    evidence = ["doc:docs/ai-application-platform-plan.md", "doc:docs/decisions/app-platform/0006-knowledge-authority.md", "doc:docs/decisions/app-platform/0240-nest-knowledge-controller.md", "doc:docs/decisions/app-platform/0280-nest-user-file-queries.md", "doc:docs/decisions/app-platform/0281-nest-user-file-commands.md", "doc:docs/decisions/app-platform/0284-k01-production-foundation.md", "implementation:crates/control-plane/src/modules/knowledge/application/mod.rs", "implementation:crates/control-plane/src/modules/knowledge/domain/pipeline_release.rs", "implementation:crates/control-plane/src/modules/knowledge/infrastructure/knowledge_postgres.rs", "implementation:crates/control-plane/src/modules/knowledge/presentation/controller.rs", "implementation:migrations/170_user_files.sql", "implementation:migrations/201_knowledge_catalog.sql", "implementation:migrations/202_knowledge_documents_and_chunks.sql", "implementation:migrations/203_knowledge_index_policy_and_bindings.sql", "test:crates/contracts/tests/app_platform_parity_manifest.rs", "test:crates/control-plane/src/app/tests/knowledge_document_tests.rs", "test:crates/control-plane/src/app/tests/knowledge_index_tests.rs", "test:crates/control-plane/src/app/tests/knowledge_tests.rs"]
+    state = "implemented"
+  }
   gate "K0.2" {
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     state = "planned"
@@ -286,7 +290,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.datasource-debug" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["W0.3"]
+    dependencies = ["K0.1", "W0.3"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.5"
     label = "Whole-Pipeline Test and Single-Datasource Debug"
@@ -296,7 +300,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.datasource-file" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = []
+    dependencies = ["K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "File-Upload Datasource"
@@ -306,7 +310,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.datasource-marketplace" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["U0.4"]
+    dependencies = ["K0.1", "U0.4"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "Marketplace Datasource"
@@ -316,7 +320,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.datasource-online" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["U0.4"]
+    dependencies = ["K0.1", "U0.4"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "Online Document and Drive Datasource"
@@ -326,7 +330,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.datasource-web" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["AUT0.5"]
+    dependencies = ["AUT0.5", "K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "Web-Crawler Datasource"
@@ -336,7 +340,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.document-processor" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["W0.4"]
+    dependencies = ["K0.1", "W0.4"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "Document Extraction, OCR, and Layout Processing"
@@ -346,7 +350,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.input-scopes" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["W0.3"]
+    dependencies = ["K0.1", "W0.3"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.5"
     label = "Global and Datasource-Local Inputs"
@@ -356,7 +360,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.pipeline-publish-run" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["W0.3"]
+    dependencies = ["K0.1", "W0.3"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.5"
     label = "Knowledge Pipeline Publication and Run"
@@ -366,7 +370,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.processor-tool" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["U0.4", "W0.4"]
+    dependencies = ["K0.1", "U0.4", "W0.4"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.2"
     label = "Tool and Multimodal Processor"
@@ -376,7 +380,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.sink" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = ["I0.2"]
+    dependencies = ["I0.2", "K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.3"
     label = "Knowledge Base Index and Retrieval Sink"
@@ -386,7 +390,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.transform-general" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = []
+    dependencies = ["K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.3"
     label = "General Chunking"
@@ -396,7 +400,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.transform-parent-child" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = []
+    dependencies = ["K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.3"
     label = "Parent-Child Chunking"
@@ -406,7 +410,7 @@ parity_manifest "application-platform-core-2026-08-13" {
   capability "knowledge.transform-qa" {
     availability = "unavailable"
     category = "knowledge"
-    dependencies = []
+    dependencies = ["K0.1"]
     evidence = ["doc:docs/ai-application-platform-plan.md"]
     gate = "K0.3"
     label = "Q-and-A Chunking"
