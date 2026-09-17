@@ -561,6 +561,24 @@ EOF
   probe_rc=$?
   set -e
   if ((probe_rc != 0)); then
+    # CREATE_FULL proves health then removes the Box. Gate EXECUTE after CREATE
+    # cannot re-hit HEALTH_URL; accept a prior execute_ok receipt instead.
+    local prior=${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-}/04-health.txt
+    if [[ -n ${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-} && -f $prior ]] \
+      && grep -Fq 'status=execute_ok' "$prior" \
+      && grep -Fq 'health=executed' "$prior"; then
+      cat >"$evidence" <<EOF
+step=4
+name=health
+status=execute_ok
+health_probe=$probe
+health_url=$health_url
+probe_ran=0
+prior_receipt=$prior
+health=executed
+EOF
+      return 0
+    fi
     cat >"$evidence" <<EOF
 step=4
 name=health
@@ -771,6 +789,23 @@ EOF
   probe_rc=$?
   set -e
   if ((probe_rc != 0)); then
+    local prior=${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-}/05-https.txt
+    if [[ -n ${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-} && -f $prior ]] \
+      && grep -Fq 'status=execute_ok' "$prior" \
+      && grep -Fq 'https=executed' "$prior"; then
+      cat >"$evidence" <<EOF
+step=5
+name=https
+status=execute_ok
+a3s_gateway=$gateway
+https_probe=$probe
+https_url=$https_url
+probe_ran=0
+prior_receipt=$prior
+https=executed
+EOF
+      return 0
+    fi
     cat >"$evidence" <<EOF
 step=5
 name=https
@@ -914,6 +949,22 @@ EOF
     return 1
   fi
   if ((probe_rc != 0)); then
+    local prior=${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-}/06-logs.txt
+    if [[ -n ${A3S_CLOUD_BX0_PRIOR_RECEIPTS_DIR:-} && -f $prior ]] \
+      && grep -Fq 'status=execute_ok' "$prior" \
+      && grep -Fq 'logs=executed' "$prior"; then
+      cat >"$evidence" <<EOF
+step=6
+name=logs
+status=execute_ok
+logs_probe=$probe
+logs_cursor=$cursor
+probe_ran=0
+prior_receipt=$prior
+logs=executed
+EOF
+      return 0
+    fi
     cat >"$evidence" <<EOF
 step=6
 name=logs
@@ -1311,6 +1362,34 @@ reason=cleanup_instance_missing
 a3s_box=$box
 stop_cleanup=not_run
 hint=Stop and remove the Box-hosted instance, then set A3S_CLOUD_BX0_CLEANUP_INSTANCE
+EOF
+    return 1
+  fi
+
+  # Reject workload/service UUID fallbacks — inspect-absent would be vacuously true.
+  if [[ -n ${A3S_CLOUD_BX0_WORKLOAD_ID:-} && $instance == "$A3S_CLOUD_BX0_WORKLOAD_ID" ]]; then
+    cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=execute_failed
+reason=cleanup_instance_is_workload_id
+a3s_box=$box
+cleanup_instance=$instance
+stop_cleanup=not_run
+hint=Set A3S_CLOUD_BX0_CLEANUP_INSTANCE to observedRuntime.providerResourceId (a3s-box id), not workload id
+EOF
+    return 1
+  fi
+  if [[ -n ${A3S_CLOUD_BX0_SERVICE_ID:-} && $instance == "$A3S_CLOUD_BX0_SERVICE_ID" ]]; then
+    cat >"$evidence" <<EOF
+step=9
+name=stop_cleanup
+status=execute_failed
+reason=cleanup_instance_is_service_id
+a3s_box=$box
+cleanup_instance=$instance
+stop_cleanup=not_run
+hint=Set A3S_CLOUD_BX0_CLEANUP_INSTANCE to observedRuntime.providerResourceId (a3s-box id), not service id
 EOF
     return 1
   fi

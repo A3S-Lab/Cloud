@@ -1,0 +1,12 @@
+PASS	syntax-check gate/collector/exit-audit/probes
+PASS	probes reject PLACEHOLDER_*
+PASS	digest probe rejects malformed digests
+PASS	no invented Power pin
+PASS	clean-host Docker absence
+PASS	a3s-box resolvable
+PASS	LIVE identities incomplete; invoking LOOP create (CREATE=1)
+PASS	LOOP create exported identities from /tmp/bx0-live-chain/exit/loop-create/bx0-software-loop-env.sh
+PASS	LIVE identity env complete (operator-owned or CREATE-produced; not invented)
+PASS	clean-host EXECUTE receipts complete under /tmp/a3s-cloud-bx0-clean-host.H2aWS3
+PASS	LOOP certified
+PASS	GA-0 software EXIT certified

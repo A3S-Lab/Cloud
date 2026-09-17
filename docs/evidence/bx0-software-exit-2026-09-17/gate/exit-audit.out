@@ -1,0 +1,5 @@
+loop_status=PASS detail=LOOP certified via /tmp/bx0-live-chain/exit/loop/bx0-clean-host-certification.txt
+receipts_status=PASS detail=execute receipts complete under /tmp/a3s-cloud-bx0-clean-host.H2aWS3
+power_status=OPEN detail=power pin missing (PW0)
+exit_profile=software
+A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED cloud_revision=140a62d04f1309d549f8764426328fc92bbbf473 runtime_revision=4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd box_revision=8b2804c585d2f31bce06f213990407606a475634 gateway_revision=e92896769953aee28ef69261f77265e427f9d396 power_revision=UNBOUND profile=software loop=included receipts=included

@@ -1,0 +1,7 @@
+step=4
+name=health
+status=execute_ok
+health_url=http://127.0.0.1:18080/ready
+probe_ran=1
+health=executed
+source=loop_create

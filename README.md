@@ -111,12 +111,12 @@ progress**, **Planned**.
 
 | Lane | Owner intent | Status |
 | --- | --- | --- |
-| **AaaS** — Agent as a Service | Conversations, executions, events, approvals, checkpoints, Tool evidence | **In progress** (A0.4 / A1.0 / A1.2 verified; complete AaaS still gate-bound) |
-| **WaaS** — Workflow as a Service | Ontology, immutable plans, WorkflowRun, HumanTask; Flow coordinates nodes | **In progress** (unavailable as a complete product) |
-| **FaaS** — Function as a Service | Immutable Function profile; invoke via Executions / Workloads / Connectors | **In progress / unavailable** (<code>FN0.1</code> contracts frozen) |
-| **Durable Cell** | Named, serialized, hibernatable shared state over ordinary Service | **In progress / unavailable** |
-| **Model inference** | Keys, route catalog, Edge ACL, usage ledger; Power serving on Box | **Planned** overall (<code>I0</code>); Track A control-plane slices in progress — keys, route catalog (publish/revise/retire with owned <code>InferenceAccess</code>), Edge ACL succession, usage ledger; end-to-end OpenAI data plane blocked by <code>BX0</code> + <code>PW0</code> |
-| **Static Web** | Immutable Web releases served by Gateway | **Planned** (<code>WEB0</code>; Gateway static-object target not implemented) |
+| **AaaS** — Agent as a Service | Conversations, executions, events, approvals, checkpoints, Tool evidence | **In progress** (GA-1: A0.4 / A1.0 / A1.2 verified; narrow Code-path availability next) |
+| **WaaS** — Workflow as a Service | Ontology, immutable plans, WorkflowRun, HumanTask; Flow coordinates nodes | **In progress** (GA-2: one path; unavailable as a complete matrix) |
+| **FaaS** — Function as a Service | Immutable Function profile; invoke via Executions / Workloads / Connectors | **Deferred off GA-0…GA-2** (`FN0.1` contracts frozen) |
+| **Durable Cell** | Named, serialized, hibernatable shared state over ordinary Service | **Deferred** (GA-4+ after `S0`; unavailable) |
+| **Model inference** | Keys, route catalog, Edge ACL, usage ledger; Power serving on Box | Track A in progress; single-node Track B after `BX0.software`+`PW0.software`; distributed `I0` is P2 |
+| **Static Web** | Immutable Web releases served by Gateway | **Deferred** (`WEB0`; Gateway static-object target not implemented) |
 
 Platform foundations that already carry product work:
 
@@ -126,7 +126,7 @@ Platform foundations that already carry product work:
 | REST / TypeScript client / CLI / Management MCP parity | **Verified** core (<code>C0.1</code>–<code>C0.2m</code>) |
 | Workloads replicas + Gateway target projection | **Verified** (<code>H0.1</code>–<code>H0.2</code>) |
 | Architecture integrity (Wave 0) | **In progress** — REST/MCP entry projects Identity into owner <code>*Access</code>; Application handlers do not take <code>ResourceAccessEvaluator</code>. Recent: Projects create, Inference route publish/revise/retire, Edge create (domain claim / gateway scope / MCP credential), plus Workloads, Workflow, Executions, Assets, and related surfaces. Not a product availability claim. |
-| Box-only execution/build re-certification | **In progress** (<code>BX0</code>; release blocker) |
+| Box-only execution/build re-certification | **`BX0.software` Verified (`2026-09-17`)** — retained [docs/evidence/bx0-software-exit-2026-09-17](docs/evidence/bx0-software-exit-2026-09-17/); `BX0.tee` still blocked on SEV |
 | A3S Power as Box-hosted inference Service | **Planned** (<code>PW0</code>) |
 
 ## Quick start
@@ -268,20 +268,22 @@ imports and duplicate mechanisms from spreading.
 
 ## Delivery status
 
-Gate-driven, not percentage-driven. Summary as of **2026-09-11** (exact
-evidence and remaining exits live in [ROADMAP.md](ROADMAP.md)):
+Gate-driven, profile-aware, not percentage-driven. Summary as of **2026-09-17**
+(critical path in
+[architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md);
+exact evidence in [ROADMAP.md](ROADMAP.md)):
 
 | Area | Evidence state |
 | --- | --- |
 | Foundation (<code>F0</code>): Identity, PostgreSQL/ORM, Flow/Operations, Outbox, API, migrations | **Verified** |
 | Control surfaces (<code>C0.1</code>–<code>C0.2m</code>) | **Verified** core; enterprise <code>C0.5</code> / broader <code>C0.3</code> slices still open |
-| Workloads / Fleet / Gateway projection (<code>H0.1</code>–<code>H0.2</code>) | **Verified**; multi-node HA / autoscaling (<code>H0.3</code>+) in progress |
-| Architecture integrity (Wave 0) | **In progress** — owner <code>*Access</code> at REST/MCP entry; recent: <code>CreateProject</code> / <code>CreateEnvironment</code> → <code>ProjectAccess</code>, Inference publish/revise/retire → <code>InferenceAccess</code>, Edge create domain claim / gateway scope / MCP credential → <code>EdgeAccess</code>; earlier Workloads, Workflow, Executions, Assets, Secrets, and query surfaces |
-| Box-only platform (<code>BX0</code>) | **In progress** (release blocker for Box-backed production claims) |
-| Agent lanes (<code>A0</code>/<code>A1</code>) | **In progress**; A0.4 and selected A1 gates verified—complete AaaS still gate-bound |
-| Workflow / Applications / Automations / Cells / Knowledge | **In progress / unavailable** as complete products; Applications publication route intent loads into planner + MCP Gateway desired-state ACL (`APP0.3-C17`/`C18`); empty-compile-site audit closed (`APP0.3-C19` / ADR `0148`) without PublishRoute channel ownership; next residual is Gateway rate-profile apply/binding |
-| Inference (<code>I0</code>) | **Planned** product; Track A control plane in progress (keys, route catalog + <code>InferenceAccess</code> mutations, Edge ACL succession, usage); Power workers and end-to-end data plane wait on <code>BX0</code> + <code>PW0</code> |
-| FaaS / Static Web / Runtime CI/CD / Power | **Planned** or early foundation |
+| Workloads / Fleet / Gateway projection (<code>H0.1</code>–<code>H0.2</code>) | **Verified**; multi-node HA / autoscaling (<code>H0.3</code>+) is GA-3 (`ha`), not GA-0 |
+| Architecture integrity (Wave 0) | **In progress** — owner <code>*Access</code> at REST/MCP entry; parallel forever, not a product EXIT by itself |
+| Box-only platform (<code>BX0</code>) | **In progress** — <code>BX0.software</code> is GA-0 EXIT (LOOP+receipts; Power/TEE not required); checklist <a href="docs/ga0-bx0-software-checklist.md"><code>docs/ga0-bx0-software-checklist.md</code></a>; <code>BX0.tee</code> blocked on SEV hardware |
+| Agent vertical (GA-1) | **In progress**; checklist [docs/ga1-agent-availability-checklist.md](docs/ga1-agent-availability-checklist.md) — first gap is A0.4 Box pin skew vs current `BX0.software` pins |
+| Workflow / one Application (GA-2) | **In progress / unavailable**; one experience is EXIT—full <code>APP0.6</code> / K0 / AUT0 / CELL0 matrix is deferred |
+| Inference (<code>I0</code>) | Track A control plane in progress; single-node Track B after <code>BX0.software</code>+<code>PW0.software</code>; distributed I0 and <code>EV0</code> are P2 |
+| FaaS / Static Web / Runtime CI/CD / Power / Cell | Planned or early foundation; off GA-0…GA-2 critical path |
 
 ## Deployment model
 

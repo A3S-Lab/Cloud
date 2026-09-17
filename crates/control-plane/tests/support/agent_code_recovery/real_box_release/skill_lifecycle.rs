@@ -66,7 +66,7 @@ pub(super) async fn exercise_skill_binding_lifecycle(
     .await?;
 
     let bind_handler = BindSkillWorkloadDeploymentHandler::new(
-        assets.clone(),
+        Arc::new(AssetsWorkloadSkillReleaseAdmissionAdapter::new(assets.clone())),
         workloads.clone(),
         Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(
             secrets.clone(),
@@ -126,13 +126,13 @@ pub(super) async fn exercise_skill_binding_lifecycle(
         &current_spec,
         &first_bound_spec,
         bind_one.bundle.deployment.id,
-        bind_one.bundle.operation.id,
+        bind_one.bundle.operation.operation_id,
         &skill_asset,
         Some("A3S skill release one\n"),
     )
     .await?;
     current_spec = first_bound_spec;
-    current_operation_id = bind_one.bundle.operation.id;
+    current_operation_id = bind_one.bundle.operation.operation_id;
 
     let rebound = bind_handler
         .execute(
@@ -169,13 +169,13 @@ pub(super) async fn exercise_skill_binding_lifecycle(
         &current_spec,
         &second_bound_spec,
         rebound.bundle.deployment.id,
-        rebound.bundle.operation.id,
+        rebound.bundle.operation.operation_id,
         &skill_asset,
         Some("A3S skill release two\n"),
     )
     .await?;
     current_spec = second_bound_spec;
-    current_operation_id = rebound.bundle.operation.id;
+    current_operation_id = rebound.bundle.operation.operation_id;
 
     let unbound = unbind_handler
         .execute(
@@ -211,13 +211,13 @@ pub(super) async fn exercise_skill_binding_lifecycle(
         &current_spec,
         &unbound_spec,
         unbound.bundle.deployment.id,
-        unbound.bundle.operation.id,
+        unbound.bundle.operation.operation_id,
         &skill_asset,
         None,
     )
     .await?;
     current_spec = unbound_spec;
-    current_operation_id = unbound.bundle.operation.id;
+    current_operation_id = unbound.bundle.operation.operation_id;
 
     let rollback_source = bind_one.bundle.revision.id;
     let rollback = rollback_handler
@@ -258,7 +258,7 @@ pub(super) async fn exercise_skill_binding_lifecycle(
         &current_spec,
         &rollback_spec,
         rollback.bundle.deployment.id,
-        rollback.bundle.operation.id,
+        rollback.bundle.operation.operation_id,
         &skill_asset,
         Some("A3S skill release one\n"),
     )
@@ -309,6 +309,7 @@ pub(super) async fn exercise_skill_binding_lifecycle(
     let stop = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         current_sequence,
@@ -328,6 +329,7 @@ pub(super) async fn exercise_skill_binding_lifecycle(
     let release = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         stop.sequence,
@@ -666,6 +668,7 @@ async fn transition_skill_revision(
     let prepare = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         after_sequence,
@@ -684,6 +687,7 @@ async fn transition_skill_revision(
     let apply = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         prepare.sequence,
@@ -716,6 +720,7 @@ async fn transition_skill_revision(
     let retirement = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         apply.sequence,
@@ -744,6 +749,7 @@ async fn transition_skill_revision(
     let release = next_flow_command(
         coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         retirement.sequence,
@@ -769,30 +775,4 @@ async fn transition_skill_revision(
     )
     .await?;
     Ok(release.sequence)
-}
-
-async fn refresh_node_heartbeat(
-    nodes: &PostgresNodeRepository,
-    organization_id: OrganizationId,
-    node_id: NodeId,
-    agent_instance_id: Uuid,
-) -> TestResult {
-    let node = nodes.find(organization_id, node_id).await?;
-    if node.agent_instance_id != agent_instance_id {
-        return Err(invalid("Skill lifecycle fixture changed the enrolled Agent identity").into());
-    }
-    let floor = node
-        .last_observed_at
-        .checked_add_signed(Duration::milliseconds(1))
-        .ok_or_else(|| invalid("Skill lifecycle heartbeat timestamp overflowed"))?;
-    nodes
-        .record_heartbeat(NodeHeartbeatUpdate {
-            node_id,
-            agent_instance_id,
-            agent_version: node.agent_version,
-            capabilities: node.capabilities,
-            observed_at: canonical_timestamp(Utc::now().max(floor)),
-        })
-        .await?;
-    Ok(())
 }

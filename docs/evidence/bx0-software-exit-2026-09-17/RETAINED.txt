@@ -1,0 +1,6 @@
+retained_at=2026-09-17T08:14:40Z
+host=DESKTOP-BM5D1UH.localdomain
+docker_sock=absent
+docker_sock_probe=NO_DOCKER_SOCK
+chain_exit=0
+certification_source=/tmp/bx0-live-chain/exit

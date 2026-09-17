@@ -2,12 +2,13 @@
 
 ## 1. Executive conclusion
 
-**Review baseline: 2026-09-10.**
+**Review baseline: 2026-09-17.**
 
 Execution order for closing these gaps lives in
 [architecture-optimization-roadmap.md](architecture-optimization-roadmap.md)
-(Wave 0 integrity, Wave 1 `BX0`/`PW0`, Wave 2 platform P0, Wave 3 verticals,
-and dual-track I0). Per-subproject missions and Cloud obligations are in
+(Wave 0 integrity, GA-0 `BX0.software`, GA-1/GA-2 narrow verticals, GA-3
+day-two platform, GA-4+ deferred verticals, dual-track I0). Per-subproject
+missions and Cloud obligations are in
 [project-roadmaps/](project-roadmaps/README.md) and the monorepo
 [cloud-substrate-dependency-roadmap.md](../../../docs/cloud-substrate-dependency-roadmap.md).
 This document remains the structural-versus-delivery gap authority; the
@@ -291,48 +292,52 @@ authorization or bypass Delivery Pipelines.
 
 ## 4. Delivery gaps on the current critical path
 
-Even after the structural decisions above, the product remains blocked by
-existing unverified gates:
+Even after the structural decisions above, the **GA-0…GA-2** product remains
+blocked by these named gaps (see
+[architecture-optimization-roadmap.md](architecture-optimization-roadmap.md)):
 
-1. Runtime/Box/OCI Runtime exact-provider certification for all advertised
-   Task/Service features;
-2. `H0.3` real CPU/GPU multi-node placement, drain, network and placement-group
-   behavior;
-3. `H0.4` clean installation, HA middleware, upgrade, rollback and restore;
-4. `H0.5` stateless/stateful/Agent/Cell/Task/inference autoscaling and
-   multi-tenant overload safety;
-5. AaaS/WaaS/FaaS/Cell/inference/Web end-to-end Gateway publication and
-   recovery;
-6. real Git/OCI/Use/model/object provider lifecycle and supply-chain evidence;
-7. public API/client/CLI/Management MCP parity for every completed product; and
-8. retained load, chaos, security, data-loss, cleanup and exact-revision
-   release bundles.
+1. `BX0.software` Box re-certification of Task/Service, build, recovery, and
+   clean-host enroll→deploy→HTTPS→logs→update/rollback (**not** TEE);
+2. Narrow Agent (GA-1) and Workflow/one-Application (GA-2) Gateway publication
+   and recovery;
+3. real Git/OCI provider evidence needed by those narrow exits; and
+4. public API/client/CLI/Management MCP parity for the surfaces those exits
+   claim.
+
+The following remain real work but are **GA-3 / GA-4+ / P2**, not reasons to
+freeze software EXIT:
+
+5. `H0.3`–`H0.5` multi-node HA, upgrade, restore, and autoscaling;
+6. workload identity / east-west trust and `CD0` end-to-end pipelines;
+7. AaaS/WaaS/FaaS/Cell/inference/Web **full** matrices;
+8. hardware TEE (`BX0.tee` / `PW0.tee`);
+9. distributed inference and `EV0`.
 
 These are not reasons to introduce replacement controllers. They are reasons
-to finish the named conformance gates.
+to finish the named conformance gates **in GA order**.
 
 ## 5. Priority recommendation
 
 ```text
 Wave 0 Architecture integrity (parallel; audit ratchets → zero debt)
-P0-A  Unified Runtime consumer contract landed; finish Box certification (BX0), then Power (PW0)
-  -> P0-B  Establish workload identity and east-west trust
-  -> P0-C  Deliver CD0 source-to-release-to-rollout
-  -> P0-D  Close H0.3/H0.4/H0.5 cluster, upgrade and recovery
-  -> P0-E  Close observability/SLO/incident and compatibility gates
-  -> P0-F  Certify AaaS/WaaS/FaaS/Cell/Inference/Web vertical slices
-  -> P1    Usage/cost, data governance, AI assurance and single-home multi-region
-  -> P2    Optional dynamic feature delivery and ecosystem breadth
+GA-0   BX0.software + N0/D0/E0 Box re-cert (BX0.tee is a stronger profile)
+GA-1   One AaaS vertical (A0 + A1 Code-path availability)
+GA-2   One WaaS/APP vertical (narrow W0 + one APP0 experience)
+GA-3   Platform day-two: WI → CD0 → H0.3–H0.5 → OBS/COMP   [ha]
+GA-4+  MCP/FN/WEB, PW0.software + single-node I0, S0, CELL0
+P1     Usage/cost, data governance, enterprise remainder, multi-region
+P2     EV0, distributed I0, APP0.6 full parity, optional feature flags
 ```
 
 Inference is dual-track: Cloud control-plane work (keys, routes, Edge ACL,
 usage) may continue with empty workers; the OpenAI data plane remains blocked
-on `BX0` + `PW0` and must not be claimed available early. See
+on `BX0.software` + `PW0.software` and must not be claimed available early.
+TEE and distributed serving are stronger profiles. See
 [architecture-optimization-roadmap.md](architecture-optimization-roadmap.md).
 
-The dependency order is deliberate. Shipping more product kinds before the
-trust, delivery, operations and compatibility foundations would multiply the
-same risk across every Runtime profile.
+The dependency order is deliberate. Shipping more product kinds before a
+working Box service path multiplies risk; stacking TEE, full HA, and the full
+portfolio matrix onto GA-0 is the opposite failure mode.
 
 ## 6. External design references
 

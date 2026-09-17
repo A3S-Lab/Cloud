@@ -1,0 +1,1399 @@
+   Compiling proc-macro2 v1.0.107
+   Compiling unicode-ident v1.0.24
+   Compiling quote v1.0.47
+   Compiling libc v0.2.189
+   Compiling cfg-if v1.0.4
+   Compiling serde_core v1.0.229
+   Compiling serde v1.0.229
+   Compiling smallvec v1.16.0
+   Compiling memchr v2.8.3
+   Compiling zeroize v1.9.0
+   Compiling log v0.4.34
+   Compiling parking_lot_core v0.9.12
+   Compiling scopeguard v1.2.0
+   Compiling version_check v0.9.5
+   Compiling typenum v1.20.1
+   Compiling itoa v1.0.18
+   Compiling pin-project-lite v0.2.17
+   Compiling shlex v2.0.1
+   Compiling once_cell v1.21.4
+   Compiling find-msvc-tools v0.1.11
+   Compiling subtle v2.6.1
+   Compiling lock_api v0.4.14
+   Compiling pkg-config v0.3.34
+   Compiling const-oid v0.9.6
+   Compiling siphasher v1.0.3
+   Compiling futures-core v0.3.34
+   Compiling foldhash v0.2.0
+   Compiling libm v0.2.16
+   Compiling allocator-api2 v0.2.21
+   Compiling autocfg v1.5.1
+   Compiling equivalent v1.0.2
+   Compiling zmij v1.0.23
+   Compiling stable_deref_trait v1.2.1
+   Compiling serde_json v1.0.151
+   Compiling futures-sink v0.3.34
+   Compiling percent-encoding v2.3.2
+   Compiling bitflags v2.13.1
+   Compiling tracing-core v0.1.36
+   Compiling slab v0.4.12
+   Compiling generic-array v0.14.7
+   Compiling futures-channel v0.3.34
+   Compiling futures-io v0.3.34
+   Compiling futures-task v0.3.34
+   Compiling cpufeatures v0.2.17
+   Compiling fnv v1.0.7
+   Compiling zerocopy v0.8.56
+   Compiling writeable v0.6.4
+   Compiling litemap v0.8.3
+   Compiling base64 v0.22.1
+   Compiling icu_properties_data v2.3.0
+   Compiling utf8_iter v1.0.4
+   Compiling icu_normalizer_data v2.3.0
+   Compiling phf_shared v0.13.1
+   Compiling hashbrown v0.17.1
+   Compiling rustls-pki-types v1.15.1
+   Compiling num-traits v0.2.19
+   Compiling dunce v1.0.5
+   Compiling fs_extra v1.3.0
+   Compiling fastrand v2.5.0
+   Compiling httparse v1.10.1
+   Compiling untrusted v0.9.0
+   Compiling base64ct v1.8.3
+   Compiling getrandom v0.4.3
+   Compiling phf_generator v0.13.1
+   Compiling rand_core v0.10.1
+   Compiling aws-lc-rs v1.18.1
+   Compiling form_urlencoded v1.2.2
+   Compiling flagset v0.4.7
+   Compiling thiserror v1.0.69
+   Compiling untrusted v0.7.1
+   Compiling syn v2.0.119
+   Compiling syn v3.0.4
+   Compiling pem-rfc7468 v0.7.0
+   Compiling rustls v0.23.43
+   Compiling ipnet v2.12.1
+   Compiling tower-service v0.3.3
+   Compiling regex-syntax v0.8.11
+   Compiling crc32fast v1.5.1
+   Compiling simd-adler32 v0.3.10
+   Compiling thiserror v2.0.20
+   Compiling new_debug_unreachable v1.0.6
+   Compiling num-conv v0.2.2
+   Compiling try-lock v0.2.5
+   Compiling time-core v0.1.9
+   Compiling iana-time-zone v0.1.65
+   Compiling openssl-probe v0.2.1
+   Compiling want v0.3.1
+   Compiling aho-corasick v1.1.5
+   Compiling indexmap v2.14.1
+   Compiling httpdate v1.0.3
+   Compiling time-macros v0.2.32
+   Compiling powerfmt v0.2.0
+   Compiling tinyvec_macros v0.1.1
+   Compiling adler2 v2.0.1
+   Compiling phf_shared v0.11.3
+   Compiling tinyvec v1.12.0
+   Compiling rand_core v0.6.4
+   Compiling getrandom v0.2.17
+   Compiling jobserver v0.1.35
+   Compiling mio v1.2.2
+   Compiling errno v0.3.14
+   Compiling socket2 v0.6.5
+   Compiling block-buffer v0.10.4
+   Compiling signal-hook-registry v1.4.8
+   Compiling parking_lot v0.12.5
+   Compiling cc v1.4.4
+   Compiling miniz_oxide v0.9.1
+   Compiling semver v1.0.28
+   Compiling vcpkg v0.2.15
+   Compiling crypto-common v0.1.7
+   Compiling rand v0.8.8
+   Compiling digest v0.10.7
+   Compiling atomic-waker v1.1.2
+   Compiling getrandom v0.3.4
+   Compiling byteorder v1.5.0
+   Compiling ryu v1.0.23
+   Compiling sha2 v0.10.9
+   Compiling precomputed-hash v0.1.1
+   Compiling strsim v0.11.1
+   Compiling rustix v1.1.4
+   Compiling unicode-normalization v0.1.24
+   Compiling phf_codegen v0.13.1
+   Compiling flate2 v1.1.10
+   Compiling sync_wrapper v1.0.2
+   Compiling linux-raw-sys v0.12.1
+   Compiling alloc-no-stdlib v2.0.4
+   Compiling heck v0.5.0
+   Compiling phf_generator v0.11.3
+   Compiling sha1_smol v1.0.1
+   Compiling tower-layer v0.3.3
+   Compiling spin v0.9.9
+   Compiling alloc-stdlib v0.2.4
+   Compiling num-integer v0.1.47
+   Compiling rustls-native-certs v0.8.4
+   Compiling openssl v0.10.81
+   Compiling lazy_static v1.5.0
+   Compiling crossbeam-utils v0.8.22
+   Compiling data-encoding v2.11.1
+   Compiling foreign-types-shared v0.1.1
+   Compiling brotli-decompressor v5.0.3
+   Compiling deranged v0.5.8
+   Compiling uuid v1.26.0
+   Compiling foreign-types v0.3.2
+   Compiling hybrid-array v0.4.14
+   Compiling cmake v0.1.58
+   Compiling native-tls v0.2.18
+   Compiling string_cache_codegen v0.6.1
+   Compiling cmov v0.5.4
+   Compiling compression-core v0.4.32
+   Compiling webpki-roots v1.0.9
+   Compiling const-oid v0.10.2
+   Compiling regex-automata v0.4.18
+   Compiling ctutils v0.4.2
+   Compiling cpufeatures v0.3.1
+   Compiling ident_case v1.0.1
+   Compiling cookie v0.18.2
+   Compiling web_atoms v0.2.6
+   Compiling crypto-common v0.2.2
+   Compiling block-buffer v0.12.1
+   Compiling ref-cast v1.0.27
+   Compiling chacha20 v0.10.2
+   Compiling num-bigint v0.4.8
+   Compiling rustc_version v0.4.1
+   Compiling tendril v0.5.1
+   Compiling psl-types v2.0.11
+   Compiling brotli v8.0.4
+   Compiling ring v0.17.14
+   Compiling aws-lc-sys v0.45.0
+   Compiling openssl-sys v0.9.117
+   Compiling unicode-bidi v0.3.18
+   Compiling litrs v1.0.0
+   Compiling unicode-properties v0.1.4
+   Compiling rand v0.10.2
+   Compiling num-iter v0.1.46
+   Compiling signature v2.2.0
+   Compiling phf_codegen v0.11.3
+   Compiling digest v0.11.3
+   Compiling stringprep v0.1.5
+   Compiling time v0.3.55
+   Compiling hmac v0.12.1
+   Compiling md-5 v0.11.0
+   Compiling document-features v0.2.12
+   Compiling hmac v0.13.0
+   Compiling sha2 v0.11.0
+   Compiling ahash v0.8.12
+   Compiling fallible-iterator v0.2.0
+   Compiling option-ext v0.2.0
+   Compiling crossbeam-epoch v0.9.20
+   Compiling dtoa v1.0.11
+   Compiling bit-vec v0.8.0
+   Compiling dtoa-short v0.3.5
+   Compiling rand_core v0.9.5
+   Compiling block-padding v0.3.3
+   Compiling crossbeam-deque v0.8.7
+   Compiling either v1.18.0
+   Compiling unsafe-libyaml v0.2.11
+   Compiling array-init v2.1.0
+   Compiling num-rational v0.4.2
+   Compiling inout v0.1.4
+   Compiling ppv-lite86 v0.2.21
+   Compiling bit-set v0.8.0
+   Compiling num-complex v0.4.6
+   Compiling borrow-or-share v0.2.4
+   Compiling cipher v0.4.4
+   Compiling string_cache_codegen v0.5.4
+   Compiling ff v0.13.1
+   Compiling whoami v2.1.3
+   Compiling servo_arc v0.4.3
+   Compiling synstructure v0.13.2
+   Compiling darling_core v0.20.11
+   Compiling rand_chacha v0.3.1
+   Compiling rand_chacha v0.9.0
+   Compiling num v0.4.3
+   Compiling mac v0.1.1
+   Compiling rayon-core v1.12.1
+   Compiling hashbrown v0.14.5
+   Compiling base16ct v0.2.0
+   Compiling winnow v0.7.15
+   Compiling unicode-general-category v1.1.0
+   Compiling rand v0.9.5
+   Compiling urlencoding v2.1.3
+   Compiling anyhow v1.0.104
+   Compiling micromap v0.3.0
+   Compiling mime v0.3.17
+   Compiling io-lifetimes v2.0.4
+   Compiling dyn-clone v1.0.20
+   Compiling minimal-lexical v0.2.1
+   Compiling io-lifetimes v3.0.1
+   Compiling tempfile v3.27.0
+   Compiling xattr v1.6.1
+   Compiling nom v7.1.3
+   Compiling futf v0.1.5
+   Compiling markup5ever v0.14.1
+   Compiling fraction v0.15.4
+   Compiling group v0.13.0
+   Compiling dirs-sys v0.4.1
+   Compiling hkdf v0.12.4
+   Compiling serde_path_to_error v0.1.20
+   Compiling selectors v0.38.0
+   Compiling sha1 v0.10.7
+   Compiling crypto-bigint v0.5.5
+   Compiling fs2 v0.4.3
+   Compiling filetime v0.2.29
+   Compiling nom v8.0.0
+   Compiling serde_derive v1.0.229
+   Compiling tokio-macros v2.7.2
+   Compiling displaydoc v0.2.7
+   Compiling futures-macro v0.3.34
+   Compiling zerovec-derive v0.11.6
+   Compiling async-trait v0.1.92
+   Compiling thiserror-impl v2.0.20
+   Compiling regex v1.13.1
+   Compiling ref-cast-impl v1.0.27
+   Compiling zerofrom-derive v0.1.7
+   Compiling tracing-attributes v0.1.31
+   Compiling yoke-derive v0.8.2
+   Compiling der_derive v0.7.3
+   Compiling thiserror-impl v1.0.69
+   Compiling phf_macros v0.13.1
+   Compiling futures-util v0.3.34
+   Compiling openssl-macros v0.1.1
+   Compiling compression-codecs v0.4.38
+   Compiling phf_macros v0.11.3
+   Compiling derive_more-impl v2.1.1
+   Compiling cssparser-macros v0.7.0
+   Compiling phf v0.13.1
+   Compiling io-extras v0.19.0
+   Compiling outref v0.5.2
+   Compiling num-cmp v0.1.0
+   Compiling phf v0.11.3
+   Compiling darling_macro v0.20.11
+   Compiling der v0.7.10
+   Compiling ryu-js v1.0.3
+   Compiling vsimd v0.8.0
+   Compiling zerofrom v0.1.8
+   Compiling same-file v1.0.6
+   Compiling rust_decimal v1.43.0
+   Compiling yoke v0.8.3
+   Compiling tracing v0.1.44
+   Compiling bitflags v1.3.2
+   Compiling utf-8 v0.7.6
+   Compiling bytecount v0.6.9
+   Compiling utf8parse v0.2.2
+   Compiling darling v0.20.11
+   Compiling anstyle-parse v1.0.0
+   Compiling zerovec v0.11.8
+   Compiling zerotrie v0.2.5
+   Compiling opentelemetry v0.21.0
+   Compiling tendril v0.4.3
+   Compiling walkdir v2.5.0
+   Compiling cssparser v0.37.0
+   Compiling rusticata-macros v4.1.0
+   Compiling uuid-simd v0.8.0
+   Compiling pin-project-internal v1.1.13
+   Compiling asn1-rs-derive v0.5.1
+   Compiling cssparser-macros v0.6.1
+   Compiling asn1-rs-impl v0.2.0
+   Compiling fancy-regex v0.18.0
+   Compiling derive_more v2.1.1
+   Compiling tar v0.4.46
+   Compiling dirs v5.0.1
+   Compiling tinystr v0.8.4
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling serde_derive_internals v0.30.0
+   Compiling icu_locale_core v2.3.0
+   Compiling selectors v0.26.0
+   Compiling spki v0.7.3
+   Compiling curve25519-dalek v4.1.3
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling rquickjs-sys v0.11.0
+   Compiling pkcs8 v0.10.2
+   Compiling x509-cert v0.2.5
+   Compiling crossbeam-channel v0.5.16
+   Compiling ordered-float v4.6.0
+   Compiling hashbrown v0.16.1
+   Compiling bstr v1.13.1
+   Compiling sec1 v0.7.3
+   Compiling event-listener v5.4.2
+   Compiling inotify-sys v0.1.8
+   Compiling base64 v0.21.7
+   Compiling anstyle v1.0.14
+   Compiling unicode-width v0.2.2
+   Compiling jiff-core v0.1.0
+   Compiling bytes v1.12.1
+   Compiling chrono v0.4.45
+   Compiling serde_urlencoded v0.7.1
+   Compiling string_cache v0.9.0
+   Compiling fluent-uri v0.4.1
+   Compiling email_address v0.2.9
+   Compiling string_cache v0.8.9
+   Compiling olpc-cjson v0.1.4
+   Compiling icu_provider v2.3.1
+   Compiling futures-executor v0.3.34
+   Compiling elliptic-curve v0.13.8
+   Compiling rustc-hash v2.1.3
+   Compiling colorchoice v1.0.5
+   Compiling is_terminal_polyfill v1.70.2
+   Compiling arrayvec v0.7.8
+   Compiling hex v0.4.3
+   Compiling unicase v2.9.0
+   Compiling glob v0.3.4
+   Compiling futures v0.3.34
+   Compiling anstyle-query v1.1.5
+   Compiling cap-primitives v4.0.3
+   Compiling anstream v1.0.0
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling globset v0.4.20
+   Compiling tokio v1.53.1
+   Compiling http v1.5.0
+   Compiling postgres-protocol v0.6.12
+   Compiling http v0.2.12
+   Compiling markup5ever v0.38.0
+   Compiling markup5ever v0.39.0
+   Compiling jiff v0.2.35
+   Compiling html5ever v0.39.0
+   Compiling html5ever v0.38.0
+   Compiling schemars_derive v1.2.2
+   Compiling serde_yaml_ng v0.10.0
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling event-listener-strategy v0.5.4
+   Compiling http-body v1.1.0
+   Compiling postgres-types v0.2.14
+   Compiling http-body-util v0.1.5
+   Compiling tungstenite v0.29.0
+   Compiling idna_adapter v1.2.2
+   Compiling axum-core v0.5.6
+   Compiling cron v0.17.0
+   Compiling idna v1.1.0
+   Compiling pin-project v1.1.13
+   Compiling rayon v1.10.0
+   Compiling fs-set-times v0.20.3
+   Compiling asn1-rs v0.6.2
+   Compiling cssparser v0.34.0
+   Compiling derive_builder_core v0.20.2
+   Compiling a3s-acl v0.3.0 (https://github.com/A3S-Lab/ACL.git?rev=5317e166222495585909d81f2caffdca90273c99#5317e166)
+   Compiling match_token v0.1.0
+   Compiling curve25519-dalek-derive v0.1.1
+   Compiling url v2.5.8
+   Compiling publicsuffix v2.3.0
+   Compiling derive_more v0.99.20
+   Compiling serde_repr v0.1.21
+   Compiling dashmap v6.2.1
+   Compiling rustix-linux-procfs v0.1.1
+   Compiling rfc6979 v0.4.0
+   Compiling fxhash v0.2.1
+   Compiling num_cpus v1.17.0
+   Compiling encoding_rs v0.8.35
+   Compiling maybe-owned v0.3.4
+   Compiling heapless v0.8.0
+   Compiling pulldown-cmark v0.13.4
+   Compiling cookie_store v0.22.1
+   Compiling unicode-xid v0.2.6
+   Compiling oid-registry v0.7.1
+   Compiling matchit v0.8.4
+   Compiling konst_macro_rules v0.2.19
+   Compiling cap-std v4.0.2
+   Compiling clap_lex v1.1.0
+   Compiling ambient-authority v0.0.2
+   Compiling konst v0.2.20
+   Compiling clap_builder v4.6.6
+   Compiling const_format_proc_macros v0.2.34
+   Compiling ecdsa v0.16.9
+   Compiling derive_builder_macro v0.20.2
+   Compiling schemars v1.2.2
+   Compiling html5ever v0.29.1
+   Compiling dom_query v0.28.0
+   Compiling http-body v0.4.6
+   Compiling async-lock v3.4.2
+   Compiling xml5ever v0.38.0
+   Compiling primeorder v0.13.6
+   Compiling getopts v0.2.24
+   Compiling quick-xml v0.38.4
+   Compiling tracing-serde v0.2.0
+   Compiling toml_datetime v0.6.11
+   Compiling serde_spanned v0.6.9
+   Compiling ed25519 v2.2.3
+   Compiling strum_macros v0.28.0
+   Compiling a3s-boot-macros v0.1.2 (https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb)
+   Compiling matchers v0.2.0
+   Compiling clap_derive v4.6.4
+   Compiling aes v0.8.4
+   Compiling darling_core v0.23.0
+   Compiling dirs-sys v0.5.0
+   Compiling crc32c v0.6.8
+   Compiling bzip2-sys v0.1.13+1.0.8
+   Compiling lzma-sys v0.1.20
+   Compiling sharded-slab v0.1.7
+   Compiling hash32 v0.3.1
+   Compiling md-5 v0.10.6
+   Compiling socket2 v0.5.10
+   Compiling pem v3.0.6
+   Compiling tracing-log v0.2.0
+   Compiling thread_local v1.1.10
+   Compiling cap-fs-ext v4.0.2
+   Compiling a3s-acl v0.2.2
+   Compiling smoltcp v0.11.0
+   Compiling unicode-segmentation v1.13.3
+   Compiling protobuf v2.28.0
+   Compiling html-escape v0.2.15
+   Compiling ego-tree v0.10.0
+   Compiling toml_write v0.1.2
+   Compiling nu-ansi-term v0.50.3
+   Compiling gjson v0.8.1
+   Compiling zstd-safe v7.2.4
+   Compiling scraper v0.22.0
+   Compiling tracing-subscriber v0.3.23
+   Compiling toml_edit v0.22.27
+   Compiling dom_smoothie v0.18.0
+   Compiling dirs v6.0.0
+   Compiling ed25519-dalek v2.2.0
+   Compiling markup5ever_rcdom v0.38.0+unofficial
+   Compiling const_format v0.2.36
+   Compiling clap v4.6.6
+   Compiling inotify v0.11.5
+   Compiling tokio-util v0.7.19
+   Compiling tower v0.5.3
+   Compiling async-compression v0.4.43
+   Compiling tokio-native-tls v0.3.1
+   Compiling deadpool-runtime v0.3.1
+   Compiling a3s-common v0.1.1
+   Compiling deadpool v0.13.1
+   Compiling tokio-tungstenite v0.29.0
+   Compiling strum v0.28.0
+   Compiling derive_builder v0.20.2
+   Compiling h2 v0.4.19
+   Compiling tower-http v0.6.11
+   Compiling tokio-postgres v0.7.18
+   Compiling tokio-stream v0.1.19
+   Compiling h2 v0.3.27
+   Compiling darling_macro v0.23.0
+   Compiling der-parser v9.0.0
+   Compiling referencing v0.48.5
+   Compiling opentelemetry_sdk v0.21.2
+   Compiling referencing v0.47.0
+   Compiling jsonschema-value v0.48.5
+   Compiling serde_plain v1.0.2
+   Compiling fluent-uri v0.1.4
+   Compiling snafu-derive v0.8.9
+   Compiling strum_macros v0.27.2
+   Compiling getset v0.1.7
+   Compiling async-stream-impl v0.3.6
+   Compiling cbc v0.1.2
+   Compiling ecb v0.1.2
+   Compiling jsonschema-regex v0.47.0
+   Compiling jsonschema-regex v0.48.5
+   Compiling rustls-pemfile v2.2.0
+   Compiling notify-types v2.1.0
+   Compiling zip v2.4.2
+   Compiling ttf-parser v0.25.1
+   Compiling prometheus v0.13.4
+   Compiling rangemap v1.8.0
+   Compiling num-bigint-dig v0.8.6
+   Compiling base64 v0.13.1
+   Compiling bumpalo v3.20.3
+   Compiling web-time v1.1.0
+   Compiling managed v0.8.0
+   Compiling portable-atomic v1.15.0
+   Compiling weezl v0.1.12
+   Compiling strum v0.27.2
+   Compiling jwt v0.16.0
+   Compiling zopfli v0.8.3
+   Compiling a3s-lane v0.5.1
+   Compiling deadpool-postgres v0.14.2
+   Compiling cfb v0.14.0
+   Compiling notify v8.2.0
+   Compiling async-stream v0.3.6
+   Compiling jsonschema v0.48.5
+   Compiling snafu v0.8.9
+   Compiling jsonschema v0.47.0
+   Compiling lsp-types v0.97.0
+   Compiling x509-parser v0.16.0
+   Compiling oci-spec v0.10.0
+   Compiling a3s-use-core v0.2.4 (https://github.com/A3S-Lab/Use.git?rev=4c698b1f145a55e9bca88e5c1f5aea2bf294a669#4c698b1f)
+   Compiling darling v0.23.0
+   Compiling toml v0.8.23
+   Compiling a3s-box-core v3.2.6 (https://github.com/A3S-Lab/Box.git?rev=774c57abd1d70b227c45b4dbc1ce50a7027308aa#774c57ab)
+   Compiling lopdf v0.42.0
+   Compiling htmd v0.5.5
+   Compiling a3s-runtime v0.5.0 (https://github.com/A3S-Lab/Runtime.git?rev=4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd#4c5fbd56)
+   Compiling hyper v0.14.32
+   Compiling hyper v1.11.1
+   Compiling sha256 v1.6.0
+   Compiling a3s-sandbox v0.1.0 (https://github.com/A3S-Lab/Sandbox.git?rev=09c46aaf18e4be2c881459fa71ece8a9d8c45283#09c46aaf)
+   Compiling a3s-memory v0.1.4 (https://github.com/A3S-Lab/Memory.git?rev=97a5e885d196be77dc1823ad86238e77d942ed73#97a5e885)
+   Compiling p256 v0.13.2
+   Compiling p384 v0.13.1
+   Compiling hyper-util v0.1.20
+   Compiling html2text v0.16.7
+   Compiling ignore v0.4.33
+   Compiling rustls-pemfile v1.0.4
+   Compiling a3s-oci-core v0.3.1 (https://github.com/A3S-Lab/OCI-Runtime.git?rev=05a3b2bddff0668703caafc48f38514a139ee81a#05a3b2bd)
+   Compiling hyper-tls v0.5.0
+   Compiling signatory v0.27.1
+   Compiling async-recursion v1.1.1
+   Compiling yasna v0.5.2
+   Compiling hyper-tls v0.6.0
+   Compiling axum v0.8.9
+   Compiling zip v0.6.6
+   Compiling serde_ignored v0.1.14
+   Compiling blake2 v0.10.6
+   Compiling universal-hash v0.5.1
+   Compiling password-hash v0.5.0
+   Compiling http-auth v0.1.10
+   Compiling similar v2.7.0
+   Compiling typed-path v0.9.3
+   Compiling sync_wrapper v0.1.2
+   Compiling openssl-probe v0.1.6
+   Compiling opaque-debug v0.3.1
+   Compiling shell-words v1.1.1
+   Compiling roxmltree v0.20.0
+   Compiling polyval v0.6.2
+   Compiling rustls-native-certs v0.7.3
+   Compiling a3s-box-netproxy v3.2.6 (https://github.com/A3S-Lab/Box.git?rev=774c57abd1d70b227c45b4dbc1ce50a7027308aa#774c57ab)
+   Compiling reqwest v0.11.27
+   Compiling argon2 v0.5.3
+   Compiling a3s-oci-sdk v0.3.1 (https://github.com/A3S-Lab/OCI-Runtime.git?rev=05a3b2bddff0668703caafc48f38514a139ee81a#05a3b2bd)
+   Compiling rcgen v0.13.2
+   Compiling nkeys v0.4.5
+   Compiling xz2 v0.1.7
+   Compiling a3s-box-mkext4 v3.2.6 (https://github.com/A3S-Lab/Box.git?rev=774c57abd1d70b227c45b4dbc1ce50a7027308aa#774c57ab)
+   Compiling bzip2 v0.5.2
+   Compiling zstd v0.13.3
+   Compiling serde_with_macros v3.22.0
+   Compiling rquickjs-core v0.11.0
+   Compiling tryhard v0.5.2
+   Compiling sysinfo v0.30.13
+   Compiling rustls-webpki v0.102.8
+   Compiling serde_nanos v0.1.4
+   Compiling pkcs1 v0.7.5
+   Compiling enum-as-inner v0.6.1
+   Compiling nuid v0.5.0
+   Compiling dashmap v5.5.3
+   Compiling ordered-float v2.10.1
+   Compiling phf_shared v0.12.1
+   Compiling linked-hash-map v0.5.6
+   Compiling chrono-tz v0.10.4
+   Compiling serde-value v0.7.0
+   Compiling lru-cache v0.1.2
+   Compiling phf v0.12.1
+   Compiling rsa v0.9.10
+   Compiling hickory-proto v0.24.4
+   Compiling serde_with v3.22.0
+   Compiling ghash v0.5.1
+   Compiling regress v0.10.5
+   Compiling ctr v0.9.2
+   Compiling itertools v0.10.5
+   Compiling itertools v0.14.0
+   Compiling aead v0.5.2
+   Compiling base64 v0.23.1
+   Compiling humantime v2.4.0
+   Compiling rquickjs v0.11.0
+   Compiling resolv-conf v0.7.6
+   Compiling aes-gcm v0.10.3
+   Compiling a3s-form-core v0.1.0 (https://github.com/A3S-Lab/UI.git?rev=3c5499cba6dc116230b859fac6a8e32653024a8f#3c5499cb)
+   Compiling hickory-resolver v0.24.4
+   Compiling rustls-webpki v0.103.15
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.7.0
+   Compiling hyper-rustls v0.27.9
+   Compiling tokio-postgres-rustls v0.14.0
+   Compiling tokio-websockets v0.10.1
+   Compiling lettre v0.11.23
+   Compiling a3s-orm v0.3.1 (https://github.com/A3S-Lab/ORM.git?rev=52944002dc84b07d88a85f2a4a87f913655e62b5#52944002)
+   Compiling reqwest v0.12.28
+   Compiling reqwest v0.13.4
+   Compiling async-nats v0.38.0
+   Compiling tough v0.24.0
+   Compiling a3s-updater v0.2.0
+   Compiling oci-distribution v0.11.0
+   Compiling oauth2 v5.0.0
+   Compiling object_store v0.12.4
+   Compiling a3s-boot v0.2.0 (https://github.com/A3S-Lab/Boot.git?rev=83d489fb2274ab8e0d277ccd87461cc35c1a9b88#83d489fb)
+   Compiling a3s-search v3.1.0
+   Compiling openidconnect v4.0.1
+   Compiling a3s-box-runtime v3.2.6 (https://github.com/A3S-Lab/Box.git?rev=774c57abd1d70b227c45b4dbc1ce50a7027308aa#774c57ab)
+   Compiling a3s-use-extension v0.3.3 (https://github.com/A3S-Lab/Use.git?rev=4c698b1f145a55e9bca88e5c1f5aea2bf294a669#4c698b1f)
+   Compiling a3s-event v0.3.0
+   Compiling a3s-flow v1.1.0
+   Compiling a3s-code-core v8.2.0 (https://github.com/A3S-Lab/Code.git?rev=36db7f8bcdf9e04fd8cf77e66e55285b218804c9#36db7f8b)
+   Compiling a3s-cloud-contracts v0.1.0 (/mnt/d/code/a3s/apps/cloud/crates/contracts)
+   Compiling a3s-cloud-control-plane v0.1.0 (/mnt/d/code/a3s/apps/cloud/crates/control-plane)
+   Compiling a3s-cloud-node-agent v0.1.0 (/mnt/d/code/a3s/apps/cloud/crates/node-agent)
+warning: unused imports: `metadata` and `post`
+  --> crates/control-plane/src/modules/applications/presentation/anonymous_delivery_controller.rs:19:17
+   |
+19 |     controller, metadata, post, BootError, BootRequest, BootResponse, CommandBus,
+   |                 ^^^^^^^^  ^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused imports: `AUTH_PUBLIC_METADATA`, `get`, and `metadata`
+  --> crates/control-plane/src/modules/applications/presentation/anonymous_observation_delivery_controller.rs:19:17
+   |
+19 |     controller, get, metadata, BootError, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^
+20 |     QueryBus, Result, AUTH_PUBLIC_METADATA,
+   |                       ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/authenticated_delivery_controller.rs:23:17
+   |
+23 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/authenticated_observation_delivery_controller.rs:22:17
+   |
+22 |     controller, get, metadata, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/asynchronous_observation_delivery_controller.rs:16:17
+   |
+16 |     controller, get, metadata, use_guard, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^
+17 |     QueryBus, Result, AUTH_SCOPES_METADATA,
+   |                       ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/blocking_observation_delivery_controller.rs:16:17
+   |
+16 |     controller, get, metadata, use_guard, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^
+17 |     QueryBus, Result, AUTH_SCOPES_METADATA,
+   |                       ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/controller.rs:20:5
+   |
+20 |     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+   |     ^^^^^^^^^^^^^^^^^^^^
+21 |     QueryBus, Result, controller, get, metadata, post, use_guard,
+   |                                   ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/delivery_controller.rs:25:17
+   |
+25 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/delivery_credential_delivery_controller.rs:20:17
+   |
+20 |     controller, get, metadata, post, use_guard, BootRequest, BootResponse, CommandBus,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/feedback_delivery_controller.rs:20:17
+   |
+20 |     controller, get, metadata, post, use_guard, BootError, BootRequest, BootResponse, CommandBus,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/message_citation_delivery_controller.rs:19:17
+   |
+19 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/message_file_reference_delivery_controller.rs:19:17
+   |
+19 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/message_variant_delivery_controller.rs:18:17
+   |
+18 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/publication_route_intent_controller.rs:28:17
+   |
+28 |     controller, get, metadata, post, use_guard, BootRequest, BootResponse, CommandBus,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/applications/presentation/streaming_observation_delivery_controller.rs:17:17
+   |
+17 |     controller, get, metadata, use_guard, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^
+18 |     QueryBus, Result, AUTH_SCOPES_METADATA,
+   |                       ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/audit/presentation/controller.rs:20:17
+   |
+20 |     controller, get, metadata, use_guard, BootError, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^
+21 |     ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,
+   |                                             ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `post`
+  --> crates/control-plane/src/modules/automations/presentation/management_controller.rs:19:17
+   |
+19 |     controller, get, post, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinit...
+   |                 ^^^  ^^^^
+
+warning: unused imports: `AUTH_PUBLIC_METADATA`, `metadata`, and `post`
+ --> crates/control-plane/src/modules/automations/presentation/webhook_controller.rs:5:17
+  |
+5 |     controller, metadata, post, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+  |                 ^^^^^^^^  ^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ConnectorAccessScope`
+ --> crates/control-plane/src/modules/connectors/application/attempt_resolution.rs:7:51
+  |
+7 | use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
+  |                                                   ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ConnectorAccessScope`
+ --> crates/control-plane/src/modules/connectors/application/evidence_queries.rs:7:51
+  |
+7 | use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
+  |                                                   ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `ConnectorAccessScope`
+  --> crates/control-plane/src/modules/connectors/application/execution_service.rs:12:51
+   |
+12 | use crate::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
+   |                                                   ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/connectors/presentation/controller.rs:31:5
+   |
+31 |     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+   |     ^^^^^^^^^^^^^^^^^^^^
+32 |     QueryBus, Result, controller, get, metadata, post, use_guard,
+   |                                   ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused imports: `BUILD_PLAN_COLLECTION_ROUTE`, `BUILD_PLAN_DETECTION_ROUTE`, `BUILD_PLAN_ITEM_ROUTE`, and `DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX`
+ --> crates/control-plane/src/modules/developer_workflows/presentation/controller.rs:7:5
+  |
+7 |     BUILD_PLAN_COLLECTION_ROUTE, BUILD_PLAN_DETECTION_ROUTE, BUILD_PLAN_ITEM_ROUTE,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^
+8 |     DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX,
+  |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `post`
+  --> crates/control-plane/src/modules/developer_workflows/presentation/controller.rs:20:17
+   |
+20 |     controller, get, post, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinit...
+   |                 ^^^  ^^^^
+
+warning: unused imports: `DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX`, `PULL_REQUEST_PREVIEW_ITEM_ROUTE`, `PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE`, `PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE`, `PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE`, and `PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE`
+  --> crates/control-plane/src/modules/developer_workflows/presentation/preview_management_controller.rs:7:5
+   |
+ 7 |     DEVELOPER_WORKFLOWS_CONTROLLER_PREFIX, PULL_REQUEST_PREVIEW_ITEM_ROUTE,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 8 |     PULL_REQUEST_PREVIEW_POLICY_COLLECTION_ROUTE, PULL_REQUEST_PREVIEW_POLICY_ITEM_ROUTE,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 9 |     PULL_REQUEST_PREVIEW_POLICY_REVISION_COLLECTION_ROUTE,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+10 |     PULL_REQUEST_PREVIEW_POLICY_REVISION_ITEM_ROUTE,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `post`
+  --> crates/control-plane/src/modules/developer_workflows/presentation/preview_management_controller.rs:25:17
+   |
+25 |     controller, get, post, BootRequest, BootResponse, CommandBus, ControllerDefinition, QueryBus,
+   |                 ^^^  ^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/developer_workflows/presentation/workload_profile_controller.rs:20:17
+   |
+20 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/durable_cells/presentation/controller.rs:27:17
+   |
+27 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/edge/presentation/controllers/domain_claim_commands_controller.rs:14:17
+   |
+14 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/edge/presentation/controllers/gateway_scope_commands_controller.rs:12:17
+   |
+12 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `use_guard`
+ --> crates/control-plane/src/modules/edge/presentation/controllers/gateway_scope_queries_controller.rs:8:17
+  |
+8 |     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
+  |                 ^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/edge/presentation/controllers/mcp_credential_commands_controller.rs:16:17
+   |
+16 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/edge/presentation/controllers/mcp_route_policy_commands_controller.rs:10:17
+   |
+10 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/edge/presentation/controllers/routes_controller.rs:10:17
+   |
+10 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ProjectAttributionRecord` and `UpdateProjectAttributionWrite`
+ --> crates/control-plane/src/modules/executions/infrastructure/project_access.rs:3:25
+  |
+3 |     IProjectRepository, ProjectAttributionRecord, UpdateProjectAttributionWrite,
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `user_file_queries_controller`
+  --> crates/control-plane/src/modules/files/mod.rs:30:5
+   |
+30 |     user_file_queries_controller, FilesModule, UserFileMutationResponse,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_PUBLIC_METADATA`, `metadata`, and `post`
+ --> crates/control-plane/src/modules/fleet/presentation/controllers/enrollment_controller.rs:4:17
+  |
+4 |     controller, metadata, post, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+  |                 ^^^^^^^^  ^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/fleet/presentation/controllers/node_management_controller.rs:11:17
+   |
+11 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/fleet/presentation/controllers/node_pool_management_controller.rs:12:17
+   |
+12 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+ --> crates/control-plane/src/modules/fleet/presentation/controllers/node_pool_queries_controller.rs:9:17
+  |
+9 |     controller, get, metadata, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+  |                 ^^^  ^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `use_guard`
+ --> crates/control-plane/src/modules/fleet/presentation/controllers/node_queries_controller.rs:8:17
+  |
+8 |     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
+  |                 ^^^  ^^^^^^^^^
+
+warning: unused import: `node_log_record_response::NodeLogRecordResponse`
+ --> crates/control-plane/src/modules/fleet/presentation/dto/response/mod.rs:7:9
+  |
+7 | pub use node_log_record_response::NodeLogRecordResponse;
+  |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ProjectAttributionRecord` and `UpdateProjectAttributionWrite`
+ --> crates/control-plane/src/modules/identity/infrastructure/project_access.rs:3:25
+  |
+3 |     IProjectRepository, ProjectAttributionRecord, UpdateProjectAttributionWrite,
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `delete`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/api_token_controller.rs:16:17
+   |
+16 |     controller, delete, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError,
+   |                 ^^^^^^  ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/membership_controller.rs:20:17
+   |
+20 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/membership_invitation_controller.rs:22:17
+   |
+22 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, and `post`
+ --> crates/control-plane/src/modules/identity/presentation/controllers/organization_controller.rs:9:17
+  |
+9 |     controller, metadata, post, AUTH_SCOPES_METADATA, BootRequest, BootResponse, CommandBus,
+  |                 ^^^^^^^^  ^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, and `metadata`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/organizations_query_controller.rs:9:17
+   |
+ 9 |     controller, get, metadata, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
+   |                 ^^^  ^^^^^^^^
+10 |     AUTH_SCOPES_METADATA,
+   |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `post`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/privileged_management_controller.rs:48:5
+   |
+48 |     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+   |     ^^^^^^^^^^^^^^^^^^^^
+49 |     QueryBus, Result, controller, get, metadata, post,
+   |                                   ^^^  ^^^^^^^^  ^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/recipient_contact_controller.rs:19:17
+   |
+19 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/identity/presentation/controllers/resource_grant_controller.rs:19:17
+   |
+19 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `EXTERNAL_KNOWLEDGE_BINDING_LIFECYCLE_EVENT_SCHEMA`, `KNOWLEDGE_CHUNK_LIFECYCLE_EVENT_SCHEMA`, `KNOWLEDGE_DOCUMENT_LIFECYCLE_EVENT_SCHEMA`, `KNOWLEDGE_INDEX_LIFECYCLE_EVENT_SCHEMA`, and `KNOWLEDGE_RETRIEVAL_POLICY_LIFECYCLE_EVENT_SCHEMA`
+  --> crates/control-plane/src/modules/knowledge/domain/mod.rs:62:36
+   |
+62 |     PublishKnowledgePipelineWrite, EXTERNAL_KNOWLEDGE_BINDING_LIFECYCLE_EVENT_SCHEMA,
+   |                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+63 |     KNOWLEDGE_BASE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_CHUNK_LIFECYCLE_EVENT_SCHEMA,
+   |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+64 |     KNOWLEDGE_DOCUMENT_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_INDEX_LIFECYCLE_EVENT_SCHEMA,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+65 |     KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_RETRIEVAL_POLICY_LIFECYCLE_EVENT_SCHEMA,
+   |                                                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/knowledge/presentation/controller.rs:38:5
+   |
+38 |     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
+   |     ^^^^^^^^^^^^^^^^^^^^
+39 |     QueryBus, Result, controller, get, metadata, post, use_guard,
+   |                                   ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^
+
+warning: unused import: `InferenceAccessScope`
+ --> crates/control-plane/src/modules/inference/application/queries/get_usage_request_fact.rs:5:50
+  |
+5 | use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
+  |                                                  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `InferenceAccessScope`
+ --> crates/control-plane/src/modules/inference/application/queries/list_daily_usage_rollups.rs:5:50
+  |
+5 | use crate::modules::inference::{InferenceAccess, InferenceAccessScope};
+  |                                                  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/inference/presentation/inference_route_commands_controller.rs:16:17
+   |
+16 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/inference/presentation/inference_route_queries_controller.rs:16:17
+   |
+16 |     controller, get, metadata, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/inference/presentation/usage_queries_controller.rs:11:17
+   |
+11 |     controller, get, metadata, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, and `use_guard`
+  --> crates/control-plane/src/modules/inference/presentation/usage_retention_controller.rs:11:17
+   |
+11 |     controller, get, metadata, use_guard, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^  ^^^^^^^^^
+12 |     QueryBus, Result, AUTH_SCOPES_METADATA,
+   |                       ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_PUBLIC_METADATA`, `get`, and `metadata`
+ --> crates/control-plane/src/modules/platform.rs:3:17
+  |
+3 |     controller, get, metadata, ControllerDefinition, Module, ModuleRef, Result,
+  |                 ^^^  ^^^^^^^^
+4 |     AUTH_PUBLIC_METADATA,
+  |     ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `put`, and `use_guard`
+  --> crates/control-plane/src/modules/plugins/presentation/controllers/plugin_assignment_controller.rs:18:17
+   |
+18 |     controller, get, metadata, put, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^  ^^^^^^^^  ^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `put`, and `use_guard`
+  --> crates/control-plane/src/modules/plugins/presentation/controllers/plugin_plan_projection_controller.rs:12:17
+   |
+12 |     controller, get, metadata, put, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/plugins/presentation/controllers/plugin_registry_commands_controller.rs:10:17
+   |
+10 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `get`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/plugins/presentation/controllers/plugin_registry_queries_controller.rs:13:17
+   |
+13 |     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
+   |                 ^^^  ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `use_guard`
+  --> crates/control-plane/src/modules/projects/presentation/controllers/project_queries_controller.rs:14:17
+   |
+14 |     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
+   |                 ^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/projects/presentation/controllers/projects_controller.rs:16:17
+   |
+16 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `use_guard`
+ --> crates/control-plane/src/modules/search/presentation/controllers/search_controller.rs:9:17
+  |
+9 |     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
+  |                 ^^^  ^^^^^^^^^
+
+warning: unused import: `SecretVersionRotationLock`
+ --> crates/control-plane/src/modules/secrets/infrastructure/mod.rs:6:30
+  |
+6 | pub(crate) use persistence::{SecretVersionRotationLock, lock_secret_version_for_rotation};
+  |                              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: unused import: `get`
+  --> crates/control-plane/src/modules/security/presentation/controller.rs:11:17
+   |
+11 |     controller, get, BootError, BootRequest, BootResponse, ControllerDefinition, QueryBus, Res...
+   |                 ^^^
+
+warning: unused imports: `get` and `use_guard`
+ --> crates/control-plane/src/modules/sources/presentation/controllers/github_repository_subscription_queries_controller.rs:7:17
+  |
+7 |     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
+  |                 ^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/sources/presentation/controllers/github_repository_subscriptions_controller.rs:15:17
+   |
+15 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `AUTH_PUBLIC_METADATA`, `metadata`, and `post`
+  --> crates/control-plane/src/modules/sources/presentation/controllers/github_webhooks_controller.rs:10:17
+   |
+10 |     controller, metadata, post, AUTH_PUBLIC_METADATA, BootError, BootRequest, BootResponse,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `get` and `use_guard`
+ --> crates/control-plane/src/modules/sources/presentation/controllers/source_revision_queries_controller.rs:7:17
+  |
+7 |     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
+  |                 ^^^  ^^^^^^^^^
+
+warning: unused imports: `AUTH_SCOPES_METADATA`, `metadata`, `post`, and `use_guard`
+  --> crates/control-plane/src/modules/sources/presentation/controllers/source_revisions_controller.rs:12:17
+   |
+12 |     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
+   |                 ^^^^^^^^  ^^^^  ^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^
+
+warning: unused imports: `ProjectAttributionRecord` and `UpdateProjectAttributionWrite`
+ --> crates/control-plane/src/modules/workflow/infrastructure/project_access.rs:2:25
+  |
+2 |     IProjectRepository, ProjectAttributionRecord, UpdateProjectAttributionWrite,
+  |                         ^^^^^^^^^^^^^^^^^^^^^^^^  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: methods `is_organization_wide` and `granted_scopes` are never used
+  --> crates/control-plane/src/modules/agents/application/resource_access.rs:67:25
+   |
+52 | impl AgentAccess {
+   | ---------------- methods in this implementation
+...
+67 |     pub(crate) const fn is_organization_wide(&self) -> bool {
+   |                         ^^^^^^^^^^^^^^^^^^^^
+...
+71 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = AgentAccessScope> + '_ {
+   |                   ^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: method `allows_application` is never used
+  --> crates/control-plane/src/modules/applications/application/resource_access.rs:51:8
+   |
+28 | impl ApplicationAccessScope {
+   | --------------------------- method in this implementation
+...
+51 |     fn allows_application(self, project_id: ProjectId, application_id: ApplicationId) -> bool {
+   |        ^^^^^^^^^^^^^^^^^^
+
+warning: methods `is_organization_wide`, `granted_scopes`, and `application_is_visible` are never used
+   --> crates/control-plane/src/modules/applications/application/resource_access.rs:101:25
+    |
+ 86 | impl ApplicationAccess {
+    | ---------------------- methods in this implementation
+...
+101 |     pub(crate) const fn is_organization_wide(&self) -> bool {
+    |                         ^^^^^^^^^^^^^^^^^^^^
+...
+105 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = ApplicationAccessScope> + '_ {
+    |                   ^^^^^^^^^^^^^^
+...
+133 |     pub(crate) fn application_is_visible(
+    |                   ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `environment` is never used
+   --> crates/control-plane/src/modules/applications/application/resource_access.rs:188:15
+    |
+188 | pub(super) fn environment(
+    |               ^^^^^^^^^^^
+
+warning: methods `is_organization_wide` and `granted_scopes` are never used
+  --> crates/control-plane/src/modules/executions/application/resource_access.rs:68:25
+   |
+51 | impl ExecutionAccess {
+   | -------------------- methods in this implementation
+...
+68 |     pub(crate) const fn is_organization_wide(&self) -> bool {
+   |                         ^^^^^^^^^^^^^^^^^^^^
+...
+72 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = ExecutionAccessScope> + '_ {
+   |                   ^^^^^^^^^^^^^^
+
+warning: method `granted_scopes` is never used
+  --> crates/control-plane/src/modules/fleet/application/resource_access.rs:44:19
+   |
+25 | impl FleetAccess {
+   | ---------------- method in this implementation
+...
+44 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = FleetAccessScope> + '_ {
+   |                   ^^^^^^^^^^^^^^
+
+warning: enum `NodeLogRecordKind` is never used
+ --> crates/control-plane/src/modules/fleet/presentation/dto/response/node_log_record_response.rs:8:10
+  |
+8 | pub enum NodeLogRecordKind {
+  |          ^^^^^^^^^^^^^^^^^
+
+warning: struct `NodeLogRecordResponse` is never constructed
+  --> crates/control-plane/src/modules/fleet/presentation/dto/response/node_log_record_response.rs:15:12
+   |
+15 | pub struct NodeLogRecordResponse {
+   |            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `gap_reason_name` is never used
+  --> crates/control-plane/src/modules/fleet/presentation/dto/response/node_log_record_response.rs:89:10
+   |
+89 | const fn gap_reason_name(reason: NodeLogGapReason) -> &'static str {
+   |          ^^^^^^^^^^^^^^^
+
+warning: function `provider_gap_reason_name` is never used
+   --> crates/control-plane/src/modules/fleet/presentation/dto/response/node_log_record_response.rs:100:10
+    |
+100 | const fn provider_gap_reason_name(reason: RuntimeLogDiscontinuityReason) -> &'static str {
+    |          ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `stream_name` is never used
+   --> crates/control-plane/src/modules/fleet/presentation/dto/response/node_log_record_response.rs:111:10
+    |
+111 | const fn stream_name(stream: RuntimeLogStream) -> &'static str {
+    |          ^^^^^^^^^^^
+
+warning: methods `is_organization_wide` and `granted_scopes` are never used
+  --> crates/control-plane/src/modules/projects/application/resource_access.rs:83:25
+   |
+68 | impl ProjectAccess {
+   | ------------------ methods in this implementation
+...
+83 |     pub(crate) const fn is_organization_wide(&self) -> bool {
+   |                         ^^^^^^^^^^^^^^^^^^^^
+...
+87 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = ProjectAccessScope> + '_ {
+   |                   ^^^^^^^^^^^^^^
+
+warning: methods `is_organization_wide` and `granted_scopes` are never used
+  --> crates/control-plane/src/modules/workflow/application/resource_access.rs:52:25
+   |
+35 | impl WorkflowAccess {
+   | ------------------- methods in this implementation
+...
+52 |     pub(crate) const fn is_organization_wide(&self) -> bool {
+   |                         ^^^^^^^^^^^^^^^^^^^^
+...
+56 |     pub(crate) fn granted_scopes(&self) -> impl Iterator<Item = WorkflowAccessScope> + '_ {
+   |                   ^^^^^^^^^^^^^^
+
+warning: function `organization_tenant_knowledge_write_controller` is never used
+  --> crates/control-plane/src/presentation/mod.rs:57:15
+   |
+57 | pub(crate) fn organization_tenant_knowledge_write_controller(
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: `a3s-cloud-control-plane` (lib) generated 89 warnings (run `cargo fix --lib -p a3s-cloud-control-plane` to apply 75 suggestions)
+warning: unused import: `cancellation::exercise_pre_dispatch_cancellation`
+  --> crates/control-plane/tests/support/deployment_flow.rs:53:9
+   |
+53 | pub use cancellation::exercise_pre_dispatch_cancellation;
+   |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `exercise_skill_binding` is never used
+   --> crates/control-plane/tests/support/agent_code_recovery/real_box_release.rs:100:21
+    |
+100 | pub(super) async fn exercise_skill_binding(postgres_url: String) -> TestResult {
+    |                     ^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = note: `#[warn(dead_code)]` (part of `#[warn(unused)]`) on by default
+
+warning: function `exercise_build_run_persistence` is never used
+   --> crates/control-plane/tests/support/build_runs.rs:117:14
+    |
+117 | pub async fn exercise_build_run_persistence(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `exercise_hosted_build_run_persistence` is never used
+   --> crates/control-plane/tests/support/build_runs.rs:944:14
+    |
+944 | pub async fn exercise_hosted_build_run_persistence(
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `publish_hosted_release` is never used
+    --> crates/control-plane/tests/support/build_runs.rs:1224:14
+     |
+1224 | pub async fn publish_hosted_release(
+     |              ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `attest_and_complete_published_build` is never used
+    --> crates/control-plane/tests/support/build_runs.rs:1603:10
+     |
+1603 | async fn attest_and_complete_published_build(
+     |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `DeploymentFlowFixture` is never constructed
+  --> crates/control-plane/tests/support/deployment_flow.rs:56:12
+   |
+56 | pub struct DeploymentFlowFixture {
+   |            ^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `exercise_deployment_flow` is never used
+  --> crates/control-plane/tests/support/deployment_flow.rs:63:14
+   |
+63 | pub async fn exercise_deployment_flow(
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `test_artifact_resolver` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:512:4
+    |
+512 | fn test_artifact_resolver() -> Arc<dyn IOciArtifactResolver> {
+    |    ^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `deployment_artifact_resolver` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:516:4
+    |
+516 | fn deployment_artifact_resolver(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: struct `ExpectedDigestArtifactResolver` is never constructed
+   --> crates/control-plane/tests/support/deployment_flow.rs:539:8
+    |
+539 | struct ExpectedDigestArtifactResolver;
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `resource_claim_acknowledgement` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:619:15
+    |
+619 | pub(super) fn resource_claim_acknowledgement(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `runtime_apply_acknowledgement` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:645:15
+    |
+645 | pub(super) fn runtime_apply_acknowledgement(
+    |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `successful_acknowledgement` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:670:4
+    |
+670 | fn successful_acknowledgement(
+    |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: function `ready_node` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:721:10
+    |
+721 | async fn ready_node(
+    |          ^^^^^^^^^^
+
+warning: function `healthy_observation` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:828:15
+    |
+828 | pub(super) fn healthy_observation(
+    |               ^^^^^^^^^^^^^^^^^^^
+
+warning: function `runtime_capabilities` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:886:4
+    |
+886 | fn runtime_capabilities() -> RuntimeCapabilities {
+    |    ^^^^^^^^^^^^^^^^^^^^
+
+warning: function `field_uuid` is never used
+   --> crates/control-plane/tests/support/deployment_flow.rs:913:4
+    |
+913 | fn field_uuid(value: &Value, field: &str) -> Result<Uuid, Box<dyn std::error::Error>> {
+    |    ^^^^^^^^^^
+
+warning: function `exercise_pre_dispatch_cancellation` is never used
+ --> crates/control-plane/tests/support/deployment_flow/cancellation.rs:3:14
+  |
+3 | pub async fn exercise_pre_dispatch_cancellation(
+  |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+warning: constant `ADMIN_TOKEN` is never used
+  --> crates/control-plane/tests/a0_4_real_box_release.rs:31:22
+   |
+31 |     pub(super) const ADMIN_TOKEN: &str =
+   |                      ^^^^^^^^^^^
+
+warning: function `post_json` is never used
+  --> crates/control-plane/tests/a0_4_real_box_release.rs:34:19
+   |
+34 |     pub(super) fn post_json(
+   |                   ^^^^^^^^^
+
+warning: function `post_json_as` is never used
+  --> crates/control-plane/tests/a0_4_real_box_release.rs:42:19
+   |
+42 |     pub(super) fn post_json_as(
+   |                   ^^^^^^^^^^^^
+
+warning: function `get_as` is never used
+  --> crates/control-plane/tests/a0_4_real_box_release.rs:55:19
+   |
+55 |     pub(super) fn get_as(path: impl Into<String>, token: &str) -> BootRequest {
+   |                   ^^^^^^
+
+warning: function `response_json` is never used
+  --> crates/control-plane/tests/a0_4_real_box_release.rs:60:19
+   |
+60 |     pub(super) fn response_json(response: &BootResponse) -> a3s_boot::Result<Value> {
+   |                   ^^^^^^^^^^^^^
+
+warning: `a3s-cloud-control-plane` (test "a0_4_real_box_release") generated 24 warnings (run `cargo fix --test "a0_4_real_box_release" -p a3s-cloud-control-plane` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7m 42s
+  Executable tests/a0_4_real_box_release.rs (/tmp/cloud-box-target/debug/deps/a0_4_real_box_release-2db14bff8f45f11e)
+Running Sandbox-identity Cloud harness: /tmp/cloud-box-target/debug/deps/a0_4_real_box_release-2db14bff8f45f11e
+
+running 1 test
+test postgres_published_agent_release_runs_recovers_and_cleans_through_real_box ... A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed artifact_digest=sha256:34cfe15ffa81bcd2d75f5e9b72ed5f3dd8ac1a6e9dd83e0b62f57ab30e7ecda1 manifest_identity=sha256:20fc393096a413d561a8755d077ffe17fe3a3881d14474c290571ed9874bb691 first_started_at_ms=1789649444072 recovered_started_at_ms=1789649456516
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 53.54s
+

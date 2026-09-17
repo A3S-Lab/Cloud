@@ -1,0 +1,3 @@
+image=127.0.0.1:50020/a3s/a0-4-agent-runtime@sha256:34cfe15ffa81bcd2d75f5e9b72ed5f3dd8ac1a6e9dd83e0b62f57ab30e7ecda1
+media_type=application/vnd.oci.image.manifest.v1+json
+size_bytes=1054

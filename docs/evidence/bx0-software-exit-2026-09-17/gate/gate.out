@@ -1,0 +1,49 @@
+bx0 digest probe: STRICT Cloud verification ok for sha256:25c1f11b88b9817b115be2eeb3c90d3c3027d474c9de6ecfb0ec20244cc72088
+bx0 rollback probe: STRICT Cloud verification ok for sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a
+BX0 clean-host gate: armed on Linux with a3s-box=/home/roylin/code/a3s-box-install/a3s-box
+bound Cloud revision: 140a62d04f1309d549f8764426328fc92bbbf473
+bound Runtime revision: 4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd
+bound Box revision: 8b2804c585d2f31bce06f213990407606a475634
+bound Gateway revision: e92896769953aee28ef69261f77265e427f9d396
+power_revision=UNBOUND reason=pw0_no_pin_file
+step1_enroll=enroll_executed enroll=executed
+step2_oci=oci_executed oci=executed
+step3_deploy=deploy_executed deploy=executed
+step4_health=health_executed health=executed
+step5_https=https_executed https=executed
+step6_logs=logs_executed logs=executed
+step7_update=update_executed update=executed
+step8_rollback=rollback_executed rollback=executed
+step9_stop_cleanup=stop_cleanup_executed stop_cleanup=executed
+execute_receipts_complete=1
+evidence_dir=/tmp/a3s-cloud-bx0-clean-host.H2aWS3
+next_loop=collect_bx0_clean_host_evidence.sh
+next_loop_gate_evidence_dir=/tmp/a3s-cloud-bx0-clean-host.H2aWS3
+next_exit=run_bx0_clean_host_exit_audit.sh
+next_exit_requires=LOOP+gate_evidence
+next_exit_profile=software
+next_exit_power_profile_requires=LOOP+gate_evidence+Power
+product_exit=not_claimed
+Cloud root: /mnt/d/code/a3s/apps/cloud
+install helper: /mnt/d/code/a3s/apps/cloud/tools/box-conformance/install_box_release.sh
+BX0.5/E0 Box re-cert checklist (ordered):
+  1. enroll
+  2. OCI (build/publish digest-pinned Artifact)
+  3. deploy
+  4. health
+  5. HTTPS (managed Gateway TLS)
+  6. logs
+  7. update
+  8. rollback
+  9. stop/cleanup (empty Box + host inventory)
+Required certification markers (not emitted by this scaffold):
+  A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED
+    Must bind exact Cloud, Runtime, Box, Gateway, and Power revisions and
+    prove the full enroll→…→stop/cleanup loop with no residue.
+  Companion provider/consumer evidence from tools/box-conformance gates
+    remains necessary but is not sufficient for clean-host product exit.
+A3S_CLOUD_BX0_CLEAN_HOST_OPEN
+not yet automated / requires joint Cloud+Box+Gateway harness
+This entrypoint refuses to fake EXIT_CERTIFIED.
+bound=Cloud+Runtime+Box+Gateway power=UNBOUND
+step1=enroll_executed step2=oci_executed step3=deploy_executed step4=health_executed step5=https_executed step6=logs_executed step7=update_executed step8=rollback_executed step9=stop_cleanup_executed execute_receipts_complete=1 loop_exit=not_certified

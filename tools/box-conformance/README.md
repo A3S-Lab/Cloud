@@ -37,14 +37,26 @@ probe kills the Box process, reconstructs the control-plane state, verifies
 health/readiness/liveness and restart-time Secret rematerialization, then
 stops, removes, and cleans every runtime-owned record. A successful run emits
 one `A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED` marker containing the pinned
-Box/Code revisions and the exact artifact identity. The retained [PostgreSQL
-17/real Box run](https://github.com/A3S-Lab/Cloud/actions/runs/33686237668/job/100434300332)
-passes this gate, including the published-release recovery, Secret
-rematerialization, cancellation, and cleanup checks, against Box
-`65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae` and OCI Runtime
-`878f8414cef3b85bef1b51fe6735017b25828252`; the [complete Cloud CI](https://github.com/A3S-Lab/Cloud/actions/runs/33686237772)
-also passes. Hosted MCP remains owned by `MCP0`; this gate does not claim `G0`
-or hosted MCP availability.
+Box/Code revisions and the exact artifact identity. Local re-bind evidence
+(`2026-09-17`) is retained under
+[`docs/evidence/a0-4-real-box-2026-09-17`](../../docs/evidence/a0-4-real-box-2026-09-17/)
+on Box `8b2804c585d2f31bce06f213990407606a475634` (current `box-revision`).
+An older CI citation against Box `65f3d3fc7c1e0e2cb1ba2d409a79f7357314f5ae`
+must not be used to claim GA-1 on current pins. Hosted MCP remains owned by
+`MCP0`; this gate does not claim `G0`, hosted MCP, or Gateway public Agent
+traffic (see GA-1 Gateway LIVE runner below).
+
+### GA-1 Gateway LIVE Code-path smoke
+
+Fail-closed runner:
+`tools/box-conformance/run_ga1_gateway_live_code_path_local.sh`.
+
+Requires Docker-free host, pin-matched `a3s-box` + `a3s-gateway`
+(`install_gateway_pin.sh`), Postgres `:54320`, registry `:50020`, and the
+exact A0.4 image env. Emits
+`A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED` only when public traffic
+traverses pin-matched Gateway to the published Agent Service. Refuses
+`PLACEHOLDER_*`, stub gateways, and BX0 Python TLS theater.
 
 The allocation consumer probe requires Box to advertise CPU, memory, PID, and
 execution-timeout controls after the provider phase has passed every profile
@@ -199,9 +211,10 @@ bash tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh
 Product clean-host LOOP still requires a supported Linux x86_64 host and the
 pinned Box fixture from `install_box_release.sh` (see `OPERATOR_CLEAN_HOST.md`).
 Armed clean-host refuses `DOCKER_HOST` and `/var/run/docker.sock` (zero-Docker;
-a3s-box only). Power remains UNBOUND until PW0 lands
-`tools/power-conformance/power-revision` (see that directory's README; do not
-invent the pin).
+a3s-box only). GA-0 software EXIT does **not** require Power. Power remains
+UNBOUND until PW0 lands `tools/power-conformance/power-revision` for the
+stronger `profile=power` EXIT (see that directory's README; do not invent the
+pin). TEE isolation remains a separate `BX0.tee` audit.
 
 ### BX0.5 operator LOOP certification (exit audit)
 
@@ -212,9 +225,43 @@ pins plus host/service_id/node_id/artifact_digest; rejects `PLACEHOLDER_*`).
 `--gate-evidence-dir` (or `A3S_CLOUD_BX0_EVIDENCE_DIR`) contains steps 1–9
 `*=executed` receipts matching node_id / artifact_digest / service_id; IDs alone
 are insufficient. It never claims product EXIT.
+`run_bx0_software_loop_create.sh` creates enroll (bootstrap + node-agent),
+binds a **pre-published** OCI digest (never invents digests), deploys a
+workload via CLI, optionally publishes a managed route when gateway scope +
+domain claim + hostname are supplied, and with `A3S_CLOUD_BX0_CREATE_FULL=1`
+drives logs→update→rollback→`a3s-box rm` (providerResourceId only). Emits
+`SOFTWARE_LOOP_CREATE_OK` only — never product EXIT.
+
+`run_bx0_software_exit_live_prep.sh` brings up Box-compose middleware +
+control-plane on a Docker-free host (refuses docker.sock; no Docker fallback).
+`run_bx0_software_exit_live_oci.sh` publishes real digests (crane|skopeo|oras).
+`run_bx0_software_exit_live_agent_release.sh` serves a built node-agent over
+local-CA HTTPS and exports URL+sha256. `run_bx0_software_exit_live_https.sh`
+terminates TLS to the health port with a CA-aware curl probe (not `curl -k`)
+and writes absolute `node.acl`. `run_bx0_software_exit_live_chain.sh` runs
+prep→tenant→oci→agent→https→EXIT. `run_bx0_software_exit_live_via_box.sh`
+runs that chain inside a Docker-free a3s-box guest when the outer host has
+docker.sock. `install_gateway_pin.sh` installs pin-matched `a3s-gateway` +
+`GATEWAY-REVISION` sidecar (HTTPS preflight). `run_bx0_software_exit_live.sh`
+is the CREATE_FULL+EXIT binder alone. Canonical `/var/run/docker.sock` is
+always refused (no sock-path override theater).
+
+`run_bx0_software_exit_harness.sh` orchestrates GA-0 software EXIT: default mode
+is refuse-to-fake CI (`A3S_CLOUD_BX0_SOFTWARE_EXIT_HARNESS_CI_CERTIFIED`, never
+product EXIT). With `A3S_CLOUD_BX0_SOFTWARE_EXIT_LIVE=1` and operator-owned
+real enroll→…→cleanup identities it arms EXECUTE (using
+`probe_bx0_{logs,digest,rollback}.sh`), collects LOOP, and runs
+`A3S_CLOUD_BX0_EXIT_PROFILE=software` exit audit. It refuses Docker socks,
+PLACEHOLDER identities, and invented Power pins. CI binder:
+`run_bx0_software_exit_harness_ci.sh`. See
+[ga0-bx0-software-checklist.md](../../docs/ga0-bx0-software-checklist.md).
+
 `run_bx0_clean_host_exit_audit.sh` fail-closes with
-`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` when LOOP evidence is missing, when
-gate execute receipts are incomplete (`A3S_CLOUD_BX0_EVIDENCE_DIR`), or when
-Power remains UNBOUND (PW0); it emits `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
-only with LOOP + matching execute receipts + a bound Power pin. See
-`OPERATOR_CLEAN_HOST.md`.
+`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` when LOOP evidence is missing or when
+gate execute receipts are incomplete (`A3S_CLOUD_BX0_EVIDENCE_DIR`). Default
+`A3S_CLOUD_BX0_EXIT_PROFILE=software` (GA-0 / `BX0.software`) emits
+`A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED … profile=software` with
+`power_revision=UNBOUND` when LOOP + receipts pass. `profile=power` still
+requires a bound Power pin; a present-but-invalid pin always fail-closes.
+Hardware TEE remains a separate `BX0.tee` audit. See `OPERATOR_CLEAN_HOST.md`
+and [ga0-bx0-software-checklist.md](../../docs/ga0-bx0-software-checklist.md).

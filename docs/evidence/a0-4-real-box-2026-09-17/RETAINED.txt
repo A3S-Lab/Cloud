@@ -1,0 +1,4 @@
+box_revision=8b2804c585d2f31bce06f213990407606a475634
+certified=A3S_CLOUD_A0_4_REAL_BOX_RELEASE_CERTIFIED store=postgresql release=published deployment_flow=completed stop_flow=completed runtime_apply=persisted provider=a3s-box harness=a3s-code observations=3 process_restarts=1 secret_materializations=4 artifact_downloads=1 commands=5 acknowledgements=5 cleanup=removed artifact_digest=sha256:34cfe15ffa81bcd2d75f5e9b72ed5f3dd8ac1a6e9dd83e0b62f57ab30e7ecda1 manifest_identity=sha256:20fc393096a413d561a8755d077ffe17fe3a3881d14474c290571ed9874bb691
+retained_at=2026-09-17T12:51:00Z
+source=/home/roylin/a0-4-durable/a0-4-evidence

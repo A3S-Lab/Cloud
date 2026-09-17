@@ -1,0 +1,84 @@
+# BX0.software LIVE middleware compose (ephemeral guest storage).
+#
+# Guest rootfs is host-uid owned and rejects chown (virtiofs/copy provider).
+# Postgres official entrypoint chowns to uid 70 and fails; run as uid 1000.
+# Keep PGDATA on a real guest tmpfs: virtiofs/overlay /tmp still rejects
+# initdb chmod; Box compose `tmpfs` mounts a Linux tmpfs that allows it.
+
+service "postgres" {
+  image = "postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193"
+  environment = {
+    POSTGRES_DB = "${A3S_CLOUD_POSTGRES_DB:-a3s_cloud}"
+    POSTGRES_PASSWORD = "${A3S_CLOUD_POSTGRES_PASSWORD:-a3s_cloud}"
+    POSTGRES_USER = "${A3S_CLOUD_POSTGRES_USER:-a3s_cloud}"
+    PGDATA = "/tmp/pgdata"
+  }
+  tmpfs = ["/tmp/pgdata"]
+  command = [
+    "sh",
+    "-ec",
+    "addgroup -g 1000 bx0 2>/dev/null || true; adduser -D -u 1000 -G bx0 bx0 2>/dev/null || true; mkdir -p /tmp/pgdata; chown -R 1000:1000 /tmp/pgdata; chmod 700 /tmp/pgdata; if [ ! -s /tmp/pgdata/PG_VERSION ]; then printf '%s\\n' \"$$POSTGRES_PASSWORD\" > /tmp/bx0-pw; gosu bx0 initdb -D /tmp/pgdata -U \"$$POSTGRES_USER\" --pwfile=/tmp/bx0-pw; printf 'host all all 0.0.0.0/0 scram-sha-256\\n' >> /tmp/pgdata/pg_hba.conf; rm -f /tmp/bx0-pw; gosu bx0 pg_ctl -D /tmp/pgdata -o \"-c listen_addresses=\" -w start; gosu bx0 psql -v ON_ERROR_STOP=1 --username \"$$POSTGRES_USER\" --dbname postgres -c \"SELECT 1 FROM pg_database WHERE datname='$$POSTGRES_DB'\" | grep -q 1 || gosu bx0 psql -v ON_ERROR_STOP=1 --username \"$$POSTGRES_USER\" --dbname postgres -c \"CREATE DATABASE \\\"$$POSTGRES_DB\\\";\"; printf \"DO \\$\\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'a3s_cloud_serving') THEN CREATE ROLE a3s_cloud_serving LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '%s'; END IF; END \\$\\$;\\n\" \"$$POSTGRES_PASSWORD\" > /tmp/bx0-role.sql; gosu bx0 psql -v ON_ERROR_STOP=1 --username \"$$POSTGRES_USER\" --dbname \"$$POSTGRES_DB\" -f /tmp/bx0-role.sql; rm -f /tmp/bx0-role.sql; gosu bx0 pg_ctl -D /tmp/pgdata -m fast -w stop; fi; exec gosu bx0 postgres -D /tmp/pgdata -c listen_addresses=*",
+  ]
+  ports = ["${A3S_CLOUD_POSTGRES_PORT:-54320}:5432/tcp"]
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "pg_isready --dbname=$$POSTGRES_DB --username=$$POSTGRES_USER",
+    ]
+    interval = "2s"
+    timeout = "3s"
+    retries = 30
+    start_period = "8s"
+  }
+}
+
+service "nats" {
+  image = "nats:2.11-alpine@sha256:e4bf19f15fd3218814a4e3c9e0064e1334bd8aa20d5984b9f1a0afd084f8cc00"
+  command = ["--jetstream", "--store_dir=/tmp/nats-data", "--http_port=8222"]
+  ports = [
+    "${A3S_CLOUD_NATS_PORT:-42220}:4222/tcp",
+    "${A3S_CLOUD_NATS_MONITOR_PORT:-8220}:8222/tcp",
+  ]
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --output-document=- http://127.0.0.1:8222/healthz | grep ok",
+    ]
+    interval = "2s"
+    timeout = "3s"
+    retries = 30
+    start_period = "3s"
+  }
+}
+
+service "registry" {
+  # Storage must NOT live under guest /tmp — enroll remounts wipe /tmp and
+  # distribution then fails PUT with ENOENT mkdir Path:/tmp while GET /v2/
+  # still looks healthy.
+  image = "registry:2.8.3@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373"
+  environment = {
+    REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY = "/var/lib/registry"
+  }
+  command = [
+    "sh",
+    "-ec",
+    "mkdir -p /var/lib/registry && exec /bin/registry serve /etc/docker/registry/config.yml",
+  ]
+  ports = ["${A3S_CLOUD_REGISTRY_PORT:-50020}:5000/tcp"]
+  restart = "unless-stopped"
+
+  healthcheck {
+    test = [
+      "CMD-SHELL",
+      "wget --quiet --spider http://127.0.0.1:5000/v2/",
+    ]
+    interval = "2s"
+    timeout = "3s"
+    retries = 30
+    start_period = "3s"
+  }
+}

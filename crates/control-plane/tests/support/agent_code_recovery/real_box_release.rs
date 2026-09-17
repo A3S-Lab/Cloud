@@ -8,7 +8,9 @@ use a3s_cloud_contracts::{
     NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, OCI_IMAGE_MANIFEST_MEDIA_TYPE,
 };
 #[cfg(feature = "persistence-conformance")]
-use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
+use a3s_cloud_control_plane::conformance::{
+    secret_organization_access_for_conformance, workload_organization_access_for_conformance,
+};
 use a3s_cloud_control_plane::infrastructure::{FlowInfrastructure, FlowOperationCoordinator};
 #[cfg(feature = "persistence-conformance")]
 use a3s_cloud_control_plane::modules::assets::{
@@ -16,11 +18,11 @@ use a3s_cloud_control_plane::modules::assets::{
 };
 use a3s_cloud_control_plane::modules::assets::{
     AssetReleaseDrafted, AssetReleaseVersion, CreateAssetReleaseWrite, CreateAssetWrite,
+    HostedAssetBuildRequested,
 };
 use a3s_cloud_control_plane::modules::operations::{
-    FlowOperationEngine, IOperationRepository, OperationReconciler, OperationRequest,
-    OperationStatus, OperationSubject, PostgresOperationRepository, ReconcileOperationsHandler,
-    WorkflowIdentity,
+    FlowOperationEngine, IOperationRepository, OperationReconciler, OperationStatus,
+    PostgresOperationRepository, ReconcileOperationsHandler,
 };
 use a3s_cloud_control_plane::modules::secrets::{
     CreateSecret, CreateSecretHandler, EncryptedSecretValue, ISecretEncryptionService,
@@ -35,17 +37,16 @@ use a3s_cloud_control_plane::modules::workloads::application::{
     RollbackWorkloadDeploymentHandler, UnbindSkillWorkloadDeployment,
     UnbindSkillWorkloadDeploymentHandler,
 };
-use a3s_cloud_control_plane::modules::workloads::application::{
-    STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION,
-};
 use a3s_cloud_control_plane::modules::workloads::{
+    AssetsWorkloadAgentReleaseAdmissionAdapter, AssetsWorkloadSkillReleaseAdmissionAdapter,
     CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler, DeploymentFlowConfig,
     DeploymentFlowDependencies, DeploymentFlowRuntime, DeploymentStatus,
     FleetWorkloadsNodePoolAccessAdapter, IOciArtifactResolver, OciArtifact, OciArtifactReference,
     OciArtifactResolutionError, OciRegistryCredentialReference, PostgresResourceClaimRepository,
     ProjectsWorkloadsEnvironmentAccessAdapter, RequestWorkloadStopBundle, SecretBinding,
     SecretBindingTarget, SecretsWorkloadsSecretBindingAccessAdapter,
-    UnroutedDeploymentRouteUpdater, WorkloadDesiredState, WorkloadStopRequested,
+    UnroutedDeploymentRouteUpdater, WorkloadDesiredState, WorkloadStopOperationIntent,
+    WorkloadStopRequested,
 };
 use a3s_cloud_node_agent::{
     build_box_runtime_provider, ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation,
@@ -56,8 +57,8 @@ use a3s_cloud_node_agent::{
 #[cfg(feature = "persistence-conformance")]
 use a3s_runtime::contract::RuntimeExecRequest;
 use a3s_runtime::contract::{
-    ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeHealthState, RuntimeInspection,
-    RuntimeMountSource, SecretTarget,
+    ArtifactRef, HealthProbe, RuntimeActionRequest, RuntimeHealthState,
+    RuntimeInspection, RuntimeMountSource, SecretTarget,
 };
 use a3s_runtime::RuntimeClient;
 use async_trait::async_trait;
@@ -92,15 +93,36 @@ const MAX_MANIFEST_ARCHIVE_BYTES: u64 = 1024 * 1024;
 // of allowing the short polling lease to expire while the provider is running.
 const REAL_BOX_COMMAND_LEASE_SECONDS: i64 = 120;
 
+/// Optional probe while the recovered Agent Runtime is still Running.
+/// GA-1 Gateway LIVE uses this window for pin-matched public traffic.
+pub type LiveAgentProbe = Box<
+    dyn FnOnce(
+            RuntimeObservation,
+            RuntimeUnitSpec,
+        ) -> std::pin::Pin<Box<dyn std::future::Future<Output = TestResult> + Send>>
+        + Send,
+>;
+
 pub(super) async fn exercise(postgres_url: String) -> TestResult {
-    exercise_mode(postgres_url, false).await
+    exercise_mode(postgres_url, false, None).await
+}
+
+pub(super) async fn exercise_with_live_probe(
+    postgres_url: String,
+    live: LiveAgentProbe,
+) -> TestResult {
+    exercise_mode(postgres_url, false, Some(live)).await
 }
 
 pub(super) async fn exercise_skill_binding(postgres_url: String) -> TestResult {
-    exercise_mode(postgres_url, true).await
+    exercise_mode(postgres_url, true, None).await
 }
 
-async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResult {
+async fn exercise_mode(
+    postgres_url: String,
+    skill_lifecycle: bool,
+    live: Option<LiveAgentProbe>,
+) -> TestResult {
     #[cfg(not(feature = "persistence-conformance"))]
     let _ = skill_lifecycle;
     require_gate()?;
@@ -209,6 +231,9 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         &BoxRuntimeConfig {
             home_dir: home.clone(),
             secret_root: home.join("runtime-secrets"),
+            // Hosted A0.4 consumer gates select Sandbox explicitly (product
+            // default remains MicroVM). Sandbox is what can advertise
+            // EphemeralStorage after the privileged host probe.
             isolation: BoxRuntimeIsolation::Sandbox,
             control_timeout_ms: 120_000,
             task_poll_interval_ms: 25,
@@ -243,8 +268,10 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
 
     let workload = CreateAgentWorkloadDeploymentHandler::new(
         Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(projects)),
-        assets.clone(),
-        artifacts,
+        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
+            assets.clone(),
+            artifacts,
+        )),
         workloads.clone(),
         Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(
             secrets.clone(),
@@ -273,7 +300,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     .map_err(|error| invalid(format!("could not create real Agent Workload: {error}")))?;
     let deployment_id = workload.bundle.deployment.id;
     let workload_id = workload.bundle.workload.id;
-    let deployment_operation_id = workload.bundle.operation.id;
+    let deployment_operation_id = workload.bundle.operation.operation_id;
     secret_transport.bind_revision(workload.bundle.revision.id.as_uuid())?;
     let provider_secret_reference = CloudSecretReference::new(
         workload.bundle.revision.id.as_uuid(),
@@ -304,7 +331,9 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
             nodes.clone(),
             Arc::new(UnroutedDeploymentRouteUpdater),
         ),
-        Duration::seconds(5),
+        // Real-Box setup (provider bind, Flow connect, MicroVM apply) exceeds the
+        // 5s unit-test heartbeat window used by in-memory deployment fixtures.
+        Duration::seconds(120),
         DeploymentFlowConfig::from_milliseconds(
             120_000, 120_000, 25, 120_000, 120_000, 25, 120_000,
         )?,
@@ -318,9 +347,59 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         .with_artifacts(artifact_manager)
         .with_resource_inventory(Arc::new(FixedInventory(inventory)));
 
+    // Match deployment_flow harness: reconcile until Scheduled before leasing.
+    // Refresh heartbeat each cycle — enroll happened before Flow connect, and
+    // schedule skips offline nodes via accepts_new_work_at.
+    let schedule_deadline = Instant::now() + StdDuration::from_secs(60);
+    let mut reconciled_before_prepare = 0u64;
+    loop {
+        refresh_node_heartbeat(nodes.as_ref(), organization_id, node_id, agent_instance_id)
+            .await?;
+        let cycle = coordinator.run_once().await?;
+        reconciled_before_prepare =
+            reconciled_before_prepare.saturating_add(cycle.reconciled_before_work as u64);
+        if !cycle.reconciliation_error_details.is_empty() {
+            return Err(invalid(format!(
+                "deployment Flow reconciliation failed before Scheduled: {}",
+                cycle.reconciliation_error_details.join("; ")
+            ))
+            .into());
+        }
+        let status = workloads
+            .find_deployment(organization_id, deployment_id)
+            .await?
+            .status;
+        if status == DeploymentStatus::Scheduled {
+            break;
+        }
+        if Instant::now() >= schedule_deadline {
+            let snapshot = flow
+                .engine()
+                .snapshot(&deployment_operation_id.to_string())
+                .await
+                .ok();
+            return Err(invalid(format!(
+                "deployment did not reach Scheduled within 60s; status={}; reconciled={reconciled_before_prepare}; flow_status={:?}; waits={}; last_sequence={}",
+                status.as_str(),
+                snapshot.as_ref().map(|s| &s.status),
+                snapshot.as_ref().map(|s| s.waits.len()).unwrap_or(0),
+                snapshot.as_ref().map(|s| s.last_sequence).unwrap_or(0),
+            ))
+            .into());
+        }
+        tokio::time::sleep(StdDuration::from_millis(10)).await;
+    }
+    if reconciled_before_prepare == 0 {
+        return Err(invalid(
+            "deployment reached Scheduled without OperationReconciler projecting any work",
+        )
+        .into());
+    }
+
     let prepare = next_flow_command(
         &coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         0,
@@ -340,6 +419,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     let apply = next_flow_command(
         &coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         prepare.sequence,
@@ -462,6 +542,12 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
         return Err(invalid("Fleet changed the recovered Agent Runtime identity").into());
     }
 
+    // Keep the recovered Agent Running for an optional LIVE probe (Gateway public
+    // traffic) before ordinary stop/cleanup. Fail closed: probe errors abort.
+    if let Some(live) = live {
+        live(recovered.clone(), spec.clone()).await?;
+    }
+
     let stop_operation_id = request_workload_stop(
         workloads.as_ref(),
         organization_id,
@@ -472,6 +558,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     let stop = next_flow_command(
         &coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         apply.sequence,
@@ -492,6 +579,7 @@ async fn exercise_mode(postgres_url: String, skill_lifecycle: bool) -> TestResul
     let release_claim = next_flow_command(
         &coordinator,
         nodes.as_ref(),
+        organization_id,
         node_id,
         agent_instance_id,
         stop.sequence,
@@ -675,7 +763,7 @@ async fn create_agent_secret(
             organization_id,
             project_id,
             environment_id,
-            access: crate::modules::secrets::application::SecretAccess::organization_wide(),
+            access: secret_organization_access_for_conformance(),
             name: name.into(),
             value: SecretPlaintext::new(material.to_vec())?,
             idempotency_key: format!("create-{}", name.to_ascii_lowercase().replace(' ', "-")),
@@ -809,7 +897,9 @@ fn flow_coordinator(
         reconciler,
         flow,
         StdDuration::from_millis(5),
-        StdDuration::from_secs(1),
+        // Real Box schedule/prepare steps can keep a Boot queue task active
+        // longer than the 1s in-memory deployment_flow fixture budget.
+        StdDuration::from_secs(30),
     )?)
 }
 
@@ -841,6 +931,7 @@ impl LifecycleCommandKind {
 async fn next_flow_command(
     coordinator: &FlowOperationCoordinator,
     nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
     node_id: NodeId,
     agent_instance_id: Uuid,
     after_sequence: u64,
@@ -848,6 +939,9 @@ async fn next_flow_command(
 ) -> TestResult<NodeCommandEnvelope> {
     let deadline = Instant::now() + StdDuration::from_secs(60);
     loop {
+        // Live Agents heartbeat continuously; this harness must do the same or
+        // schedule/dispatch waits treat the enrolled node as offline.
+        refresh_node_heartbeat(nodes, organization_id, node_id, agent_instance_id).await?;
         let report = coordinator.run_once().await?;
         if !report.reconciliation_error_details.is_empty() {
             return Err(invalid(format!(

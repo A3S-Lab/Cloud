@@ -1,9 +1,12 @@
-# BX0.5 clean-host operator loop (does not claim product EXIT)
+# BX0.5 clean-host operator loop
 
-Product `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED` stays open until:
+GA-0 / `BX0.software` EXIT (`profile=software`) needs:
 
-1. A validated LOOP certification exists for enroll→…→stop/cleanup, and
-2. A Power pin file is bound (PW0; currently UNBOUND).
+1. A validated LOOP certification for enroll→…→stop/cleanup, and
+2. Matching gate execute receipts (steps 1–9 `*=executed`).
+
+Stronger `profile=power` EXIT additionally needs a Power pin file (PW0).
+Hardware TEE (`BX0.tee`) is a separate audit and must not block software EXIT.
 
 ## Prerequisites
 
@@ -24,6 +27,76 @@ bash tools/box-conformance/run_bx0_clean_host_gate_ci_via_box.sh
 
 This certifies `A3S_CLOUD_BX0_CLEAN_HOST_CI_VIA_BOX_CERTIFIED` only. It does
 **not** replace the clean Linux x86_64 LOOP or product EXIT.
+
+## Create enroll→deploy (optional)
+
+On a clean Linux x86_64 host with control-plane up and a **pre-published**
+OCI artifact (digest never invented by the tool):
+
+```bash
+export A3S_CLOUD_URL=...
+export A3S_CLOUD_TOKEN=...
+export A3S_CLOUD_ORGANIZATION_ID=...
+export A3S_CLOUD_PROJECT_ID=...
+export A3S_CLOUD_ENVIRONMENT_ID=...
+export A3S_CLOUD_BX0_NODE_CONFIG=/absolute/path/to/node.acl
+export A3S_CLOUD_BX0_AGENT_RELEASE_URL=https://...
+export A3S_CLOUD_BX0_AGENT_RELEASE_SHA256=<64-hex>
+export A3S_CLOUD_BX0_ARTIFACT_URI=oci://registry/...@sha256:<64-hex>
+export A3S_CLOUD_BX0_ARTIFACT_DIGEST=sha256:<64-hex>
+# For CREATE_FULL / EXIT:
+export A3S_CLOUD_BX0_HEALTH_URL=http://127.0.0.1:<port>/ready
+export A3S_CLOUD_BX0_HTTPS_URL=https://<managed-host>/
+export A3S_CLOUD_BX0_UPDATE_ARTIFACT_URI=oci://...@sha256:<other>
+export A3S_CLOUD_BX0_UPDATE_DIGEST=sha256:<other>
+export A3S_CLOUD_BX0_CREATE_FULL=1
+bash tools/box-conformance/run_bx0_software_loop_create.sh
+# CREATE_FULL removes the Box via a3s-box rm and exports providerResourceId only.
+# source the printed export_file, then:
+export A3S_CLOUD_BX0_SOFTWARE_EXIT_LIVE=1
+bash tools/box-conformance/run_bx0_software_exit_harness.sh
+```
+
+One-shot on a Docker-free host (same env as above):
+
+```bash
+# One-shot (prep→tenant→oci→agent HTTPS→TLS health→EXIT). Refuses Docker sock.
+# Requires pin-matched a3s-gateway on PATH or A3S_CLOUD_GATEWAY_BIN.
+export A3S_CLOUD_GATEWAY_BIN=/abs/a3s-gateway
+bash tools/box-conformance/run_bx0_software_exit_live_chain.sh /tmp/bx0-live-chain
+
+# Or step-by-step:
+# 1) Box-only middleware + control-plane (refuses Docker sock):
+bash tools/box-conformance/run_bx0_software_exit_live_prep.sh
+source .a3s/cloud/bx0-live-prep/stack.env
+# 2) Tenant bootstrap:
+bash tools/box-conformance/run_bx0_software_exit_live_tenant.sh
+# 3) Real OCI digests (crane|skopeo|oras):
+bash tools/box-conformance/run_bx0_software_exit_live_oci.sh
+# 4) Local CA agent release HTTPS:
+bash tools/box-conformance/run_bx0_software_exit_live_agent_release.sh
+# 5) TLS terminate + node.acl + CA-aware curl probe:
+bash tools/box-conformance/run_bx0_software_exit_live_https.sh
+# 6) CREATE_FULL + EXIT:
+bash tools/box-conformance/run_bx0_software_exit_live.sh
+```
+
+Dirty outer host (docker.sock present) — run the chain in a Docker-free guest
+(no sock override on the outer host):
+
+```bash
+export A3S_CLOUD_BOX_BIN=/abs/a3s-box
+bash tools/box-conformance/run_bx0_software_exit_live_via_box.sh
+```
+
+Optional HTTPS bind during CREATE (when claim/scope already exist):
+
+```bash
+export A3S_CLOUD_BX0_GATEWAY_SCOPE_ID=<uuid>
+export A3S_CLOUD_BX0_DOMAIN_CLAIM_ID=<uuid>
+export A3S_CLOUD_BX0_ROUTE_HOSTNAME=app.example.test
+# CREATE publishes routes and sets HTTPS_URL
+```
 
 ## Prep
 
@@ -65,7 +138,8 @@ export A3S_CLOUD_BX0_CLEANUP_INSTANCE=<stopped-removed-instance-id>
 export A3S_CLOUD_ENROLLMENT_TOKEN=...
 bash tools/box-conformance/run_bx0_clean_host_gate.sh
 # expected with all receipts: exit 3 OPEN execute_receipts_complete=1
-#   next_loop=… next_exit=… product_exit=not_claimed loop_exit=not_certified
+#   next_loop=… next_exit=… next_exit_requires=LOOP+gate_evidence
+#   next_exit_profile=software product_exit=not_claimed loop_exit=not_certified
 ```
 
 3. After receipts, collect LOOP evidence against exact Cloud/Runtime/Box/Gateway
@@ -98,22 +172,28 @@ Do **not** point at `bx0-clean-host-certification.example.txt` (PLACEHOLDER_* �
 ```bash
 export A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION=/tmp/bx0-evidence/bx0-clean-host-certification.txt
 export A3S_CLOUD_BX0_EVIDENCE_DIR="$GATE_EVIDENCE_DIR"
+# GA-0 default:
+export A3S_CLOUD_BX0_EXIT_PROFILE=software
 bash tools/box-conformance/run_bx0_clean_host_exit_audit.sh /tmp/bx0-exit-audit
 ```
 
 - Without LOOP certification → `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED` exit 2
 - With LOOP but no gate execute receipts → `EXIT_BLOCKED reason=execute_receipts_incomplete` exit 2
-- With LOOP + receipts but no Power pin → `EXIT_BLOCKED reason=power_unbound` exit 2
+- With LOOP + receipts and `profile=software` (default) → may emit
+  `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED … profile=software power_revision=UNBOUND`
+- With LOOP + receipts + `A3S_CLOUD_BX0_EXIT_PROFILE=power` but no Power pin →
+  `EXIT_BLOCKED reason=power_unbound` exit 2
 - With LOOP + receipts + invalid Power pin → `EXIT_BLOCKED reason=power_pin_invalid` exit 2
-- With LOOP + receipts + valid Power pin → may emit `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED`
+- With LOOP + receipts + valid Power pin → may emit
+  `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED … profile=power`
 
-CI fail-closed harness `run_bx0_clean_host_gate_ci.sh` proves refuse paths and
-a temp-pin unlock path (never invents `tools/power-conformance/power-revision`).
-On non-Linux-x86_64 hosts it also proves `install_box_release.sh` refuses the
-pinned fixture. Virt-capable hosts run `run_bx0_host_box_smoke.sh` (lifecycle,
-ephemeral PID1→dead, plain `ps` hides dead, published-port curl, `exec` requires
-`--`, host→guest `cp`, exec-on-stopped fails, create+start `-v` mount,
-pause/unpause, snapshot create→restore, guest→host `cp`, restart, kill,
-`wait` exit code). Via-box CI must never claim product
-LOOP/EXIT. Emits `A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` /
-`…_VIA_BOX_CERTIFIED` only.
+CI fail-closed harness `run_bx0_clean_host_gate_ci.sh` proves refuse paths,
+software EXIT without inventing `tools/power-conformance/power-revision`, and a
+temp-pin power-profile unlock path. On non-Linux-x86_64 hosts it also proves
+`install_box_release.sh` refuses the pinned fixture. Virt-capable hosts run
+`run_bx0_host_box_smoke.sh` (lifecycle, ephemeral PID1→dead, plain `ps` hides
+dead, published-port curl, `exec` requires `--`, host→guest `cp`,
+exec-on-stopped fails, create+start `-v` mount, pause/unpause, snapshot
+create→restore, guest→host `cp`, restart, kill, `wait` exit code). Via-box CI
+must never claim product LOOP/EXIT. Emits
+`A3S_CLOUD_BX0_CLEAN_HOST_CI_CERTIFIED` / `…_VIA_BOX_CERTIFIED` only.

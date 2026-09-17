@@ -1,9 +1,15 @@
 #!/usr/bin/env bash
 # BX0.5 clean-host product exit audit.
-# Requires a validated LOOP certification file, matching gate execute receipts
-# (steps 1–9 *=executed), and a bound Power pin.
-# Without any of those, prints A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED and exits 2.
-# Never fakes EXIT_CERTIFIED.
+# Requires a validated LOOP certification file and matching gate execute
+# receipts (steps 1–9 *=executed).
+#
+# Profiles (see docs/architecture-optimization-roadmap.md):
+#   software (default, GA-0 / BX0.software) — LOOP + receipts; Power may be UNBOUND
+#   power — LOOP + receipts + bound Power pin (PW0.software stronger EXIT)
+#
+# Without LOOP or receipts, prints A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED and
+# exits 2. A present-but-invalid Power pin always fail-closes (does not collapse
+# into software EXIT). Never fakes EXIT_CERTIFIED.
 #
 # Usage:
 #   bash tools/box-conformance/run_bx0_clean_host_exit_audit.sh [EVIDENCE_DIR]
@@ -11,7 +17,8 @@
 # Env:
 #   A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION — path to LOOP cert file
 #   A3S_CLOUD_BX0_EVIDENCE_DIR — absolute gate evidence with execute receipts
-#   A3S_CLOUD_BX0_POWER_REVISION_FILE — optional Power pin (40 hex); absent → BLOCKED
+#   A3S_CLOUD_BX0_EXIT_PROFILE — software|power (default: software)
+#   A3S_CLOUD_BX0_POWER_REVISION_FILE — optional Power pin (40 hex)
 
 set -euo pipefail
 
@@ -21,10 +28,22 @@ box_revision_file="$tools/box-revision"
 runtime_revision_file="$repository_root/tools/runtime-conformance/runtime-revision"
 gateway_revision_file="$repository_root/tools/gateway-conformance/gateway-revision"
 power_revision_file="${A3S_CLOUD_BX0_POWER_REVISION_FILE:-$repository_root/tools/power-conformance/power-revision}"
+exit_profile=${A3S_CLOUD_BX0_EXIT_PROFILE:-software}
 validator="$tools/validate_bx0_clean_host_certification.sh"
 # shellcheck source=bx0_clean_host_steps.sh
 # shellcheck disable=SC1090
 source "$tools/bx0_clean_host_steps.sh"
+
+case $exit_profile in
+  software|power) ;;
+  *)
+    printf '%s\n' \
+      "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED reason=exit_profile_invalid profile=$exit_profile" >&2
+    printf '%s\n' \
+      "BX0 product exit blocked: A3S_CLOUD_BX0_EXIT_PROFILE must be software or power" >&2
+    exit 2
+    ;;
+esac
 
 evidence_directory=${1:-}
 if [[ -z $evidence_directory ]]; then
@@ -135,7 +154,7 @@ fi
 # contracts. Collapsing both to power_unbound hides forged/typo pins.
 power_status=OPEN
 power_detail="power pin missing (PW0)"
-power_revision=
+power_revision=UNBOUND
 power_block_reason=power_unbound
 if [[ -f $power_revision_file ]]; then
   power_revision=$(<"$power_revision_file")
@@ -147,31 +166,43 @@ if [[ -f $power_revision_file ]]; then
     power_status=FAIL
     power_detail="power pin invalid: $power_revision"
     power_block_reason=power_pin_invalid
+    power_revision=INVALID
   fi
 fi
 
 printf 'power_status=%s detail=%s\n' "$power_status" "$power_detail" \
   | tee "$evidence_directory/power-status.txt"
+printf 'exit_profile=%s\n' "$exit_profile" \
+  | tee "$evidence_directory/exit-profile.txt"
 
-if [[ $power_status != PASS ]]; then
-  power_label=UNBOUND
-  if [[ $power_block_reason == power_pin_invalid ]]; then
-    power_label=INVALID
-  fi
+# Invalid pin always blocks (never silently downgrade to software EXIT).
+if [[ $power_status == FAIL ]]; then
   printf '%s\n' \
-    "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED cloud_revision=$cloud_revision reason=$power_block_reason" \
-    "loop=PASS receipts=PASS power=$power_label" \
+    "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED cloud_revision=$cloud_revision reason=power_pin_invalid" \
+    "loop=PASS receipts=PASS power=INVALID profile=$exit_profile" \
     | tee "$evidence_directory/bx0-exit-certification.txt"
-  if [[ $power_block_reason == power_pin_invalid ]]; then
-    printf '%s\n' \
-      "BX0 product exit blocked: Power pin present but not exact lowercase 40-hex (PW0)" >&2
-  else
-    printf '%s\n' \
-      "BX0 product exit blocked: Power pin required (PW0); LOOP alone is insufficient" >&2
-  fi
+  printf '%s\n' \
+    "BX0 product exit blocked: Power pin present but not exact lowercase 40-hex (PW0)" >&2
   exit 2
 fi
 
+# power profile requires a bound pin; software profile (GA-0) does not.
+if [[ $exit_profile == power && $power_status != PASS ]]; then
+  printf '%s\n' \
+    "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED cloud_revision=$cloud_revision reason=power_unbound" \
+    "loop=PASS receipts=PASS power=UNBOUND profile=power" \
+    | tee "$evidence_directory/bx0-exit-certification.txt"
+  printf '%s\n' \
+    "BX0 power-profile exit blocked: Power pin required (PW0); set A3S_CLOUD_BX0_EXIT_PROFILE=software for GA-0" >&2
+  exit 2
+fi
+
+# Bound Power upgrades the emitted profile even when EXIT_PROFILE=software.
+certified_profile=$exit_profile
+if [[ $power_status == PASS ]]; then
+  certified_profile=power
+fi
+
 printf '%s\n' \
-  "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED cloud_revision=$cloud_revision runtime_revision=$runtime_revision box_revision=$box_revision gateway_revision=$gateway_revision power_revision=$power_revision loop=included receipts=included" \
+  "A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED cloud_revision=$cloud_revision runtime_revision=$runtime_revision box_revision=$box_revision gateway_revision=$gateway_revision power_revision=$power_revision profile=$certified_profile loop=included receipts=included" \
   | tee "$evidence_directory/bx0-exit-certification.txt"

@@ -996,6 +996,30 @@ grep -Fq 'inspect_absent=1' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt
 grep -Fq 'box-instance-cleanup-1' "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
 forbid_exit_certified_claim "$steps_evidence/cleanup-exec-ok/09-stop_cleanup.txt"
 
+printf '%s\n' '===== stop/cleanup execute rejects workload-id fallback ====='
+set +e
+A3S_CLOUD_BX0_EXECUTE=1 \
+  A3S_CLOUD_BOX_BIN="$stub_cleanup_absent" \
+  A3S_CLOUD_BX0_WORKLOAD_ID='11111111-2222-3333-4444-555555555555' \
+  A3S_CLOUD_BX0_CLEANUP_INSTANCE='11111111-2222-3333-4444-555555555555' \
+  bash -c '
+    set -euo pipefail
+    # shellcheck disable=SC1090
+    source "$0"
+    bx0_step_stop_cleanup_execute "$1"
+  ' "$steps" "$steps_evidence/cleanup-exec-workload-id"
+cleanup_wl_rc=$?
+set -e
+if ((cleanup_wl_rc != 1)); then
+  printf '%s\n' "expected cleanup execute to reject workload-id fallback, got $cleanup_wl_rc" >&2
+  exit 1
+fi
+grep -Fq 'cleanup_instance_is_workload_id' \
+  "$steps_evidence/cleanup-exec-workload-id/09-stop_cleanup.txt"
+grep -Fq 'stop_cleanup=not_run' \
+  "$steps_evidence/cleanup-exec-workload-id/09-stop_cleanup.txt"
+forbid_exit_certified_claim "$steps_evidence/cleanup-exec-workload-id/09-stop_cleanup.txt"
+
 set +e
 A3S_CLOUD_BX0_EXECUTE=1 \
   A3S_CLOUD_BOX_BIN="$stub_cleanup_box" \
@@ -1062,6 +1086,12 @@ forbid_exit_certified_claim "$evidence_directory/unarmed.out"
 forbid_exit_certified_claim "$evidence_directory/unarmed.err"
 
 if [[ $os_name == Linux ]]; then
+  # Isolate fail-closed cases from host Docker sockets (WSL/dev machines).
+  # Intentional docker.sock tests override this with a real fixture path.
+  absent_docker_sock="$evidence_directory/absent-docker.sock"
+  rm -f -- "$absent_docker_sock"
+  export A3S_CLOUD_BX0_DOCKER_SOCK_PATH="$absent_docker_sock"
+
   echo "===== armed without a3s-box must exit 2 ====="
   set +e
   env -u A3S_CLOUD_BOX_BIN \
@@ -2297,11 +2327,14 @@ grep -Fq 'bx0_require_execute_receipts_dir' "$steps"
 grep -Fq 'execute_receipts_incomplete' "$collector"
 grep -Fq -- '--gate-evidence-dir' "$collector"
 # EXIT_CERTIFIED may appear in exit_audit source as the success path, but CI
-# must prove it is never emitted without Power+LOOP. Collector must never claim it.
+# must prove it requires LOOP+receipts (software) and never invents a repo Power
+# pin. Collector must never claim EXIT.
 if grep -E '^([[:space:]]*)(printf|echo|cat).*A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$collector"; then
   printf '%s\n' "collector must not printf/echo product EXIT_CERTIFIED" >&2
   exit 1
 fi
+grep -Fq 'A3S_CLOUD_BX0_EXIT_PROFILE' "$exit_audit"
+grep -Fq 'profile=software' "$exit_audit" || grep -Fq 'certified_profile' "$exit_audit"
 
 cloud_revision=$(git -C "$repository_root" rev-parse HEAD)
 set +e
@@ -2464,27 +2497,50 @@ forbid_exit_certified_claim "$evidence_directory/exit-audit-no-receipts.out"
 forbid_exit_certified_claim "$evidence_directory/exit-audit-no-receipts.err"
 forbid_exit_certified_claim "$audit_dir_receipts/bx0-exit-certification.txt"
 
-echo "===== exit audit with LOOP + receipts but Power UNBOUND must exit 2 ====="
+echo "===== exit audit with LOOP + receipts + Power UNBOUND certifies software (GA-0) ====="
 audit_dir_power="$evidence_directory/exit-audit-no-power"
 set +e
 A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
   A3S_CLOUD_BX0_EVIDENCE_DIR="$gate_receipts" \
+  A3S_CLOUD_BX0_EXIT_PROFILE=software \
   env -u A3S_CLOUD_BX0_POWER_REVISION_FILE \
   bash "$exit_audit" "$audit_dir_power" \
   >"$evidence_directory/exit-audit-no-power.out" 2>"$evidence_directory/exit-audit-no-power.err"
 no_power_status=$?
 set -e
-if ((no_power_status != 2)); then
-  printf '%s\n' "expected exit audit with LOOP but no Power to exit 2, got $no_power_status" >&2
+if ((no_power_status != 0)); then
+  printf '%s\n' "expected software EXIT without Power to exit 0, got $no_power_status" >&2
   cat "$evidence_directory/exit-audit-no-power.out" >&2 || true
   cat "$evidence_directory/exit-audit-no-power.err" >&2 || true
   exit 1
 fi
-grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$audit_dir_power/bx0-exit-certification.txt"
-grep -Fq 'power_unbound' "$audit_dir_power/bx0-exit-certification.txt"
-forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.out"
-forbid_exit_certified_claim "$evidence_directory/exit-audit-no-power.err"
-forbid_exit_certified_claim "$audit_dir_power/bx0-exit-certification.txt"
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$audit_dir_power/bx0-exit-certification.txt"
+grep -Fq 'profile=software' "$audit_dir_power/bx0-exit-certification.txt"
+grep -Fq 'power_revision=UNBOUND' "$audit_dir_power/bx0-exit-certification.txt"
+
+echo "===== exit audit power profile with Power UNBOUND must exit 2 ====="
+audit_dir_power_req="$evidence_directory/exit-audit-power-profile-unbound"
+set +e
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFICATION="$collect_dir/bx0-clean-host-certification.txt" \
+  A3S_CLOUD_BX0_EVIDENCE_DIR="$gate_receipts" \
+  A3S_CLOUD_BX0_EXIT_PROFILE=power \
+  env -u A3S_CLOUD_BX0_POWER_REVISION_FILE \
+  bash "$exit_audit" "$audit_dir_power_req" \
+  >"$evidence_directory/exit-audit-power-profile-unbound.out" \
+  2>"$evidence_directory/exit-audit-power-profile-unbound.err"
+power_req_status=$?
+set -e
+if ((power_req_status != 2)); then
+  printf '%s\n' "expected power-profile EXIT without Power to exit 2, got $power_req_status" >&2
+  cat "$evidence_directory/exit-audit-power-profile-unbound.out" >&2 || true
+  cat "$evidence_directory/exit-audit-power-profile-unbound.err" >&2 || true
+  exit 1
+fi
+grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_BLOCKED' "$audit_dir_power_req/bx0-exit-certification.txt"
+grep -Fq 'power_unbound' "$audit_dir_power_req/bx0-exit-certification.txt"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-power-profile-unbound.out"
+forbid_exit_certified_claim "$evidence_directory/exit-audit-power-profile-unbound.err"
+forbid_exit_certified_claim "$audit_dir_power_req/bx0-exit-certification.txt"
 
 echo "===== invalid Power pin matrix must exit 2 with power_pin_invalid (not power_unbound) ====="
 # Anti-overfit: present-but-invalid must not collapse into "missing pin".
@@ -2554,6 +2610,7 @@ fi
 grep -Fq 'A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED' "$valid_pin_dir/audit/bx0-exit-certification.txt"
 grep -Fq 'power_revision=0123456789abcdef0123456789abcdef01234567' \
   "$valid_pin_dir/audit/bx0-exit-certification.txt"
+grep -Fq 'profile=power' "$valid_pin_dir/audit/bx0-exit-certification.txt"
 if [[ -f $repository_root/tools/power-conformance/power-revision ]]; then
   printf '%s\n' "tools/power-conformance/power-revision must remain absent after CI" >&2
   exit 1

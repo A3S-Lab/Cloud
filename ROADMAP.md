@@ -2,17 +2,25 @@
 
 ## 1. Scope and document hierarchy
 
-**Status as of 2026-09-10.**
+**Status as of 2026-09-17.**
 
 This is the product-level roadmap for A3S Cloud. It summarizes the complete
 Cloud portfolio, current gate status, dependencies, delivery order, and the
 boundary with A3S Gateway. It does not replace the detailed implementation
 plans.
 
+**Pragmatic delivery authority:** critical-path GAs, `software` / `tee` / `ha`
+profiles, and which portfolio items are deferred off the first exits live in
+[architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md).
+This file still publishes every gate's public state; it does not treat the full
+portfolio matrix as one Definition of Done.
+
 | Document | Authority |
 | --- | --- |
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
-| [Architecture optimization and execution roadmap](docs/architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity parallel track, and near-term Cloud-only backlog |
+| [Architecture optimization and execution roadmap](docs/architecture-optimization-roadmap.md) | Pragmatic critical path (GA-0…), delivery profiles, dual-track I0, and near-term Cloud-only backlog |
+| [GA-0 / BX0.software checklist](docs/ga0-bx0-software-checklist.md) | Operator sequence and engineering backlog for the first software EXIT (**Verified `2026-09-17`**) |
+| [GA-1 / Code-path Agent availability checklist](docs/ga1-agent-availability-checklist.md) | Narrow AaaS availability after `BX0.software`; first gap is A0.4 pin re-bind |
 | [Ecosystem project roadmaps](docs/project-roadmaps/README.md) | Mission, ordered outcomes, dependencies, exit evidence, and negative boundary for every A3S subproject |
 | [Cloud substrate dependency roadmap](../../docs/cloud-substrate-dependency-roadmap.md) | Monorepo index of Wave 1–3 crate obligations aligned to Cloud gates |
 | [Platform completeness review](docs/platform-gap-analysis.md) | Structural gaps versus delivery gaps, priority, owner, and proposed closure gates |
@@ -96,11 +104,16 @@ FaaS, and first-class Durable Cell collaboration spaces, with shared model
 inference, Web delivery, code/artifact/package supply, and multi-tenant
 operations on operator-owned CPU/GPU infrastructure.**
 
-The cumulative product target is an A3S-native platform that replaces the
+The cumulative product **aspiration** is an A3S-native platform that covers
 operational responsibilities commonly split between Google AX and Kubernetes.
 It requires neither system and does not preserve their APIs or controllers.
-The outcome is delivered across the existing `A0`, `A1`, `C0`, `H0`, and Box
-certification gates rather than through a parallel replacement milestone.
+That aspiration is **not** the first Verified EXIT. Mission EXIT follows the
+pragmatic GAs in
+[architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md):
+software Box path (GA-0), one Agent vertical (GA-1), one Workflow/Application
+vertical (GA-2), then day-two HA and deferred verticals. Reference-product
+breadth (`APP0.6`, full `CELL0`, distributed `I0`, `EV0`) stays in the
+portfolio without blocking those exits.
 
 Cloud turns tenant-owned intent into durable, observable infrastructure state.
 PostgreSQL is authoritative for desired state, A3S Flow coordinates long-lived
@@ -221,8 +234,8 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 
 | Gate | Product outcome | State |
 | --- | --- | --- |
-| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | In progress; retained Box provider conformance evidence on [34737151481](https://github.com/A3S-Lab/Cloud/actions/runs/34737151481); TEE isolation blocked on physical SEV capacity; PW0/EXIT skipped until TEE binds (not Verified) |
-| `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box MicroVM/TEE evidence, health, inference, recovery, and cleanup | Planned |
+| `BX0` — Box-only platform | Sole A3S Box execution/build path and Box re-certification of the complete Runtime, deployment, source-delivery, recovery, and cleanup baseline | **`BX0.software` Verified (`2026-09-17`)** — retained LIVE evidence [docs/evidence/bx0-software-exit-2026-09-17](docs/evidence/bx0-software-exit-2026-09-17/): `A3S_CLOUD_BX0_CLEAN_HOST_EXIT_CERTIFIED … profile=software power_revision=UNBOUND loop=included receipts=included` on Docker-free Linux (`docker.sock` absent); pins `cloud=140a62d04f1309d549f8764426328fc92bbbf473` `runtime=4c5fbd56bedd84d1007a7d9cd046a9f7083bbdcd` `box=8b2804c585d2f31bce06f213990407606a475634` `gateway=e92896769953aee28ef69261f77265e427f9d396`; CREATE enroll→OCI→deploy→health→HTTPS→logs→update→rollback→cleanup via `run_bx0_software_exit_live_chain.sh`. Checklist [ga0-bx0-software-checklist.md](docs/ga0-bx0-software-checklist.md). **`BX0.tee`** remains In progress / blocked on physical SEV capacity (not Verified). Retained Box provider conformance evidence on [34737151481](https://github.com/A3S-Lab/Cloud/actions/runs/34737151481). Software EXIT does not wait on TEE or PW0 |
+| `PW0` — Power inference boundary | ACL-native immutable Power Service profile, Box-hosted health, inference, recovery, and cleanup | Planned; `PW0.software` follows `BX0.software` for ordinary inference availability; `PW0.tee` remains a stronger confidential profile and does not gate GA-0 |
 | `R0` — Universal Runtime | General Task and Service contracts, unified consumer-profile admission, durable identity, capability matching, and real Box provider conformance | Historical baseline; unified consumer contract and Box re-certification in progress |
 | `F0` — Foundation | Boot control plane and PostgreSQL task queue, PostgreSQL, tenancy, identity, ORM-backed Flow operations, outbox, projections, and API | Verified; the [2026-08-19 `main` PostgreSQL 17 plus local/NATS provider gate](https://github.com/A3S-Lab/Cloud/actions/runs/32266327719/job/96111906175) passes the exact Flow `1.0.0`, Boot `0.2.0`, and ORM `0.3.1` composition, including tenancy, idempotency, one-run reconciliation, lost-Outbox-ack recovery, API envelopes, and migration apply/checksum/rollback/concurrency authority |
 | `N0` — Node control | Enrollment, outbound mTLS, command leases, observations, durable command journal, and sole Box driver | Historical; Box re-certification pending |
@@ -243,11 +256,11 @@ itself. Those outcomes remain unavailable until their owning `A1`, `W0`, and
 | `K0` — Knowledge and Knowledge Pipeline | User files, Knowledge Bases, document/chunk lifecycle, multi-source ingestion, General/Parent-child/Q&A and multimodal processing, indexing/retrieval/rerank/citations, external Knowledge, and Flow-backed Knowledge Pipelines | In progress and unavailable; `K0.1-C1/C2` implement strong identities, one canonical Files admission ACL/lifecycle, exact upload/scan receipts, shared streaming objects, atomic quota/persistence, authorization-first CQRS, shared audit/Outbox/idempotency, REST/OpenAPI, client, CLI, and Management MCP tools. `K0.1-C2b1` adds authorized public `PUT .../content` (OpenAPI `1.89.0`) over the same upload command with local object-store tests; `K0.1-C2b2` adds admitted-only public `GET .../content` (OpenAPI `1.90.0`); `K0.1-C2b3` adds metadata-only public `POST .../scan` admit/reject decisions (OpenAPI `1.91.0`) and a sixth Management MCP tool; `K0.1-C2b4` adds metadata-only public `POST .../expire` for awaiting uploads (OpenAPI `1.92.0`) and a seventh Management MCP tool. Live object cleanup execution remains open. A retained [PostgreSQL 17 H0 persistence step](https://github.com/A3S-Lab/Cloud/actions/runs/33159659047/job/98810769471) verifies rollback, concurrent organization-quota serialization, lifecycle replay, quota release, and atomic side effects through the production owner ports. `K0.1-C3` freezes Knowledge contracts; `K0.1-C4a`/`C4b1`/`C4b2a` add catalog persistence, owner services, and authorized writes; `K0.1-C4b2b1`/`C4b2b2` expose KnowledgeBase/Pipeline lifecycle through REST/OpenAPI `1.88.0`, client, CLI, and Management MCP. `K0.1-C5` persists immutable KnowledgeDocument/Chunk catalogs through migration `202` with local/PostgreSQL adapters and no public surface; `K0.1-C6` adds application owner document/chunk catalog services over those repositories. `K0.1-C7` adds authorized idempotent KnowledgeDocument/Chunk create writes with audit and Outbox side effects over the C5 repositories without public surfaces. `K0.1-C8` exposes that document/chunk boundary over REST/OpenAPI `1.93.0` without client/CLI/MCP or live MinIO/scanner/SEV claims. `K0.1-C9` adds maintained client, CLI, and four Management MCP tools over the same C8 handlers without bumping OpenAPI or claiming live MinIO/S3, scanner execution, SEV ingestion, or cleanup workers. `K0.1-C10` adds authorized bounded KnowledgeDocument/Chunk list through REST/OpenAPI `1.94.0`, client, CLI, and two Management MCP read tools without claiming live MinIO/S3, scanner execution, SEV ingestion, or cleanup workers. `K0.1-C11` persists immutable KnowledgeIndexRevision/RetrievalPolicyRevision/ExternalKnowledgeBinding catalogs through migration `203` with local/PostgreSQL adapters and no public surface. `K0.1-C12` adds application owner index/policy/binding catalog services over those repositories. `K0.1-C13` adds authorized idempotent index/policy/binding create writes with audit/Outbox. `K0.1-C14` exposes that index/policy/binding boundary over REST/OpenAPI `1.95.0` without client/CLI/MCP or live MinIO/scanner/SEV claims. `K0.1-C15` adds maintained client, CLI, and six Management MCP tools over the same C14 handlers without bumping OpenAPI or claiming live MinIO/S3, scanner execution, SEV ingestion, or cleanup workers. `K0.1-C16` adds authorized bounded index/policy/binding list through REST/OpenAPI `1.96.0`, client, CLI, and three Management MCP read tools without live MinIO/scanner/SEV/cleanup claims. Live MinIO/S3 provider wiring, live scanner/cleanup execution, ingestion, retrieval, and Flow-backed Knowledge Pipelines remain open |
 | `AUT0` — Automations and Connectors | Schedule, webhook, plugin/source-event triggers and reusable outbound HTTP/business connections with exact targets, deduplication, Secret/egress policy, and recovery | In progress and unavailable; Automations C1-C6 plus AUT0.2-C7 deterministic webhook admission, the durable immutable definition/revision catalog in migration 188 (H0 CI PostgreSQL recovery wired), AUT0.3-C1-C12 calendar/misfire/concurrency/due-window/lease/state/envelope, bounded schedule dispatch, repository-backed owner-port candidate discovery, injectable schedule-worker boundary, P0 Task adaptation, idempotent invocation admission, and digest-verified invocation handoff components are implemented. AUT0.4-C1/C2 normalized event-envelope and bounded fan-out components are implemented; AUT0.4-C3 adds the strict durable-ack A3S Event consumer boundary for already normalized events, and C4 composes external candidate selection, deterministic fan-out, and idempotent invocation admission. Connector C1-C13 plus Flow-owned attempt/wait, immutable-response, typed JSON interpretation, exact revision revocation, and terminal-indeterminate recovery are component foundations; live PostgreSQL recovery, production process-role composition, timer process registration/listener/Gateway wiring, and public availability remain open |
 | `S0` — Stateful and distributed storage platform | Databases, immutable-object and volume providers, distributed access, fencing, backup, restore, retention, and stateful import mappings | Foundation in progress; component-only `S0.1-C1/C2` add the sole-client CAS, credential, recovery, retention, and deletion contracts, `CELL0.5-C1` adds the canonical non-secret HTTPS provider-profile ACL/digest and exact credential binding, and `S0.1-C3` checks in one retained S3-compatible CAS/cleanup gate shared with existing consumers. Component-only `S0.1-C4` adds deterministic Flow-v2 page checkpoints for writer-fenced seal, isolated restore, verification, grace-delayed deletion, and exact planned cleanup, while retaining v1 replay and checking three PostgreSQL worker-process-death boundaries against one process-shared S3-compatible namespace. `CELL0.5-C5a/C5b` now supply the stopped-current-revision Workloads receipt, atomic seal-Operation enqueue, and exact successful-seal admission before every later writer generation. A retained real-provider pass remains, so no production provider is certified yet |
-| `CELL0` — Durable Cell collaboration service | First-class human/multi-Agent shared named state with serialized turns, SQLite lineage, alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; `CELL0.1` is implemented, component-only `CELL0.2-C1/C2` bind exact S0 contracts without copying their lifecycle, the shared storage `C3` gate awaits a retained pass, and shared `S0.1-C4` now supplies the component-only recovery/delete execution prerequisite without moving that lifecycle into Cells. The retained `CELL0.3-C1/C2/C3` real-Box runtime-only gate passes without another journal or controller, and `CELL0.4-C1/C2/C3/C4/C5` implement application authority, existing-owner projection, route composition, and complete REST/OpenAPI/client/CLI/MCP interfaces. Component-only `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` freeze the provider profile, exact signed BuildRun bundle output/admission, the existing Execution exact-node Task foundation, Workload Deployment Flow v4's deterministic pinned publisher pre-start composition through migrations `118`-`120`, the exact ordinary Workloads Service projection, migration `131`'s immutable exact-`RuntimeRemove` writer-fence/seal handoff for the stopped current single replica, and fail-closed successful-seal admission for every later generation-derived Deployment. Staged `C4b/C4c` add named-state behavior, RPO=0 provider-process-death recovery, and real managed-TLS Gateway HTTP/WebSocket checks to the same joint gate without another lifecycle or owner lookup; its exact preflight remains blocked on Box Runtime `Outbound`. The storage-provider pass, first retained joint behavior/Gateway pass, remaining stop/delete behavior, retained lifecycle/fault evidence, and real service availability remain open |
+| `CELL0` — Durable Cell collaboration service | First-class human/multi-Agent shared named state with serialized turns, SQLite lineage, alarms, WebSockets, idle eviction/reactivation, single-writer epoch fencing, replication-before-acknowledgement, and managed delivery over the existing Service path | In progress and unavailable; **off GA-0…GA-2 critical path** (GA-4+ after `S0`). `CELL0.1` is implemented, component-only `CELL0.2-C1/C2` bind exact S0 contracts without copying their lifecycle, the shared storage `C3` gate awaits a retained pass, and shared `S0.1-C4` now supplies the component-only recovery/delete execution prerequisite without moving that lifecycle into Cells. The retained `CELL0.3-C1/C2/C3` real-Box runtime-only gate passes without another journal or controller, and `CELL0.4-C1/C2/C3/C4/C5` implement application authority, existing-owner projection, route composition, and complete REST/OpenAPI/client/CLI/MCP interfaces. Component-only `CELL0.5-C1/C2/C3a/C3b/C4a/C5a/C5b` freeze the provider profile, exact signed BuildRun bundle output/admission, the existing Execution exact-node Task foundation, Workload Deployment Flow v4's deterministic pinned publisher pre-start composition through migrations `118`-`120`, the exact ordinary Workloads Service projection, migration `131`'s immutable exact-`RuntimeRemove` writer-fence/seal handoff for the stopped current single replica, and fail-closed successful-seal admission for every later generation-derived Deployment. Staged `C4b/C4c` add named-state behavior, RPO=0 provider-process-death recovery, and real managed-TLS Gateway HTTP/WebSocket checks to the same joint gate without another lifecycle or owner lookup; its exact preflight remains blocked on Box Runtime `Outbound`. The storage-provider pass, first retained joint behavior/Gateway pass, remaining stop/delete behavior, retained lifecycle/fault evidence, and real service availability remain open |
 | `H0` — Production scale | Durable replicas, stateless/stateful safe deployment, session/checkpoint drain, writer fencing, multi-node CPU/GPU placement, private networking, Gateway replication, control-plane HA, and measured autoscaling | In progress |
-| `I0` — Distributed inference service | Accelerator-backed Power serving, independent replicas, gang-distributed model replicas, typed prefill/decode role pools, cache/load-aware Gateway dispatch, scoped keys, routing/fallback, durable usage, and governed self-service | Planned |
-| `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned |
-| `AR0` — Governed Agent Runtime experience | One simplified projection over existing Agent, Workload, Deployment, Operation, Runtime, Box, Secret, and evidence authorities; bounded egress, brokered credentials, context-cost evidence, idle policy, and checkpoint/fork experience without a parallel lifecycle | Planned; `AR0.1` waits for `A1.3` and the Box baseline |
+| `I0` — Distributed inference service | Accelerator-backed Power serving, independent replicas, gang-distributed model replicas, typed prefill/decode role pools, cache/load-aware Gateway dispatch, scoped keys, routing/fallback, durable usage, and governed self-service | Planned; Track A control plane continues now. Single-node Track B follows `BX0.software`+`PW0.software`. Gang/PD-pool distributed serving is P2 and not GA-0..2 EXIT |
+| `EV0` — Governed self-evolution | Authorized evidence datasets, reproducible evaluation and reward policy, Agentic RL candidate jobs, approval-gated promotion, canary observation, and exact rollback | Planned; **P2 only** — retained in portfolio, explicitly off the critical path until GA-2 and safety foundations exist |
+| `AR0` — Governed Agent Runtime experience | One simplified projection over existing Agent, Workload, Deployment, Operation, Runtime, Box, Secret, and evidence authorities; bounded egress, brokered credentials, context-cost evidence, idle policy, and checkpoint/fork experience without a parallel lifecycle | Planned; after GA-1 Agent availability; `AR0.1` waits for `A1.3` and `BX0.software` |
 
 `AR0`, `FN0`, `CELL0`, `MCP0`, `I0`, `WEB0`, and later application delivery profiles are
 sibling product projections over the same execution substrate. They compile
@@ -620,18 +633,31 @@ with `SEV_SNP_CI=true`, generation `milan|genoa`, and a digest-bound
 recent Box CI runs still **skip** that job (variable not armed / no
 `sev-snp` runner); the pinned tip run `34723450680` also skips
 `Integration (real microVM, KVM)` (`KVM_CI` unarmed). A skipped job is not
-certification. Hardware SEV remains the release-blocking MicroVM/TEE gate. **Physical-capacity stop:** with zero `sev-snp` runners and no `/dev/sev` on available hosts, do **not** start `PW0`, I0 Track B, clean-host product EXIT, or other post-TEE features until an online AMD SEV-SNP runner exists and Cloud TEE isolation binds. Skipping those slices is required (not optional deferral theater); it is not Verified. WSL2 and ordinary
+certification. Hardware SEV remains the **`BX0.tee` / confidential** gate, not
+the sole Verified door for Box-backed product EXIT. **Physical-capacity rule
+(2026-09-17):** with zero `sev-snp` runners and no `/dev/sev` on available
+hosts, **skip** `BX0.tee`, `PW0.tee`, confidential-workload claims, and any
+post-TEE-only features. Do **not** skip `BX0.software`, GA-0 clean-host
+enroll→deploy→HTTPS→logs→update/rollback, or ordinary Agent/Workflow
+availability work that only needs software Box. Skipping TEE slices is
+required honesty; it is not Verified tee and it must not freeze the software
+exit. WSL2 and ordinary
 GitHub-hosted runners have KVM at best and cannot supply `/dev/sev`. ACL-native
-simulation stays distinct from hardware evidence. Do not promote PW0 or EXIT
-until that isolation evidence exists. Cloud binds that evidence only through
+simulation stays distinct from hardware evidence. Do not promote `PW0.tee` or
+tee-profile EXIT until that isolation evidence exists. Cloud binds tee evidence
+only through
 `tools/box-conformance/run_bx0_tee_isolation_audit.sh`, which fail-closes with
 `A3S_CLOUD_BX0_TEE_ISOLATION_BLOCKED` until an operator-bound
-`simulate=false` certification line cites a green Box hardware SEV run. Prefer `collect_bx0_tee_isolation_evidence.sh` / `verify_bx0_tee_box_hardware_run.sh`, which re-check the Box job remotely (`success` on the pinned `box-revision`) and reject hand-edited skipped-run certs. Operator sequence: `tools/box-conformance/OPERATOR_TEE.md`. Sandbox re-cert tip remains `dbe34158` / run `34737151481`; later TEE-binder commits on this branch do not invent Verified.
+`simulate=false` certification line cites a green Box hardware SEV run. Prefer `collect_bx0_tee_isolation_evidence.sh` / `verify_bx0_tee_box_hardware_run.sh`, which re-check the Box job remotely (`success` on the pinned `box-revision`) and reject hand-edited skipped-run certs. Operator sequence: `tools/box-conformance/OPERATOR_TEE.md`. Sandbox re-cert tip remains `dbe34158` / run `34737151481`; later TEE-binder commits on this branch do not invent Verified tee.
 
-`PW0.1` follows the required `BX0.3` isolation and evidence capabilities and remains **unstarted** under the physical-capacity stop (no online `sev-snp` runner); do not implement it to simulate roadmap motion. It
+`PW0.1` / `PW0.software` may follow `BX0.software` for ordinary
+Box-hosted Power serving without waiting on SEV. `PW0.tee` follows the
+required `BX0.tee` isolation evidence and remains **unstarted** under the
+physical-capacity stop (no online `sev-snp` runner); do not implement tee
+slices to simulate roadmap motion. Power
 makes the immutable ACL-native A3S Power profile the first local I0 backend and
 proves Box-hosted health, bounded streaming and non-streaming inference,
-attestation, process/VM recovery, update, rollback, and cleanup.
+attestation where claimed, process/VM recovery, update, rollback, and cleanup.
 
 The exit gate installs Cloud, Box, Gateway, and Power on a clean supported
 Linux host without Docker or a compatible daemon; deploys, reaches, observes,
@@ -844,28 +870,33 @@ manifest rejection without Redis or another coordinator.
 
 ## 4. Delivery horizons and dependencies
 
-Execution sequencing (Wave 0 architecture integrity → Wave 1 `BX0`/`PW0` →
-Wave 2 WI/`CD0`/`H0`/`OBS`/`COMP` → Wave 3 verticals, plus dual-track I0) is
-specified in
+Execution sequencing (Wave 0 architecture integrity → GA-0 `BX0.software` →
+GA-1 Agent vertical → GA-2 Workflow/Application vertical → GA-3 day-two `ha` →
+GA-4+ deferred verticals, plus dual-track I0) is specified in
 [architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md).
 This section retains horizon outcomes; it does not duplicate wave checklists.
 
-| Horizon | Required gates | Product outcome |
-| --- | --- | --- |
-| Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one Box-hosted stateless Service on one Linux node |
-| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path |
-| Continuous delivery platform | `CD0`, `G0`, `P0`, product Release gates, `H0`, `E0`, and observability gates | Every Runtime profile and Cloud system service builds once, binds verifiable evidence, promotes exact immutable releases, observes declared SLOs, and rolls back only when state compatibility permits |
-| Plugin-managed cognitive platform | `U0`, `C0.3`, the required A3S Use gates, and named `BX0`/`H0` host foundations | Tenants assign signed multi-surface A3S Use packages to authorized workspaces without another package manager, scheduler, or node channel |
-| Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service through an authorized conforming Gateway |
-| Heterogeneous Agent platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases execute through one provider-neutral contract with native Code and conforming external Harnesses, durable approvals, recovery, and replayable trajectories |
-| Ontology-driven Workflow platform | `W0` plus the selected `A1`, `MCP0`, `I0`, `U0`, and `C0` step dependencies | Versioned business semantics compile into deterministic, recoverable plans without another workflow engine or scheduler |
-| Function platform | `FN0`, `R0`, `A1`, `W0`, `AUT0.5`, and named `H0`/Gateway gates | Finite hosted, stateless hosted, and external Functions share one release/invocation authority across APIs, Agent Tools, and Workflow nodes |
-| Static Web platform | `WEB0`, `G0`, shared objects, Edge/Gateway, and named `H0` gates | React/Vue Agent/Application UIs build through Task/Box and serve as immutable object releases without per-site Services; Cloud ships no management Dashboard |
-| Distributed inference platform | `I0`, `PW0`, `H0.3`/`H0.5`, model-supply `I0.2a-MS1` through `MS6`, and Gateway gates | Governed Models and exact weight variants serve through independent or gang-distributed Power replicas and compatible phase-disaggregated cohorts |
-| AI application platform | `APP0`, `K0`, `AUT0`, `W0`, and their named `A0`/`A1`/`AR0`/`I0`/`U0`/`MCP0`/`C0`/`S0`/`H0` dependencies | Six current application experiences, including distinct classic and New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, multi-channel publication, monitoring, and enterprise policy share one release and Flow execution path |
-| Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable |
-| Durable collaboration platform | `CELL0.1` through `CELL0.5` plus their named `BX0`/`E0`/`S0`/`H0` foundations | Human and multiple Agents share named SQLite-backed rooms/blackboards that survive idle eviction and process loss with alarms, WebSockets, fenced single-writer ownership, RPO=0 acknowledgement, and no parallel scheduler or Runtime class |
-| Governed evolution platform | `EV0`, `W0`, `A1.6`, `I0`, and the named `H0`/`C0` safety foundations | Authorized evidence produces reproducible evaluations and immutable candidates that canary, promote, halt, and roll back only through existing owning-context paths |
+**Critical path vs portfolio:** the table below still lists the full product
+portfolio. Only the first three rows plus the named Agent/Workflow narrow exits
+are GA-0…GA-2. Horizons marked **deferred** must not block software EXIT.
+
+| Horizon | Required gates | Product outcome | Path |
+| --- | --- | --- | --- |
+| Usable service platform | `BX0.software` plus Box re-cert of `R0` through `E0` | One operator can deploy, reach, observe, update, roll back, and stop one Box-hosted stateless Service on one Linux node **without TEE** | **GA-0** |
+| Heterogeneous Agent platform (narrow) | `A0` + Code-path `A1` availability | One immutable Agent release executes through Gateway with durable events and retained recovery evidence | **GA-1** |
+| Ontology-driven Workflow / one Application (narrow) | Narrow `W0` + one `APP0` experience | One Goal→Plan→Run and one Application experience publish through Gateway | **GA-2** |
+| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, stable automation, team operations, and A3S assets reuse the verified deployment path | After GA-0 |
+| Continuous delivery platform | `CD0`, `G0`, `P0`, product Release gates, `H0`, `E0`, and observability gates | Every Runtime profile and Cloud system service builds once, binds verifiable evidence, promotes exact immutable releases, observes declared SLOs, and rolls back only when state compatibility permits | **GA-3** (`ha`) |
+| Stateful production platform | `S0` and `H0` | Stateful resources, multi-node placement, HA, measured scaling, backup, and disaster recovery are production-operable | **GA-3** / GA-4+ |
+| Plugin-managed cognitive platform | `U0`, `C0.3`, the required A3S Use gates, and named `BX0`/`H0` host foundations | Tenants assign signed multi-surface A3S Use packages to authorized workspaces without another package manager, scheduler, or node channel | GA-4+ |
+| Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service through an authorized conforming Gateway | GA-4+ |
+| Function platform | `FN0`, `R0`, `A1`, `W0`, `AUT0.5`, and named `H0`/Gateway gates | Finite hosted, stateless hosted, and external Functions share one release/invocation authority across APIs, Agent Tools, and Workflow nodes | GA-4+ |
+| Static Web platform | `WEB0`, `G0`, shared objects, Edge/Gateway, and named `H0` gates | React/Vue Agent/Application UIs build through Task/Box and serve as immutable object releases without per-site Services; Cloud ships no management Dashboard | GA-4+ |
+| Single-node inference | `PW0.software`, I0 Track B minimal, Gateway dispatch | Governed keys/routes serve one Box-hosted Power replica | GA-4+ |
+| Distributed inference platform | Full `I0`, `PW0`, `H0.3`/`H0.5`, model-supply, Gateway gates | Independent or gang-distributed Power replicas and phase-disaggregated cohorts | **P2 deferred** |
+| AI application platform (full matrix) | `APP0.6`, `K0`, `AUT0`, `W0`, and named dependencies | Six application experiences, 23-node matrix, Knowledge Pipelines, six plugin outcomes, multi-channel publication, monitoring, enterprise policy | **P2 deferred** (one experience is GA-2) |
+| Durable collaboration platform | `CELL0.1` through `CELL0.5` plus named foundations | Named SQLite-backed rooms/blackboards with alarms, WebSockets, fenced single-writer ownership, RPO=0 acknowledgement | GA-4+ (after `S0`; not GA-0..2) |
+| Governed evolution platform | `EV0`, `W0`, `A1.6`, `I0`, and named safety foundations | Authorized evidence produces reproducible evaluations and immutable candidates | **P2 deferred** |
 
 Inference is a first-class shared service and still not another deployment
 engine. Its single-node model/weight/Power gates begin after `E0`; distributed
@@ -3228,9 +3259,21 @@ precede implementation of another planned bounded context. They repair and
 remove shared mechanisms; they do not create an additional product gate or
 change the evidence required by the gates below.
 
-The default portfolio priority is:
+The default portfolio priority follows the pragmatic GAs in
+[architecture-optimization-roadmap.md](docs/architecture-optimization-roadmap.md):
 
-Before product-specific breadth advances, the platform must also freeze
+1. ~~finish `BX0.software` / GA-0 clean-host evidence~~ **Done (`2026-09-17`)** —
+   retained [docs/evidence/bx0-software-exit-2026-09-17](docs/evidence/bx0-software-exit-2026-09-17/);
+2. land GA-1 Agent availability (Code path) and GA-2 one Workflow/Application
+   experience — checklist [ga1-agent-availability-checklist.md](docs/ga1-agent-availability-checklist.md);
+3. continue Wave 0 integrity and I0 Track A fail-closed work in parallel;
+4. treat `CD0.1`, `H0.4-WI1`, `H0.5-OBS1`, and `C0.4-COMP1` as useful
+   contract-only freezes that do **not** redefine GA-0 EXIT;
+5. defer full `ha` (`H0.3`–`H0.5`), `CELL0` production, distributed `I0`,
+   `APP0.6`, and `EV0` until after those exits.
+
+Before product-specific **breadth** advances past GA-2, the platform should
+still freeze
 `CD0.1`, `H0.4-WI1`, `H0.5-OBS1`, and `C0.4-COMP1`. These contract-only slices
 close the delivery, workload-trust, observability, and compatibility semantics
 used by every later Runtime profile; they add no parallel executor, service
@@ -3663,30 +3706,31 @@ protocol and recovery gate.
 
 A product gate is complete only when:
 
+- the claimed **delivery profile** (`software`, `tee`, or `ha`) is named in
+  the gate evidence and matching ROADMAP state;
 - the documentation capability-preservation check retains the native Cloud,
   TokenHub-inspired, Google AX-inspired, commercial application-platform core,
   and cross-layer security outcomes or records an explicit reviewed retirement
-  migration;
-- an `APP0`, `K0`, or `AUT0` claim is backed by the versioned ACL capability
-  manifest, and every required application mode including classic/New Agent,
-  Workflow node, Knowledge
-  Pipeline source/processor/chunk/index/input/debug outcome, plugin outcome,
-  publication channel, monitor outcome, and enterprise outcome names one owner,
-  verified dependencies, and retained evidence;
+  **or deferral** (deferred portfolio items must not be implied by GA-0…GA-2);
+- an `APP0`, `K0`, or `AUT0` **availability** claim for GA-2 names one experience
+  (or Files foundation) with owner, verified dependencies, and retained
+  evidence; full `APP0.6` matrix parity remains a separate P2 claim;
 - a `CELL0` claim proves conditional storage writes, one current writer,
   epoch-fenced stale owners, durable acknowledgement, private operator traffic,
-  idle reactivation, and namespace-safe cleanup without a per-Cell Cloud table;
+  idle reactivation, and namespace-safe cleanup without a per-Cell Cloud table
+  (CELL0 is not GA-0…GA-2 EXIT);
 - a backend/interface slice lands its domain invariants, commands, queries,
   persistence, provider adapters, REST/OpenAPI, maintained client, and
   applicable CLI/MCP surfaces together; Agent/Application UI projections
-  consume these contracts and static delivery must pass `WEB0`;
+  consume these contracts and static delivery must pass `WEB0` before advertising
+  static hosting;
 - every mutation has tenant scope, idempotency, audit, timeout, cancellation,
   retry, cleanup, and documented error semantics;
 - real-provider happy path, failure, process-death, replay, corruption, and
-  cleanup gates pass from a clean environment;
+  cleanup gates pass from a clean environment **for the claimed profile**;
 - the owning installation gate passes on clean supported Linux with A3S Box and
   without AX, Kubernetes, Helm, CRDs, Operators, Docker, or a compatibility
-  daemon when the capability is part of the native replacement outcome;
+  daemon when the capability is part of the native software EXIT;
 - Secret handling, authorization, revocation, SSRF, path/URL validation, and
   cross-tenant fixtures pass;
 - upgrades, mixed versions, rollback, backup/restore, observability, and
@@ -3696,7 +3740,13 @@ A product gate is complete only when:
 - unsupported or unverified capability fails explicitly instead of degrading
   silently.
 
+Hardware TEE, multi-node HA, distributed inference, full application-matrix
+parity, Durable Cell RPO=0 production, and `EV0` are **additional** profile or
+P2 claims. Their absence must not prevent marking a software-profile gate
+Verified when its named software evidence passes.
+
 See the [development plan](docs/development-plan.md),
+[architecture optimization roadmap](docs/architecture-optimization-roadmap.md),
 [Workflow and evolution plan](docs/workflow-evolution-plan.md),
 [AI application platform plan](docs/ai-application-platform-plan.md), and
 [Durable Cell Service plan](docs/durable-cell-platform-plan.md), and the

@@ -9,6 +9,7 @@ use crate::modules::files::{
     SharedUserFileObjectStore, UserFileAccess, UserFileObjectError,
 };
 use crate::modules::search::{search_persistence_adapter, ISearchRepository};
+use crate::modules::secrets::SecretAccess;
 use crate::modules::security::{
     security_persistence_adapter, IGatewayRoutePolicyTimelineRepository,
 };
@@ -47,6 +48,14 @@ pub fn user_file_organization_access_for_conformance() -> UserFileAccess {
 #[doc(hidden)]
 pub fn workload_organization_access_for_conformance() -> WorkloadAccess {
     WorkloadAccess::organization_wide()
+}
+
+/// Creates organization-wide Secrets access only for the retained external
+/// A0.4 real Box release gate. Product composition must derive this projection
+/// through the root Presentation ACL instead.
+#[doc(hidden)]
+pub fn secret_organization_access_for_conformance() -> SecretAccess {
+    SecretAccess::organization_wide()
 }
 
 /// Builds the exact production Search persistence adapter through its owner

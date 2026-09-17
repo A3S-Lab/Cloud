@@ -1,0 +1,3 @@
+artifact_uri=oci://127.0.0.1:50020/a3s/bx0-software@sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a
+artifact_digest=sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a
+source=operator_prepublished

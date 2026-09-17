@@ -92,9 +92,13 @@ This prep does NOT claim A3S_CLOUD_BX0_CLEAN_HOST_LOOP_CERTIFIED.
   #   next_loop=… next_exit=… product_exit=not_claimed loop_exit=not_certified
 
 6) After full enroll→…→cleanup, collect LOOP evidence from the gate evidence dir
-   (steps 1–9 *=executed); exit audit still needs Power (PW0):
+   (steps 1–9 *=executed); software EXIT audit needs LOOP+receipts only
+   (Power is optional profile=power; TEE is BX0.tee):
   bash tools/box-conformance/collect_bx0_clean_host_evidence.sh \\
     --host HOST --service-id ID --node-id ID --artifact-digest DIGEST \\
     --gate-evidence-dir "\$A3S_CLOUD_BX0_EVIDENCE_DIR"
-  See tools/box-conformance/OPERATOR_CLEAN_HOST.md
+  export A3S_CLOUD_BX0_EXIT_PROFILE=software
+  bash tools/box-conformance/run_bx0_clean_host_exit_audit.sh
+  # Or orchestrate assisted LIVE: tools/box-conformance/run_bx0_software_exit_harness.sh
+  See tools/box-conformance/OPERATOR_CLEAN_HOST.md and docs/ga0-bx0-software-checklist.md
 EOF

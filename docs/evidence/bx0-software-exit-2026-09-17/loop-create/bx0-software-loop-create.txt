@@ -1,0 +1,12 @@
+A3S_CLOUD_BX0_SOFTWARE_LOOP_CREATE_OK phase=enroll_through_cleanup
+cloud_revision=140a62d04f1309d549f8764426328fc92bbbf473
+node_id=01a0ae6b-4678-70d0-bff4-41a728ae4949
+artifact_digest=sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a
+service_id=01a0ae6b-4e7f-70e1-9e48-88262663e3ce
+workload_id=01a0ae6b-4e7f-70e1-9e48-88262663e3ce
+revision_id=01a0ae6b-4e7f-70e1-9e48-883ec6449bcf
+export_file=/tmp/bx0-live-chain/exit/loop-create/bx0-software-loop-env.sh
+agent_pid=1672848
+product_exit=not_claimed
+loop_certified=not_claimed
+honesty=Pre-published OCI digest required; create never invents digests/EXIT/Power.

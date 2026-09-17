@@ -41,12 +41,13 @@ implementation design.
 ### Physical machine wall (this delivery host)
 
 When a later gate requires hardware or live external providers that this host
-cannot supply, skip that work rather than inventing a substitute verification
-path. A skip is not Verified. Observed on this host:
+cannot supply, skip that **profile** rather than inventing a substitute
+verification path. A skip is not Verified for that profile. Observed on this
+host:
 
 - no AMD SEV-SNP device (`/dev/sev*` absent; no `sev` kernel module) → skip
-  hardware-backed MicroVM/TEE and Verified-via-TEE claims for `BX0`/`I0`/`K0`
-  ingestion paths that require SEV evidence;
+  `BX0.tee` / `PW0.tee` and Verified-via-TEE claims; continue `BX0.software`,
+  GA-0 clean-host, and ordinary Agent/Workflow availability;
 - no live MinIO/S3 configuration (`MINIO_*`/`S3_*`/`AWS_*` object-store env
   unset) → skip live object-store certification and Files cleanup worker
   execution that require a real provider;
@@ -55,7 +56,8 @@ path. A skip is not Verified. Observed on this host:
 
 Plan-aligned software quick-wins that do not invent unnumbered slices and do
 not require those providers continue; premature production worker wiring that
-the owning slice intentionally left optional stays deferred.
+the owning slice intentionally left optional stays deferred. Do not freeze
+GA-0 on absent TEE hardware.
 
 The [Durable Cell Service plan](durable-cell-platform-plan.md) owns `CELL0`
 application, provider, S0 namespace, fencing, rollout, compatibility, and fault
@@ -68,20 +70,24 @@ ownership, control paths, deployment profiles, and failure behavior. This plan
 may record historical provider evidence, but historical Docker evidence never
 defines the active Box-only architecture or certifies a current gate.
 
-The roadmap has cumulative delivery horizons:
+The roadmap has cumulative delivery horizons. **Critical-path GAs** are defined
+in
+[architecture-optimization-roadmap.md](architecture-optimization-roadmap.md);
+horizons below marked deferred must not block software EXIT.
 
-| Horizon | Required gates | Product outcome |
-| --- | --- | --- |
-| Usable service platform | `BX0` plus `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one Box-hosted stateless Service on one Linux node |
-| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, multi-service import, stable automation surfaces, and A3S asset releases use the same deployment path |
-| Plugin-managed cognitive platform | `U0`, `C0.3`, required A3S Use gates, and named `BX0`/`H0` host foundations | Signed multi-surface Use packages converge as tenant workspace assignments through the shared Plugin Manager and existing Cloud control paths |
-| Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service and is reached through a conforming, authorized Gateway data plane |
-| Heterogeneous Agent platform | `A0`, `A1`, and the relevant `C0` grants and audit gates | Immutable Agent releases use one provider-neutral Harness contract, durable approvals, recovery, and replayable trajectories without another controller |
-| Ontology-driven Workflow platform | `W0` plus the selected `A1`, `MCP0`, `I0`, `U0`, and `C0` dependencies | Versioned business semantics compile into deterministic, recoverable plans on the existing A3S Flow path |
-| AI application platform | `APP0`, `K0`, `AUT0`, `W0`, and their named A0/A1/AR0, provider, identity, storage, Gateway, and production gates | Six current application experiences, including distinct classic/New Agent outcomes, 23 built-in Workflow node labels with classic/New Agent profiles under Agent, Knowledge Pipelines, six plugin outcomes, publication, monitoring, and enterprise policy share one release and Flow path |
-| Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable |
-| Durable entity platform | `CELL0.1` through `CELL0.5` plus named `BX0`/`E0`/`S0`/`H0` foundations | One named SQLite-backed application survives idle eviction and process loss with alarms, WebSockets, single-writer fencing, durable acknowledgement, and no parallel control path |
-| Governed evolution platform | `EV0`, `W0`, `A1.6`, `I0`, and named `H0`/`C0` safety foundations | Authorized evidence produces reproducible evaluations and immutable candidates promoted only through existing rollout and rollback authorities |
+| Horizon | Required gates | Product outcome | Path |
+| --- | --- | --- | --- |
+| Usable service platform | `BX0.software` plus Box re-cert of `R0` through `E0` | One operator can deploy, reach, observe, update, and roll back one Box-hosted stateless Service on one Linux node without TEE | **GA-0** |
+| Heterogeneous Agent platform (narrow) | `A0` + Code-path `A1` availability | One Agent release path available through Gateway | **GA-1** |
+| Ontology-driven Workflow / one Application (narrow) | Narrow `W0` + one `APP0` experience | One Goal→Plan→Run and one Application experience | **GA-2** |
+| Developer platform | `G0`, `P0`, `C0`, and `A0` | Source-to-release workflows, previews, multi-service import, stable automation surfaces, and A3S asset releases use the same deployment path | After GA-0 |
+| Plugin-managed cognitive platform | `U0`, `C0.3`, required A3S Use gates, and named `BX0`/`H0` host foundations | Signed multi-surface Use packages converge as tenant workspace assignments through the shared Plugin Manager and existing Cloud control paths | GA-4+ |
+| Hosted MCP platform | `A0.3`, `MCP0.1` through `MCP0.5`, and their named `BX0`/`H0` foundations | One immutable modern MCP release runs as a Box-hosted Runtime Service and is reached through a conforming, authorized Gateway data plane | GA-4+ |
+| Function / Static Web / single-node inference | `FN0`, `WEB0`, `PW0.software` + I0 Track B minimal | Sibling projections over the same Task/Service path | GA-4+ |
+| Stateful production platform | `S0` and `H0` | Stateful resources, verified recovery, multi-node placement, high availability, and measured scaling are production-operable | **GA-3** (`ha`) |
+| Durable entity platform | `CELL0.1` through `CELL0.5` plus named `BX0`/`E0`/`S0`/`H0` foundations | One named SQLite-backed application survives idle eviction and process loss with alarms, WebSockets, single-writer fencing, durable acknowledgement, and no parallel control path | GA-4+ after `S0` |
+| Full AI application matrix | `APP0.6`, `K0`, `AUT0`, `W0`, and named dependencies | Six experiences, 23-node matrix, Knowledge Pipelines, enterprise policy | **P2 deferred** |
+| Distributed inference / governed evolution | Full `I0`, `EV0` | Gang/PD pools; Agentic RL promotion | **P2 deferred** |
 
 These horizons are cumulative. A broader interface or import format never
 creates a second orchestration path and never weakens an earlier durability,

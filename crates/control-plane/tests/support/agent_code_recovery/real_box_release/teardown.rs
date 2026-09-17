@@ -13,20 +13,18 @@ pub(super) async fn request_workload_stop(
     let expected_version = workload.aggregate_version;
     workload.request_stop(requested_at)?;
     let operation_id = OperationId::new();
-    let operation = OperationRequest::new(
+    let operation = WorkloadStopOperationIntent::new(
         operation_id,
         organization_id,
-        OperationSubject::new("workload", workload_id.as_uuid())?,
-        WorkflowIdentity::new(STOP_WORKFLOW_NAME, STOP_WORKFLOW_VERSION)?,
-        json!({
-            "operationId": operation_id,
-            "organizationId": organization_id,
-            "requestedAt": requested_at,
-            "workloadId": workload_id,
-        }),
+        workload_id,
         requested_at,
     );
-    let event = WorkloadStopRequested::envelope(&workload, &operation, Uuid::now_v7())?;
+    let event = WorkloadStopRequested::envelope(
+        &workload,
+        operation.operation_id,
+        operation.requested_at,
+        Uuid::now_v7(),
+    )?;
     workloads
         .request_workload_stop(RequestWorkloadStopBundle {
             workload,
@@ -216,6 +214,38 @@ pub(super) fn require_gate() -> TestResult {
     Ok(())
 }
 
+/// Keep the enrolled node online for scheduler admission.
+///
+/// Production Agents heartbeat continuously. This synchronous harness owns the
+/// same node without a background Agent loop, so it must refresh `last_observed_at`
+/// before each schedule-sensitive Flow cycle or the 5s–tens-of-seconds setup gap
+/// after enroll makes `accepts_new_work_at` reject the only candidate.
+pub(super) async fn refresh_node_heartbeat(
+    nodes: &PostgresNodeRepository,
+    organization_id: OrganizationId,
+    node_id: NodeId,
+    agent_instance_id: Uuid,
+) -> TestResult {
+    let node = nodes.find(organization_id, node_id).await?;
+    if node.agent_instance_id != agent_instance_id {
+        return Err(invalid("A0.4 fixture changed the enrolled Agent identity").into());
+    }
+    let floor = node
+        .last_observed_at
+        .checked_add_signed(Duration::milliseconds(1))
+        .ok_or_else(|| invalid("A0.4 heartbeat timestamp overflowed"))?;
+    nodes
+        .record_heartbeat(NodeHeartbeatUpdate {
+            node_id,
+            agent_instance_id,
+            agent_version: node.agent_version,
+            capabilities: node.capabilities,
+            observed_at: canonical_timestamp(Utc::now().max(floor)),
+        })
+        .await?;
+    Ok(())
+}
+
 pub(super) fn dedicated_box_home() -> TestResult<PathBuf> {
     let configured = PathBuf::from(
         std::env::var_os("A3S_HOME")
@@ -223,6 +253,21 @@ pub(super) fn dedicated_box_home() -> TestResult<PathBuf> {
     );
     if !configured.is_absolute() || configured.canonicalize()? != configured {
         return Err(invalid("dedicated A0.4 A3S_HOME must be absolute and canonical").into());
+    }
+    // Sandbox rejects bind sources under these prefixes. /dev/shm is under
+    // /dev, so a whole-home-on-shm layout breaks attachment aliases.
+    const PROTECTED_HOME_PREFIXES: &[&str] = &[
+        "/boot", "/dev", "/etc", "/proc", "/run", "/sys", "/var/run",
+    ];
+    if PROTECTED_HOME_PREFIXES
+        .iter()
+        .any(|prefix| configured.starts_with(prefix))
+    {
+        return Err(invalid(format!(
+            "dedicated A0.4 A3S_HOME {} is under a Sandbox-protected host prefix; use a path under /tmp (or similar) and keep only runtime-secrets on tmpfs",
+            configured.display()
+        ))
+        .into());
     }
     Ok(configured)
 }

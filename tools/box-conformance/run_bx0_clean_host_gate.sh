@@ -525,7 +525,9 @@ if ((execute_receipts_complete == 1)); then
     'next_loop=collect_bx0_clean_host_evidence.sh' \
     "next_loop_gate_evidence_dir=$evidence_dir" \
     'next_exit=run_bx0_clean_host_exit_audit.sh' \
-    'next_exit_requires=LOOP+gate_evidence+Power' \
+    'next_exit_requires=LOOP+gate_evidence' \
+    'next_exit_profile=software' \
+    'next_exit_power_profile_requires=LOOP+gate_evidence+Power' \
     'product_exit=not_claimed'
 fi
 printf 'Cloud root: %s\n' "$CLOUD_ROOT"

@@ -1,0 +1,6 @@
+A3S_CLOUD_BX0_CLEAN_HOST_LOOP_COLLECTED
+certification=/tmp/bx0-live-chain/exit/loop/bx0-clean-host-certification.txt
+evidence_dir=/tmp/bx0-live-chain/exit/loop
+gate_evidence_dir=/tmp/a3s-cloud-bx0-clean-host.H2aWS3
+execute_receipts_complete=1
+power=UNBOUND product_exit=not_claimed

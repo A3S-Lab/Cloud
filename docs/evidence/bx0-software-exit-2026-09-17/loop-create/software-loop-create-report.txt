@@ -1,0 +1,26 @@
+PASS	middleware keepalive pid=1672780
+PASS	issuing enrollment credential via nodes bootstrap
+PASS	nodes bootstrap ok
+PASS	node.acl name aligned to bootstrap name=worker-bx0-software-7b67646f
+PASS	cleared stale node identity under /tmp/a3s-cloud-bx0-node-state
+PASS	starting node-agent /mnt/d/code/a3s/apps/cloud/target/debug/a3s-cloud-node-agent
+PASS	launching node-agent under rootlesskit for overlay + layer ownership
+PASS	node-agent env A3S_REGISTRY_PROTOCOL=http (loopback HTTP registry)
+PASS	enrolled node_id=01a0ae6b-4678-70d0-bff4-41a728ae4949
+PASS	OCI runtime CLI present (/home/roylin/code/a3s-box-install/a3s-oci); using operator-published digest=sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a
+PASS	deployed workload_id=01a0ae6b-4e7f-70e1-9e48-88262663e3ce revision_id=01a0ae6b-4e7f-70e1-9e48-883ec6449bcf
+PASS	box providerResourceId=52fb1ef6-1d85-48d6-9905-88fabc2d8071 member=01a0ae6b-4e7f-70e1-9e48-88262663e3ce status=applying
+PASS	box status=running before port-forward
+PASS	HEALTH_URL=http://127.0.0.1:18080/ready via microvm exec proxy pid=1673742
+PASS	health ready at http://127.0.0.1:18080/ready
+PASS	https url ready https://127.0.0.1:18444/ready
+PASS	a3s-box inspect ok before cleanup for 52fb1ef6-1d85-48d6-9905-88fabc2d8071
+PASS	logs cursor=1789632691000004
+PASS	updated to digest=sha256:25c1f11b88b9817b115be2eeb3c90d3c3027d474c9de6ecfb0ec20244cc72088 revision_id=01a0ae6b-d0ca-73f1-ba60-6134846217d7
+PASS	update revision active=01a0ae6b-d0ca-73f1-ba60-6134846217d7
+PASS	deployments settled before rollback
+PASS	rolled back to digest=sha256:499dd1d5f9848d3639a745d8bb8bc76b138e991d913c4f4c50e905f0eb15161a revision_id=01a0ae6b-4e7f-70e1-9e48-883ec6449bcf
+PASS	workloads stop ok
+PASS	a3s-box rm --force 52fb1ef6-1d85-48d6-9905-88fabc2d8071
+PASS	cleanup verified inspect-absent; CLEANUP_INSTANCE=52fb1ef6-1d85-48d6-9905-88fabc2d8071
+PASS	create phase=enroll_through_cleanup export=/tmp/bx0-live-chain/exit/loop-create/bx0-software-loop-env.sh
