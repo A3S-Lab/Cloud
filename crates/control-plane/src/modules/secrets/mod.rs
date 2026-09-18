@@ -1,7 +1,9 @@
 pub mod application;
 pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+pub(crate) mod infrastructure;
+pub(crate) mod presentation;
+
+mod facade;
 
 pub(crate) use application::SecretAccessScope;
 pub use application::{
@@ -19,9 +21,8 @@ pub use domain::{
     RotateSecretWrite, Secret, SecretChanged, SecretEncryptionError, SecretState, SecretVersion,
     SecretVersionState, SecretWrite, SecretWriteReference, TransitionSecretVersion,
 };
-pub use infrastructure::{
+pub use facade::{
     InMemorySecretRepository, PostgresSecretRepository, ProjectsSecretEnvironmentAccessAdapter,
-    WorkloadsSecretMaterializationAuthorizerAdapter,
+    SecretsModule, WorkloadsSecretMaterializationAuthorizerAdapter,
 };
 pub(crate) use infrastructure::lock_secret_version_for_rotation;
-pub use presentation::SecretsModule;

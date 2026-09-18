@@ -21,9 +21,9 @@ use crate::modules::workflow::{
     WorkflowStepConfiguration, WorkflowStepKind, WorkflowStepSpec,
 };
 use a3s_form_core::{
-    FORM_INTERACTION_SUBMISSION_API_VERSION, FormInteractionOutcome, FormInteractionRequest,
+    digest_interaction_value, parse_json, FormInteractionOutcome, FormInteractionRequest,
     FormInteractionSubmission, FormInteractionSubmissionAssignment, FormReleaseRef,
-    digest_interaction_value, parse_json,
+    FORM_INTERACTION_SUBMISSION_API_VERSION,
 };
 
 const ONTOLOGY_ACL: &str = include_str!(concat!(
@@ -34,8 +34,8 @@ const RESTRICTED_WORKFLOW_TOKEN: &str =
     "a3s_8888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
-async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_surface_exact()
--> Result<()> {
+async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_surface_exact(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -62,25 +62,19 @@ async fn workflow_node_catalog_is_deterministic_project_authorized_and_cross_sur
     assert_eq!(catalog["revision"], "1.0.0");
     assert_eq!(catalog["baseline"], "2026-08-13");
     assert_eq!(catalog["parityClaim"], false);
-    assert!(
-        catalog["parityManifestDigest"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:"))
-    );
-    assert!(
-        catalog["profileSetDigest"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:"))
-    );
+    assert!(catalog["parityManifestDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
+    assert!(catalog["profileSetDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
     let nodes = catalog["nodes"]
         .as_array()
         .ok_or_else(|| BootError::Internal("Workflow node catalog has no nodes".into()))?;
     assert_eq!(nodes.len(), 23);
-    assert!(
-        nodes
-            .windows(2)
-            .all(|pair| { pair[0]["capabilityId"].as_str() < pair[1]["capabilityId"].as_str() })
-    );
+    assert!(nodes
+        .windows(2)
+        .all(|pair| { pair[0]["capabilityId"].as_str() < pair[1]["capabilityId"].as_str() }));
     assert!(nodes.iter().all(|node| node["availability"] != "public"));
     assert_eq!(
         nodes
@@ -310,11 +304,9 @@ async fn human_task_submission_reuses_native_form_and_persists_identity_evidence
         .as_ref()
         .ok_or_else(|| BootError::Internal("persisted Form submission is missing".into()))?
         .authorization_decision;
-    assert!(
-        authorization
-            .id
-            .starts_with("urn:a3s:cloud:identity:resource-authorization-decision:")
-    );
+    assert!(authorization
+        .id
+        .starts_with("urn:a3s:cloud:identity:resource-authorization-decision:"));
     assert!(authorization.digest.as_str().starts_with("sha256:"));
 
     let replay = app.call(submit_request(&submission)).await?;
@@ -639,11 +631,9 @@ async fn human_task_reads_are_bounded_and_only_expose_interactions_to_the_claima
         mcp_list["result"]["structuredContent"]["data"][0]["id"],
         claimed_id.to_string()
     );
-    assert!(
-        mcp_list["result"]["structuredContent"]["data"][0]
-            .get("interactionRequest")
-            .is_none()
-    );
+    assert!(mcp_list["result"]["structuredContent"]["data"][0]
+        .get("interactionRequest")
+        .is_none());
 
     let mcp_observer_view = app
         .call(mcp_tool_call_as(
@@ -949,11 +939,9 @@ async fn workflow_definition_goal_and_plan_are_versioned_idempotent_and_exact() 
         ))
         .await?;
     assert_eq!(revision.status(), 200);
-    assert!(
-        response_json(&revision)?["data"]["canonicalDefinitionAcl"]
-            .as_str()
-            .is_some_and(|acl| acl.contains("Version two"))
-    );
+    assert!(response_json(&revision)?["data"]["canonicalDefinitionAcl"]
+        .as_str()
+        .is_some_and(|acl| acl.contains("Version two")));
 
     let goal_contract = WorkflowGoalContract::from_spec(WorkflowGoalSpec {
         name: "Resolve support request".into(),
@@ -1403,11 +1391,9 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
         semantic_contract_set_digest
     );
     assert!(plan["plan"]["variableContractDigest"].is_string());
-    assert!(
-        plan["plan"]["steps"]
-            .as_array()
-            .is_some_and(|steps| steps.iter().all(|step| step["descriptor"].is_object()))
-    );
+    assert!(plan["plan"]["steps"]
+        .as_array()
+        .is_some_and(|steps| steps.iter().all(|step| step["descriptor"].is_object())));
 
     let run = app
         .call(post_json(
@@ -1496,8 +1482,8 @@ async fn workflow_semantic_contracts_publish_restore_compile_and_create_v2_runs(
 }
 
 #[tokio::test]
-async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_replay()
--> Result<()> {
+async fn restricted_workflow_access_resolves_project_before_reads_mutations_and_replay(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;

@@ -17,6 +17,9 @@ mod secret_binding_access;
 mod secret_materialization_authorization;
 mod skill_release_admission;
 mod source_build_admission;
+mod service_template_dto;
+mod workload_deployment_node_command_port;
+mod workload_manifest_admission;
 mod workflow;
 
 #[cfg(test)]
@@ -106,6 +109,17 @@ pub use skill_release_admission::{
 };
 pub use source_build_admission::{
     IWorkloadSourceBuildAdmissionPort, WorkloadSourceBuildAdmissionRequest,
+};
+pub use service_template_dto::{ServiceTemplateDto, SourceWorkloadTemplateDto};
+pub(crate) use workload_manifest_admission::{
+    parse_source_workload_manifest, parse_workload_manifest, WorkloadManifest,
+    WORKLOAD_MANIFEST_MAX_BYTES,
+};
+pub use workload_deployment_node_command_port::{
+    IWorkloadDeploymentNodeCommandPort, WorkloadDeploymentNodeCommandAcknowledgement,
+    WorkloadDeploymentNodeCommandDispatch, WorkloadDeploymentNodeCommandEnqueueRequest,
+    WorkloadDeploymentNodeCommandProjection, WorkloadDeploymentResourceInventoryProjection,
+    WorkloadDeploymentRuntimeObservationProjection,
 };
 pub use workflow::{
     DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION, LEGACY_DEPLOYMENT_WORKFLOW_VERSION,

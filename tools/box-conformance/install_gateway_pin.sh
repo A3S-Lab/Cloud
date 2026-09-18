@@ -14,7 +14,12 @@ readonly SCRIPT_DIRECTORY="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLOUD_ROOT="$(cd "$SCRIPT_DIRECTORY/../.." && pwd)"
 # When this script is LF-copied under /tmp, BASH_SOURCE no longer points at apps/cloud.
 if [[ ! -f $CLOUD_ROOT/tools/gateway-conformance/gateway-revision ]]; then
-  CLOUD_ROOT=/mnt/d/code/a3s/apps/cloud
+  if [[ -n ${A3S_CLOUD_ROOT:-} && -f ${A3S_CLOUD_ROOT}/tools/gateway-conformance/gateway-revision ]]; then
+    CLOUD_ROOT=$A3S_CLOUD_ROOT
+  else
+    printf '%s\n' "cloud root missing gateway-revision (set A3S_CLOUD_ROOT); tried=$CLOUD_ROOT" >&2
+    exit 1
+  fi
 fi
 readonly CLOUD_ROOT
 readonly GATEWAY_PIN_FILE="$CLOUD_ROOT/tools/gateway-conformance/gateway-revision"

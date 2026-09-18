@@ -40,7 +40,7 @@ pub async fn exercise_workload_health_facts(
 
     let first = request(workload.clone(), 1, '6', "postgres-rollout-health-1", now)?;
     let first_deployment_id = first.deployment.id;
-    let first_operation_id = first.operation.id;
+    let first_operation_id = first.operation.operation_id;
     repository.create_deployment(first).await?;
     let resolving = repository
         .mark_resolving(first_deployment_id, 1, now + Duration::seconds(1))
@@ -117,7 +117,7 @@ pub async fn exercise_workload_health_facts(
     )?;
     let second_deployment_id = second.deployment.id;
     let second_revision_id = second.revision.id;
-    let second_operation_id = second.operation.id;
+    let second_operation_id = second.operation.operation_id;
     let second_revision = second.revision.clone();
     repository.create_deployment(second).await?;
     let resolving = repository

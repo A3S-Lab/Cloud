@@ -178,6 +178,9 @@ pub(super) fn closed_json_request_schema(path: &str) -> Option<Value> {
             update_workload_schema(false)
         }
         _ if path.ends_with("/workloads/{workload_id}/deployments") => update_workload_schema(true),
+        "/organizations/{organization_id}/partner-artifact-admissions" => {
+            partner_artifact_admission_request_schema()
+        }
         _ => return None,
     };
     let mut schema = schema;
@@ -1199,6 +1202,33 @@ fn string_enum_array(values: &[&str], required: bool) -> Value {
         schema["minItems"] = json!(1);
     }
     schema
+}
+
+fn partner_artifact_admission_request_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["contentDigest", "kind", "byteSize", "partnerRef"],
+        "properties": {
+            "contentDigest": {
+                "type": "string",
+                "pattern": "^sha256:[0-9a-f]{64}$",
+                "description": "Content-addressed digest. Cloud does not store the partner blob."
+            },
+            "kind": { "type": "string", "enum": ["model", "git", "oci", "generic"] },
+            "byteSize": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 8_796_093_022_208_i64
+            },
+            "partnerRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 256,
+                "description": "Opaque partner locator. Not a Cloud object key."
+            }
+        }
+    })
 }
 
 #[cfg(test)]

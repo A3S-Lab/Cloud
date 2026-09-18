@@ -1,5 +1,4 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::modules::sources::application::commands::resolve_external_source_revision::{
     DockerfileBuildRecipeInput, ResolveExternalSourceRevision,
@@ -7,7 +6,7 @@ use crate::modules::sources::application::commands::resolve_external_source_revi
 use crate::modules::sources::presentation::dto::{
     ResolveSourceRevisionRequest, SourceRevisionResponse,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, Result,

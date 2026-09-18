@@ -1,5 +1,7 @@
 mod api_token_created;
 mod api_token_revoked;
+mod directory_membership_projection_changed;
+mod directory_resource_grant_changed;
 mod external_identity_changed;
 mod inference_credential_changed;
 mod membership_changed;
@@ -14,6 +16,8 @@ mod workload_trust_changed;
 
 pub use api_token_created::ApiTokenCreated;
 pub use api_token_revoked::ApiTokenRevoked;
+pub use directory_membership_projection_changed::DirectoryMembershipProjectionChanged;
+pub use directory_resource_grant_changed::DirectoryResourceGrantChanged;
 pub use external_identity_changed::ExternalIdentityChanged;
 pub use inference_credential_changed::InferenceCredentialChanged;
 pub use membership_changed::MembershipChanged;

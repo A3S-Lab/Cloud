@@ -16,7 +16,8 @@ pub use application::{
     InspectCachedPluginCatalogHandler, InspectPluginCatalog, InspectPluginCatalogHandler,
     ListPluginAssignments, ListPluginAssignmentsHandler, ListPluginRegistries,
     ListPluginRegistriesHandler, PLUGIN_ASSIGNMENT_WORKFLOW_NAME,
-    PLUGIN_ASSIGNMENT_WORKFLOW_VERSION, PluginAccess, PluginAssignmentReconcileReport,
+    PLUGIN_ASSIGNMENT_WORKFLOW_VERSION, IPluginAssignmentNodeCommandPort, PluginAccess,
+    PluginAssignmentReconcileReport,
     PluginAssignmentReconciler, RecordPluginPlanProjection, RecordPluginPlanProjectionHandler,
     SearchCachedPluginCatalog, SearchCachedPluginCatalogHandler, SearchPluginCatalog,
     SearchPluginCatalogHandler, SetPluginAssignment, SetPluginAssignmentHandler,
@@ -24,8 +25,9 @@ pub use application::{
 };
 
 pub use infrastructure::{
-    A3sUsePluginRegistryCatalog, IdentityPluginRegistryEnrollmentAuthorizerAdapter,
-    PluginAssignmentFlowConfig, PluginAssignmentFlowConfigOptions, PluginAssignmentFlowRuntime,
+    A3sUsePluginRegistryCatalog, FleetPluginAssignmentNodeCommandAccessAdapter,
+    IdentityPluginRegistryEnrollmentAuthorizerAdapter, PluginAssignmentFlowConfig,
+    PluginAssignmentFlowConfigOptions, PluginAssignmentFlowRuntime,
     PluginAssignmentFlowRuntimeDependencies, PluginPolicyObjectStore, PluginTrustRootObjectStore,
     persistence::{
         InMemoryPluginAssignmentRepository, InMemoryPluginPlanProjectionRepository,

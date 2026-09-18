@@ -468,11 +468,9 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         .await?;
     assert_eq!(rejected.status(), 404);
     assert_response_has_no_bearer(&rejected, &[&bearer]);
-    assert!(
-        response_json(&rejected)?["data"]
-            .get("bearerCredential")
-            .is_none()
-    );
+    assert!(response_json(&rejected)?["data"]
+        .get("bearerCredential")
+        .is_none());
 
     let missing_environment = Uuid::now_v7();
     let missing_path = format!(
@@ -488,11 +486,9 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
         .await?;
     assert_eq!(missing.status(), 404);
     assert_response_has_no_bearer(&missing, &[&bearer]);
-    assert!(
-        response_json(&missing)?["data"]
-            .get("bearerCredential")
-            .is_none()
-    );
+    assert!(response_json(&missing)?["data"]
+        .get("bearerCredential")
+        .is_none());
 
     let fetched = app
         .call(
@@ -519,10 +515,10 @@ async fn inference_key_rotate_rejects_wrong_environment_path_as_not_found() -> R
 }
 
 #[tokio::test]
-async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer()
--> Result<()> {
-    use crate::modules::identity::InMemoryInferenceCredentialRepository;
+async fn inference_key_create_replay_after_delivery_receipt_sweep_returns_conflict_without_bearer(
+) -> Result<()> {
     use crate::modules::identity::application::InferenceCredentialDeliveryReceiptSweeper;
+    use crate::modules::identity::InMemoryInferenceCredentialRepository;
     use std::time::Duration as StdDuration;
 
     let identity = Arc::new(InMemoryIdentityRepository::new());
@@ -980,8 +976,8 @@ async fn inference_key_list_rejects_missing_environment_path_as_not_found() -> R
 
 #[tokio::test]
 async fn inference_key_get_rejects_missing_owning_environment_as_not_found() -> Result<()> {
-    use crate::modules::identity::InMemoryInferenceCredentialRepository;
     use crate::modules::identity::domain::entities::InferenceCredential;
+    use crate::modules::identity::InMemoryInferenceCredentialRepository;
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, InferenceCredentialId, OrganizationId, ProjectId,
     };
@@ -1071,11 +1067,9 @@ fn assert_valid_inference_bearer(bearer: &str, prefix: &Value) -> Result<()> {
     assert!(prefix.starts_with("a3s_inf_"));
     assert_eq!(bearer.len(), 88);
     assert!(bearer.starts_with(prefix));
-    assert!(
-        bearer[prefix.len()..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    );
+    assert!(bearer[prefix.len()..]
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
     Ok(())
 }
 

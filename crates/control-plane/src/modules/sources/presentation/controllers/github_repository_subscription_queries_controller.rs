@@ -1,8 +1,8 @@
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::modules::sources::ListGithubRepositorySubscriptions;
 use crate::modules::sources::presentation::dto::GithubRepositorySubscriptionResponse;
-use crate::presentation::{application_error_response, source_access};
+use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, application_error_response, source_access};
 use a3s_boot::{
     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
     QueryBus, Result,

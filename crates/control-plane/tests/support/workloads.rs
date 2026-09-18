@@ -1,4 +1,5 @@
 use a3s_cloud_contracts::NodeCommandPayload;
+use a3s_cloud_control_plane::modules::workloads::WorkloadDeploymentOperationIntent;
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeDrainRepository, INodeRepository,
@@ -440,7 +441,7 @@ pub async fn exercise_workloads(
     let first_request = request(workload, 1, 'a', "deploy-http-fixture", now)?;
     let first_deployment_id = first_request.deployment.id;
     let first_revision_id = first_request.revision.id;
-    let first_operation_id = first_request.operation.id;
+    let first_operation_id = first_request.operation.operation_id;
     let (first, replay) = tokio::join!(
         repository.create_deployment(first_request.clone()),
         repository.create_deployment(first_request.clone())
@@ -570,7 +571,7 @@ pub async fn exercise_workloads(
             },
             issued_at: command_issued_at,
             not_after: command_deadline,
-            correlation_id: first.operation.id.as_uuid(),
+            correlation_id: first.operation.operation_id.as_uuid(),
         })
         .await?;
     assert!(!command.replayed);
@@ -722,7 +723,7 @@ pub async fn exercise_workloads(
         now + Duration::seconds(11),
     )?;
     let rolled_back_workload_id = rolled_back.workload.id;
-    let rolled_back_operation_id = rolled_back.operation.id;
+    let rolled_back_operation_id = rolled_back.operation.operation_id;
     rolled_back.event.schema_version = 0;
     assert!(matches!(
         repository.create_deployment(rolled_back).await,
@@ -1312,12 +1313,12 @@ pub async fn exercise_placement_group_plans(
     assert_eq!(left.placement_group_binding, right.placement_group_binding);
     let materialization = if left.created { &left } else { &right };
     assert_eq!(
-        materialization.operation.workflow.name(),
-        PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME
+        materialization.operation.operation_id,
+        materialization.deployment.operation_id
     );
     assert_eq!(
-        materialization.operation.workflow.version(),
-        PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_VERSION
+        materialization.operation.workload_id,
+        materialization.deployment.workload_id
     );
     assert_eq!(materialization.member_bindings.len(), 3);
     assert!(materialization
@@ -1357,7 +1358,7 @@ pub async fn exercise_placement_group_plans(
                 )
                 .bind(materialization.deployment.id.as_uuid())
                 .append("), (select count(*) from operation_requests where operation_id = ")
-                .bind(materialization.operation.id.as_uuid())
+                .bind(materialization.operation.operation_id.as_uuid())
                 .append(" and workflow_name = ")
                 .bind(PLACEMENT_GROUP_DEPLOYMENT_WORKFLOW_NAME)
                 .append(" and workflow_version = ")
@@ -2153,16 +2154,12 @@ pub(crate) fn request(
         OperationId::new(),
         requested_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         workload.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new("cloud.deployment", "2")?,
-        json!({
-            "deploymentId": deployment.id,
-            "generation": generation,
-            "revisionId": revision.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         requested_at,
     );
     let event = DeploymentRequested::envelope(&deployment, &revision, Uuid::now_v7())?;

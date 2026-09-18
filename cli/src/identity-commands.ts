@@ -12,6 +12,7 @@ import {
   rejectExpectedVersionOption,
   rejectFileOption,
   rejectGatewayRolloutOptions,
+  rejectIdempotencyOption,
   rejectLogOptions,
   requireArity,
   requireIdempotencyKey,
@@ -26,6 +27,11 @@ import {
   apiTokenMutationResult,
   apiTokenResult,
   apiTokensResult,
+  directoryMembershipProjectionMutationResult,
+  directoryMembershipProjectionsResult,
+  directoryResourceGrantMutationResult,
+  directoryResourceGrantResult,
+  directoryResourceGrantsResult,
   membershipInvitationAcceptanceResult,
   membershipInvitationMutationResult,
   membershipInvitationResult,
@@ -33,6 +39,9 @@ import {
   membershipMutationResult,
   membershipResult,
   membershipsResult,
+  partnerSubjectLinkMutationResult,
+  partnerSubjectLinkResult,
+  partnerSubjectLinksResult,
   resourceGrantMutationResult,
   resourceGrantResult,
   resourceGrantsResult,
@@ -58,6 +67,21 @@ export function rejectMisplacedIdentityOptions(command: string, arguments_: Pars
   }
   if (arguments_.apiTokenPrincipalId !== undefined && command !== API_TOKEN_CREATE_COMMAND) {
     throw usageError('--principal is valid only for API token creation');
+  }
+  if (
+    arguments_.providerKey !== undefined &&
+    command !== 'partner-subject-links list'
+  ) {
+    throw usageError('--provider-key is valid only for partner-subject-links list');
+  }
+  if (arguments_.issuer !== undefined || arguments_.subject !== undefined) {
+    throw usageError('--issuer and --subject are not used; pass provider, issuer, and subject as positionals');
+  }
+  if (
+    arguments_.subjectRef !== undefined &&
+    command !== 'directory-membership-projections list'
+  ) {
+    throw usageError('--subject-ref is valid only for directory-membership-projections list');
   }
   if (
     arguments_.expiresAt !== undefined &&
@@ -308,6 +332,170 @@ export async function executeIdentityCommand(
         )
       );
     }
+    case 'partner-subject-links list': {
+      requireArity(positionals, 3, 'partner-subject-links list <principal-id>');
+      rejectLogOptions(arguments_);
+      rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      return partnerSubjectLinksResult(
+        await cloudApi().listPartnerSubjectLinksByPrincipal(requireOrganization(context), {
+          principalId: positionalUuid(positionals, 2, 'principal ID'),
+          providerKey: arguments_.providerKey,
+        })
+      );
+    }
+    case 'partner-subject-links resolve': {
+      requireArity(positionals, 5, 'partner-subject-links resolve <provider-key> <issuer> <subject>');
+      rejectLogOptions(arguments_);
+      rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      return partnerSubjectLinkResult(
+        await cloudApi().resolvePartnerSubject(requireOrganization(context), {
+          providerKey: requireNonEmptyPositional(positionals, 2, 'provider key'),
+          issuer: requireNonEmptyPositional(positionals, 3, 'issuer'),
+          subject: requireNonEmptyPositional(positionals, 4, 'subject'),
+        })
+      );
+    }
+    case 'partner-subject-links link': {
+      requireArity(positionals, 6, 'partner-subject-links link <provider-key> <issuer> <subject> <principal-id>');
+      rejectLogOptions(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      const idempotencyKey = requireIdempotencyKey(arguments_);
+      return partnerSubjectLinkMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().linkPartnerSubject(
+            requireOrganization(context),
+            {
+              providerKey: requireNonEmptyPositional(positionals, 2, 'provider key'),
+              issuer: requireNonEmptyPositional(positionals, 3, 'issuer'),
+              subject: requireNonEmptyPositional(positionals, 4, 'subject'),
+              principalId: positionalUuid(positionals, 5, 'principal ID'),
+            },
+            idempotencyKey
+          )
+        )
+      );
+    }
+    case 'partner-subject-links revoke': {
+      const mutation = requireVersionMutation(
+        arguments_,
+        5,
+        'partner-subject-links revoke <provider-key> <issuer> <subject>',
+        'partner subject link'
+      );
+      return partnerSubjectLinkMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().revokePartnerSubjectLink(
+            requireOrganization(context),
+            {
+              providerKey: requireNonEmptyPositional(positionals, 2, 'provider key'),
+              issuer: requireNonEmptyPositional(positionals, 3, 'issuer'),
+              subject: requireNonEmptyPositional(positionals, 4, 'subject'),
+              expectedVersion: mutation.expectedVersion,
+            },
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'directory-resource-grants list':
+      requireListCommand(arguments_);
+      return directoryResourceGrantsResult(
+        await cloudApi().listDirectoryResourceGrants(requireOrganization(context))
+      );
+    case 'directory-resource-grants get':
+      requireReadCommand(arguments_, 'directory-resource-grants get <directory-resource-grant-id>');
+      return directoryResourceGrantResult(
+        await cloudApi().getDirectoryResourceGrant(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'directory resource grant ID')
+        )
+      );
+    case 'directory-resource-grants create': {
+      const mutation = requireDirectoryResourceGrantCreateCommand(arguments_);
+      return directoryResourceGrantMutationResult(
+        await safeResourceGrantMutation(() =>
+          cloudApi().createDirectoryResourceGrant(
+            requireOrganization(context),
+            { subjectRef: mutation.subjectRef, scope: mutation.scope },
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'directory-resource-grants revoke': {
+      const mutation = requireVersionMutation(
+        arguments_,
+        3,
+        'directory-resource-grants revoke <directory-resource-grant-id>',
+        'directory resource grant'
+      );
+      return directoryResourceGrantMutationResult(
+        await safeResourceGrantMutation(() =>
+          cloudApi().revokeDirectoryResourceGrant(
+            requireOrganization(context),
+            positionalUuid(positionals, 2, 'directory resource grant ID'),
+            mutation.expectedVersion,
+            mutation.idempotencyKey
+          )
+        )
+      );
+    }
+    case 'directory-membership-projections list': {
+      rejectLogOptions(arguments_);
+      rejectIdempotencyOption(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      if (arguments_.subjectRef !== undefined) {
+        requireArity(positionals, 2, 'directory-membership-projections list --subject-ref SUBJECT_REF');
+        return directoryMembershipProjectionsResult(
+          await cloudApi().listDirectoryMembershipProjections(requireOrganization(context), {
+            subjectRef: arguments_.subjectRef,
+          })
+        );
+      }
+      requireArity(positionals, 3, 'directory-membership-projections list <principal-id>');
+      return directoryMembershipProjectionsResult(
+        await cloudApi().listDirectoryMembershipProjections(requireOrganization(context), {
+          principalId: positionalUuid(positionals, 2, 'principal ID'),
+        })
+      );
+    }
+    case 'directory-membership-projections replace': {
+      requireArity(
+        positionals,
+        4,
+        'directory-membership-projections replace <subject-ref> <principal-id...>'
+      );
+      rejectLogOptions(arguments_);
+      rejectFileOption(arguments_);
+      rejectExpectedVersionOption(arguments_);
+      rejectGatewayRolloutOptions(arguments_);
+      const idempotencyKey = requireIdempotencyKey(arguments_);
+      const principalIds = positionals
+        .slice(3)
+        .map((value, index) => positionalUuid([value], 0, `principal ID ${index + 1}`));
+      return directoryMembershipProjectionMutationResult(
+        await safeMembershipMutation(() =>
+          cloudApi().replaceDirectoryMembershipProjection(
+            requireOrganization(context),
+            {
+              subjectRef: requireNonEmptyPositional(positionals, 2, 'subject ref'),
+              principalIds,
+            },
+            idempotencyKey
+          )
+        )
+      );
+    }
     default:
       return undefined;
   }
@@ -372,57 +560,84 @@ function requireResourceGrantCreateCommand(arguments_: ParsedArguments): {
   idempotencyKey: string;
 } {
   const kind = arguments_.positionals[3];
-  const arity = kind === 'environment' ? 6 : 5;
+  const arity = kind === 'environment' || kind === 'application' ? 6 : 5;
   const idempotencyKey = requireMutationCommand(
     arguments_,
     arity,
-    'resource-grants create <membership-id> <project PROJECT_ID | environment PROJECT_ID ENVIRONMENT_ID | node NODE_ID>'
+    'resource-grants create <membership-id> <project PROJECT_ID | environment PROJECT_ID ENVIRONMENT_ID | application PROJECT_ID APPLICATION_ID | node NODE_ID>'
   );
   const membershipId = positionalUuid(arguments_.positionals, 2, 'membership ID');
+  return {
+    membershipId,
+    scope: parseResourceGrantScope(arguments_.positionals, 3),
+    idempotencyKey,
+  };
+}
+
+function requireDirectoryResourceGrantCreateCommand(arguments_: ParsedArguments): {
+  subjectRef: string;
+  scope: ResourceGrantScope;
+  idempotencyKey: string;
+} {
+  const kind = arguments_.positionals[3];
+  const arity = kind === 'environment' || kind === 'application' ? 6 : 5;
+  const idempotencyKey = requireMutationCommand(
+    arguments_,
+    arity,
+    'directory-resource-grants create <subject-ref> <project PROJECT_ID | environment PROJECT_ID ENVIRONMENT_ID | application PROJECT_ID APPLICATION_ID | node NODE_ID>'
+  );
+  return {
+    subjectRef: requireNonEmptyPositional(arguments_.positionals, 2, 'subject ref'),
+    scope: parseResourceGrantScope(arguments_.positionals, 3),
+    idempotencyKey,
+  };
+}
+
+function parseResourceGrantScope(
+  positionals: readonly string[],
+  kindIndex: number
+): ResourceGrantScope {
+  const kind = positionals[kindIndex];
   switch (kind) {
     case 'project':
       return {
-        membershipId,
-        scope: {
-          kind,
-          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
-        },
-        idempotencyKey,
+        kind,
+        projectId: positionalUuid(positionals, kindIndex + 1, 'project ID'),
       };
     case 'environment':
       return {
-        membershipId,
-        scope: {
-          kind,
-          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
-          environmentId: positionalUuid(arguments_.positionals, 5, 'environment ID'),
-        },
-        idempotencyKey,
+        kind,
+        projectId: positionalUuid(positionals, kindIndex + 1, 'project ID'),
+        environmentId: positionalUuid(positionals, kindIndex + 2, 'environment ID'),
       };
     case 'application':
       return {
-        membershipId,
-        scope: {
-          kind,
-          projectId: positionalUuid(arguments_.positionals, 4, 'project ID'),
-          applicationId: positionalUuid(arguments_.positionals, 5, 'application ID'),
-        },
-        idempotencyKey,
+        kind,
+        projectId: positionalUuid(positionals, kindIndex + 1, 'project ID'),
+        applicationId: positionalUuid(positionals, kindIndex + 2, 'application ID'),
       };
     case 'node':
       return {
-        membershipId,
-        scope: {
-          kind,
-          nodeId: positionalUuid(arguments_.positionals, 4, 'node ID'),
-        },
-        idempotencyKey,
+        kind,
+        nodeId: positionalUuid(positionals, kindIndex + 1, 'node ID'),
       };
     default:
       throw usageError(
-        'Resource Grant scope kind must be project, environment, application, or node',
+        'Resource Grant scope kind must be project, environment, application, or node'
       );
   }
+}
+
+function requireNonEmptyPositional(
+  positionals: readonly string[],
+  index: number,
+  label: string
+): string {
+  const value = positionals[index];
+  if (typeof value !== 'string' || value.trim() !== value || value.length < 1) {
+    throw usageError(`${label} is required`);
+  }
+  return value;
 }
 
 function membershipRole(value: string | undefined): MembershipRole {

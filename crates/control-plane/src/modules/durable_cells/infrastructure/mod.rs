@@ -11,6 +11,7 @@ mod operations;
 mod project_environment_access;
 mod secrets_binding;
 mod workload_reconciliation;
+mod workloads_provider_acl;
 
 pub use application_in_memory::InMemoryDurableCellApplicationRepository;
 pub use application_postgres::PostgresDurableCellApplicationRepository;
@@ -27,3 +28,4 @@ pub(crate) use operations::OperationsDurableCellOperationAdapter;
 pub use project_environment_access::ProjectsDurableCellsEnvironmentAccessAdapter;
 pub use secrets_binding::SecretsDurableCellBindingAdapter;
 pub use workload_reconciliation::WorkloadsDurableCellWorkloadAdapter;
+pub use workloads_provider_acl::WorkloadsDurableCellProviderWorkloadAclAdapter;

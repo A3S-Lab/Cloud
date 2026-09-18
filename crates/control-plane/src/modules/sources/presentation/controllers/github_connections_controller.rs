@@ -1,5 +1,4 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use crate::modules::sources::presentation::dto::{
     GithubConnectionInstallResponse, GithubConnectionResponse,
@@ -11,7 +10,8 @@ use crate::modules::sources::{
     GITHUB_REPOSITORY_DISCOVERY_ROUTE, GITHUB_REPOSITORY_REFERENCE_DISCOVERY_ROUTE,
     GITHUB_SOURCE_CONNECTION_ROUTE,
 };
-use crate::presentation::{application_error_response, oauth_no_store, OAuthNoStoreErrorFilter};
+use crate::presentation::{
+    OrganizationTenantGuard, application_error_response, oauth_no_store, OAuthNoStoreErrorFilter};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,

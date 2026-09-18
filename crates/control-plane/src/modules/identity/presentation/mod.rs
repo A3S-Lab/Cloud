@@ -6,8 +6,11 @@ mod request_context;
 mod resource_access;
 
 pub use dto::{
+    DirectoryMembershipProjectionBindingResponse, DirectoryMembershipProjectionMutationResponse,
+    DirectoryResourceGrantMutationResponse, DirectoryResourceGrantResponse,
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
+    PartnerSubjectLinkMutationResponse, PartnerSubjectLinkResponse,
     PlatformRoleBindingMutationResponse, PlatformRoleBindingResponse,
     PlatformRolePolicyMutationResponse, PlatformRolePolicyResponse,
     RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,

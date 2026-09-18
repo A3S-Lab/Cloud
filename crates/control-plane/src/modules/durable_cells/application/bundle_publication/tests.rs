@@ -44,7 +44,7 @@ use crate::modules::projects::domain::events::EnvironmentCreated;
 use crate::modules::projects::domain::repositories::IEnvironmentRepository;
 use crate::modules::projects::domain::value_objects::EnvironmentName;
 use crate::modules::projects::InMemoryProjectsRepository;
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, BuildRunId, DurableCellApplicationId, DurableCellApplicationRevisionId,
     EnvironmentId, IdempotencyRequest, NodeCommandId, NodeId, OperationId, OrganizationId,

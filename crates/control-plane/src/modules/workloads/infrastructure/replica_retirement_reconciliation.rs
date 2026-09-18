@@ -1,5 +1,8 @@
 use super::reconciliation::IWorkloadRuntimeControl;
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
+use crate::modules::workloads::application::{
+    WorkloadDeploymentNodeCommandEnqueueRequest, WorkloadDeploymentNodeCommandProjection,
+    WorkloadDeploymentNodeCommandAcknowledgement,
+};
 use crate::modules::shared_kernel::domain::{
     NodeCommandId, RepositoryError, ResourceClaimId, Sha256Digest, WorkloadId,
 };
@@ -206,8 +209,24 @@ impl ReplicaRetirementReconciler {
                                     "project RuntimeRemove writer-fence evidence: {error}"
                                 )
                             })?;
+                        let contract_acknowledgement = NodeCommandAck {
+                            schema: NodeCommandAck::SCHEMA.into(),
+                            command_id: command.id.as_uuid(),
+                            lease_id: acknowledgement.lease_id,
+                            node_id: command.node_id.as_uuid(),
+                            sequence: command.sequence,
+                            payload_digest: command.payload_digest().map_err(|error| {
+                                format!("digest RuntimeRemove command payload: {error}")
+                            })?,
+                            completed_at: acknowledgement.completed_at,
+                            outcome: acknowledgement.outcome.clone(),
+                        };
                         self.writer_fences
-                            .prepare_replica_retirement(&target, &removal, &acknowledgement)
+                            .prepare_replica_retirement(
+                                &target,
+                                &removal,
+                                &contract_acknowledgement,
+                            )
                             .await
                             .map_err(repository_error(
                                 "prepare replica writer-fence continuation",
@@ -422,7 +441,7 @@ impl ReplicaRetirementReconciler {
         target: &RetiringReplicaTarget,
         command_id: NodeCommandId,
         now: DateTime<Utc>,
-    ) -> Result<NodeCommand, String> {
+    ) -> Result<WorkloadDeploymentNodeCommandProjection, String> {
         let node_id = target
             .member
             .node_id
@@ -451,7 +470,7 @@ impl ReplicaRetirementReconciler {
         };
         let command = self
             .control
-            .enqueue_command(NodeCommandDraft {
+            .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
                 proposed_command_id: command_id,
                 node_id,
                 aggregate_id: target.replica.id.as_uuid(),
@@ -462,7 +481,7 @@ impl ReplicaRetirementReconciler {
             })
             .await
             .map_err(repository_error("enqueue replica Runtime removal"))?
-            .value;
+            .command;
         validate_removal_command(&command, target)?;
         Ok(command)
     }
@@ -593,7 +612,7 @@ impl ReplicaRetirementReconciler {
             None => {
                 report.release_commands += 1;
                 self.control
-                    .enqueue_command(NodeCommandDraft {
+                    .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
                         proposed_command_id: command_id,
                         node_id: claim.node_id,
                         aggregate_id: claim.id.as_uuid(),
@@ -606,7 +625,7 @@ impl ReplicaRetirementReconciler {
                     })
                     .await
                     .map_err(repository_error("enqueue retiring replica Claim release"))?
-                    .value
+                    .command
             }
         };
         validate_release_command(&command, &claim, &request)?;
@@ -713,13 +732,13 @@ impl ReplicaRetirementReconciler {
 enum RemovalProgress {
     Pending,
     Fenced {
-        command: Box<NodeCommand>,
-        acknowledgement: Box<NodeCommandAck>,
+        command: Box<WorkloadDeploymentNodeCommandProjection>,
+        acknowledgement: Box<WorkloadDeploymentNodeCommandAcknowledgement>,
     },
 }
 
 fn runtime_remove_evidence(
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     lease_id: Uuid,
 ) -> Result<WorkloadRuntimeRemoveEvidence, String> {
     Ok(WorkloadRuntimeRemoveEvidence {
@@ -806,7 +825,7 @@ fn validate_claim(claim: &ResourceClaim, target: &RetiringReplicaTarget) -> Resu
 }
 
 fn validate_removal_command(
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     target: &RetiringReplicaTarget,
 ) -> Result<(), String> {
     let binding = target
@@ -837,7 +856,7 @@ fn validate_removal_command(
 
 fn validate_removal_result(
     removal: &RuntimeRemoval,
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     target: &RetiringReplicaTarget,
 ) -> Result<(), String> {
     let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
@@ -859,7 +878,7 @@ fn validate_removal_result(
 }
 
 fn validate_release_command(
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     claim: &ResourceClaim,
     request: &NodeResourceClaimRelease,
 ) -> Result<(), String> {

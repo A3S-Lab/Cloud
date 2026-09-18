@@ -285,8 +285,8 @@ async fn build_run_queries_and_cancellation_expose_authoritative_state() -> Resu
 }
 
 #[tokio::test]
-async fn restricted_build_run_boundaries_resolve_scope_before_reads_mutations_and_replay()
--> Result<()> {
+async fn restricted_build_run_boundaries_resolve_scope_before_reads_mutations_and_replay(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let builds = Arc::new(InMemoryBuildRunRepository::new());

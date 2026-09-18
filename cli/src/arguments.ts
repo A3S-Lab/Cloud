@@ -32,6 +32,10 @@ export interface ParsedArguments {
   platforms?: string;
   scopes?: string;
   apiTokenPrincipalId?: string;
+  providerKey?: string;
+  issuer?: string;
+  subject?: string;
+  subjectRef?: string;
   expiresAt?: string;
   agentReleaseUrl?: string;
   agentReleaseSha256?: string;
@@ -104,6 +108,10 @@ const VALUE_OPTIONS: Readonly<Record<string, ValueOption>> = {
   '--platforms': 'platforms',
   '--scopes': 'scopes',
   '--principal': 'apiTokenPrincipalId',
+  '--provider-key': 'providerKey',
+  '--issuer': 'issuer',
+  '--subject': 'subject',
+  '--subject-ref': 'subjectRef',
   '--expires-at': 'expiresAt',
   '--agent-release-url': 'agentReleaseUrl',
   '--agent-release-sha256': 'agentReleaseSha256',

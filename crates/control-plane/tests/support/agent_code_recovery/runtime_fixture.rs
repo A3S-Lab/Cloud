@@ -295,7 +295,7 @@ fn flow_runtime(
             checkpoint_objects: Arc::new(UnavailableCheckpointObjects),
             providers: Arc::new(BuiltInAgentExecutionProviderRegistry::new().map_err(invalid)?),
             workload_targets: workloads,
-            node_control: nodes,
+            node_commands: Arc::new(FleetAgentExecutionNodeCommandAccessAdapter::new(nodes)),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,

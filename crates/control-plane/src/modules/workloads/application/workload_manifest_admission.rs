@@ -1,4 +1,4 @@
-use super::service_template::{
+use super::service_template_dto::{
     HttpHealthCheckDto, OciArtifactReferenceDto, SecretBindingDto, SecretBindingTargetDto,
     ServicePortDto, ServiceProcessDto, ServiceResourcesDto, ServiceTemplateDto,
     SourceWorkloadTemplateDto,
@@ -568,5 +568,5 @@ fn unsigned_integer(value: &Value, name: &str) -> Result<u64> {
 }
 
 #[cfg(test)]
-#[path = "workload_manifest_tests.rs"]
+#[path = "workload_manifest_admission_tests.rs"]
 mod tests;

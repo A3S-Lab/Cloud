@@ -3060,6 +3060,59 @@ describe('CloudApi', () => {
     );
   });
 
+  it('admits and reads partner artifact admission receipts', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('token', '/api/v1', { fetch: fetcher });
+    const organizationId = 'organization / one';
+    const admissionId = '019c0000-0000-7000-8000-000000000060';
+    const digest = `sha256:${'ab'.repeat(32)}`;
+
+    await api.listPartnerArtifactAdmissions(organizationId);
+    await api.getPartnerArtifactAdmission(organizationId, admissionId);
+    await api.admitPartnerArtifact(
+      organizationId,
+      {
+        contentDigest: digest,
+        kind: 'model',
+        byteSize: 12,
+        partnerRef: 'weights://bundle-1',
+      },
+      'client:admit-1'
+    );
+
+    expect(calls.map(([input, init]) => [input, init?.method ?? 'GET'])).toEqual([
+      [
+        '/api/v1/organizations/organization%20%2F%20one/partner-artifact-admissions',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/partner-artifact-admissions/019c0000-0000-7000-8000-000000000060',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/partner-artifact-admissions',
+        'POST',
+      ],
+    ]);
+    expect(JSON.parse(String(calls[2]?.[1]?.body))).toEqual({
+      contentDigest: digest,
+      kind: 'model',
+      byteSize: 12,
+      partnerRef: 'weights://bundle-1',
+    });
+    expect(() =>
+      api.admitPartnerArtifact(
+        organizationId,
+        { contentDigest: 'sha256:dead', kind: 'model', byteSize: 1, partnerRef: 'x' },
+        'client:bad'
+      )
+    ).toThrow('partner artifact content digest must match sha256:[0-9a-f]{64}');
+  });
+
   it('sends operational mutations with one explicit idempotency key', async () => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
@@ -3392,6 +3445,92 @@ describe('CloudApi', () => {
       })
     );
     expect(calls.every(([input]) => !String(input).includes(credential))).toBe(true);
+  });
+
+  it('exposes federation SubjectLink and DirectoryProjection identity APIs', async () => {
+    const calls: Array<Parameters<CloudFetch>> = [];
+    const fetcher: CloudFetch = async (...args) => {
+      calls.push(args);
+      return jsonResponse({});
+    };
+    const api = new CloudApi('caller-token', '/api/v1', { fetch: fetcher });
+    const organizationId = 'organization / one';
+    const principalId = '019c0000-0000-7000-8000-000000000010';
+    const grantId = '019c0000-0000-7000-8000-000000000020';
+    const subjectRef =
+      'https://kense.example/directory#department/019c0000-0000-7000-8000-000000000030';
+
+    await api.linkPartnerSubject(
+      organizationId,
+      {
+        providerKey: 'partner-kense-directory',
+        issuer: 'https://kense.example/directory',
+        subject: '019c0000-0000-7000-8000-000000000040',
+        principalId,
+      },
+      'client:partner-link'
+    );
+    await api.resolvePartnerSubject(organizationId, {
+      providerKey: 'partner-kense-directory',
+      issuer: 'https://kense.example/directory',
+      subject: '019c0000-0000-7000-8000-000000000040',
+    });
+    await api.listPartnerSubjectLinksByPrincipal(organizationId, {
+      principalId,
+      providerKey: 'partner-kense-directory',
+    });
+    await api.revokePartnerSubjectLink(
+      organizationId,
+      {
+        providerKey: 'partner-kense-directory',
+        issuer: 'https://kense.example/directory',
+        subject: '019c0000-0000-7000-8000-000000000040',
+        expectedVersion: 1,
+      },
+      'client:partner-revoke'
+    );
+    await api.listDirectoryResourceGrants(organizationId);
+    await api.getDirectoryResourceGrant(organizationId, grantId);
+    await api.createDirectoryResourceGrant(
+      organizationId,
+      { subjectRef, scope: { kind: 'project', projectId: '019c0000-0000-7000-8000-000000000050' } },
+      'client:directory-grant'
+    );
+    await api.revokeDirectoryResourceGrant(organizationId, grantId, 2, 'client:directory-revoke');
+    await api.listDirectoryMembershipProjections(organizationId, { subjectRef });
+    await api.replaceDirectoryMembershipProjection(
+      organizationId,
+      { subjectRef, principalIds: [principalId] },
+      'client:directory-projection'
+    );
+
+    expect(calls.map(([input, init]) => [input, init?.method ?? 'GET'])).toEqual([
+      ['/api/v1/organizations/organization%20%2F%20one/partner-subject-links', 'POST'],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/partner-subject-links/resolve?providerKey=partner-kense-directory&issuer=https%3A%2F%2Fkense.example%2Fdirectory&subject=019c0000-0000-7000-8000-000000000040',
+        'GET',
+      ],
+      [
+        '/api/v1/organizations/organization%20%2F%20one/partner-subject-links?principalId=019c0000-0000-7000-8000-000000000010&providerKey=partner-kense-directory',
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/partner-subject-links/revocation', 'POST'],
+      ['/api/v1/organizations/organization%20%2F%20one/directory-resource-grants', 'GET'],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/directory-resource-grants/${encodeURIComponent(grantId)}`,
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/directory-resource-grants', 'POST'],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/directory-resource-grants/${encodeURIComponent(grantId)}/revocation`,
+        'POST',
+      ],
+      [
+        `/api/v1/organizations/organization%20%2F%20one/directory-membership-projections?subjectRef=${encodeURIComponent(subjectRef)}`,
+        'GET',
+      ],
+      ['/api/v1/organizations/organization%20%2F%20one/directory-membership-projections', 'PUT'],
+    ]);
   });
 
   it('rejects invalid API token creation input before transport', () => {

@@ -1,9 +1,8 @@
 use crate::access_projection::fleet_access;
 use crate::modules::fleet::application::{GetNode, ListNodes};
 use crate::modules::fleet::presentation::dto::NodeResponse;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, resource_access_evaluator, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
     QueryBus, Result,

@@ -1,3 +1,6 @@
+use crate::modules::workloads::{
+    FleetWorkloadDeploymentNodeCommandAccessAdapter, IWorkloadDeploymentNodeCommandPort,
+};
 use super::*;
 use crate::modules::workloads::domain::WorkloadDeploymentOperationIntent;
 
@@ -73,7 +76,9 @@ fn runtime_with_prestart_gate_and_runtime_execution_admission(
 ) -> Result<DeploymentFlowRuntime, String> {
     let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let control_port: Arc<dyn IWorkloadDeploymentNodeCommandPort> = Arc::new(
+        FleetWorkloadDeploymentNodeCommandAccessAdapter::new(nodes.clone()),
+    );
     let milliseconds = u64::try_from(convergence_timeout.num_milliseconds())
         .map_err(|_| "test convergence timeout is invalid")?;
     let runtime_apply_timeout = (milliseconds / 2).max(1);

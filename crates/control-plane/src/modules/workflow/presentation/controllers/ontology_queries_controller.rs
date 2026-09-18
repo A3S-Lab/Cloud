@@ -1,7 +1,4 @@
 use super::request::{request_id, workflow_access};
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{
     OntologyId, OntologyRevisionId, OrganizationId, ProjectId,
 };
@@ -14,7 +11,7 @@ use crate::modules::workflow::presentation::dto::{
     OntologyDiffResponse, OntologyResponse, OntologyRevisionResponse,
     OntologyRevisionSummaryResponse,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{DeferredResourceScope, OrganizationTenantGuard, with_deferred_resource_scope, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
     RouteDefinition,

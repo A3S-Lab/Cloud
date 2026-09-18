@@ -32,7 +32,7 @@ async fn provider_restart_without_recovery_capability_fails_terminally_without_a
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,
@@ -201,7 +201,7 @@ async fn persisted_recovery_successor_without_capability_fails_without_rotating_
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,

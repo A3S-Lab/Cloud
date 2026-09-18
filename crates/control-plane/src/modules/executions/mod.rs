@@ -10,8 +10,9 @@ pub use application::{
     ExecutionReconcileReport, ExecutionReconciler, ExecutionsEnvironmentScope,
     ExecutionsProjectScope, GetExecution, GetExecutionHandler, GetExecutionTemplate,
     GetExecutionTemplateHandler, IExecutionsEnvironmentAccess, IExecutionsProjectAccess,
-    IWorkflowExecutionPort, ListExecutionTemplates, ListExecutionTemplatesHandler, ListExecutions,
-    ListExecutionsHandler, WorkflowExecutionApplicationService, WorkflowExecutionRequest,
+    IExecutionNodeCommandPort, IWorkflowExecutionPort, ListExecutionTemplates,
+    ListExecutionTemplatesHandler, ListExecutions, ListExecutionsHandler,
+    WorkflowExecutionApplicationService, WorkflowExecutionRequest,
     EXECUTION_WORKFLOW_NAME, EXECUTION_WORKFLOW_VERSION,
 };
 pub(crate) use application::ExecutionAccessScope;
@@ -27,7 +28,8 @@ pub use infrastructure::{
     project_execution_task, ExecutionFlowConfig, ExecutionFlowConfigOptions, ExecutionFlowRuntime,
     ExecutionFlowRuntimeDependencies, InMemoryExecutionRepository,
     InMemoryExecutionTemplateRepository, PostgresExecutionRepository,
-    PostgresExecutionTemplateRepository, ProjectsExecutionsEnvironmentAccessAdapter,
+    FleetExecutionNodeCommandAccessAdapter, PostgresExecutionTemplateRepository,
+    ProjectsExecutionsEnvironmentAccessAdapter,
     ProjectsExecutionsProjectAccessAdapter,
 };
 pub use presentation::ExecutionsModule;

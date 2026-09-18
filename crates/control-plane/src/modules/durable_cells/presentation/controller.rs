@@ -17,12 +17,11 @@ use crate::modules::durable_cells::{
     ReviseDurableCellApplication, StartDurableCellApplication, StopDurableCellApplication,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId,
     GatewayScopeId, OrganizationId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, resource_access_evaluator, application_error_response};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,

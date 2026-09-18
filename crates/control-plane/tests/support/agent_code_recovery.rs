@@ -13,7 +13,9 @@ use a3s_cloud_contracts::{
     RuntimeObservationReport, RuntimeServiceEndpoint, HARNESS_INVOCATION_PROFILE_MAX_BYTES,
     REFERENCE_ECHO_AGENT_PROVIDER_KIND,
 };
-use a3s_cloud_control_plane::conformance::workload_organization_access_for_conformance;
+use a3s_cloud_control_plane::conformance::{
+    agent_organization_access_for_conformance, workload_organization_access_for_conformance,
+};
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
     AcceptAgentCodeEventBatchWrite, AcceptAgentProviderEventBatchWrite, AgentAccess,
@@ -26,8 +28,9 @@ use a3s_cloud_control_plane::modules::agents::{
     AssetsAgentReleaseAdmissionAdapter, BindAgentCodeRunWrite,
     BuiltInAgentExecutionProviderRegistry, CreateAgentConversation, CreateAgentConversationHandler,
     DecideAgentApprovalCheckpoint, DecideAgentApprovalCheckpointHandler,
-    IAgentApprovalAuthorizationPort, IAgentApprovalCheckpointRepository,
-    IAgentExecutionCheckpointObjectStore, IAgentRepository, PostgresAgentRepository,
+    FleetAgentExecutionNodeCommandAccessAdapter, IAgentApprovalAuthorizationPort,
+    IAgentApprovalCheckpointRepository, IAgentExecutionCheckpointObjectStore, IAgentRepository,
+    PostgresAgentRepository, ProjectsAgentsEnvironmentAccessAdapter,
     RequestAgentExecutionCancellationWrite, StartAgentExecution, StartAgentExecutionHandler,
     NATIVE_CODE_AGENT_PROVIDER_KIND,
 };
@@ -61,8 +64,9 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     ProjectId, RepositoryError, ResourceName, Sha256Digest,
 };
 use a3s_cloud_control_plane::modules::workloads::{
-    project_runtime_spec, CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler,
-    Deployment, DeploymentReplicaBinding, FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository,
+    project_runtime_spec, AssetsWorkloadAgentReleaseAdmissionAdapter,
+    CreateAgentWorkloadDeployment, CreateAgentWorkloadDeploymentHandler, Deployment,
+    DeploymentReplicaBinding, FleetWorkloadsNodePoolAccessAdapter, IWorkloadRepository,
     IWorkloadRuntimeTargetRepository, PostgresWorkloadRepository,
     ProjectsWorkloadsEnvironmentAccessAdapter, SecretsWorkloadsSecretBindingAccessAdapter,
     ServiceProcess, ServiceResources, SourceWorkloadTemplate, Workload, WorkloadRevision,

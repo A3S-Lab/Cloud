@@ -62,6 +62,9 @@ import {
   operationsResult,
   organizationMutationResult,
   organizationsResult,
+  partnerArtifactAdmissionMutationResult,
+  partnerArtifactAdmissionResult,
+  partnerArtifactAdmissionsResult,
   projectAttributionMutationResult,
   projectAttributionResult,
   projectMutationResult,
@@ -649,6 +652,48 @@ export async function executeCommand(
       const organizationId = requireOrganization(context);
       const buildRunId = positionalUuid(positionals, 2, 'BuildRun ID');
       return retryBuildRunResult(await cloudApi().retryBuildRun(organizationId, buildRunId, idempotencyKey));
+    }
+    case 'partner-artifact-admissions list':
+      requireListCommand(arguments_);
+      return partnerArtifactAdmissionsResult(
+        await cloudApi().listPartnerArtifactAdmissions(requireOrganization(context))
+      );
+    case 'partner-artifact-admissions get':
+      requireReadCommand(arguments_, 'partner-artifact-admissions get <admission-id>');
+      return partnerArtifactAdmissionResult(
+        await cloudApi().getPartnerArtifactAdmission(
+          requireOrganization(context),
+          positionalUuid(positionals, 2, 'admission ID')
+        )
+      );
+    case 'partner-artifact-admissions admit': {
+      requireArity(
+        positionals,
+        6,
+        'partner-artifact-admissions admit <content-digest> <kind> <byte-size> <partner-ref>'
+      );
+      const idempotencyKey = requireMutationCommand(
+        arguments_,
+        6,
+        'partner-artifact-admissions admit <content-digest> <kind> <byte-size> <partner-ref>'
+      );
+      const byteSizeText = positionalResourceName(positionals, 4, 'byte size');
+      const byteSize = Number(byteSizeText);
+      if (!Number.isSafeInteger(byteSize) || String(byteSize) !== byteSizeText) {
+        throw usageError('byte size must be a safe integer');
+      }
+      return partnerArtifactAdmissionMutationResult(
+        await cloudApi().admitPartnerArtifact(
+          requireOrganization(context),
+          {
+            contentDigest: positionalResourceName(positionals, 2, 'content digest'),
+            kind: positionalResourceName(positionals, 3, 'kind'),
+            byteSize,
+            partnerRef: positionalResourceName(positionals, 5, 'partner ref'),
+          },
+          idempotencyKey
+        )
+      );
     }
     default:
       throw usageError('unsupported command; run a3s-cloud --help');

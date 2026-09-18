@@ -93,12 +93,24 @@ const MAX_MANIFEST_ARCHIVE_BYTES: u64 = 1024 * 1024;
 // of allowing the short polling lease to expire while the provider is running.
 const REAL_BOX_COMMAND_LEASE_SECONDS: i64 = 120;
 
+/// Window while the recovered Agent Runtime is still Running.
+/// GA-1 Gateway LIVE uses it for public traffic and management-plane
+/// conversation/execution against the same published release.
+pub struct LiveAgentWindow {
+    pub observation: RuntimeObservation,
+    pub spec: RuntimeUnitSpec,
+    pub organization_id: OrganizationId,
+    pub project_id: ProjectId,
+    pub environment_id: EnvironmentId,
+    pub asset_id: AssetId,
+    pub asset_release_id: AssetReleaseId,
+    pub executor: PostgresExecutor,
+}
+
 /// Optional probe while the recovered Agent Runtime is still Running.
-/// GA-1 Gateway LIVE uses this window for pin-matched public traffic.
 pub type LiveAgentProbe = Box<
     dyn FnOnce(
-            RuntimeObservation,
-            RuntimeUnitSpec,
+            LiveAgentWindow,
         ) -> std::pin::Pin<Box<dyn std::future::Future<Output = TestResult> + Send>>
         + Send,
 >;
@@ -545,7 +557,17 @@ async fn exercise_mode(
     // Keep the recovered Agent Running for an optional LIVE probe (Gateway public
     // traffic) before ordinary stop/cleanup. Fail closed: probe errors abort.
     if let Some(live) = live {
-        live(recovered.clone(), spec.clone()).await?;
+        live(LiveAgentWindow {
+            observation: recovered.clone(),
+            spec: spec.clone(),
+            organization_id,
+            project_id,
+            environment_id,
+            asset_id: asset.id,
+            asset_release_id: published.id,
+            executor: executor.clone(),
+        })
+        .await?;
     }
 
     let stop_operation_id = request_workload_stop(

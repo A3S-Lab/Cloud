@@ -6,15 +6,11 @@ use crate::modules::executions::application::{
 use crate::modules::executions::presentation::dto::{
     ExecutionResponse, ExecutionTemplateRevisionResponse,
 };
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, ExecutionId, ExecutionTemplateId, ExecutionTemplateRevisionId, OrganizationId,
     ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator, with_deferred_resource_scope, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
     QueryBus, Result, RouteDefinition,

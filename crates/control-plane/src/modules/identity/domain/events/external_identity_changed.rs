@@ -39,6 +39,33 @@ impl ExternalIdentityChanged {
         )
     }
 
+    pub fn revoked(
+        link: &ExternalIdentityLink,
+        organization_id: OrganizationId,
+        correlation_id: Uuid,
+    ) -> Result<DomainEventEnvelope, serde_json::Error> {
+        let payload = Self {
+            link_id: link.id,
+            principal_id: link.principal_id,
+            provider_key: link.provider_key.as_str().to_owned(),
+            issuer: link.issuer.as_str().to_owned(),
+        };
+        Ok(DomainEventEnvelope {
+            event_id: Uuid::now_v7(),
+            event_key: "identity.external-identity.revoked".into(),
+            schema_version: 1,
+            scope: a3s_cloud_contracts::CloudScopeRef::Organization {
+                organization_id: organization_id.as_uuid(),
+            },
+            aggregate_id: link.id.as_uuid(),
+            aggregate_version: link.aggregate_version,
+            occurred_at: link.revoked_at.unwrap_or(link.last_verified_at),
+            correlation_id,
+            causation_id: None,
+            payload: serde_json::to_value(payload)?,
+        })
+    }
+
     fn envelope(
         event_key: &str,
         link: &ExternalIdentityLink,

@@ -1,6 +1,7 @@
 mod application;
 mod domain;
 mod infrastructure;
+mod facade;
 
 pub use application::{
     DeleteObjectNamespaceOperationInput, DeleteObjectNamespaceOperationOutput,
@@ -25,7 +26,7 @@ pub use domain::{
 pub(crate) use infrastructure::object_namespace_recovery_flow_step_names;
 pub(crate) use infrastructure::object_namespace_recovery_flow_workflow_identities;
 pub(crate) use infrastructure::ObjectNamespaceRecoveryFlowRuntime;
-pub use infrastructure::ObjectNamespaceRecoveryOperationRequest;
+pub use facade::ObjectNamespaceRecoveryOperationRequest;
 
 #[cfg(test)]
 mod enterprise_ha_disaster_recovery_claim_path_tests;

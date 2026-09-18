@@ -13,12 +13,12 @@ use crate::modules::applications::application::{
 };
 use crate::modules::applications::domain::ApplicationResponseMode;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationInvocationId, ApplicationReleaseId, ApplicationSessionId,
     EnvironmentId, OntologyId, OntologyRevisionId, OrganizationId, ProjectId,
 };
 use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, 
     actor_principal_id, application_error_response, request_id, request_identity,
 };
 use a3s_boot::{

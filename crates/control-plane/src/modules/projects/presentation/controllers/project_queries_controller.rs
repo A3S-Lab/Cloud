@@ -1,5 +1,4 @@
 use crate::access_projection::project_access;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::projects::application::queries::get_project_attribution::GetProjectAttribution;
 use crate::modules::projects::application::queries::list_environments::ListEnvironments;
 use crate::modules::projects::application::queries::list_projects::ListProjects;
@@ -9,7 +8,7 @@ use crate::modules::projects::presentation::dto::{
 use crate::modules::shared_kernel::domain::{
     OrganizationId, ProjectAttributionProfileId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{resource_access_evaluator, OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootError, BootRequest, BootResponse, ControllerDefinition,
     QueryBus, Result,

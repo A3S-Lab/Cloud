@@ -1,10 +1,12 @@
 mod api_token_credential;
 mod api_token_name;
 mod api_token_scope;
+mod directory_grant_subject_ref;
 mod external_identity;
 mod identity_encrypted_credential_value;
 mod membership_role;
 mod organization_name;
+mod partner_subject_link;
 mod platform_role_policy_contract;
 mod recipient_contact;
 mod resource_grant_scope;
@@ -16,7 +18,12 @@ mod workload_identity_provider_profile;
 pub use api_token_credential::{ApiTokenDigest, ApiTokenSecret, BootstrapCredential};
 pub use api_token_name::ApiTokenName;
 pub use api_token_scope::ApiTokenScope;
+pub use directory_grant_subject_ref::{DirectoryGrantSubjectKind, DirectoryGrantSubjectRef};
 pub use external_identity::{ExternalIdentitySubject, OidcIssuer, OidcProviderKey};
+pub use partner_subject_link::{
+    is_partner_provider_key, parse_partner_directory_issuer, parse_partner_directory_subject,
+    parse_partner_provider_key, KENSE_DIRECTORY_PROVIDER_KEY, PARTNER_SUBJECT_PROVIDER_PREFIX,
+};
 pub use identity_encrypted_credential_value::IdentityEncryptedCredentialValue;
 pub use membership_role::MembershipRole;
 pub use organization_name::OrganizationName;

@@ -1,3 +1,4 @@
+use a3s_cloud_control_plane::modules::notifications::IdentityNotificationOutboxIdentityAccessAdapter;
 use super::*;
 
 #[allow(clippy::too_many_arguments)]
@@ -298,9 +299,13 @@ pub(super) async fn exercise_notification_alert_policy_persistence(
         "persist an unregistered notification alert source",
     );
 
-    let identity = Arc::new(PostgresIdentityRepository::new(executor));
-    let projector = OutboxNotificationProjector::new(repository.clone(), identity.clone())
-        .with_alert_policies(repository.clone(), identity);
+    let identity_repo = Arc::new(PostgresIdentityRepository::new(executor));
+    let identity = Arc::new(IdentityNotificationOutboxIdentityAccessAdapter::new(
+        identity_repo.clone(),
+        identity_repo,
+    ));
+    let projector = OutboxNotificationProjector::new(repository.clone(), identity)
+        .with_alert_policies(repository.clone());
     let claim_id = DomainClaimId::new();
     let rejected = notification_domain_claim_message(
         organization_id,

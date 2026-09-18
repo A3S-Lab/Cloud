@@ -429,7 +429,11 @@ impl Fixture {
                 assignments: assignments as Arc<dyn IPluginAssignmentRepository>,
                 registries: registries as Arc<dyn IPluginRegistryRepository>,
                 nodes: nodes.clone() as Arc<dyn INodeRepository>,
-                node_control: nodes.clone() as Arc<dyn INodeControlRepository>,
+                node_commands: Arc::new(
+                    crate::modules::plugins::FleetPluginAssignmentNodeCommandAccessAdapter::new(
+                        nodes.clone() as Arc<dyn INodeControlRepository>,
+                    ),
+                ),
                 trust_roots: trust_roots as Arc<dyn IPluginTrustRootStore>,
                 policies: policies as Arc<dyn IPluginPolicyStore>,
                 artifacts,

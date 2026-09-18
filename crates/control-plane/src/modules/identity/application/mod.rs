@@ -17,6 +17,8 @@ mod recipient_contact_result;
 mod recipient_contact_verification_delivery;
 mod resource_access;
 mod resource_access_claim;
+mod directory_membership_projection_result;
+mod directory_resource_grant_result;
 mod resource_grant_result;
 mod workload_runtime_evidence;
 mod workload_runtime_evidence_recorder;
@@ -60,6 +62,8 @@ pub use recipient_contact_verification_delivery::{
 };
 pub use resource_access::{IdentityAccess, IdentityAccessScope};
 pub use resource_access_claim::RESOURCE_GRANT_SCOPES_CLAIM;
+pub use directory_membership_projection_result::DirectoryMembershipProjectionMutationResult;
+pub use directory_resource_grant_result::DirectoryResourceGrantMutationResult;
 pub use resource_grant_result::ResourceGrantMutationResult;
 pub use workload_runtime_evidence::{
     IWorkloadRuntimeEvidenceCandidatePort, WorkloadRuntimeEvidenceRequest,

@@ -58,7 +58,8 @@ pub enum ResourceAuthorizationBasis {
 }
 
 /// Immutable evidence emitted by Identity after resolving current Membership and Resource Grant
-/// authority through the shared [`ResourceAccessEvaluator`]. Workflow receives only the resulting
+/// authority (including DirectoryProjection grants expanded through membership projections)
+/// through the shared [`ResourceAccessEvaluator`]. Workflow receives only the resulting
 /// reference and therefore cannot manufacture an authorization fact.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

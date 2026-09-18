@@ -9,11 +9,10 @@ use crate::modules::automations::application::{
     GetAuthorizedAutomationWebhookEndpoint, ListAuthorizedAutomationDefinitions,
     DEFAULT_AUTOMATION_DEFINITION_LIST_LIMIT, MAXIMUM_AUTOMATION_DEFINITION_LIST_LIMIT,
 };
-use crate::modules::identity::presentation::resource_access_evaluator;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
 use crate::presentation::{
     application_error_response, organization_tenant_automation_write_controller,
-    organization_tenant_cloud_read_controller, request_id,
+    organization_tenant_cloud_read_controller, request_id, resource_access_evaluator,
 };
 use a3s_boot::{
     controller, get, post, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,

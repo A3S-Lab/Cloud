@@ -3,14 +3,10 @@ use crate::modules::edge::application::{
     GetDomainClaim, ListDomainClaims, ListGatewayCertificates,
 };
 use crate::modules::edge::presentation::dto::{DomainClaimResponse, GatewayCertificateResponse};
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, OrganizationId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator, with_deferred_resource_scope, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
     RouteDefinition,

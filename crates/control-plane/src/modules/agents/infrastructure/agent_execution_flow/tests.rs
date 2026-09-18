@@ -192,7 +192,7 @@ async fn reference_provider_dispatch_preserves_the_common_profile_and_protocol()
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,
@@ -285,7 +285,7 @@ async fn provider_process_restart_recovers_before_cancelling_the_new_run() {
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,

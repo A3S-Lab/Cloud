@@ -21,12 +21,11 @@ use crate::modules::connectors::domain::{
     MAXIMUM_CONNECTOR_EXECUTION_ATTEMPT_PAGE_SIZE,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ConnectorProfileId, ConnectorRevisionId, EnvironmentId, OrganizationId, ProjectId,
     canonical_timestamp,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{application_error_response, OrganizationTenantGuard, resource_access_evaluator};
 use a3s_boot::{
     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
     QueryBus, Result, controller, get, metadata, post, use_guard,

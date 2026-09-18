@@ -6,21 +6,16 @@ use crate::modules::durable_cells::domain::{
 };
 use crate::modules::durable_cells::{
     DeployDurableCellApplication, DeployDurableCellApplicationHandler,
-    DurableCellDeploymentMutationResult, DurableCellStorageCredentialRequest,
-    DurableCellStorageRetentionPolicyRequest, DurableCellStorageRetentionPolicySpec,
-    DurableCellWorkloadTemplate,
+    DurableCellDeploymentMutationResult, DurableCellProviderWorkloadAclRequest,
+    DurableCellStorageCredentialRequest, DurableCellStorageRetentionPolicyRequest,
+    DurableCellStorageRetentionPolicySpec, IDurableCellProviderWorkloadAclPort,
 };
 use crate::modules::shared_kernel::application::{ApplicationError, ApplicationResult};
 use crate::modules::shared_kernel::domain::{
-    DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, NodePoolId,
-    OrganizationId, PrincipalId, ProjectId, Sha256Digest,
+    DurableCellApplicationId, DurableCellApplicationRevisionId, EnvironmentId, OrganizationId,
+    PrincipalId, ProjectId,
 };
-use crate::modules::workloads::presentation::{WorkloadManifest, parse_workload_manifest};
-use crate::modules::workloads::{
-    IOciArtifactResolver, OciArtifactResolutionError, OciRegistryCredentialReference,
-    RequestedServiceTemplate, SecretBindingTarget,
-};
-use a3s_boot::{BootError, Command, CommandHandler, CqrsContext};
+use a3s_boot::{Command, CommandHandler, CqrsContext};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -49,17 +44,17 @@ impl Command for DeployDurableCellApplicationFromAcl {
 }
 
 pub struct DeployDurableCellApplicationFromAclHandler {
-    artifacts: Arc<dyn IOciArtifactResolver>,
+    provider_workloads: Arc<dyn IDurableCellProviderWorkloadAclPort>,
     deployment: DeployDurableCellApplicationHandler,
 }
 
 impl DeployDurableCellApplicationFromAclHandler {
     pub fn new(
-        artifacts: Arc<dyn IOciArtifactResolver>,
+        provider_workloads: Arc<dyn IDurableCellProviderWorkloadAclPort>,
         deployment: DeployDurableCellApplicationHandler,
     ) -> Self {
         Self {
-            artifacts,
+            provider_workloads,
             deployment,
         }
     }
@@ -76,7 +71,7 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
         'static,
         a3s_boot::Result<ApplicationResult<DurableCellDeploymentMutationResult>>,
     > {
-        let artifacts = Arc::clone(&self.artifacts);
+        let provider_workloads = Arc::clone(&self.provider_workloads);
         let deployment = self.deployment.clone();
         Box::pin(async move {
             if let Err(error) = require_environment_access(
@@ -107,68 +102,17 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                     Ok(value) => value,
                     Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
                 };
-            let manifest: WorkloadManifest =
-                match parse_workload_manifest(command.provider_workload_acl.as_bytes()) {
-                    Ok(value) => value,
-                    Err(BootError::BadRequest(message)) => {
-                        return Ok(Err(ApplicationError::Invalid(message)));
-                    }
-                    Err(error) => return Err(error),
-                };
-            let requested_template: RequestedServiceTemplate = manifest.template.into();
-            if let Err(error) = requested_template.validate_request() {
-                return Ok(Err(ApplicationError::Invalid(error)));
-            }
-            let bound_digest = match requested_template.artifact.bound_digest() {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            if requested_template.artifact.expected_digest.is_none() && bound_digest.is_none() {
-                return Ok(Err(ApplicationError::Invalid(
-                    "Durable Cell provider workload ACL must pin an exact OCI digest".into(),
-                )));
-            }
-
-            let registry_credential = requested_template
-                .secrets
-                .iter()
-                .find(|binding| matches!(binding.target, SecretBindingTarget::RegistryCredential))
-                .map(|binding| OciRegistryCredentialReference {
-                    organization_id: command.organization_id,
-                    project_id: command.project_id,
-                    environment_id: command.environment_id,
-                    secret_id: binding.secret_id,
-                    version: binding.version,
-                });
-            if let Some(reference) = registry_credential.as_ref() {
-                if let Err(error) = reference.validate() {
-                    return Ok(Err(ApplicationError::Invalid(error)));
-                }
-            }
-            let artifact = match artifacts
-                .resolve(&requested_template.artifact, registry_credential.as_ref())
+            let provider_admission = match provider_workloads
+                .admit(&DurableCellProviderWorkloadAclRequest::new(
+                    command.organization_id,
+                    command.project_id,
+                    command.environment_id,
+                    command.provider_workload_acl,
+                ))
                 .await
             {
                 Ok(value) => value,
-                Err(error) => return Ok(Err(map_artifact_error(error))),
-            };
-            let resolved_workload_template = match requested_template.resolve(artifact) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let workload_template_digest = match resolved_workload_template
-                .digest()
-                .and_then(Sha256Digest::parse)
-            {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
-            };
-            let workload_template = match DurableCellWorkloadTemplate::from_serializable(
-                &resolved_workload_template,
-                workload_template_digest,
-            ) {
-                Ok(value) => value,
-                Err(error) => return Ok(Err(ApplicationError::Invalid(error))),
+                Err(error) => return Ok(Err(error)),
             };
             let namespace_id = DurableCellProjectionIdentity::storage_namespace_id_for_application(
                 command.application_id,
@@ -226,10 +170,10 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                         service_profile_acl: service_profile.canonical_acl().into(),
                         storage_provider_profile_acl: storage_provider_profile
                             .map(|profile| profile.canonical_acl().into()),
-                        workload_template,
+                        workload_template: provider_admission.workload_template,
                         storage_credentials,
                         retention_policy,
-                        node_pool_id: manifest.node_pool_id.map(NodePoolId::from_uuid),
+                        node_pool_id: provider_admission.node_pool_id,
                         actor_principal_id: command.actor_principal_id,
                         access: command.access,
                         idempotency_key: command.idempotency_key,
@@ -239,20 +183,5 @@ impl CommandHandler<DeployDurableCellApplicationFromAcl>
                 )
                 .await
         })
-    }
-}
-
-fn map_artifact_error(error: OciArtifactResolutionError) -> ApplicationError {
-    match error {
-        OciArtifactResolutionError::InvalidReference(message)
-        | OciArtifactResolutionError::Protocol(message) => ApplicationError::Invalid(message),
-        OciArtifactResolutionError::NotFound => {
-            ApplicationError::NotFound("Durable Cell provider OCI artifact not found".into())
-        }
-        OciArtifactResolutionError::Unauthorized
-        | OciArtifactResolutionError::Credential(_)
-        | OciArtifactResolutionError::Registry(_) => ApplicationError::Unavailable(
-            "Durable Cell provider OCI artifact is unavailable".into(),
-        ),
     }
 }

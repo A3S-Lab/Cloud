@@ -4,6 +4,7 @@
 //! returns owner ports and never publishes concrete Infrastructure adapters as
 //! part of the product facade.
 
+use crate::modules::agents::AgentAccess;
 use crate::modules::files::{
     IUserFileObjectStore, IUserFileRepository, PostgresUserFileRepository,
     SharedUserFileObjectStore, UserFileAccess, UserFileObjectError,
@@ -56,6 +57,14 @@ pub fn workload_organization_access_for_conformance() -> WorkloadAccess {
 #[doc(hidden)]
 pub fn secret_organization_access_for_conformance() -> SecretAccess {
     SecretAccess::organization_wide()
+}
+
+/// Creates organization-wide Agents access only for the retained GA-1
+/// management-plane conversation/execution gate. Product composition must
+/// derive this projection through the root Presentation ACL instead.
+#[doc(hidden)]
+pub fn agent_organization_access_for_conformance() -> AgentAccess {
+    AgentAccess::organization_wide()
 }
 
 /// Builds the exact production Search persistence adapter through its owner

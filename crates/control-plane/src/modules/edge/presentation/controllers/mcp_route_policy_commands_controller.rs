@@ -3,9 +3,8 @@ use crate::modules::edge::application::{CreateMcpRoutePolicy, ReviseMcpRoutePoli
 use crate::modules::edge::domain::MCP_ROUTE_POLICY_MAX_ACL_BYTES;
 use crate::modules::edge::presentation::dto::McpRoutePolicyMutationResponse;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, RouteId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, Result,

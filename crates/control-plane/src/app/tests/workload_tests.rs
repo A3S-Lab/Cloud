@@ -8,8 +8,8 @@ mod rollback;
 mod source_build;
 
 #[tokio::test]
-async fn workload_update_api_requires_an_active_revision_and_creates_one_idempotent_generation()
--> Result<()> {
+async fn workload_update_api_requires_an_active_revision_and_creates_one_idempotent_generation(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let secrets = Arc::new(InMemorySecretRepository::new());
@@ -156,11 +156,9 @@ async fn workload_update_api_requires_an_active_revision_and_creates_one_idempot
     assert_eq!(replayed.status(), 200);
     let accepted_json = response_json(&accepted)?;
     let replayed_json = response_json(&replayed)?;
-    assert!(
-        accepted_json["data"]
-            .as_object()
-            .is_some_and(|data| !data.contains_key("rollbackSourceRevisionId"))
-    );
+    assert!(accepted_json["data"]
+        .as_object()
+        .is_some_and(|data| !data.contains_key("rollbackSourceRevisionId")));
     assert_eq!(accepted_json["data"]["generation"], 2);
     assert_eq!(
         accepted_json["data"]["deploymentId"],

@@ -3,16 +3,13 @@ mod steps;
 mod types;
 mod workflow;
 
-#[cfg(test)]
-mod tests;
-
 use crate::infrastructure::flow_step_retry_policy;
-use crate::modules::artifacts::application::IBuildInputPreparer;
+use crate::modules::artifacts::application::{IArtifactBuildNodeCommandPort, IBuildInputPreparer};
 use crate::modules::artifacts::domain::{
     IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildOutputValidator, IBuildRunRepository,
     IBuildSourceResolver,
 };
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::INodeRepository;
 use a3s_flow::{
     FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation,
 };
@@ -111,7 +108,7 @@ pub struct BuildFlowRuntimeDependencies {
     pub publisher: Arc<dyn IBuildArtifactPublisher>,
     pub evidence: Arc<dyn IBuildEvidenceGenerator>,
     pub nodes: Arc<dyn INodeRepository>,
-    pub node_control: Arc<dyn INodeControlRepository>,
+    pub node_commands: Arc<dyn IArtifactBuildNodeCommandPort>,
 }
 
 #[derive(Clone)]
@@ -123,7 +120,7 @@ pub struct BuildFlowRuntime {
     pub(super) publisher: Arc<dyn IBuildArtifactPublisher>,
     pub(super) evidence: Arc<dyn IBuildEvidenceGenerator>,
     pub(super) nodes: Arc<dyn INodeRepository>,
-    pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) node_commands: Arc<dyn IArtifactBuildNodeCommandPort>,
     pub(super) config: BuildFlowConfig,
 }
 
@@ -137,7 +134,7 @@ impl BuildFlowRuntime {
             publisher,
             evidence,
             nodes,
-            node_control,
+            node_commands,
         } = dependencies;
         Self {
             builds,
@@ -147,7 +144,7 @@ impl BuildFlowRuntime {
             publisher,
             evidence,
             nodes,
-            node_control,
+            node_commands,
             config,
         }
     }
@@ -181,3 +178,6 @@ impl FlowRuntime for BuildFlowRuntime {
 fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
     FlowError::Runtime(format!("{context}: {error}"))
 }
+
+#[cfg(test)]
+mod tests;

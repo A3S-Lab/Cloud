@@ -1,5 +1,6 @@
 use super::workloads_support::{replica_set_write, request};
 use a3s_cloud_contracts::NodeCommandPayload;
+use a3s_cloud_control_plane::modules::workloads::WorkloadWriterFenceContinuationIntent;
 use a3s_cloud_control_plane::modules::fleet::domain::entities::NodeCommandDraft;
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
@@ -199,11 +200,13 @@ pub async fn exercise_atomic_writer_fence_commit(
     })?;
     let fenced_at = receipt.spec().fenced_at;
     let commit = WorkloadWriterFenceCommit {
-        operation: OperationRequest::new(
+        operation: WorkloadWriterFenceContinuationIntent::new(
             operation_id,
             organization_id,
-            OperationSubject::new("workload", workload.id.as_uuid())?,
-            WorkflowIdentity::new("cloud.test.writer-fence", "1")?,
+            "workload",
+            workload.id.as_uuid(),
+            "cloud.test.writer-fence",
+            "1",
             json!({ "writerFenceReceiptDigest": receipt.digest() }),
             fenced_at,
         ),

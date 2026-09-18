@@ -5,8 +5,8 @@ use crate::modules::artifacts::application::project_hosted_build_outcome;
 use crate::modules::artifacts::domain::test_support::succeeded_hosted_agent_build;
 use crate::modules::assets::domain::{Asset, AssetKind, AssetRelease, AssetReleaseVersion};
 use crate::modules::shared_kernel::domain::{
-    AgentExecutionId, AssetId, AssetReleaseId, GitCommitSha, ResourceName, Sha256Digest,
-    canonical_timestamp,
+    canonical_timestamp, AgentExecutionId, AssetId, AssetReleaseId, GitCommitSha, ResourceName,
+    Sha256Digest,
 };
 
 const AGENT_WRITER_TOKEN: &str =
@@ -162,8 +162,8 @@ async fn agent_conversation_api_is_tenant_scoped_idempotent_and_stream_ready() -
 }
 
 #[tokio::test]
-async fn restricted_agent_execution_boundaries_resolve_environment_before_reads_mutations_streams_and_replay()
--> Result<()> {
+async fn restricted_agent_execution_boundaries_resolve_environment_before_reads_mutations_streams_and_replay(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let assets = Arc::new(UnavailableAssetStore::default());
@@ -411,11 +411,9 @@ async fn restricted_agent_execution_boundaries_resolve_environment_before_reads_
         started_body["data"]["execution"]["provider"]["protocol"],
         "a3s.cloud.agent-provider.v1"
     );
-    assert!(
-        started_body["data"]["execution"]["provider"]
-            .get("profileAcl")
-            .is_none()
-    );
+    assert!(started_body["data"]["execution"]["provider"]
+        .get("profileAcl")
+        .is_none());
     let execution_id = required_agent_string(
         &started_body["data"]["execution"]["id"],
         "granted Agent execution ID",

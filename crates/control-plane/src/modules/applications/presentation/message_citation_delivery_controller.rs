@@ -8,13 +8,13 @@ use crate::modules::applications::application::{
     ListApplicationMessageCitationsBySession,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationMessageCitationId, ApplicationMessageId, ApplicationSessionId,
     KnowledgeBaseId, KnowledgeBaseRevisionId, KnowledgeChunkId, KnowledgeDocumentId,
     OrganizationId, ProjectId,
 };
-use crate::presentation::{actor_principal_id, application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, actor_principal_id, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, QueryBus, Result,

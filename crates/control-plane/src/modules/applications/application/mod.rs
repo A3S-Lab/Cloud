@@ -209,6 +209,7 @@ mod asynchronous_observation_tests;
 mod authoring_profile_tests;
 #[cfg(test)]
 mod application_mode_claim_path_tests;
+#[cfg(test)]
 mod application_chatflow_workflow_claim_path_tests;
 #[cfg(test)]
 mod blocking_observation_tests;

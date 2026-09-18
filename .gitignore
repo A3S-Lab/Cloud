@@ -25,6 +25,7 @@ __pycache__/
 
 # Test and runtime state
 /.a3s/
+/.cache/
 /coverage/
 /tmp/
 *.log

@@ -1,11 +1,17 @@
 import type {
   ApiToken,
   ApiTokenMutationResult,
+  DirectoryMembershipProjectionBinding,
+  DirectoryMembershipProjectionMutationResult,
+  DirectoryResourceGrant,
+  DirectoryResourceGrantMutationResult,
   Membership,
   MembershipInvitation,
   MembershipInvitationAcceptanceResult,
   MembershipInvitationMutationResult,
   MembershipMutationResult,
+  PartnerSubjectLink,
+  PartnerSubjectLinkMutationResult,
   ResourceGrant,
   ResourceGrantMutationResult,
 } from '@a3s/cloud-client';
@@ -152,13 +158,100 @@ export function resourceGrantMutationResult(row: ResourceGrantMutationResult): C
   };
 }
 
-function resourceGrantScopeIdentity(row: ResourceGrant): string {
+function resourceGrantScopeIdentity(row: ResourceGrant | DirectoryResourceGrant): string {
   switch (row.scope.kind) {
     case 'project':
       return row.scope.projectId;
     case 'environment':
       return `${row.scope.projectId}/${row.scope.environmentId}`;
+    case 'application':
+      return `${row.scope.projectId}/${row.scope.applicationId}`;
     case 'node':
       return row.scope.nodeId;
   }
+}
+
+const PARTNER_SUBJECT_LINK_COLUMNS: readonly TableColumn<PartnerSubjectLink>[] = [
+  { header: 'LINK', value: (row) => row.linkId },
+  { header: 'PROVIDER', value: (row) => row.providerKey },
+  { header: 'ISSUER', value: (row) => row.issuer },
+  { header: 'SUBJECT', value: (row) => row.subject },
+  { header: 'PRINCIPAL', value: (row) => row.principalId },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'REVOKED AT', value: (row) => row.revokedAt ?? '' },
+];
+
+export function partnerSubjectLinksResult(rows: PartnerSubjectLink[]): CommandResult {
+  return { json: rows, table: renderTable(rows, PARTNER_SUBJECT_LINK_COLUMNS) };
+}
+
+export function partnerSubjectLinkResult(row: PartnerSubjectLink): CommandResult {
+  return { json: row, table: renderTable([row], PARTNER_SUBJECT_LINK_COLUMNS) };
+}
+
+export function partnerSubjectLinkMutationResult(row: PartnerSubjectLinkMutationResult): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...PARTNER_SUBJECT_LINK_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const DIRECTORY_RESOURCE_GRANT_COLUMNS: readonly TableColumn<DirectoryResourceGrant>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'SUBJECT', value: (row) => row.subjectRef },
+  { header: 'KIND', value: (row) => row.scope.kind },
+  { header: 'RESOURCE', value: resourceGrantScopeIdentity },
+  { header: 'VERSION', value: (row) => row.aggregateVersion },
+  { header: 'REVOKED AT', value: (row) => row.revokedAt ?? '' },
+];
+
+export function directoryResourceGrantsResult(rows: DirectoryResourceGrant[]): CommandResult {
+  return { json: rows, table: renderTable(rows, DIRECTORY_RESOURCE_GRANT_COLUMNS) };
+}
+
+export function directoryResourceGrantResult(row: DirectoryResourceGrant): CommandResult {
+  return { json: row, table: renderTable([row], DIRECTORY_RESOURCE_GRANT_COLUMNS) };
+}
+
+export function directoryResourceGrantMutationResult(
+  row: DirectoryResourceGrantMutationResult
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      [row],
+      [...DIRECTORY_RESOURCE_GRANT_COLUMNS, { header: 'REPLAYED', value: (value) => value.replayed }]
+    ),
+  };
+}
+
+const DIRECTORY_MEMBERSHIP_PROJECTION_COLUMNS: readonly TableColumn<DirectoryMembershipProjectionBinding>[] =
+  [
+    { header: 'SUBJECT', value: (row) => row.subjectRef },
+    { header: 'PRINCIPAL', value: (row) => row.principalId },
+    { header: 'CREATED AT', value: (row) => row.createdAt },
+  ];
+
+export function directoryMembershipProjectionsResult(
+  rows: DirectoryMembershipProjectionBinding[]
+): CommandResult {
+  return { json: rows, table: renderTable(rows, DIRECTORY_MEMBERSHIP_PROJECTION_COLUMNS) };
+}
+
+export function directoryMembershipProjectionMutationResult(
+  row: DirectoryMembershipProjectionMutationResult
+): CommandResult {
+  return {
+    json: row,
+    table: renderTable(
+      row.items.map((item) => ({ ...item, replayed: row.replayed })),
+      [
+        ...DIRECTORY_MEMBERSHIP_PROJECTION_COLUMNS,
+        { header: 'REPLAYED', value: (value: { replayed: boolean }) => value.replayed },
+      ]
+    ),
+  };
 }

@@ -221,6 +221,11 @@ Primary aggregates:
   tenant identity, credential, accepted platform-role policy, and matching
   `PlatformOwner`; it is persisted only through the dedicated bootstrap port)
 - `ResourceGrant`
+- `DirectoryResourceGrant` and `DirectoryMembershipProjectionBinding` (Identity-owned
+  DirectoryProjection: opaque department/group subject refs for grants, and Principal
+  membership bindings for auth-time expansion; partner directory trees are not stored)
+- `ExternalIdentityLink` partner SubjectLink mappings under reserved `partner-*`
+  provider keys (administrator-managed; not OIDC browser flows)
 - `RecipientContact` and transient `RecipientContactVerification`
   (`C0.3-N5a` domain, migration, repositories, application boundary, proof
   adapter, and verified PostgreSQL evidence are implemented; `C0.3-N5b` adds
@@ -4416,6 +4421,11 @@ build and attempt lineage, status, OCI metadata, publication, a bounded evidence
 summary, failure, and timestamps. A separate tenant-scoped evidence query
 returns the immutable SPDX, provenance, DSSE envelope, and public signing-key
 identity; node/command identities and internal Artifact URIs remain private.
+`PartnerArtifactAdmission` is a separate Artifacts receipt, not a second BuildRun
+or blob store. It records one `sha256:` digest, kind (`model`, `git`, `oci`, or
+`generic`), byte size, and opaque `partnerRef` per organization. Same facts
+replay; different metadata for the same digest conflicts. Partner bytes are not
+stored.
 A `build:write` cancellation request atomically advances the aggregate and
 records its idempotency response, while the Build Flow remains responsible for
 publication-race adoption and cleanup before terminal state. A separate

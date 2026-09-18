@@ -13,6 +13,7 @@ use crate::modules::artifacts::domain::{
     PublishedOciArtifact, ValidatedOciBuildOutput,
 };
 use crate::modules::artifacts::infrastructure::InMemoryBuildRunRepository;
+use crate::modules::artifacts::FleetArtifactBuildNodeCommandAccessAdapter;
 use crate::modules::fleet::domain::entities::EnrollmentToken;
 use crate::modules::fleet::domain::repositories::{
     INodeControlRepository, INodeRepository, NodeEnrollmentDraft, NodeHeartbeatUpdate,
@@ -137,7 +138,9 @@ impl BuildFixture {
                 publisher: publisher.clone(),
                 evidence: evidence.clone(),
                 nodes: nodes.clone(),
-                node_control: nodes.clone(),
+                node_commands: Arc::new(FleetArtifactBuildNodeCommandAccessAdapter::new(
+                    nodes.clone(),
+                )),
             },
             config()?,
         );

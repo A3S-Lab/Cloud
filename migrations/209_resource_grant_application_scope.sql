@@ -27,8 +27,14 @@ end
 $$;
 
 alter table resource_grants
+    drop constraint if exists resource_grants_scope_kind_check;
+
+alter table resource_grants
     add constraint resource_grants_scope_kind_check
         check (scope_kind in ('project', 'environment', 'application', 'node'));
+
+alter table resource_grants
+    drop constraint if exists resource_grants_scope_shape_check;
 
 alter table resource_grants
     add constraint resource_grants_scope_shape_check check (

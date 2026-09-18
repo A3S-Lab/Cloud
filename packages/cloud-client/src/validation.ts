@@ -1,14 +1,22 @@
 import type {
   CreateApiTokenInput,
+  CreateDirectoryResourceGrantInput,
   CreateMembershipInput,
   CreateMembershipInvitationInput,
   CreateResourceGrantInput,
   IdentityPrincipalKind,
+  LinkPartnerSubjectInput,
+  ListDirectoryMembershipProjectionsOptions,
+  ListPartnerSubjectLinksOptions,
   MembershipRole,
+  ReplaceDirectoryMembershipProjectionInput,
+  ResolvePartnerSubjectInput,
   ResourceGrantScope,
+  RevokePartnerSubjectLinkInput,
 } from './identity';
 import type { IssueEnrollmentTokenInput } from './node';
 import type {
+  AdmitPartnerArtifactInput,
   AgentExecutionTrajectoryOptions,
   AgentApprovalCheckpointStatus,
   CaptureAgentExecutionCheckpointInput,
@@ -39,6 +47,10 @@ export const MAX_FORM_DOCUMENT_BYTES = 4 * 1024 * 1024;
 export const MAX_EXECUTION_TEMPLATE_ACL_BYTES = 128 * 1024;
 export const MAX_WORKLOAD_ACL_BYTES = MAX_ACL_DOCUMENT_BYTES;
 export const MAX_PROJECT_ATTRIBUTION_LABELS = 32;
+export const MAX_PARTNER_ARTIFACT_BYTE_SIZE = 8 * 1024 * 1024 * 1024 * 1024;
+export const MAX_PARTNER_ARTIFACT_REF_CHARS = 256;
+const PARTNER_ARTIFACT_KINDS = new Set(['model', 'git', 'oci', 'generic']);
+const PARTNER_ARTIFACT_DIGEST = /^sha256:[0-9a-f]{64}$/;
 
 const AGENT_PROVIDER_KINDS: ReadonlySet<AgentProviderKind> = new Set(['a3s.code', 'reference.echo']);
 const AGENT_APPROVAL_CHECKPOINT_STATUSES: ReadonlySet<AgentApprovalCheckpointStatus> = new Set([
@@ -283,6 +295,115 @@ export function validateResourceGrantInput(input: CreateResourceGrantInput): voi
 
 export function validateExpectedResourceGrantVersion(value: number): void {
   validateExpectedVersion(value, 'Resource Grant');
+}
+
+function validateNonEmptyBoundedString(value: string, label: string): void {
+  if (typeof value !== 'string' || value.trim() !== value || value.length < 1 || value.length > 2304) {
+    throw new TypeError(`${label} must be a non-empty bounded string`);
+  }
+}
+
+export function validateLinkPartnerSubjectInput(input: LinkPartnerSubjectInput): void {
+  validateNonEmptyBoundedString(input.providerKey, 'partner subject provider key');
+  validateNonEmptyBoundedString(input.issuer, 'partner subject issuer');
+  validateNonEmptyBoundedString(input.subject, 'partner subject');
+  validateNonNilUuid(input.principalId, 'partner subject principal ID');
+}
+
+export function validateRevokePartnerSubjectLinkInput(input: RevokePartnerSubjectLinkInput): void {
+  validateNonEmptyBoundedString(input.providerKey, 'partner subject provider key');
+  validateNonEmptyBoundedString(input.issuer, 'partner subject issuer');
+  validateNonEmptyBoundedString(input.subject, 'partner subject');
+  validateExpectedVersion(input.expectedVersion, 'partner subject link');
+}
+
+export function validateResolvePartnerSubjectInput(input: ResolvePartnerSubjectInput): void {
+  validateNonEmptyBoundedString(input.providerKey, 'partner subject provider key');
+  validateNonEmptyBoundedString(input.issuer, 'partner subject issuer');
+  validateNonEmptyBoundedString(input.subject, 'partner subject');
+}
+
+export function validateListPartnerSubjectLinksOptions(
+  options: ListPartnerSubjectLinksOptions
+): void {
+  validateNonNilUuid(options.principalId, 'partner subject principal ID');
+  if (options.providerKey !== undefined) {
+    validateNonEmptyBoundedString(options.providerKey, 'partner subject provider key');
+  }
+}
+
+export function validateCreateDirectoryResourceGrantInput(
+  input: CreateDirectoryResourceGrantInput
+): void {
+  validateNonEmptyBoundedString(input.subjectRef, 'directory resource grant subject ref');
+  validateResourceGrantInput({ scope: input.scope });
+}
+
+export function validateExpectedDirectoryResourceGrantVersion(value: number): void {
+  validateExpectedVersion(value, 'directory resource grant');
+}
+
+export function validateAdmitPartnerArtifactInput(input: AdmitPartnerArtifactInput): void {
+  if (typeof input.contentDigest !== 'string' || !PARTNER_ARTIFACT_DIGEST.test(input.contentDigest)) {
+    throw new TypeError('partner artifact content digest must match sha256:[0-9a-f]{64}');
+  }
+  if (typeof input.kind !== 'string' || !PARTNER_ARTIFACT_KINDS.has(input.kind)) {
+    throw new TypeError('partner artifact kind must be model, git, oci, or generic');
+  }
+  if (
+    typeof input.byteSize !== 'number' ||
+    !Number.isSafeInteger(input.byteSize) ||
+    input.byteSize < 1 ||
+    input.byteSize > MAX_PARTNER_ARTIFACT_BYTE_SIZE
+  ) {
+    throw new RangeError(
+      `partner artifact byte size must be an integer between 1 and ${MAX_PARTNER_ARTIFACT_BYTE_SIZE}`
+    );
+  }
+  if (
+    typeof input.partnerRef !== 'string' ||
+    input.partnerRef.trim() !== input.partnerRef ||
+    input.partnerRef.length < 1 ||
+    input.partnerRef.length > MAX_PARTNER_ARTIFACT_REF_CHARS ||
+    /[\u0000-\u001f\u007f]/.test(input.partnerRef)
+  ) {
+    throw new TypeError(
+      `partner artifact ref must be 1..=${MAX_PARTNER_ARTIFACT_REF_CHARS} characters without control chars`
+    );
+  }
+}
+
+export function validateReplaceDirectoryMembershipProjectionInput(
+  input: ReplaceDirectoryMembershipProjectionInput
+): void {
+  validateNonEmptyBoundedString(input.subjectRef, 'directory membership projection subject ref');
+  if (!Array.isArray(input.principalIds)) {
+    throw new TypeError('directory membership projection principal IDs must be an array');
+  }
+  for (const principalId of input.principalIds) {
+    validateNonNilUuid(principalId, 'directory membership projection principal ID');
+  }
+}
+
+export function validateListDirectoryMembershipProjectionsOptions(
+  options: ListDirectoryMembershipProjectionsOptions
+): void {
+  const hasSubject = options.subjectRef !== undefined;
+  const hasPrincipal = options.principalId !== undefined;
+  if (hasSubject === hasPrincipal) {
+    throw new TypeError('exactly one of subjectRef or principalId is required');
+  }
+  if (hasSubject) {
+    validateNonEmptyBoundedString(
+      options.subjectRef as string,
+      'directory membership projection subject ref'
+    );
+  } else {
+    validateNonNilUuid(
+      options.principalId as string,
+      'directory membership projection principal ID'
+    );
+  }
 }
 
 export function validateExpectedProjectVersion(value: number): void {

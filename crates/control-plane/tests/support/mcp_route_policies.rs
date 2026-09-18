@@ -1,3 +1,4 @@
+use a3s_cloud_control_plane::modules::fleet::FleetGatewaySnapshotCommandService;
 use a3s_cloud_contracts::{
     GatewayAckState, GatewayManagementProtocol, MCP_PROTOCOL_VERSION, McpGrantProjection,
     McpLimitsProjection, NodeCommandPayload, NodeGatewayAck,
@@ -54,6 +55,10 @@ use a3s_cloud_control_plane::modules::workloads::application::{
 };
 use a3s_cloud_control_plane::modules::workloads::project_runtime_spec;
 use a3s_cloud_control_plane::modules::workloads::{
+    WorkloadMcpActiveRevisionProjectionQueryService,
+    McpProfileAdmission,
+    McpReleaseAdmission,
+    WorkloadDeploymentOperationIntent,
     CreateDeploymentBundle, Deployment, DeploymentRequested, HttpHealthCheck, IWorkloadRepository,
     OciArtifact, PostgresWorkloadRepository, ServicePort, ServiceProcess, ServiceResources,
     ServiceTemplate, Workload, WorkloadControlSpec, WorkloadRevision,
@@ -366,7 +371,7 @@ pub async fn exercise(
         },
         workload_created_at,
     )?;
-    revision.bind_mcp_release(&workload, &asset, &published, &profile_binding)?;
+    revision.bind_mcp_release(&workload, &mcp_release_admission(&asset, &published, &profile_binding)?)?;
     let deployment = Deployment::create(
         DeploymentId::new(),
         organization_id,
@@ -375,18 +380,12 @@ pub async fn exercise(
         OperationId::new(),
         workload_created_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)?,
-        json!({
-            "deploymentId": deployment.id,
-            "mcpAssetReleaseId": published.id,
-            "mcpProfileDigest": profile.digest(),
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         workload_created_at,
     );
     let deployment_request = CreateDeploymentBundle {
@@ -892,7 +891,9 @@ pub async fn exercise(
     let snapshot_repository: Arc<dyn IMcpGatewaySnapshotRepository> = Arc::new(edge.clone());
     let node_control: Arc<dyn INodeControlRepository> =
         Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let commands = Arc::new(FleetGatewayCommandQueue::new(node_control.clone()));
+    let commands = Arc::new(FleetGatewayCommandQueue::new(Arc::new(
+        FleetGatewaySnapshotCommandService::new(node_control.clone()),
+    )));
     let reconciler = McpGatewaySnapshotReconciler::new(
         snapshot_repository,
         commands,
@@ -1006,7 +1007,7 @@ pub async fn exercise(
         ))),
         Arc::new(
             WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
-                workloads.clone(),
+                WorkloadMcpActiveRevisionProjectionQueryService::new(Arc::new(workloads.clone())),
             )),
         ),
     ));
@@ -1353,7 +1354,7 @@ async fn plan_gateway_snapshot(
         ))),
         Arc::new(
             WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
-                workloads.clone(),
+                WorkloadMcpActiveRevisionProjectionQueryService::new(Arc::new(workloads.clone())),
             )),
         ),
     ));
@@ -1581,6 +1582,39 @@ a3s_orm::orm_table! {
 
 fn digest(character: char) -> Result<Sha256Digest, String> {
     Sha256Digest::parse(format!("sha256:{}", character.to_string().repeat(64)))
+}
+
+fn mcp_release_admission(
+    asset: &Asset,
+    release: &AssetRelease,
+    profile_binding: &McpServiceProfileBinding,
+) -> Result<McpReleaseAdmission, String> {
+    let release_artifact = release
+        .artifact
+        .as_ref()
+        .ok_or_else(|| "published MCP service artifact missing".to_owned())?;
+    McpReleaseAdmission::new(
+        asset.organization_id,
+        asset.id,
+        release.id,
+        release
+            .published_at
+            .ok_or_else(|| "release publication time missing".to_owned())?,
+        profile_binding.created_at,
+        OciArtifact {
+            uri: format!(
+                "oci://registry.example/a3s-cloud/mcp@{}",
+                release_artifact.digest()
+            ),
+            digest: release_artifact.digest().to_string(),
+            media_type: release_artifact.media_type().into(),
+        },
+        McpProfileAdmission::new(
+            profile_binding.profile.digest().clone(),
+            profile_binding.profile.spec().runtime_port.clone(),
+            profile_binding.profile.spec().health_path.clone(),
+        )?,
+    )
 }
 
 fn policy_write(

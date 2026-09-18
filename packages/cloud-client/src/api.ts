@@ -317,6 +317,9 @@ import type {
   BuildEvidence,
   BuildRun,
   BuildRunLogsPage,
+  AdmitPartnerArtifactInput,
+  PartnerArtifactAdmission,
+  PartnerArtifactAdmissionMutationResult,
   CancelBuildRunResult,
   CancelDeploymentResult,
   CancelNodePoolMaintenanceInput,
@@ -326,6 +329,7 @@ import type {
   CreateApiTokenInput,
   CreateAssetInput,
   CreateAssetReleaseInput,
+  CreateDirectoryResourceGrantInput,
   CreateExecutionInput,
   CreateExecutionTemplateInput,
   CreateGatewayScopeInput,
@@ -337,6 +341,10 @@ import type {
   CreateResourceGrantInput,
   DecideAgentApprovalCheckpointInput,
   Deployment,
+  DirectoryMembershipProjectionBinding,
+  DirectoryMembershipProjectionMutationResult,
+  DirectoryResourceGrant,
+  DirectoryResourceGrantMutationResult,
   DomainClaim,
   DomainClaimMutationResult,
   EnrollmentToken,
@@ -371,7 +379,9 @@ import type {
   IssueEnrollmentTokenInput,
   ListAgentApprovalCheckpointsOptions,
   ListAgentExecutionCheckpointsOptions,
+  ListDirectoryMembershipProjectionsOptions,
   ListHumanTasksOptions,
+  ListPartnerSubjectLinksOptions,
   ListWorkflowRunsOptions,
   McpCredential,
   McpCredentialDeliveryResult,
@@ -382,6 +392,7 @@ import type {
   McpServiceProfileMutationResult,
   Membership,
   MembershipInvitation,
+  LinkPartnerSubjectInput,
   MembershipInvitationAcceptanceResult,
   MembershipInvitationMutationResult,
   MembershipMutationResult,
@@ -397,6 +408,8 @@ import type {
   Operation,
   Organization,
   OrganizationMutationResult,
+  PartnerSubjectLink,
+  PartnerSubjectLinkMutationResult,
   PluginCatalogInspection,
   PluginCatalogInspectRequest,
   PluginCatalogPage,
@@ -418,11 +431,14 @@ import type {
   PublishWorkflowDefinitionInput,
   RecipientContact,
   RecipientContactMutationResult,
+  ReplaceDirectoryMembershipProjectionInput,
   RequestNodePoolMemberRemovalInput,
   RequestRecipientContactVerificationInput,
+  ResolvePartnerSubjectInput,
   ResolveSourceRevisionInput,
   ResourceGrant,
   ResourceGrantMutationResult,
+  RevokePartnerSubjectLinkInput,
   RetryBuildRunResult,
   ReviseFormDraftOptions,
   ReviseOntologyOptions,
@@ -473,9 +489,12 @@ import {
   validateCaptureAgentExecutionCheckpoint,
   validateAgentProviderKind,
   validateApiTokenInput,
+  validateCreateDirectoryResourceGrantInput,
+  validateAdmitPartnerArtifactInput,
   validateEnrollmentTokenInput,
   validateExecutionTemplateAcl,
   validateExpectedAgentApprovalCheckpointVersion,
+  validateExpectedDirectoryResourceGrantVersion,
   validateExpectedHumanTaskVersion,
   validateExpectedMcpCredentialVersion,
   validateExpectedMembershipInvitationVersion,
@@ -486,6 +505,9 @@ import {
   validateForkAgentExecution,
   validateFormDraftInput,
   validateFormVersionControl,
+  validateLinkPartnerSubjectInput,
+  validateListDirectoryMembershipProjectionsOptions,
+  validateListPartnerSubjectLinksOptions,
   validateMcpCredentialExpiry,
   validateMcpRoutePolicyAcl,
   validateMcpServiceProfileAcl,
@@ -496,7 +518,10 @@ import {
   validateOntologyAcl,
   validateOntologyRevisionControl,
   validateProjectAttributionInput,
+  validateReplaceDirectoryMembershipProjectionInput,
+  validateResolvePartnerSubjectInput,
   validateResourceGrantInput,
+  validateRevokePartnerSubjectLinkInput,
   validateSecretValue,
   validateWorkflowDefinitionPublication,
   validateWorkflowGoalAcl,
@@ -1262,6 +1287,154 @@ export class CloudApi {
       `/organizations/${encodeURIComponent(organizationId)}/resource-grants/${encodeURIComponent(resourceGrantId)}/revocation`,
       idempotencyKey,
       { expectedVersion },
+      signal
+    );
+  }
+
+  linkPartnerSubject(
+    organizationId: string,
+    input: LinkPartnerSubjectInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PartnerSubjectLinkMutationResult> {
+    validateLinkPartnerSubjectInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-subject-links`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokePartnerSubjectLink(
+    organizationId: string,
+    input: RevokePartnerSubjectLinkInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PartnerSubjectLinkMutationResult> {
+    validateRevokePartnerSubjectLinkInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-subject-links/revocation`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  resolvePartnerSubject(
+    organizationId: string,
+    input: ResolvePartnerSubjectInput,
+    signal?: AbortSignal
+  ): Promise<PartnerSubjectLink> {
+    validateResolvePartnerSubjectInput(input);
+    const parameters = new URLSearchParams({
+      providerKey: input.providerKey,
+      issuer: input.issuer,
+      subject: input.subject,
+    });
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-subject-links/resolve${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  listPartnerSubjectLinksByPrincipal(
+    organizationId: string,
+    options: ListPartnerSubjectLinksOptions,
+    signal?: AbortSignal
+  ): Promise<PartnerSubjectLink[]> {
+    validateListPartnerSubjectLinksOptions(options);
+    const parameters = new URLSearchParams({ principalId: options.principalId });
+    if (options.providerKey !== undefined) {
+      parameters.set('providerKey', options.providerKey);
+    }
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-subject-links${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  listDirectoryResourceGrants(
+    organizationId: string,
+    signal?: AbortSignal
+  ): Promise<DirectoryResourceGrant[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-resource-grants`,
+      signal
+    );
+  }
+
+  getDirectoryResourceGrant(
+    organizationId: string,
+    directoryResourceGrantId: string,
+    signal?: AbortSignal
+  ): Promise<DirectoryResourceGrant> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-resource-grants/${encodeURIComponent(directoryResourceGrantId)}`,
+      signal
+    );
+  }
+
+  createDirectoryResourceGrant(
+    organizationId: string,
+    input: CreateDirectoryResourceGrantInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DirectoryResourceGrantMutationResult> {
+    validateCreateDirectoryResourceGrantInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-resource-grants`,
+      idempotencyKey,
+      input,
+      signal
+    );
+  }
+
+  revokeDirectoryResourceGrant(
+    organizationId: string,
+    directoryResourceGrantId: string,
+    expectedVersion: number,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DirectoryResourceGrantMutationResult> {
+    validateExpectedDirectoryResourceGrantVersion(expectedVersion);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-resource-grants/${encodeURIComponent(directoryResourceGrantId)}/revocation`,
+      idempotencyKey,
+      { expectedVersion },
+      signal
+    );
+  }
+
+  listDirectoryMembershipProjections(
+    organizationId: string,
+    options: ListDirectoryMembershipProjectionsOptions,
+    signal?: AbortSignal
+  ): Promise<DirectoryMembershipProjectionBinding[]> {
+    validateListDirectoryMembershipProjectionsOptions(options);
+    const parameters = new URLSearchParams();
+    if (options.subjectRef !== undefined) {
+      parameters.set('subjectRef', options.subjectRef);
+    } else {
+      parameters.set('principalId', options.principalId);
+    }
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-membership-projections${encodeQueryParameters(parameters)}`,
+      signal
+    );
+  }
+
+  replaceDirectoryMembershipProjection(
+    organizationId: string,
+    input: ReplaceDirectoryMembershipProjectionInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<DirectoryMembershipProjectionMutationResult> {
+    validateReplaceDirectoryMembershipProjectionInput(input);
+    return this.putJson(
+      `/organizations/${encodeURIComponent(organizationId)}/directory-membership-projections`,
+      idempotencyKey,
+      input,
       signal
     );
   }
@@ -2670,6 +2843,42 @@ export class CloudApi {
   getBuildEvidence(organizationId: string, buildRunId: string, signal?: AbortSignal): Promise<BuildEvidence> {
     return this.get(
       `/organizations/${encodeURIComponent(organizationId)}/build-runs/${encodeURIComponent(buildRunId)}/evidence`,
+      signal
+    );
+  }
+
+  listPartnerArtifactAdmissions(
+    organizationId: string,
+    signal?: AbortSignal
+  ): Promise<PartnerArtifactAdmission[]> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-artifact-admissions`,
+      signal
+    );
+  }
+
+  getPartnerArtifactAdmission(
+    organizationId: string,
+    admissionId: string,
+    signal?: AbortSignal
+  ): Promise<PartnerArtifactAdmission> {
+    return this.get(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-artifact-admissions/${encodeURIComponent(admissionId)}`,
+      signal
+    );
+  }
+
+  admitPartnerArtifact(
+    organizationId: string,
+    input: AdmitPartnerArtifactInput,
+    idempotencyKey: string,
+    signal?: AbortSignal
+  ): Promise<PartnerArtifactAdmissionMutationResult> {
+    validateAdmitPartnerArtifactInput(input);
+    return this.postJson(
+      `/organizations/${encodeURIComponent(organizationId)}/partner-artifact-admissions`,
+      idempotencyKey,
+      input,
       signal
     );
   }

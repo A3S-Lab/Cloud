@@ -4,9 +4,8 @@ use crate::modules::fleet::presentation::dto::{
     ChangeNodeStateRequest, EnrollmentTokenResponse, IssueEnrollmentTokenRequest, NodeResponse,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{NodeId, OrganizationId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, Result,

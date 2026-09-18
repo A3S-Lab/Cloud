@@ -43,7 +43,7 @@ pub(super) async fn ready(
         .ok_or_else(|| "Agent Workload does not declare the Code Harness health port".to_owned())?;
     let spec = project_runtime_spec(&target.revision)?;
     let observation = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(node_id, &spec.unit_id, spec.generation)
         .await
         .map_err(|error| format!("could not load Agent Runtime observation: {error}"))?

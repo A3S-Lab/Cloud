@@ -10,12 +10,10 @@ mod store_plan;
 mod types;
 mod workflow;
 
-#[cfg(test)]
-mod tests;
-
 use crate::infrastructure::flow_step_retry_policy;
 use crate::modules::artifacts::application::INodeArtifactStore;
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::INodeRepository;
+use crate::modules::plugins::application::IPluginAssignmentNodeCommandPort;
 use crate::modules::plugins::domain::repositories::{
     IPluginAssignmentRepository, IPluginPlanProjectionRepository, IPluginRegistryRepository,
 };
@@ -98,7 +96,7 @@ pub struct PluginAssignmentFlowRuntimeDependencies {
     pub assignments: Arc<dyn IPluginAssignmentRepository>,
     pub registries: Arc<dyn IPluginRegistryRepository>,
     pub nodes: Arc<dyn INodeRepository>,
-    pub node_control: Arc<dyn INodeControlRepository>,
+    pub node_commands: Arc<dyn IPluginAssignmentNodeCommandPort>,
     pub trust_roots: Arc<dyn IPluginTrustRootStore>,
     pub policies: Arc<dyn IPluginPolicyStore>,
     pub artifacts: Arc<dyn INodeArtifactStore>,
@@ -111,7 +109,7 @@ pub struct PluginAssignmentFlowRuntime {
     pub(super) assignments: Arc<dyn IPluginAssignmentRepository>,
     pub(super) registries: Arc<dyn IPluginRegistryRepository>,
     pub(super) nodes: Arc<dyn INodeRepository>,
-    pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) node_commands: Arc<dyn IPluginAssignmentNodeCommandPort>,
     pub(super) trust_roots: Arc<dyn IPluginTrustRootStore>,
     pub(super) policies: Arc<dyn IPluginPolicyStore>,
     pub(super) artifacts: Arc<dyn INodeArtifactStore>,
@@ -129,7 +127,7 @@ impl PluginAssignmentFlowRuntime {
             assignments: dependencies.assignments,
             registries: dependencies.registries,
             nodes: dependencies.nodes,
-            node_control: dependencies.node_control,
+            node_commands: dependencies.node_commands,
             trust_roots: dependencies.trust_roots,
             policies: dependencies.policies,
             artifacts: dependencies.artifacts,
@@ -198,3 +196,6 @@ impl FlowRuntime for PluginAssignmentFlowRuntime {
 fn encode<T: serde::Serialize>(value: T) -> a3s_flow::Result<serde_json::Value> {
     serde_json::to_value(value).map_err(FlowError::from)
 }
+
+#[cfg(test)]
+mod tests;

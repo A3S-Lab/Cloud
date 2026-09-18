@@ -121,7 +121,8 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         );
     }
     assert_eq!(
-        schemas["HarnessInvocationProfile"]["properties"]["requiredCapabilities"]["x-a3s-canonical-order"],
+        schemas["HarnessInvocationProfile"]["properties"]["requiredCapabilities"]
+            ["x-a3s-canonical-order"],
         "lexical-wire-value"
     );
     assert_eq!(
@@ -222,12 +223,10 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         schemas["AgentExecutionEventPage"]["properties"]["records"]["items"]["$ref"],
         "#/components/schemas/AgentExecutionEvent"
     );
-    assert!(
-        schemas["AgentExecution"]["properties"]["status"]["enum"]
-            .as_array()
-            .expect("Agent execution status values")
-            .contains(&json!("awaiting_approval"))
-    );
+    assert!(schemas["AgentExecution"]["properties"]["status"]["enum"]
+        .as_array()
+        .expect("Agent execution status values")
+        .contains(&json!("awaiting_approval")));
     assert_eq!(
         schemas["AgentApprovalCheckpoint"]["properties"]["tool"]["$ref"],
         "#/components/schemas/HarnessToolBinding"
@@ -257,7 +256,8 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         );
     }
 
-    let execution_collection = &document["paths"]["/organizations/{organization_id}/agent-conversations/{conversation_id}/executions"];
+    let execution_collection = &document["paths"]
+        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/executions"];
     assert_eq!(
         execution_collection["get"]["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionListSuccess200"
@@ -275,34 +275,33 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         json!(["a3s.code", "reference.echo"])
     );
     assert_eq!(request["properties"]["providerKind"]["default"], "a3s.code");
-    assert!(
-        !request["required"]
-            .as_array()
-            .expect("Agent start required fields")
-            .contains(&json!("providerKind"))
-    );
+    assert!(!request["required"]
+        .as_array()
+        .expect("Agent start required fields")
+        .contains(&json!("providerKind")));
 
-    let execution = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}"]
-        ["get"];
+    let execution = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}"]["get"];
     assert_eq!(
         execution["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionSuccess200"
     );
-    let cancel = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/cancel"]
-        ["post"];
+    let cancel = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/cancel"]["post"];
     for status in ["200", "202"] {
         assert_eq!(
             cancel["responses"][status]["$ref"],
             format!("#/components/responses/AgentExecutionMutationSuccess{status}")
         );
     }
-    let change_set = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/changes"]
-        ["get"];
+    let change_set = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/changes"]["get"];
     assert_eq!(
         change_set["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionChangeSetSuccess200"
     );
-    let checkpoints = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints"];
+    let checkpoints = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints"];
     assert_eq!(
         checkpoints["get"]["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionCheckpointListSuccess200"
@@ -314,26 +313,24 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         );
     }
     assert_eq!(
-        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["throughEventSequence"]
-            ["maximum"],
+        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["throughEventSequence"]["maximum"],
         9_007_199_254_740_991_i64
     );
     assert_eq!(
-        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["throughEventSequence"]
-            ["nullable"],
+        checkpoints["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["throughEventSequence"]["nullable"],
         true
     );
-    assert!(
-        checkpoints["post"]["parameters"]
-            .as_array()
-            .expect("checkpoint capture parameters")
-            .iter()
-            .any(|parameter| {
-                parameter["in"] == "header"
-                    && parameter["name"] == "idempotency-key"
-                    && parameter["required"] == true
-            })
-    );
+    assert!(checkpoints["post"]["parameters"]
+        .as_array()
+        .expect("checkpoint capture parameters")
+        .iter()
+        .any(|parameter| {
+            parameter["in"] == "header"
+                && parameter["name"] == "idempotency-key"
+                && parameter["required"] == true
+        }));
     let checkpoint = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/checkpoints/{checkpoint_id}"]
         ["get"];
     assert_eq!(
@@ -355,23 +352,23 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         );
     }
     assert_eq!(
-        fork["requestBody"]["content"]["application/json"]["schema"]["properties"]["input"]["x-a3s-max-canonical-bytes"],
+        fork["requestBody"]["content"]["application/json"]["schema"]["properties"]["input"]
+            ["x-a3s-max-canonical-bytes"],
         65_536
     );
-    let trajectory = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/trajectory"]
-        ["get"];
+    let trajectory = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/trajectory"]["get"];
     assert_eq!(
         trajectory["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionTrajectoryPageSuccess200"
     );
-    assert!(
-        trajectory["parameters"]
-            .as_array()
-            .expect("Agent trajectory parameters")
-            .iter()
-            .any(|parameter| parameter["name"] == "throughSequence")
-    );
-    let approvals = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints"]
+    assert!(trajectory["parameters"]
+        .as_array()
+        .expect("Agent trajectory parameters")
+        .iter()
+        .any(|parameter| parameter["name"] == "throughSequence"));
+    let approvals = &document["paths"]
+        ["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints"]
         ["get"];
     assert_eq!(
         approvals["responses"]["200"]["$ref"],
@@ -382,7 +379,8 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         1_000
     );
     assert_eq!(
-        document["components"]["schemas"]["AgentApprovalCheckpoint"]["properties"]["reason"]["x-a3s-max-utf8-bytes"],
+        document["components"]["schemas"]["AgentApprovalCheckpoint"]["properties"]["reason"]
+            ["x-a3s-max-utf8-bytes"],
         1_024
     );
     let approval = &document["paths"]["/organizations/{organization_id}/agent-executions/{execution_id}/approval-checkpoints/{checkpoint_id}"]
@@ -410,15 +408,17 @@ fn agent_requests_and_responses_are_closed_typed_and_provider_bound() -> Result<
         }));
     }
     assert_eq!(
-        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["outcome"]["enum"],
+        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["outcome"]
+            ["enum"],
         json!(["approved", "denied"])
     );
     assert_eq!(
-        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]["x-a3s-max-utf8-bytes"],
+        decision["requestBody"]["content"]["application/json"]["schema"]["properties"]["reason"]
+            ["x-a3s-max-utf8-bytes"],
         1_024
     );
-    let events = &document["paths"]["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]
-        ["get"];
+    let events = &document["paths"]
+        ["/organizations/{organization_id}/agent-conversations/{conversation_id}/events"]["get"];
     assert_eq!(
         events["responses"]["200"]["$ref"],
         "#/components/responses/AgentExecutionEventPageSuccess200"

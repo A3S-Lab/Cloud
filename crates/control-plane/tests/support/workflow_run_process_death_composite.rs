@@ -1,6 +1,7 @@
 use super::fixture::{Fixture, ProbeDocument};
 use super::process::{CompositeChildMarker, CrashMarker, ProbeMode};
 use super::{ProcessDeathFlowRuntime, RecoveryRuntime, TestResult};
+use a3s_cloud_control_plane::modules::executions::ProjectsExecutionsEnvironmentAccessAdapter;
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::executions::{
     IExecutionRepository, IExecutionTemplateRepository, IWorkflowExecutionPort,
@@ -440,7 +441,9 @@ fn coordinator(
         Arc::new(PostgresExecutionTemplateRepository::new(executor.clone()));
     let execution_port: Arc<dyn IWorkflowExecutionPort> =
         Arc::new(WorkflowExecutionApplicationService::new(
-            Arc::new(PostgresProjectsRepository::new(executor.clone())),
+            Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(
+                Arc::new(PostgresProjectsRepository::new(executor.clone())),
+            )),
             templates,
             executions,
         ));

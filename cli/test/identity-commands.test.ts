@@ -338,7 +338,17 @@ describe('a3s-cloud identity commands', () => {
       `/organizations/${ORGANIZATION_ID}/resource-grants/${RESOURCE_GRANT_ID}`,
       resourceGrantResource(),
     ],
-  ] as const)('queries Resource Grant history %#', async (command, path, response) => {
+    [
+      ['partner-subject-links', 'list', PRINCIPAL_ID, '--provider-key=partner-kense-directory'],
+      `/organizations/${ORGANIZATION_ID}/partner-subject-links?principalId=${PRINCIPAL_ID}&providerKey=partner-kense-directory`,
+      [partnerSubjectLinkResource()],
+    ],
+    [
+      ['directory-resource-grants', 'list'],
+      `/organizations/${ORGANIZATION_ID}/directory-resource-grants`,
+      [directoryResourceGrantResource()],
+    ],
+  ] as const)('queries federation and Resource Grant history %#', async (command, path, response) => {
     const calls: Array<Parameters<CloudFetch>> = [];
     const fetcher: CloudFetch = async (...args) => {
       calls.push(args);
@@ -714,6 +724,36 @@ function resourceGrantResource(): Record<string, unknown> {
     id: RESOURCE_GRANT_ID,
     organizationId: ORGANIZATION_ID,
     membershipId: MEMBERSHIP_ID,
+    scope: { kind: 'project', projectId: PROJECT_ID },
+    aggregateVersion: 1,
+    createdAt: '2026-08-12T00:00:00.000Z',
+    updatedAt: '2026-08-12T00:00:00.000Z',
+    revokedAt: null,
+  };
+}
+
+function partnerSubjectLinkResource(): Record<string, unknown> {
+  return {
+    linkId: '019c0000-0000-7000-8000-000000000031',
+    providerKey: 'partner-kense-directory',
+    issuer: 'https://kense.example/directory',
+    subject: '019c0000-0000-7000-8000-000000000032',
+    principalId: PRINCIPAL_ID,
+    aggregateVersion: 1,
+    createdAt: '2026-08-12T00:00:00.000Z',
+    lastVerifiedAt: '2026-08-12T00:00:00.000Z',
+    revokedAt: null,
+  };
+}
+
+function directoryResourceGrantResource(): Record<string, unknown> {
+  return {
+    id: RESOURCE_GRANT_ID,
+    organizationId: ORGANIZATION_ID,
+    subjectRef: 'https://kense.example/directory#department/019c0000-0000-7000-8000-000000000033',
+    kind: 'department',
+    issuer: 'https://kense.example/directory',
+    subjectId: '019c0000-0000-7000-8000-000000000033',
     scope: { kind: 'project', projectId: PROJECT_ID },
     aggregateVersion: 1,
     createdAt: '2026-08-12T00:00:00.000Z',

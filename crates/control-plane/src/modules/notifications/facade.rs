@@ -1,0 +1,22 @@
+//! Deliberate public Notifications contracts.
+//!
+//! Concrete `infrastructure` and `presentation` modules stay crate-private.
+//! Selected adapters, repositories, response DTOs, and the module wiring
+//! surface are re-exported from the bounded-context root so consumers never
+//! depend on an outer-layer module path.
+
+pub use super::infrastructure::{
+    A3sEventOutboundNotificationConsumer, FleetNotificationsNodeAccessAdapter,
+    IdentityNotificationOutboxIdentityAccessAdapter, IdentityOutboundRecipientContactAccessAdapter,
+    InMemoryNotificationRepository, OutboxNotificationProjector, PostgresNotificationRepository,
+    ProjectsNotificationsEnvironmentAccessAdapter, SignedWebhookNotificationAdapter,
+    SlackCompatibleNotificationAdapter, SmtpOutboundNotificationCredentials,
+    SmtpOutboundNotificationDeliveryOptions, SmtpOutboundNotificationDeliveryService,
+    SmtpOutboundNotificationTlsPolicy,
+};
+pub use super::presentation::{
+    NotificationAlertPolicyMutationResponse, NotificationAlertPolicyPageResponse,
+    NotificationAlertPolicyResponse, NotificationMutationResponse, NotificationPageResponse,
+    NotificationResponse, NotificationsModule, OutboundNotificationSubscriptionMutationResponse,
+    OutboundNotificationSubscriptionPageResponse, OutboundNotificationSubscriptionResponse,
+};

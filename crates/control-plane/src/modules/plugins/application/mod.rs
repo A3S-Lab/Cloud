@@ -1,6 +1,7 @@
 pub mod commands;
 pub mod queries;
 
+mod plugin_assignment_node_command_port;
 mod plugin_assignment_operation_scheduler;
 mod plugin_assignment_reconciler;
 mod resource_access;
@@ -10,6 +11,11 @@ pub use commands::{
     EnrollPluginRegistryHandler, EnrollPluginRegistryResult, RecordPluginPlanProjection,
     RecordPluginPlanProjectionHandler, SetPluginAssignment, SetPluginAssignmentHandler,
     SetPluginAssignmentResult,
+};
+pub use plugin_assignment_node_command_port::{
+    IPluginAssignmentNodeCommandPort, PluginAssignmentNodeCommandAcknowledgement,
+    PluginAssignmentNodeCommandDispatch, PluginAssignmentNodeCommandEnqueueRequest,
+    PluginAssignmentNodeCommandProjection,
 };
 pub use plugin_assignment_operation_scheduler::{
     IPluginAssignmentOperationScheduler, PluginAssignmentOperationRequest,

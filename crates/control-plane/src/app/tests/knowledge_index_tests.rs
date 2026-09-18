@@ -21,8 +21,8 @@ const RESTRICTED_KNOWLEDGE_TOKEN: &str =
     "a3s_c888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
-async fn knowledge_index_policy_binding_rest_create_get_list_replay_and_deny_unauthorized_project()
--> Result<()> {
+async fn knowledge_index_policy_binding_rest_create_get_list_replay_and_deny_unauthorized_project(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;
@@ -249,12 +249,12 @@ async fn knowledge_index_policy_binding_rest_create_get_list_replay_and_deny_una
     assert_eq!(fetched_binding["data"]["bindingId"], FIXTURE_BINDING_ID);
     assert_eq!(fetched_binding["data"]["projectId"], granted_project);
 
-    let knowledge_base_revision_id =
-        created["data"]["knowledgeIndexRevision"]["knowledgeBaseRevisionId"]
-            .as_str()
-            .ok_or_else(|| {
-                BootError::Internal("KnowledgeIndexRevision has no knowledgeBaseRevisionId".into())
-            })?;
+    let knowledge_base_revision_id = created["data"]["knowledgeIndexRevision"]
+        ["knowledgeBaseRevisionId"]
+        .as_str()
+        .ok_or_else(|| {
+            BootError::Internal("KnowledgeIndexRevision has no knowledgeBaseRevisionId".into())
+        })?;
     let listed_indexes = app
         .call(get_as(
             format!(

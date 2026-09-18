@@ -11,7 +11,7 @@ pub use super::infrastructure::{
     InMemoryDurableCellApplicationRepository, InMemoryDurableCellDeploymentRepository,
     PostgresDurableCellApplicationRepository, PostgresDurableCellDeploymentRepository,
     ProjectsDurableCellsEnvironmentAccessAdapter, SecretsDurableCellBindingAdapter,
-    WorkloadsDurableCellWorkloadAdapter,
+    WorkloadsDurableCellProviderWorkloadAclAdapter, WorkloadsDurableCellWorkloadAdapter,
 };
 pub use super::presentation::{
     CreateDurableCellApplicationRequest, DeployDurableCellApplicationFromAcl,

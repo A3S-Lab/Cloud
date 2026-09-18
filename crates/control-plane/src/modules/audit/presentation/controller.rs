@@ -9,13 +9,10 @@ use crate::modules::audit::application::{
 };
 use crate::modules::audit::domain::{AuditAttributionStatus, AuditRecordFilter};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    OrganizationAdministratorGuard, OrganizationTenantGuard,
-};
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PrincipalId, ProjectAttributionProfileId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationAdministratorGuard, OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, get, metadata, use_guard, BootError, BootRequest, BootResponse,
     ControllerDefinition, QueryBus, Result, AUTH_SCOPES_METADATA,

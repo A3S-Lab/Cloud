@@ -57,6 +57,35 @@ One Code-path Agent release
      [ga1-gateway-public-2026-09-17](evidence/ga1-gateway-public-2026-09-17/)
      (`A3S_CLOUD_GA1_GATEWAY_PUBLIC_TRAFFIC_PROVEN`). Full CERTIFIED still needs
      management-plane conversation/execution + durable events (phase-2b).
+   - **Phase-2b code (`2026-09-17`):** GA-1 LIVE probe now chains Gateway public
+     traffic with Agents-owned `CreateAgentConversation` → `StartAgentExecution`
+     → `GetAgentExecutionEvents` against the same published release (owner
+     handlers + `ProjectsAgentsEnvironmentAccessAdapter` /
+     `AssetsAgentReleaseAdmissionAdapter`; no second scheduler). Emits
+     `A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN` before the CERTIFIED marker.
+   - **Management-plane Postgres gate (`2026-09-18`):** dedicated test binary
+     `tests/ga1_management_plane.rs` /
+     `postgres_ga1_management_plane_conversation_execution_and_events_are_durable`
+     exercises the same three-handler chain + `ExecutionRequested` via
+     `tests/support/ga1_management_plane.rs` (shared with LIVE support). Does
+     **not** invent GATEWAY LIVE or CERTIFIED; needs `A3S_CLOUD_TEST_POSTGRES_URL`
+     only (no `/dev/kvm`). Kept out of `postgres_integration` while unrelated
+     support modules fail to compile under the Wave 0 DDD ratchet.
+     Workspace `Cargo.toml` Box pin is realigned to BX0.software
+     `8b2804c585d2f31bce06f213990407606a475634` (`3.2.5`) with
+     `tools/box-conformance/box-revision`. Runner
+     `run_ga1_gateway_live_code_path_local.sh` is fail-closed on non-Linux /
+     docker.sock, requires explicit Box install (`A3S_CLOUD_BOX_INSTALL_DIR` /
+     `A3S_CLOUD_BOX_BIN`), and refuses CERTIFIED unless both
+     `GATEWAY_PUBLIC_TRAFFIC_PROVEN` and `MANAGEMENT_PLANE_PROVEN` appear in
+     the same log.      Linux `cargo check` of
+     `--test ga1_gateway_live_code_path` (persistence-conformance) finishes on
+     aarch64 without errors. CERTIFIED line now carries exact
+     `conversations=1 executions=1 events=N head_sequence=N`; management-plane
+     proof requires a durable `ExecutionRequested` event. Runner can retain into
+     `docs/evidence/...` via `A3S_CLOUD_GA1_RETAIN_TO`. **Not Verified:**
+     CERTIFIED still requires a retained LIVE run on Docker-free software Box
+     (x86_64 Box + pin-matched gateway + Postgres/registry).
 2. **Define** one fail-closed LIVE smoke (refuse PLACEHOLDER / fake Gateway)
    that creates or binds one Agent release, deploys, starts one Code
    execution, reads events, hits Gateway, recovers once, cleans up.
@@ -75,6 +104,15 @@ One Code-path Agent release
      the same published release.
 3. **Run** that smoke on Docker-free software Box; retain evidence under
    `docs/evidence/ga1-gateway-live-code-path-YYYY-MM-DD/`.
+   Operator recipe: [tools/box-conformance/OPERATOR_GA1.md](../tools/box-conformance/OPERATOR_GA1.md)
+   (`A3S_CLOUD_GA1_RETAIN_TO=...`).
+   - **Attempt (`2026-09-18`):** OrbStack amd64 guest `a3s-ga1-live` prepared
+     pin-matched Box, native Postgres `:54320`, distribution registry `:50020`,
+     and pin-matched `a3s-gateway`, but LIVE stopped fail-closed:
+     `A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_BLOCKED reason=box_vm_requires_kvm`
+     (`/dev/kvm` absent; OrbStack Apple Silicon has no nested KVM). Retained
+     [ga1-gateway-live-code-path-2026-09-18](evidence/ga1-gateway-live-code-path-2026-09-18/).
+     Runner now blocks early on missing `/dev/kvm`. **Not Verified.**
 4. **Mark** ROADMAP GA-1 / AaaS narrow availability Verified only with
    retained evidence; leave broader AaaS matrix In progress.
 5. **Then** start GA-2 (one Workflow/Application vertical).

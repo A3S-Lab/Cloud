@@ -64,6 +64,7 @@ mod application;
 mod domain;
 mod infrastructure;
 mod presentation;
+mod facade;
 
 pub use application::{
     AppendKnowledgeBaseCommand, AppendKnowledgeBaseHandler, CreateExternalKnowledgeBindingCommand,
@@ -141,7 +142,7 @@ pub use domain::{
     KNOWLEDGE_PIPELINE_LIFECYCLE_EVENT_SCHEMA, KNOWLEDGE_PIPELINE_RELEASE_SCHEMA_V1,
     KNOWLEDGE_RETRIEVAL_POLICY_REVISION_SCHEMA_V1,
 };
-pub use infrastructure::{
+pub use facade::{
     InMemoryExternalKnowledgeBindingRepository, InMemoryKnowledgeBaseRepository,
     InMemoryKnowledgeChunkRepository, InMemoryKnowledgeDocumentRepository,
     InMemoryKnowledgeIndexRevisionRepository, InMemoryKnowledgePipelineRepository,

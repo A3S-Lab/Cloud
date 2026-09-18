@@ -5,12 +5,14 @@ use super::types::{
     DispatchedAgentApproval, DispatchedAgentExecution, ObserveOutput, PreparedAgentExecution,
 };
 use super::{flow_error, AgentExecutionFlowRuntime};
+use crate::modules::agents::application::{
+    AgentExecutionNodeCommandEnqueueRequest, AgentExecutionNodeCommandProjection,
+};
 use crate::modules::agents::domain::{
     AgentApprovalCheckpoint, AgentApprovalCheckpointStatus, AgentCodeRunBinding, AgentExecution,
     AgentExecutionStatus, CancelActiveAgentApprovalCheckpointWrite,
     ExpireAgentApprovalCheckpointWrite, ResumeAgentApprovalCheckpointWrite,
 };
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, AgentApprovalCheckpointId, NodeCommandId, Sha256Digest,
 };
@@ -83,7 +85,7 @@ pub(super) async fn observe(
     let command_id = approval_command_id(execution.id, checkpoint.id);
     let node_id = dispatched.prepared.binding.node_id();
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload Agent approval resume command", error))?
@@ -97,8 +99,8 @@ pub(super) async fn observe(
                     FlowError::Runtime("Agent approval resume command deadline overflowed".into())
                 })?;
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(AgentExecutionNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
@@ -125,7 +127,7 @@ pub(super) async fn observe(
                 .map_err(|error| {
                     flow_error("could not enqueue Agent approval resume command", error)
                 })?
-                .value
+                .command
         }
     };
     validate_approval_command(
@@ -181,7 +183,7 @@ async fn observe_dispatched_approval(
     let expected = approval_command(runtime, &execution, &checkpoint)?;
     let node_id = dispatched.prepared.binding.node_id();
     let command = runtime
-        .node_control
+        .node_commands
         .find_command(node_id, approval.command_id)
         .await
         .map_err(|error| flow_error("could not load Agent approval resume command", error))?
@@ -202,7 +204,7 @@ async fn observe_dispatched_approval(
     }
     let now = canonical_timestamp(Utc::now()).max(execution.updated_at);
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(node_id, approval.command_id)
         .await
         .map_err(|error| flow_error("could not load Agent approval resume result", error))?
@@ -342,7 +344,7 @@ fn validate_approval_command(
     prepared: &PreparedAgentExecution,
     checkpoint: &AgentApprovalCheckpoint,
     expected: &AgentProviderCommandV1,
-    command: &NodeCommand,
+    command: &AgentExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     if command.id != approval_command_id(execution.id, checkpoint.id)
         || command.node_id != prepared.binding.node_id()

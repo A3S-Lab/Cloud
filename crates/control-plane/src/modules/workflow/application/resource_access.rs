@@ -33,7 +33,7 @@ pub struct WorkflowAccess {
 }
 
 impl WorkflowAccess {
-    pub(crate) fn organization_wide() -> Self {
+    pub fn organization_wide() -> Self {
         Self {
             organization_wide: true,
             granted_scopes: BTreeSet::new(),

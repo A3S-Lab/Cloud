@@ -2,7 +2,7 @@ mod controller;
 mod dto;
 mod notifications_module;
 
-pub(crate) use dto::{
+pub use dto::{
     NotificationAlertPolicyMutationResponse, NotificationAlertPolicyPageResponse,
     NotificationAlertPolicyResponse, NotificationMutationResponse, NotificationPageResponse,
     NotificationResponse, OutboundNotificationSubscriptionMutationResponse,

@@ -27,9 +27,9 @@ use a3s_cloud_control_plane::modules::fleet::domain::value_objects::{
 };
 use a3s_cloud_control_plane::modules::fleet::infrastructure::LocalCertificateAuthority;
 use a3s_cloud_control_plane::modules::fleet::{
-    ChangeNodeState, ChangeNodeStateHandler, EnrollNode, EnrollNodeHandler, IssueEnrollmentToken,
-    IssueEnrollmentTokenHandler, PostgresNodeRepository, RotateNodeCertificate,
-    RotateNodeCertificateHandler,
+    ChangeNodeState, ChangeNodeStateHandler, EnrollNode, EnrollNodeHandler,
+    IdentityFleetOrganizationAccessAdapter, IssueEnrollmentToken, IssueEnrollmentTokenHandler,
+    PostgresNodeRepository, RotateNodeCertificate, RotateNodeCertificateHandler,
 };
 use a3s_cloud_control_plane::modules::identity::domain::repositories::IOrganizationRepository;
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
@@ -97,7 +97,10 @@ pub async fn exercise_fleet(
         .with_nanosecond(now.nanosecond() / 1_000 * 1_000 + 789)
         .expect("sub-microsecond Fleet timestamp");
     let token_secret = format!("a3sn_{}", "d".repeat(64));
-    let issue_handler = IssueEnrollmentTokenHandler::new(organizations, nodes.clone());
+    let issue_handler = IssueEnrollmentTokenHandler::new(
+        Arc::new(IdentityFleetOrganizationAccessAdapter::new(organizations)),
+        nodes.clone(),
+    );
     let issue = IssueEnrollmentToken {
         organization_id,
         name: "postgres worker".into(),

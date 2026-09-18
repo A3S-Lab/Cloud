@@ -4,6 +4,7 @@ mod build_evidence_signing;
 mod build_flow;
 mod build_operation_scheduler;
 mod build_source_resolver;
+mod fleet_artifact_build_node_command_access;
 mod node_artifact_object_store;
 mod oci_build_output_validator;
 mod oci_layout;
@@ -20,10 +21,14 @@ pub use build_flow::{
     BuildFlowConfig, BuildFlowConfigOptions, BuildFlowRuntime, BuildFlowRuntimeDependencies,
 };
 pub use build_source_resolver::CloudBuildSourceResolver;
+pub use fleet_artifact_build_node_command_access::FleetArtifactBuildNodeCommandAccessAdapter;
 pub use node_artifact_object_store::NodeArtifactObjectStore;
 pub use oci_build_output_validator::OciBuildOutputValidator;
 pub use oci_registry_artifact_publisher::{
     OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
 };
-pub use persistence::{InMemoryBuildRunRepository, PostgresBuildRunRepository};
+pub use persistence::{
+    InMemoryBuildRunRepository, InMemoryPartnerArtifactAdmissionRepository,
+    PostgresBuildRunRepository, PostgresPartnerArtifactAdmissionRepository,
+};
 pub use source_build_input_preparer::SourceBuildInputPreparer;

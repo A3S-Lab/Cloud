@@ -305,7 +305,12 @@ evidence (no CI requirement for this backlog unless a gate already demands it).
    checklist [ga0-bx0-software-checklist.md](ga0-bx0-software-checklist.md).
 2. Finish the one Agent public availability slice for GA-1.
    Checklist: [ga1-agent-availability-checklist.md](ga1-agent-availability-checklist.md)
-   (first gap: A0.4 retained Box pin skew vs current `BX0.software` pins).
+   (phase-2b management-plane code landed on BX0.software pins; dedicated
+   Postgres gate `tests/ga1_management_plane.rs` proves
+   `A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN` without Box/KVM; CERTIFIED still awaits
+   retained LIVE smoke on Linux x86_64 **with `/dev/kvm`**. OrbStack Apple Silicon
+   attempt retained as blocked under
+   [evidence/ga1-gateway-live-code-path-2026-09-18](evidence/ga1-gateway-live-code-path-2026-09-18/).)
 3. Narrow one Workflow/Application availability slice for GA-2.
 4. Continue Wave 0 integrity and I0 Track A fail-closed honesty.
 5. Land contract-only `CD0.1` / `WI1` / `OBS1` / `COMP1` without claiming `ha`.

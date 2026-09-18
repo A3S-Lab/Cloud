@@ -75,6 +75,27 @@ jobs:
           echo "::error title=PostgreSQL schema authority gate failed::$detail"
           exit 1
 
+      - name: Certify GA-1 Agents management-plane Postgres durability
+        run: |
+          log="$RUNNER_TEMP/a3s-cloud-ga1-management-plane.log"
+          if cargo test --locked -p a3s-cloud-control-plane \
+            --features persistence-conformance \
+            --test ga1_management_plane \
+            postgres_ga1_management_plane_conversation_execution_and_events_are_durable \
+            -- --exact --nocapture --test-threads=1 2>&1 | tee "$log"; then
+            if ! grep -q 'A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN' "$log"; then
+              echo "::error title=GA-1 management-plane gate failed::missing A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN marker"
+              exit 1
+            fi
+            exit 0
+          fi
+          detail=$(tail -c 3000 "$log")
+          detail=${detail//'%'/'%25'}
+          detail=${detail//$'\r'/'%0D'}
+          detail=${detail//$'\n'/'%0A'}
+          echo "::error title=GA-1 management-plane gate failed::$detail"
+          exit 1
+
       - name: Certify canonical Installation and shared scoped fact rail
         run: |
           log="$RUNNER_TEMP/a3s-cloud-installation-scoped-facts.log"
@@ -1295,6 +1316,8 @@ jobs:
         run: |
           bash -n tools/box-conformance/install_box_release.sh
           bash -n tools/box-conformance/install_gateway_pin.sh
+          bash -n tools/box-conformance/run_ga1_gateway_live_code_path_local.sh
+          bash -n tools/box-conformance/run_a0_4_real_box_gate_local.sh
           bash -n tools/box-conformance/run_bx0_clean_host_gate.sh
           bash -n tools/box-conformance/run_bx0_clean_host_gate_ci.sh
           bash -n tools/box-conformance/bx0_clean_host_steps.sh

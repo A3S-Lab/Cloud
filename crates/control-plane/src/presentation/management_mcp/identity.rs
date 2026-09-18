@@ -2,17 +2,24 @@ use super::arguments::EmptyArguments;
 use super::tool_result;
 use crate::modules::identity::domain::entities::IdentityPrincipalKind;
 use crate::modules::identity::presentation::{
+    DirectoryMembershipProjectionBindingResponse, DirectoryMembershipProjectionMutationResponse,
+    DirectoryResourceGrantMutationResponse, DirectoryResourceGrantResponse,
     MembershipInvitationAcceptanceResponse, MembershipInvitationMutationResponse,
     MembershipInvitationResponse, MembershipMutationResponse, MembershipResponse,
+    PartnerSubjectLinkMutationResponse, PartnerSubjectLinkResponse,
     RecipientContactMutationResponse, RecipientContactResponse, ResourceGrantMutationResponse,
     ResourceGrantResponse, ResourceGrantScopeDto,
 };
 use crate::modules::identity::{
-    AcceptMembershipInvitation, ChangeMembershipRole, CreateMembership, CreateMembershipInvitation,
-    CreateResourceGrant, GetMembership, GetMembershipInvitation, GetRecipientContact,
-    GetResourceGrant, ListMembershipInvitations, ListMemberships, ListMyMembershipInvitations,
-    ListRecipientContacts, ListResourceGrants, RevokeMembership, RevokeMembershipInvitation,
-    RevokeRecipientContact, RevokeResourceGrant,
+    AcceptMembershipInvitation, ChangeMembershipRole, CreateDirectoryResourceGrant,
+    CreateMembership, CreateMembershipInvitation, CreateResourceGrant,
+    DirectoryMembershipProjectionListFilter, GetDirectoryResourceGrant, GetMembership,
+    GetMembershipInvitation, GetRecipientContact, GetResourceGrant, LinkPartnerSubject,
+    ListDirectoryMembershipProjections, ListDirectoryResourceGrants, ListMembershipInvitations,
+    ListMemberships, ListMyMembershipInvitations, ListPartnerSubjectLinks, ListRecipientContacts,
+    ListResourceGrants, ReplaceDirectoryMembershipProjection, ResolvePartnerSubject,
+    RevokeDirectoryResourceGrant, RevokeMembership, RevokeMembershipInvitation,
+    RevokePartnerSubjectLink, RevokeRecipientContact, RevokeResourceGrant,
 };
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
@@ -125,6 +132,80 @@ pub struct RevokeRecipientContactArguments {
     recipient_contact_id: Uuid,
     #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
     expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkPartnerSubjectArguments {
+    provider_key: String,
+    issuer: String,
+    subject: String,
+    principal_id: Uuid,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokePartnerSubjectLinkArguments {
+    provider_key: String,
+    issuer: String,
+    subject: String,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ResolvePartnerSubjectArguments {
+    provider_key: String,
+    issuer: String,
+    subject: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListPartnerSubjectLinksArguments {
+    principal_id: Uuid,
+    provider_key: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct DirectoryResourceGrantArguments {
+    directory_resource_grant_id: Uuid,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CreateDirectoryResourceGrantArguments {
+    subject_ref: String,
+    scope: ResourceGrantScopeDto,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RevokeDirectoryResourceGrantArguments {
+    directory_resource_grant_id: Uuid,
+    #[serde(deserialize_with = "super::arguments::deserialize_expected_version")]
+    expected_version: u64,
+    idempotency_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ListDirectoryMembershipProjectionsArguments {
+    subject_ref: Option<String>,
+    principal_id: Option<Uuid>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplaceDirectoryMembershipProjectionArguments {
+    subject_ref: String,
+    principal_ids: Vec<Uuid>,
     idempotency_key: String,
 }
 
@@ -574,6 +655,293 @@ pub async fn revoke_recipient_contact(
             RecipientContactMutationResponse::from(result),
             request_id,
         ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn link_partner_subject(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: LinkPartnerSubjectArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(LinkPartnerSubject {
+            organization_id,
+            provider_key: arguments.provider_key,
+            issuer: arguments.issuer,
+            subject: arguments.subject,
+            principal_id: PrincipalId::from_uuid(arguments.principal_id),
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                PartnerSubjectLinkMutationResponse::from(result),
+                request_id,
+            )
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_partner_subject_link(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RevokePartnerSubjectLinkArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokePartnerSubjectLink {
+            organization_id,
+            provider_key: arguments.provider_key,
+            issuer: arguments.issuer,
+            subject: arguments.subject,
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            PartnerSubjectLinkMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn resolve_partner_subject(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ResolvePartnerSubjectArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ResolvePartnerSubject {
+            organization_id,
+            provider_key: arguments.provider_key,
+            issuer: arguments.issuer,
+            subject: arguments.subject,
+        })
+        .await?
+    {
+        Ok(view) => {
+            tool_result::success(200, PartnerSubjectLinkResponse::from(view), request_id)
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_partner_subject_links(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListPartnerSubjectLinksArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListPartnerSubjectLinks {
+            organization_id,
+            principal_id: PrincipalId::from_uuid(arguments.principal_id),
+            provider_key: arguments.provider_key,
+        })
+        .await?
+    {
+        Ok(links) => tool_result::success(
+            200,
+            links
+                .into_iter()
+                .map(PartnerSubjectLinkResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_directory_resource_grants(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    _arguments: EmptyArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ListDirectoryResourceGrants { organization_id })
+        .await?
+    {
+        Ok(grants) => tool_result::success(
+            200,
+            grants
+                .into_iter()
+                .map(DirectoryResourceGrantResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn get_directory_resource_grant(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: DirectoryResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(GetDirectoryResourceGrant {
+            organization_id,
+            resource_grant_id: ResourceGrantId::from_uuid(arguments.directory_resource_grant_id),
+        })
+        .await?
+    {
+        Ok(grant) => tool_result::success(
+            200,
+            DirectoryResourceGrantResponse::from(grant),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn create_directory_resource_grant(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: CreateDirectoryResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    let scope = match arguments.scope.try_into() {
+        Ok(scope) => scope,
+        Err(error) => {
+            return tool_result::application_error(ApplicationError::Invalid(error), request_id)
+        }
+    };
+    match bus
+        .execute(CreateDirectoryResourceGrant {
+            organization_id,
+            subject_ref: arguments.subject_ref,
+            scope,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                DirectoryResourceGrantMutationResponse::from(result),
+                request_id,
+            )
+        }
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn revoke_directory_resource_grant(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: RevokeDirectoryResourceGrantArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(RevokeDirectoryResourceGrant {
+            organization_id,
+            resource_grant_id: ResourceGrantId::from_uuid(arguments.directory_resource_grant_id),
+            expected_version: arguments.expected_version,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => tool_result::success(
+            200,
+            DirectoryResourceGrantMutationResponse::from(result),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn list_directory_membership_projections(
+    bus: Arc<QueryBus>,
+    organization_id: OrganizationId,
+    arguments: ListDirectoryMembershipProjectionsArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    let filter = match (arguments.subject_ref, arguments.principal_id) {
+        (Some(subject_ref), None) => DirectoryMembershipProjectionListFilter::SubjectRef(subject_ref),
+        (None, Some(principal_id)) => {
+            DirectoryMembershipProjectionListFilter::PrincipalId(PrincipalId::from_uuid(
+                principal_id,
+            ))
+        }
+        _ => {
+            return tool_result::application_error(
+                ApplicationError::Invalid(
+                    "exactly one of subjectRef or principalId is required".into(),
+                ),
+                request_id,
+            )
+        }
+    };
+    match bus
+        .execute(ListDirectoryMembershipProjections {
+            organization_id,
+            filter,
+        })
+        .await?
+    {
+        Ok(bindings) => tool_result::success(
+            200,
+            bindings
+                .into_iter()
+                .map(DirectoryMembershipProjectionBindingResponse::from)
+                .collect::<Vec<_>>(),
+            request_id,
+        ),
+        Err(error) => tool_result::application_error(error, request_id),
+    }
+}
+
+pub async fn replace_directory_membership_projection(
+    bus: Arc<CommandBus>,
+    organization_id: OrganizationId,
+    actor_principal_id: PrincipalId,
+    arguments: ReplaceDirectoryMembershipProjectionArguments,
+    request_id: Uuid,
+) -> Result<Value> {
+    match bus
+        .execute(ReplaceDirectoryMembershipProjection {
+            organization_id,
+            subject_ref: arguments.subject_ref,
+            principal_ids: arguments.principal_ids,
+            actor_principal_id,
+            idempotency_key: arguments.idempotency_key,
+            request_id,
+        })
+        .await?
+    {
+        Ok(result) => {
+            let status = if result.replayed { 200 } else { 201 };
+            tool_result::success(
+                status,
+                DirectoryMembershipProjectionMutationResponse::from(result),
+                request_id,
+            )
+        }
         Err(error) => tool_result::application_error(error, request_id),
     }
 }

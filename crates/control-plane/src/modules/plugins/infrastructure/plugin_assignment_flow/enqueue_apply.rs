@@ -2,7 +2,7 @@ use super::types::{
     AppliedAssignment, EnqueueApplyInput, EnqueueApplyOutput,
 };
 use super::PluginAssignmentFlowRuntime;
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::plugins::application::PluginAssignmentNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
 use a3s_flow::FlowError;
@@ -99,7 +99,7 @@ pub(super) async fn enqueue_apply(
 
     let command_id = enqueue_apply_command_id(locked.operation_id.as_uuid());
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -137,8 +137,8 @@ pub(super) async fn enqueue_apply(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -153,7 +153,7 @@ pub(super) async fn enqueue_apply(
                 .map_err(|error| {
                     FlowError::Runtime(format!("could not enqueue Plugin Host apply: {error}"))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -172,7 +172,7 @@ pub(super) async fn enqueue_apply(
     };
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {

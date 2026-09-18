@@ -1,12 +1,8 @@
 use crate::access_projection::edge_access;
 use crate::modules::edge::application::{GetRoute, ListRoutes};
 use crate::modules::edge::presentation::dto::RouteResponse;
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId, RouteId};
-use crate::presentation::application_error_response;
+use crate::presentation::{DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator, with_deferred_resource_scope, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
     RouteDefinition,

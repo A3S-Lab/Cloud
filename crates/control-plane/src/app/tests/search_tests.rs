@@ -70,11 +70,9 @@ async fn global_search_returns_only_tenant_authorized_projections() -> Result<()
         allowed_body["data"][0]["href"],
         format!("#/organizations/{allowed_organization}/nodes/{allowed_node_id}")
     );
-    assert!(
-        !allowed_body
-            .to_string()
-            .contains(&denied_node_id.to_string())
-    );
+    assert!(!allowed_body
+        .to_string()
+        .contains(&denied_node_id.to_string()));
     assert!(!allowed_body.to_string().contains("Cloud hidden worker"));
 
     let authorized_queries = search.query_count();

@@ -9,6 +9,7 @@ mod node_pool_port;
 mod operation_port;
 mod prior_writer_seal;
 mod provider_workload;
+mod provider_workload_acl_port;
 mod queries;
 mod resource_access;
 mod result;
@@ -48,6 +49,10 @@ pub use operation_port::{
     DurableCellOperationStatus, IDurableCellOperationPort,
 };
 pub(crate) use prior_writer_seal::DurableCellPriorWriterSeal;
+pub use provider_workload_acl_port::{
+    DurableCellProviderWorkloadAclRequest, DurableCellProviderWorkloadAdmission,
+    IDurableCellProviderWorkloadAclPort,
+};
 #[doc(hidden)]
 pub use provider_workload::compose_pinned_celld_service_process;
 pub(crate) use provider_workload::{

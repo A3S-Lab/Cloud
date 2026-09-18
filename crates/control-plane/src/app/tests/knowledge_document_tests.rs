@@ -16,8 +16,8 @@ const RESTRICTED_KNOWLEDGE_TOKEN: &str =
     "a3s_c888888888888888888888888888888888888888888888888888888888888888";
 
 #[tokio::test]
-async fn knowledge_document_and_chunk_rest_create_get_replay_and_deny_unauthorized_project()
--> Result<()> {
+async fn knowledge_document_and_chunk_rest_create_get_replay_and_deny_unauthorized_project(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;

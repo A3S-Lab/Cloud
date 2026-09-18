@@ -59,6 +59,15 @@ pub use application::commands::create_organization::{
 pub use application::commands::create_resource_grant::{
     CreateResourceGrant, CreateResourceGrantHandler,
 };
+pub use application::commands::create_directory_resource_grant::{
+    CreateDirectoryResourceGrant, CreateDirectoryResourceGrantHandler,
+};
+pub use application::commands::replace_directory_membership_projection::{
+    ReplaceDirectoryMembershipProjection, ReplaceDirectoryMembershipProjectionHandler,
+};
+pub use application::commands::link_partner_subject::{
+    LinkPartnerSubject, LinkPartnerSubjectHandler, PartnerSubjectLinkMutationResult,
+};
 pub use application::commands::manage_platform_rbac::{
     AcceptPlatformRolePolicy, AcceptPlatformRolePolicyHandler, ChangePlatformRoleBinding,
     ChangePlatformRoleBindingHandler, CreatePlatformRoleBinding, CreatePlatformRoleBindingHandler,
@@ -82,11 +91,17 @@ pub use application::commands::revoke_membership::{RevokeMembership, RevokeMembe
 pub use application::commands::revoke_membership_invitation::{
     RevokeMembershipInvitation, RevokeMembershipInvitationHandler,
 };
+pub use application::commands::revoke_partner_subject_link::{
+    RevokePartnerSubjectLink, RevokePartnerSubjectLinkHandler,
+};
 pub use application::commands::revoke_recipient_contact::{
     RevokeRecipientContact, RevokeRecipientContactHandler,
 };
 pub use application::commands::revoke_resource_grant::{
     RevokeResourceGrant, RevokeResourceGrantHandler,
+};
+pub use application::commands::revoke_directory_resource_grant::{
+    RevokeDirectoryResourceGrant, RevokeDirectoryResourceGrantHandler,
 };
 pub use application::commands::rotate_inference_key::{
     RotateInferenceKey, RotateInferenceKeyHandler,
@@ -101,6 +116,9 @@ pub use application::queries::get_recipient_contact::{
     GetRecipientContact, GetRecipientContactHandler,
 };
 pub use application::queries::get_resource_grant::{GetResourceGrant, GetResourceGrantHandler};
+pub use application::queries::get_directory_resource_grant::{
+    GetDirectoryResourceGrant, GetDirectoryResourceGrantHandler,
+};
 pub use application::queries::list_api_tokens::{ListApiTokens, ListApiTokensHandler};
 pub use application::queries::list_inference_keys::{ListInferenceKeys, ListInferenceKeysHandler};
 pub use application::queries::list_membership_invitations::{
@@ -116,6 +134,19 @@ pub use application::queries::list_recipient_contacts::{
 };
 pub use application::queries::list_resource_grants::{
     ListResourceGrants, ListResourceGrantsHandler,
+};
+pub use application::queries::list_directory_resource_grants::{
+    ListDirectoryResourceGrants, ListDirectoryResourceGrantsHandler,
+};
+pub use application::queries::list_directory_membership_projections::{
+    DirectoryMembershipProjectionListFilter, ListDirectoryMembershipProjections,
+    ListDirectoryMembershipProjectionsHandler,
+};
+pub use application::queries::list_partner_subject_links::{
+    ListPartnerSubjectLinks, ListPartnerSubjectLinksHandler,
+};
+pub use application::queries::resolve_partner_subject::{
+    PartnerSubjectLinkView, ResolvePartnerSubject, ResolvePartnerSubjectHandler,
 };
 pub use application::queries::read_platform_rbac::{
     GetCurrentPlatformRolePolicy, GetCurrentPlatformRolePolicyHandler, GetPlatformRoleBinding,
@@ -138,11 +169,16 @@ pub use application::queries::read_workload_trust::{
 };
 pub use domain::entities::InferenceCredential;
 pub use domain::repositories::{
+    IDirectoryMembershipProjectionRepository, IDirectoryResourceGrantRepository,
     IInferenceCredentialLifecycleRepository, IInferenceCredentialRepository,
-    IOidcIdentityRepository, IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
-    IResourceAuthorizationDecisionRepository, ITenantSupportGrantRepository,
-    ITrustDomainRepository, IWorkloadIdentityPolicyRepository, IWorkloadRuntimeEvidenceRepository,
+    IOidcIdentityRepository, IPartnerSubjectLinkRepository, IPlatformRbacRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    IWorkloadRuntimeEvidenceRepository,
+};
+pub use domain::value_objects::{
+    KENSE_DIRECTORY_PROVIDER_KEY, PARTNER_SUBJECT_PROVIDER_PREFIX,
 };
 pub use domain::services::{
     IOidcProviderService, IRecipientContactVerificationDeliveryService,

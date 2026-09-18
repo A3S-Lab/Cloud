@@ -51,12 +51,18 @@ traffic (see GA-1 Gateway LIVE runner below).
 Fail-closed runner:
 `tools/box-conformance/run_ga1_gateway_live_code_path_local.sh`.
 
-Requires Docker-free host, pin-matched `a3s-box` + `a3s-gateway`
-(`install_gateway_pin.sh`), Postgres `:54320`, registry `:50020`, and the
-exact A0.4 image env. Emits
-`A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED` only when public traffic
-traverses pin-matched Gateway to the published Agent Service. Refuses
-`PLACEHOLDER_*`, stub gateways, and BX0 Python TLS theater.
+Requires Docker-free Linux host, pin-matched `a3s-box` (set
+`A3S_CLOUD_BOX_INSTALL_DIR` or `A3S_CLOUD_BOX_BIN` with a matching
+`BOX-REVISION` sidecar) + `a3s-gateway` (`install_gateway_pin.sh`), Postgres
+`:54320`, registry `:50020`, and the exact A0.4 image env. Emits
+`A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED` only when the same log
+contains both `A3S_CLOUD_GA1_GATEWAY_PUBLIC_TRAFFIC_PROVEN` (pin-matched
+Gateway → Agent `/health/ready`) and
+`A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN` (Agents-owned conversation/execution
++ durable events). Refuses non-Linux, `docker.sock`, `PLACEHOLDER_*`, stub
+gateways, and BX0 Python TLS theater.
+
+Operator recipe: [OPERATOR_GA1.md](OPERATOR_GA1.md).
 
 The allocation consumer probe requires Box to advertise CPU, memory, PID, and
 execution-timeout controls after the provider phase has passed every profile

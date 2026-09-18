@@ -1,10 +1,10 @@
 use super::*;
-use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::edge::domain::events::{DomainClaimChanged, GatewayScopeCreated};
 use crate::modules::edge::domain::repositories::{
     CreateDomainClaimWrite, CreateGatewayScopeWrite, TransitionDomainClaim,
 };
 use crate::modules::edge::domain::{DomainClaim, DomainNamePattern, GatewayScope};
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayScopeId, IdempotencyRequest, NodeId,
@@ -594,12 +594,10 @@ async fn inference_route_list_and_get_require_read_scope() -> Result<()> {
         ))
         .await?;
     assert_eq!(listed_after_retire.status(), 200);
-    assert!(
-        response_json(&listed_after_retire)?["data"]["items"]
-            .as_array()
-            .unwrap()
-            .is_empty()
-    );
+    assert!(response_json(&listed_after_retire)?["data"]["items"]
+        .as_array()
+        .unwrap()
+        .is_empty());
 
     let fetched_retired = app
         .call(BootRequest::new(HttpMethod::Get, &route_path).with_header(

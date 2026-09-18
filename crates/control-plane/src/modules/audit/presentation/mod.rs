@@ -6,7 +6,7 @@ mod dto;
 
 pub use audit_module::AuditModule;
 pub use controller::audit_query_controller;
-pub(crate) use dto::{
+pub use dto::{
     AuditExportManifestBundleResponse, AuditExportResponse, AuditRecordPageResponse,
     AuditRetentionStatusResponse,
 };

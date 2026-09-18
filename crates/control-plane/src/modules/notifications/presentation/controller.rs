@@ -8,10 +8,6 @@ use super::dto::{
 };
 use crate::access_projection::notification_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, authenticated_actor, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::notifications::{
     CreateNotificationAlertPolicy, CreateOutboundNotificationSubscription,
     DEFAULT_NOTIFICATION_LIMIT, GetNotification, GetNotificationAlertPolicy,
@@ -23,7 +19,8 @@ use crate::modules::notifications::{
 use crate::modules::shared_kernel::domain::{
     NotificationAlertPolicyId, NotificationId, NotificationSubscriptionId, OrganizationId,
 };
-use crate::presentation::{application_error_response, bounded_acl_document};
+use crate::presentation::{
+    DeferredResourceScope, OrganizationTenantGuard, authenticated_actor, resource_access_evaluator, with_deferred_resource_scope, application_error_response, bounded_acl_document};
 use a3s_boot::{
     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
     HttpMethod, QueryBus, Result, RouteDefinition,

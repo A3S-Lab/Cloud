@@ -10,8 +10,6 @@ use super::{
     KnowledgeRetrievalPolicyRevisionMutationResponse, KnowledgeRetrievalPolicyRevisionResponse,
     PublishKnowledgePipelineRequest,
 };
-use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::knowledge::application::{
     AppendKnowledgeBaseCommand, CreateExternalKnowledgeBindingCommand, CreateKnowledgeBaseCommand,
     CreateKnowledgeChunkCommand, CreateKnowledgeDocumentCommand,
@@ -31,22 +29,25 @@ use crate::modules::knowledge::application::{
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
 use crate::presentation::{
-    actor_principal_id, application_error_response, knowledge_access, request_id, request_identity,
-    resource_access_evaluator,
+    actor_principal_id, application_error_response, knowledge_access,
+    organization_tenant_cloud_read_controller, organization_tenant_knowledge_write_controller,
+    request_id, request_identity, resource_access_evaluator,
 };
 use a3s_boot::{
     AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus, ControllerDefinition,
-    QueryBus, Result, controller, get, metadata, post, use_guard,
+    QueryBus, Result, controller, get, post,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn knowledge_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    Arc::new(KnowledgeCommandsController { bus }).controller()
+    let controller = Arc::new(KnowledgeCommandsController { bus }).controller()?;
+    organization_tenant_knowledge_write_controller(controller)
 }
 
 pub fn knowledge_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    Arc::new(KnowledgeQueriesController { bus }).controller()
+    let controller = Arc::new(KnowledgeQueriesController { bus }).controller()?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 #[derive(Debug, Clone)]
@@ -59,8 +60,6 @@ struct KnowledgeQueriesController {
     bus: Arc<QueryBus>,
 }
 #[controller("/organizations")]
-#[use_guard(OrganizationTenantGuard)]
-#[metadata("auth.scopes", vec![ApiTokenScope::KNOWLEDGE_WRITE])]
 impl KnowledgeCommandsController {
     #[post("/{organization_id}/projects/{project_id}/knowledge-bases", raw)]
     async fn create_knowledge_base(&self, request: BootRequest) -> Result<BootResponse> {
@@ -349,8 +348,6 @@ impl KnowledgeCommandsController {
 }
 
 #[controller("/organizations")]
-#[use_guard(OrganizationTenantGuard)]
-#[metadata("auth.scopes", vec![ApiTokenScope::CLOUD_READ])]
 impl KnowledgeQueriesController {
     #[get("/{organization_id}/projects/{project_id}/knowledge-bases", raw)]
     async fn list_knowledge_bases(&self, request: BootRequest) -> Result<BootResponse> {

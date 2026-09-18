@@ -6,9 +6,9 @@
 //! Does not invent a platform isolation module, concurrency governor, or
 //! second policy plane.
 
-use crate::modules::audit::presentation::audit_query_controller;
+use crate::modules::audit::audit_query_controller;
 use crate::modules::files::user_file_queries_controller;
-use crate::modules::inference::presentation::usage_retention_controller;
+use crate::modules::inference::usage_retention_controller;
 use a3s_boot::QueryBus;
 use std::sync::Arc;
 

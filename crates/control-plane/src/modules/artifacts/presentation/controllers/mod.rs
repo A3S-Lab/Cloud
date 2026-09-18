@@ -1,5 +1,7 @@
 mod build_run_commands_controller;
 mod build_run_queries_controller;
+mod partner_artifact_admission_controller;
 
 pub use build_run_commands_controller::build_run_commands_controller;
 pub use build_run_queries_controller::build_run_queries_controller;
+pub use partner_artifact_admission_controller::partner_artifact_admission_controller;

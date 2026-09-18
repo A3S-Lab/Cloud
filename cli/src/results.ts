@@ -438,6 +438,29 @@ export function buildRunResult(row: BuildRun): CommandResult {
   return singleResult(row, BUILD_RUN_COLUMNS);
 }
 
+const PARTNER_ARTIFACT_ADMISSION_COLUMNS: readonly TableColumn<PartnerArtifactAdmission>[] = [
+  { header: 'ID', value: (row) => row.id },
+  { header: 'DIGEST', value: (row) => row.contentDigest },
+  { header: 'KIND', value: (row) => row.kind },
+  { header: 'BYTES', value: (row) => row.byteSize },
+  { header: 'PARTNER REF', value: (row) => row.partnerRef },
+  { header: 'CREATED AT', value: (row) => row.createdAt },
+];
+
+export function partnerArtifactAdmissionsResult(rows: PartnerArtifactAdmission[]): CommandResult {
+  return listResult(rows, PARTNER_ARTIFACT_ADMISSION_COLUMNS);
+}
+
+export function partnerArtifactAdmissionResult(row: PartnerArtifactAdmission): CommandResult {
+  return singleResult(row, PARTNER_ARTIFACT_ADMISSION_COLUMNS);
+}
+
+export function partnerArtifactAdmissionMutationResult(
+  row: PartnerArtifactAdmissionMutationResult
+): CommandResult {
+  return mutationResult(row, PARTNER_ARTIFACT_ADMISSION_COLUMNS, row.replayed);
+}
+
 export function buildEvidenceResult(row: BuildEvidence): CommandResult {
   return singleResult(row, [
     { header: 'BUILD RUN', value: (value) => value.buildRunId },

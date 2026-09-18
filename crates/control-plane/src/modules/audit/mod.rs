@@ -1,7 +1,9 @@
 pub mod application;
 pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+pub(crate) mod infrastructure;
+pub(crate) mod presentation;
+
+mod facade;
 
 pub use application::{
     AuditRetentionWorker, ExportAuditManifest, ExportAuditManifestHandler, ExportAuditRecords,
@@ -23,5 +25,8 @@ pub use domain::{
     MAXIMUM_AUDIT_EXPORT_MANIFEST_PAGES, MAXIMUM_AUDIT_EXPORT_WINDOW_DAYS,
     MAXIMUM_AUDIT_RETENTION_BATCH_SIZE, MAXIMUM_AUDIT_RETENTION_MS, MINIMUM_AUDIT_RETENTION_MS,
 };
-pub use infrastructure::{InMemoryAuditRecordRepository, PostgresAuditRecordRepository};
-pub use presentation::AuditModule;
+pub use facade::{
+    audit_query_controller, AuditExportManifestBundleResponse, AuditExportResponse, AuditModule,
+    AuditRecordPageResponse, AuditRetentionStatusResponse, InMemoryAuditRecordRepository,
+    PostgresAuditRecordRepository,
+};

@@ -5,6 +5,8 @@ mod build_source;
 mod build_subject;
 mod oci_descriptor;
 mod oci_publication;
+mod partner_artifact_admission;
+mod partner_artifact_kind;
 
 pub use build_artifact::{BuildArtifact, ValidatedOciBuildOutput};
 pub use build_evidence::{
@@ -25,3 +27,7 @@ pub use oci_descriptor::{
 };
 pub(crate) use oci_publication::{validate_registry, validate_repository_prefix};
 pub use oci_publication::{OciPublicationRequest, OciPublicationTarget, PublishedOciArtifact};
+pub use partner_artifact_admission::{
+    PartnerArtifactAdmission, PartnerArtifactAdmissionId, MAX_PARTNER_ARTIFACT_BYTE_SIZE,
+};
+pub use partner_artifact_kind::PartnerArtifactKind;

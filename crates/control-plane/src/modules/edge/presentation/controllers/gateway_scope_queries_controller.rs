@@ -1,9 +1,8 @@
 use crate::access_projection::edge_access;
 use crate::modules::edge::application::ListGatewayScopes;
 use crate::modules::edge::presentation::dto::GatewayScopeResponse;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, OrganizationId, ProjectId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, resource_access_evaluator, application_error_response};
 use a3s_boot::{
     controller, get, use_guard, BootRequest, BootResponse, ControllerDefinition, QueryBus, Result,
 };

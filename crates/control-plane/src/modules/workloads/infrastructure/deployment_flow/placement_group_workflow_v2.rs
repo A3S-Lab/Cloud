@@ -1,5 +1,4 @@
 use super::{admit_deployment_runtime_execution, DeploymentFlowConfig, DeploymentFlowRuntime};
-use crate::modules::fleet::domain::repositories::NodeResourceInventoryRecord;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeId, OrganizationId, RepositoryError, ResourceClaimId, WorkloadId,
     WorkloadPlacementGroupId, WorkloadReplicaId, WorkloadReplicaMemberId, WorkloadRevisionId,
@@ -898,21 +897,21 @@ async fn load_schedulable_nodes(
                 continue;
             }
         };
-        let Some(NodeResourceInventoryRecord { inventory, .. }) = runtime
-            .node_control
+        let Some(record) = runtime
+            .node_commands
             .current_resource_inventory(node.id)
             .await
             .map_err(|error| runtime_error("could not load group node inventory", error))?
         else {
             continue;
         };
-        inventory
+        record
             .validate()
             .map_err(|error| runtime_error("group node inventory is invalid", error))?;
         candidates.push(SchedulableNode {
             node_id: node.id,
             capabilities,
-            inventory,
+            inventory: record.inventory,
         });
     }
     Ok(candidates)

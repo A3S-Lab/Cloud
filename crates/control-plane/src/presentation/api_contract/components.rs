@@ -1,32 +1,31 @@
-use super::OPENAPI_CONTRACT_VERSION;
 use super::agent_components::install_agent_component_schemas;
 use super::automation_components::{
-    AUTOMATION_SUCCESS_RESPONSE_BINDINGS, AUTOMATION_SUCCESS_SCHEMA_BINDINGS,
-    install_automation_component_schemas,
+    install_automation_component_schemas, AUTOMATION_SUCCESS_RESPONSE_BINDINGS,
+    AUTOMATION_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::developer_workflow_components::{
-    BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS, BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
-    install_developer_workflow_component_schemas,
+    install_developer_workflow_component_schemas, BUILD_PLAN_SUCCESS_RESPONSE_BINDINGS,
+    BUILD_PLAN_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::knowledge_components::{
-    KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS, KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS,
-    install_knowledge_component_schemas,
+    install_knowledge_component_schemas, KNOWLEDGE_SUCCESS_RESPONSE_BINDINGS,
+    KNOWLEDGE_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::preview_management_components::{
-    PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
-    install_preview_management_component_schemas,
+    install_preview_management_component_schemas, PREVIEW_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS,
+    PREVIEW_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::privileged_management_components::{
-    PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
     install_privileged_management_component_schemas,
+    PRIVILEGED_MANAGEMENT_SUCCESS_RESPONSE_BINDINGS, PRIVILEGED_MANAGEMENT_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::source_components::{
-    SOURCE_DISCOVERY_SUCCESS_RESPONSE_BINDINGS, SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS,
-    install_source_discovery_component_schemas,
+    install_source_discovery_component_schemas, SOURCE_DISCOVERY_SUCCESS_RESPONSE_BINDINGS,
+    SOURCE_DISCOVERY_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::user_file_components::{
-    USER_FILE_SUCCESS_RESPONSE_BINDINGS, USER_FILE_SUCCESS_SCHEMA_BINDINGS,
-    install_user_file_component_schemas,
+    install_user_file_component_schemas, USER_FILE_SUCCESS_RESPONSE_BINDINGS,
+    USER_FILE_SUCCESS_SCHEMA_BINDINGS,
 };
 use super::workflow_components::install_workflow_component_schemas;
 use super::workflow_goal_components::install_workflow_goal_component_schemas;
@@ -35,9 +34,10 @@ use super::workflow_ontology_components::install_workflow_ontology_component_sch
 use super::workflow_run_components::install_workflow_run_component_schemas;
 use super::workflow_run_observation_components::install_workflow_run_observation_component_schemas;
 use super::workload_profile_components::{
-    WORKLOAD_PROFILE_SUCCESS_RESPONSE_BINDINGS, WORKLOAD_PROFILE_SUCCESS_SCHEMA_BINDINGS,
-    install_workload_profile_component_schemas,
+    install_workload_profile_component_schemas, WORKLOAD_PROFILE_SUCCESS_RESPONSE_BINDINGS,
+    WORKLOAD_PROFILE_SUCCESS_SCHEMA_BINDINGS,
 };
+use super::OPENAPI_CONTRACT_VERSION;
 use crate::modules::connectors::{
     CONNECTOR_EXECUTION_ATTEMPT_RESOLUTION_REASON_MAX_BYTES,
     CONNECTOR_HTTP_DEFINITION_MAX_ACL_BYTES, CONNECTOR_REVISION_REVOCATION_REASON_MAX_BYTES,
@@ -52,7 +52,7 @@ use crate::modules::notifications::{
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
 };
 use a3s_boot::{BootError, Result};
-use serde_json::{Map, Value, json};
+use serde_json::{json, Map, Value};
 
 pub(super) fn install_components(document: &mut Value) -> Result<()> {
     let document = document
@@ -369,6 +369,121 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
         .as_object()
         .cloned()
         .ok_or_else(|| BootError::Internal("generated OpenAPI schemas are invalid".into()))?;
+    schema_components.insert(
+        "PartnerSubjectLink".into(),
+        partner_subject_link_schema(false),
+    );
+    schema_components.insert(
+        "PartnerSubjectLinkList".into(),
+        json!({
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerSubjectLink" }
+        }),
+    );
+    schema_components.insert(
+        "PartnerSubjectLinkMutation".into(),
+        partner_subject_link_schema(true),
+    );
+    schema_components.insert(
+        "PartnerSubjectLinkSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerSubjectLink"),
+    );
+    schema_components.insert(
+        "PartnerSubjectLinkListSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerSubjectLinkList"),
+    );
+    schema_components.insert(
+        "PartnerSubjectLinkMutationSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerSubjectLinkMutation"),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrant".into(),
+        directory_resource_grant_schema(false),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrantList".into(),
+        json!({
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DirectoryResourceGrant" }
+        }),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrantMutation".into(),
+        directory_resource_grant_schema(true),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrantSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/DirectoryResourceGrant"),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrantListSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/DirectoryResourceGrantList"),
+    );
+    schema_components.insert(
+        "DirectoryResourceGrantMutationSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/DirectoryResourceGrantMutation"),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmission".into(),
+        partner_artifact_admission_schema(false),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmissionList".into(),
+        json!({
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/PartnerArtifactAdmission" }
+        }),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmissionMutation".into(),
+        partner_artifact_admission_schema(true),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmissionSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerArtifactAdmission"),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmissionListSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerArtifactAdmissionList"),
+    );
+    schema_components.insert(
+        "PartnerArtifactAdmissionMutationSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/PartnerArtifactAdmissionMutation"),
+    );
+    schema_components.insert(
+        "DirectoryMembershipProjectionBinding".into(),
+        directory_membership_projection_binding_schema(),
+    );
+    schema_components.insert(
+        "DirectoryMembershipProjectionList".into(),
+        json!({
+            "type": "array",
+            "items": { "$ref": "#/components/schemas/DirectoryMembershipProjectionBinding" }
+        }),
+    );
+    schema_components.insert(
+        "DirectoryMembershipProjectionMutation".into(),
+        json!({
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["items", "replayed"],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": { "$ref": "#/components/schemas/DirectoryMembershipProjectionBinding" }
+                },
+                "replayed": { "type": "boolean" }
+            }
+        }),
+    );
+    schema_components.insert(
+        "DirectoryMembershipProjectionListSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/DirectoryMembershipProjectionList"),
+    );
+    schema_components.insert(
+        "DirectoryMembershipProjectionMutationSuccessResponse".into(),
+        typed_success_response_schema("#/components/schemas/DirectoryMembershipProjectionMutation"),
+    );
     install_connector_component_schemas(&mut schema_components)?;
     install_agent_component_schemas(&mut schema_components);
     install_developer_workflow_component_schemas(&mut schema_components);
@@ -635,6 +750,91 @@ pub(super) fn install_components(document: &mut Value) -> Result<()> {
             "#/components/schemas/RecipientContactListSuccessResponse",
         ),
     );
+    response_components.insert(
+        "PartnerSubjectLinkSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/PartnerSubjectLinkSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "PartnerSubjectLinkListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/PartnerSubjectLinkListSuccessResponse",
+        ),
+    );
+    for status in [200_u16, 201] {
+        response_components.insert(
+            format!("PartnerSubjectLinkMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/PartnerSubjectLinkMutationSuccessResponse",
+            ),
+        );
+    }
+    response_components.insert(
+        "DirectoryResourceGrantSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/DirectoryResourceGrantSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "DirectoryResourceGrantListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/DirectoryResourceGrantListSuccessResponse",
+        ),
+    );
+    for status in [200_u16, 201] {
+        response_components.insert(
+            format!("DirectoryResourceGrantMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/DirectoryResourceGrantMutationSuccessResponse",
+            ),
+        );
+    }
+    response_components.insert(
+        "PartnerArtifactAdmissionSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/PartnerArtifactAdmissionSuccessResponse",
+        ),
+    );
+    response_components.insert(
+        "PartnerArtifactAdmissionListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/PartnerArtifactAdmissionListSuccessResponse",
+        ),
+    );
+    for status in [200_u16, 201] {
+        response_components.insert(
+            format!("PartnerArtifactAdmissionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/PartnerArtifactAdmissionMutationSuccessResponse",
+            ),
+        );
+    }
+    response_components.insert(
+        "DirectoryMembershipProjectionListSuccess200".into(),
+        response_component(
+            200,
+            "#/components/schemas/DirectoryMembershipProjectionListSuccessResponse",
+        ),
+    );
+    for status in [200_u16, 201] {
+        response_components.insert(
+            format!("DirectoryMembershipProjectionMutationSuccess{status}"),
+            response_component(
+                status,
+                "#/components/schemas/DirectoryMembershipProjectionMutationSuccessResponse",
+            ),
+        );
+    }
     response_components.insert(
         "ConnectorProfileListSuccess200".into(),
         response_component(
@@ -1475,6 +1675,218 @@ fn recipient_contact_schema(include_replayed: bool) -> Value {
         "updatedAt": { "type": "string", "format": "date-time" },
         "verifiedAt": { "type": "string", "format": "date-time", "nullable": true },
         "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+    });
+    if include_replayed {
+        required.push("replayed");
+        properties["replayed"] = json!({ "type": "boolean" });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
+    })
+}
+
+fn partner_subject_link_schema(include_replayed: bool) -> Value {
+    let mut required = vec![
+        "linkId",
+        "providerKey",
+        "issuer",
+        "subject",
+        "principalId",
+        "aggregateVersion",
+        "createdAt",
+        "lastVerifiedAt",
+        "revokedAt",
+    ];
+    let mut properties = json!({
+        "linkId": { "type": "string", "format": "uuid" },
+        "providerKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 63,
+            "pattern": "^partner-[a-z0-9_-]+$"
+        },
+        "issuer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^https://"
+        },
+        "subject": { "type": "string", "format": "uuid" },
+        "principalId": { "type": "string", "format": "uuid" },
+        "aggregateVersion": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "lastVerifiedAt": { "type": "string", "format": "date-time" },
+        "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+    });
+    if include_replayed {
+        required.push("replayed");
+        properties["replayed"] = json!({ "type": "boolean" });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
+    })
+}
+
+fn directory_resource_grant_scope_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "projectId"],
+                "properties": {
+                    "kind": {"type": "string", "enum": ["project"]},
+                    "projectId": {"type": "string", "format": "uuid"}
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "projectId", "environmentId"],
+                "properties": {
+                    "kind": {"type": "string", "enum": ["environment"]},
+                    "projectId": {"type": "string", "format": "uuid"},
+                    "environmentId": {"type": "string", "format": "uuid"}
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "projectId", "applicationId"],
+                "properties": {
+                    "kind": {"type": "string", "enum": ["application"]},
+                    "projectId": {"type": "string", "format": "uuid"},
+                    "applicationId": {"type": "string", "format": "uuid"}
+                }
+            },
+            {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "nodeId"],
+                "properties": {
+                    "kind": {"type": "string", "enum": ["node"]},
+                    "nodeId": {"type": "string", "format": "uuid"}
+                }
+            }
+        ],
+        "discriminator": {"propertyName": "kind"}
+    })
+}
+
+fn directory_resource_grant_schema(include_replayed: bool) -> Value {
+    let mut required = vec![
+        "id",
+        "organizationId",
+        "subjectRef",
+        "kind",
+        "issuer",
+        "subjectId",
+        "scope",
+        "aggregateVersion",
+        "createdAt",
+        "updatedAt",
+        "revokedAt",
+    ];
+    let mut properties = json!({
+        "id": { "type": "string", "format": "uuid" },
+        "organizationId": { "type": "string", "format": "uuid" },
+        "subjectRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2304,
+            "description": "Opaque DirectoryProjection subject ref: `{issuer}#department/{uuid}` or `{issuer}#group/{uuid}`."
+        },
+        "kind": { "type": "string", "enum": ["department", "group"] },
+        "issuer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048,
+            "pattern": "^https://"
+        },
+        "subjectId": { "type": "string", "format": "uuid" },
+        "scope": directory_resource_grant_scope_schema(),
+        "aggregateVersion": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" },
+        "revokedAt": { "type": "string", "format": "date-time", "nullable": true }
+    });
+    if include_replayed {
+        required.push("replayed");
+        properties["replayed"] = json!({ "type": "boolean" });
+    }
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": required,
+        "properties": properties
+    })
+}
+
+fn directory_membership_projection_binding_schema() -> Value {
+    json!({
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+            "organizationId",
+            "subjectRef",
+            "kind",
+            "issuer",
+            "subjectId",
+            "principalId",
+            "createdAt"
+        ],
+        "properties": {
+            "organizationId": { "type": "string", "format": "uuid" },
+            "subjectRef": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2304,
+                "description": "Opaque DirectoryProjection subject ref: `{issuer}#department/{uuid}` or `{issuer}#group/{uuid}`."
+            },
+            "kind": { "type": "string", "enum": ["department", "group"] },
+            "issuer": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 2048,
+                "pattern": "^https://"
+            },
+            "subjectId": { "type": "string", "format": "uuid" },
+            "principalId": { "type": "string", "format": "uuid" },
+            "createdAt": { "type": "string", "format": "date-time" }
+        }
+    })
+}
+
+fn partner_artifact_admission_schema(include_replayed: bool) -> Value {
+    let mut required = vec![
+        "id",
+        "organizationId",
+        "contentDigest",
+        "kind",
+        "byteSize",
+        "partnerRef",
+        "aggregateVersion",
+        "createdAt",
+    ];
+    let mut properties = json!({
+        "id": { "type": "string", "format": "uuid" },
+        "organizationId": { "type": "string", "format": "uuid" },
+        "contentDigest": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "Content-addressed digest. Partner blob bytes are not stored."
+        },
+        "kind": { "type": "string", "enum": ["model", "git", "oci", "generic"] },
+        "byteSize": { "type": "integer", "minimum": 1, "maximum": 8_796_093_022_208_i64 },
+        "partnerRef": { "type": "string", "minLength": 1, "maxLength": 256 },
+        "aggregateVersion": { "type": "integer", "minimum": 1 },
+        "createdAt": { "type": "string", "format": "date-time" }
     });
     if include_replayed {
         required.push("replayed");

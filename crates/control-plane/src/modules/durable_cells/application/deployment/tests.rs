@@ -35,7 +35,7 @@ use crate::modules::secrets::application::exact_secret_version_access;
 use crate::modules::secrets::domain::{
     CreateSecretWrite, EncryptedSecretValue, ISecretRepository, Secret, SecretChanged,
 };
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::domain::{
     BuildRunId, DurableCellApplicationRevisionId, NodeCommandId, NodeId, ResourceName, SecretId,
     SecretVersionReference, Sha256Digest, canonical_timestamp,

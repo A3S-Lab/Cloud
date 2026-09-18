@@ -3,6 +3,7 @@ mod deployment_flow;
 mod fleet_log_access;
 mod fleet_node_pool_access;
 mod fleet_runtime_observation_access;
+mod fleet_workload_deployment_node_command_access;
 mod identity_runtime_execution_admission;
 mod node_drain_reconciliation;
 mod oci_registry;
@@ -31,6 +32,7 @@ pub use deployment_flow::{
 pub use fleet_log_access::FleetWorkloadLogAccessAdapter;
 pub use fleet_node_pool_access::FleetWorkloadsNodePoolAccessAdapter;
 pub use fleet_runtime_observation_access::FleetWorkloadRuntimeObservationAccessAdapter;
+pub use fleet_workload_deployment_node_command_access::FleetWorkloadDeploymentNodeCommandAccessAdapter;
 pub use identity_runtime_execution_admission::IdentityWorkloadRuntimeExecutionAdmissionAdapter;
 pub use node_drain_reconciliation::{
     NodeDrainEvacuationFailure, NodeDrainEvacuationReconciler, NodeDrainEvacuationReport,

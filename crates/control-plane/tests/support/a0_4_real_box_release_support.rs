@@ -260,7 +260,7 @@ fn agent_runtime_template() -> SourceWorkloadTemplate {
 mod real_box_release;
 
 #[cfg(target_os = "linux")]
-pub use real_box_release::LiveAgentProbe;
+pub use real_box_release::{LiveAgentProbe, LiveAgentWindow};
 
 #[cfg(target_os = "linux")]
 pub async fn exercise_published_agent_release_real_box(postgres_url: String) -> TestResult {

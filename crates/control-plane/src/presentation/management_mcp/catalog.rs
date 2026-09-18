@@ -254,6 +254,18 @@ pub const RESOURCE_GRANTS_LIST: &str = "a3s_cloud_resource_grants_list";
 pub const RESOURCE_GRANTS_GET: &str = "a3s_cloud_resource_grants_get";
 pub const RESOURCE_GRANTS_CREATE: &str = "a3s_cloud_resource_grants_create";
 pub const RESOURCE_GRANTS_REVOKE: &str = "a3s_cloud_resource_grants_revoke";
+pub const PARTNER_SUBJECT_LINKS_LINK: &str = "a3s_cloud_partner_subject_links_link";
+pub const PARTNER_SUBJECT_LINKS_REVOKE: &str = "a3s_cloud_partner_subject_links_revoke";
+pub const PARTNER_SUBJECT_LINKS_RESOLVE: &str = "a3s_cloud_partner_subject_links_resolve";
+pub const PARTNER_SUBJECT_LINKS_LIST: &str = "a3s_cloud_partner_subject_links_list";
+pub const DIRECTORY_RESOURCE_GRANTS_LIST: &str = "a3s_cloud_directory_resource_grants_list";
+pub const DIRECTORY_RESOURCE_GRANTS_GET: &str = "a3s_cloud_directory_resource_grants_get";
+pub const DIRECTORY_RESOURCE_GRANTS_CREATE: &str = "a3s_cloud_directory_resource_grants_create";
+pub const DIRECTORY_RESOURCE_GRANTS_REVOKE: &str = "a3s_cloud_directory_resource_grants_revoke";
+pub const DIRECTORY_MEMBERSHIP_PROJECTIONS_LIST: &str =
+    "a3s_cloud_directory_membership_projections_list";
+pub const DIRECTORY_MEMBERSHIP_PROJECTIONS_REPLACE: &str =
+    "a3s_cloud_directory_membership_projections_replace";
 pub const RECIPIENT_CONTACTS_LIST: &str = "a3s_cloud_recipient_contacts_list";
 pub const RECIPIENT_CONTACTS_GET: &str = "a3s_cloud_recipient_contacts_get";
 pub const RECIPIENT_CONTACTS_REVOKE: &str = "a3s_cloud_recipient_contacts_revoke";
@@ -486,6 +498,16 @@ pub enum ManagementTool {
     ResourceGrantsGet,
     ResourceGrantsCreate,
     ResourceGrantsRevoke,
+    PartnerSubjectLinksLink,
+    PartnerSubjectLinksRevoke,
+    PartnerSubjectLinksResolve,
+    PartnerSubjectLinksList,
+    DirectoryResourceGrantsList,
+    DirectoryResourceGrantsGet,
+    DirectoryResourceGrantsCreate,
+    DirectoryResourceGrantsRevoke,
+    DirectoryMembershipProjectionsList,
+    DirectoryMembershipProjectionsReplace,
     RecipientContactsList,
     RecipientContactsGet,
     RecipientContactsRevoke,
@@ -641,7 +663,7 @@ pub(super) enum ManagementResourceBinding {
 }
 
 impl ManagementTool {
-    const ALL: [Self; 248] = [
+    const ALL: [Self; 258] = [
         Self::EnvironmentsCreate,
         Self::EnvironmentsList,
         Self::ApplicationsCreate,
@@ -753,6 +775,16 @@ impl ManagementTool {
         Self::ResourceGrantsGet,
         Self::ResourceGrantsCreate,
         Self::ResourceGrantsRevoke,
+        Self::PartnerSubjectLinksLink,
+        Self::PartnerSubjectLinksRevoke,
+        Self::PartnerSubjectLinksResolve,
+        Self::PartnerSubjectLinksList,
+        Self::DirectoryResourceGrantsList,
+        Self::DirectoryResourceGrantsGet,
+        Self::DirectoryResourceGrantsCreate,
+        Self::DirectoryResourceGrantsRevoke,
+        Self::DirectoryMembershipProjectionsList,
+        Self::DirectoryMembershipProjectionsReplace,
         Self::RecipientContactsList,
         Self::RecipientContactsGet,
         Self::RecipientContactsRevoke,
@@ -1048,6 +1080,16 @@ impl ManagementTool {
             Self::ResourceGrantsGet => RESOURCE_GRANTS_GET,
             Self::ResourceGrantsCreate => RESOURCE_GRANTS_CREATE,
             Self::ResourceGrantsRevoke => RESOURCE_GRANTS_REVOKE,
+            Self::PartnerSubjectLinksLink => PARTNER_SUBJECT_LINKS_LINK,
+            Self::PartnerSubjectLinksRevoke => PARTNER_SUBJECT_LINKS_REVOKE,
+            Self::PartnerSubjectLinksResolve => PARTNER_SUBJECT_LINKS_RESOLVE,
+            Self::PartnerSubjectLinksList => PARTNER_SUBJECT_LINKS_LIST,
+            Self::DirectoryResourceGrantsList => DIRECTORY_RESOURCE_GRANTS_LIST,
+            Self::DirectoryResourceGrantsGet => DIRECTORY_RESOURCE_GRANTS_GET,
+            Self::DirectoryResourceGrantsCreate => DIRECTORY_RESOURCE_GRANTS_CREATE,
+            Self::DirectoryResourceGrantsRevoke => DIRECTORY_RESOURCE_GRANTS_REVOKE,
+            Self::DirectoryMembershipProjectionsList => DIRECTORY_MEMBERSHIP_PROJECTIONS_LIST,
+            Self::DirectoryMembershipProjectionsReplace => DIRECTORY_MEMBERSHIP_PROJECTIONS_REPLACE,
             Self::RecipientContactsList => RECIPIENT_CONTACTS_LIST,
             Self::RecipientContactsGet => RECIPIENT_CONTACTS_GET,
             Self::RecipientContactsRevoke => RECIPIENT_CONTACTS_REVOKE,
@@ -1282,6 +1324,15 @@ impl ManagementTool {
             | Self::ResourceGrantsGet
             | Self::ResourceGrantsCreate
             | Self::ResourceGrantsRevoke
+            | Self::PartnerSubjectLinksLink
+            | Self::PartnerSubjectLinksRevoke
+            | Self::PartnerSubjectLinksList
+            | Self::DirectoryResourceGrantsList
+            | Self::DirectoryResourceGrantsGet
+            | Self::DirectoryResourceGrantsCreate
+            | Self::DirectoryResourceGrantsRevoke
+            | Self::DirectoryMembershipProjectionsList
+            | Self::DirectoryMembershipProjectionsReplace
             | Self::RecipientContactsRevoke => Some(ApiTokenScope::IDENTITY_WRITE),
             Self::ProjectsCreate | Self::ProjectAttributionUpdate => {
                 Some(ApiTokenScope::PROJECT_WRITE)
@@ -1339,6 +1390,7 @@ impl ManagementTool {
             | Self::WorkloadIdentityPolicyRevisionsList
             | Self::WorkloadIdentityPolicyRevisionsGet
             | Self::WorkloadIdentityPolicyForWorkloadGet
+            | Self::PartnerSubjectLinksResolve
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::AuditRecordsList
@@ -1481,6 +1533,15 @@ impl ManagementTool {
                 | Self::ResourceGrantsGet
                 | Self::ResourceGrantsCreate
                 | Self::ResourceGrantsRevoke
+                | Self::PartnerSubjectLinksLink
+                | Self::PartnerSubjectLinksRevoke
+                | Self::PartnerSubjectLinksList
+                | Self::DirectoryResourceGrantsList
+                | Self::DirectoryResourceGrantsGet
+                | Self::DirectoryResourceGrantsCreate
+                | Self::DirectoryResourceGrantsRevoke
+                | Self::DirectoryMembershipProjectionsList
+                | Self::DirectoryMembershipProjectionsReplace
         )
     }
 
@@ -1691,6 +1752,7 @@ impl ManagementTool {
             Self::OperationsList => Some(ManagementResourceBinding::PolymorphicCollection),
             Self::MyMembershipInvitationsList
             | Self::MembershipInvitationsAccept
+            | Self::PartnerSubjectLinksResolve
             | Self::RecipientContactsList
             | Self::RecipientContactsGet
             | Self::RecipientContactsRevoke
@@ -2408,6 +2470,66 @@ impl ManagementTool {
                 "Revoke Resource Grant",
                 "Revoke one Resource Grant with optimistic concurrency and explicit idempotency.",
                 revoke_resource_grant_schema(),
+                false,
+            ),
+            Self::PartnerSubjectLinksLink => (
+                "Link partner subject",
+                "Create or rebind an administrator-managed partner directory SubjectLink from a UUID subject to one active human Principal under a partner-* provider key.",
+                link_partner_subject_schema(),
+                false,
+            ),
+            Self::PartnerSubjectLinksRevoke => (
+                "Revoke partner SubjectLink",
+                "Revoke an active partner SubjectLink with optimistic concurrency and explicit idempotency.",
+                revoke_partner_subject_link_schema(),
+                false,
+            ),
+            Self::PartnerSubjectLinksResolve => (
+                "Resolve partner subject",
+                "Resolve an active partner SubjectLink for an organization member credential to the bound Cloud Principal.",
+                resolve_partner_subject_schema(),
+                true,
+            ),
+            Self::PartnerSubjectLinksList => (
+                "List partner SubjectLinks",
+                "List active partner SubjectLinks for one organization Principal with an optional provider key filter.",
+                list_partner_subject_links_schema(),
+                true,
+            ),
+            Self::DirectoryResourceGrantsList => (
+                "List directory resource grants",
+                "List DirectoryProjection Resource Grants for the organization from the shared Identity authority.",
+                empty_schema(),
+                true,
+            ),
+            Self::DirectoryResourceGrantsGet => (
+                "Get directory resource grant",
+                "Get one DirectoryProjection Resource Grant from the shared Identity authority.",
+                uuid_id_schema("directoryResourceGrantId"),
+                true,
+            ),
+            Self::DirectoryResourceGrantsCreate => (
+                "Create directory resource grant",
+                "Grant one closed project, environment, application, or node scope to an opaque directory department or group subject ref with explicit idempotency.",
+                create_directory_resource_grant_schema(),
+                false,
+            ),
+            Self::DirectoryResourceGrantsRevoke => (
+                "Revoke directory resource grant",
+                "Revoke one DirectoryProjection Resource Grant with optimistic concurrency and explicit idempotency.",
+                revoke_directory_resource_grant_schema(),
+                false,
+            ),
+            Self::DirectoryMembershipProjectionsList => (
+                "List directory membership projections",
+                "List DirectoryProjection membership bindings for exactly one subject ref or Principal.",
+                list_directory_membership_projections_schema(),
+                true,
+            ),
+            Self::DirectoryMembershipProjectionsReplace => (
+                "Replace directory membership projections",
+                "Replace the full Principal set for one opaque directory department or group subject ref with explicit idempotency.",
+                replace_directory_membership_projection_schema(),
                 false,
             ),
             Self::RecipientContactsList => (
@@ -3240,6 +3362,8 @@ impl ManagementTool {
                 | Self::MembershipsRevoke
                 | Self::MembershipInvitationsRevoke
                 | Self::ResourceGrantsRevoke
+                | Self::PartnerSubjectLinksRevoke
+                | Self::DirectoryResourceGrantsRevoke
                 | Self::RecipientContactsRevoke
                 | Self::ApplicationSessionsClose
                 | Self::ApplicationInvocationsCancel
@@ -5913,6 +6037,126 @@ fn revoke_resource_grant_schema() -> Value {
             "idempotencyKey": idempotency_key_schema()
         },
         "required": ["resourceGrantId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn link_partner_subject_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "providerKey": {"type": "string", "minLength": 1},
+            "issuer": {"type": "string", "minLength": 1},
+            "subject": {"type": "string", "minLength": 1},
+            "principalId": {"type": "string", "format": "uuid"},
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["providerKey", "issuer", "subject", "principalId", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_partner_subject_link_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "providerKey": {"type": "string", "minLength": 1},
+            "issuer": {"type": "string", "minLength": 1},
+            "subject": {"type": "string", "minLength": 1},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["providerKey", "issuer", "subject", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn resolve_partner_subject_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "providerKey": {"type": "string", "minLength": 1},
+            "issuer": {"type": "string", "minLength": 1},
+            "subject": {"type": "string", "minLength": 1}
+        },
+        "required": ["providerKey", "issuer", "subject"],
+        "additionalProperties": false
+    })
+}
+
+fn list_partner_subject_links_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "principalId": {"type": "string", "format": "uuid"},
+            "providerKey": {"type": "string", "minLength": 1}
+        },
+        "required": ["principalId"],
+        "additionalProperties": false
+    })
+}
+
+fn create_directory_resource_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "subjectRef": {"type": "string", "minLength": 1},
+            "scope": resource_grant_scope_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["subjectRef", "scope", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn revoke_directory_resource_grant_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "directoryResourceGrantId": {"type": "string", "format": "uuid"},
+            "expectedVersion": expected_version_schema(),
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["directoryResourceGrantId", "expectedVersion", "idempotencyKey"],
+        "additionalProperties": false
+    })
+}
+
+fn list_directory_membership_projections_schema() -> Value {
+    json!({
+        "oneOf": [
+            {
+                "type": "object",
+                "properties": {
+                    "subjectRef": {"type": "string", "minLength": 1}
+                },
+                "required": ["subjectRef"],
+                "additionalProperties": false
+            },
+            {
+                "type": "object",
+                "properties": {
+                    "principalId": {"type": "string", "format": "uuid"}
+                },
+                "required": ["principalId"],
+                "additionalProperties": false
+            }
+        ]
+    })
+}
+
+fn replace_directory_membership_projection_schema() -> Value {
+    json!({
+        "type": "object",
+        "properties": {
+            "subjectRef": {"type": "string", "minLength": 1},
+            "principalIds": {
+                "type": "array",
+                "items": {"type": "string", "format": "uuid"}
+            },
+            "idempotencyKey": idempotency_key_schema()
+        },
+        "required": ["subjectRef", "principalIds", "idempotencyKey"],
         "additionalProperties": false
     })
 }

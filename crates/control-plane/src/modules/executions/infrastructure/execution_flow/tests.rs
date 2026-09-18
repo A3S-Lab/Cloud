@@ -92,7 +92,11 @@ impl Fixture {
             ExecutionFlowRuntimeDependencies {
                 executions: execution_port,
                 nodes: node_port,
-                node_control: control_port,
+                node_commands: Arc::new(
+                    crate::modules::executions::FleetExecutionNodeCommandAccessAdapter::new(
+                        control_port,
+                    ),
+                ),
             },
             ExecutionFlowConfig::new(ExecutionFlowConfigOptions {
                 heartbeat_timeout_ms: 5_000,

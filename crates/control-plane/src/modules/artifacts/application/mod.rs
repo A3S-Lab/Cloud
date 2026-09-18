@@ -1,3 +1,4 @@
+mod artifact_build_node_command_port;
 mod build_candidate;
 mod build_input_preparer;
 mod build_log_query;
@@ -13,6 +14,11 @@ mod preview_build_lifecycle;
 mod queries;
 pub(crate) mod resource_access;
 
+pub use artifact_build_node_command_port::{
+    ArtifactBuildNodeCommandAcknowledgement, ArtifactBuildNodeCommandDispatch,
+    ArtifactBuildNodeCommandEnqueueRequest, ArtifactBuildNodeCommandProjection,
+    IArtifactBuildNodeCommandPort,
+};
 pub use build_candidate::{BuildCandidate, BuildCandidateEvidence, IBuildCandidateProjectionPort};
 pub use build_input_preparer::{
     BuildInputPreparationError, IBuildInputPreparer, PreparedBuildInput,
@@ -30,8 +36,9 @@ pub use build_run_reconciler::{
     RETIRED_BUILD_WORKFLOW_VERSIONS,
 };
 pub use commands::{
-    CancelBuildRun, CancelBuildRunHandler, CancelBuildRunResult, RetryBuildRun,
-    RetryBuildRunHandler, RetryBuildRunResult,
+    AdmitPartnerArtifact, AdmitPartnerArtifactHandler, AdmitPartnerArtifactResult, CancelBuildRun,
+    CancelBuildRunHandler, CancelBuildRunResult, RetryBuildRun, RetryBuildRunHandler,
+    RetryBuildRunResult,
 };
 pub use external_source_archive::{
     ExternalSourceArchiveRequest, IExternalSourceArchivePort, OpenExternalSourceArchive,
@@ -57,7 +64,9 @@ pub use preview_build_lifecycle::{
 };
 pub use queries::{
     BuildRunLogPage, GetBuildEvidence, GetBuildEvidenceHandler, GetBuildRun, GetBuildRunHandler,
-    GetBuildRunLogs, GetBuildRunLogsHandler, ListBuildRuns, ListBuildRunsHandler,
+    GetBuildRunLogs, GetBuildRunLogsHandler, GetPartnerArtifactAdmission,
+    GetPartnerArtifactAdmissionHandler, ListBuildRuns, ListBuildRunsHandler,
+    ListPartnerArtifactAdmissions, ListPartnerArtifactAdmissionsHandler,
 };
 pub use resource_access::ArtifactAccess;
 pub(crate) use resource_access::ArtifactAccessScope;

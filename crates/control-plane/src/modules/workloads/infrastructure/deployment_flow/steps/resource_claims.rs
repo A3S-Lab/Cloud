@@ -3,7 +3,9 @@ use super::super::types::{
 };
 use super::super::{flow_error, resource_claim_id, DeploymentFlowRuntime};
 use super::{bounded_reason, next_poll, validate_resolved_deployment};
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
+use crate::modules::workloads::application::{
+    WorkloadDeploymentNodeCommandEnqueueRequest, WorkloadDeploymentNodeCommandProjection,
+};
 use crate::modules::shared_kernel::domain::{NodeCommandId, RepositoryError};
 use crate::modules::workloads::domain::entities::{
     DeploymentStatus, ResourceClaim, ResourceClaimReleaseEvidence, ResourceClaimState,
@@ -104,7 +106,7 @@ pub(super) async fn prepare(
                 });
             }
             let inventory = runtime
-                .node_control
+                .node_commands
                 .current_resource_inventory(claim.node_id)
                 .await
                 .map_err(|error| {
@@ -137,8 +139,8 @@ pub(super) async fn prepare(
                 binding,
             };
             let command = runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: claim.node_id,
                     aggregate_id: claim.id.as_uuid(),
@@ -151,7 +153,7 @@ pub(super) async fn prepare(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue Agent resource preparation", error))?
-                .value;
+        .command;
             validate_prepare_command(&command, &claim, deployment.operation_id.as_uuid())?;
             claim = runtime
                 .resource_claims
@@ -173,7 +175,7 @@ pub(super) async fn prepare(
                 FlowError::Runtime("preparing resource claim omitted its command".into())
             })?;
             let command = runtime
-                .node_control
+                .node_commands
                 .find_command(claim.node_id, command_id)
                 .await
                 .map_err(|error| flow_error("could not reload Agent resource preparation", error))?
@@ -187,7 +189,7 @@ pub(super) async fn prepare(
     };
 
     let acknowledgement = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(claim.node_id, command.id)
         .await
         .map_err(|error| {
@@ -417,7 +419,7 @@ pub(super) async fn release(
         binding,
     };
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(claim.node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload Agent resource release", error))?
@@ -425,8 +427,8 @@ pub(super) async fn release(
         Some(command) => command,
         None => {
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: claim.node_id,
                     aggregate_id: claim.id.as_uuid(),
@@ -439,13 +441,13 @@ pub(super) async fn release(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue Agent resource release", error))?
-                .value
+        .command
         }
     };
     validate_release_command(&command, &claim, &request, input.deployment_id.as_uuid())?;
 
     let acknowledgement = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(claim.node_id, command.id)
         .await
         .map_err(|error| {
@@ -535,7 +537,7 @@ pub(super) async fn load_prepared_binding(
         FlowError::Runtime("issued resource claim omitted its preparation command".into())
     })?;
     let command = runtime
-        .node_control
+        .node_commands
         .find_command(claim.node_id, command_id)
         .await
         .map_err(|error| flow_error("could not load durable resource preparation command", error))?
@@ -588,7 +590,7 @@ fn validate_claim_identity(
 }
 
 fn validate_prepare_command(
-    command: &NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     claim: &ResourceClaim,
     correlation_id: Uuid,
 ) -> a3s_flow::Result<()> {
@@ -621,7 +623,7 @@ fn validate_prepare_command(
 }
 
 fn validate_release_command(
-    command: &NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     claim: &ResourceClaim,
     request: &NodeResourceClaimRelease,
     correlation_id: Uuid,

@@ -65,11 +65,16 @@ use super::forms::{
     PublishFormReleaseArguments, ReviseFormDraftArguments,
 };
 use super::identity::{
-    ChangeMembershipRoleArguments, CreateMembershipArguments, CreateMembershipInvitationArguments,
-    CreateResourceGrantArguments, ListResourceGrantsArguments, MembershipArguments,
-    MembershipInvitationArguments, MembershipInvitationMutationArguments,
-    RecipientContactArguments, ResourceGrantArguments, RevokeMembershipArguments,
-    RevokeRecipientContactArguments, RevokeResourceGrantArguments,
+    ChangeMembershipRoleArguments, CreateDirectoryResourceGrantArguments, CreateMembershipArguments,
+    CreateMembershipInvitationArguments, CreateResourceGrantArguments,
+    DirectoryResourceGrantArguments, LinkPartnerSubjectArguments,
+    ListDirectoryMembershipProjectionsArguments, ListPartnerSubjectLinksArguments,
+    ListResourceGrantsArguments, MembershipArguments, MembershipInvitationArguments,
+    MembershipInvitationMutationArguments, RecipientContactArguments,
+    ReplaceDirectoryMembershipProjectionArguments, ResolvePartnerSubjectArguments,
+    ResourceGrantArguments, RevokeDirectoryResourceGrantArguments, RevokeMembershipArguments,
+    RevokePartnerSubjectLinkArguments, RevokeRecipientContactArguments,
+    RevokeResourceGrantArguments,
 };
 use super::knowledge::{
     AppendKnowledgeBaseArguments, CreateExternalKnowledgeBindingArguments,
@@ -1466,6 +1471,114 @@ pub async fn execute(
         ManagementTool::ResourceGrantsRevoke => {
             let arguments = arguments::parse::<RevokeResourceGrantArguments>(arguments).ok()?;
             identity::revoke_resource_grant(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PartnerSubjectLinksLink => {
+            let arguments = arguments::parse::<LinkPartnerSubjectArguments>(arguments).ok()?;
+            identity::link_partner_subject(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PartnerSubjectLinksRevoke => {
+            let arguments =
+                arguments::parse::<RevokePartnerSubjectLinkArguments>(arguments).ok()?;
+            identity::revoke_partner_subject_link(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::PartnerSubjectLinksResolve => {
+            let arguments = arguments::parse::<ResolvePartnerSubjectArguments>(arguments).ok()?;
+            identity::resolve_partner_subject(query_bus, organization_id, arguments, request_id)
+                .await
+        }
+        ManagementTool::PartnerSubjectLinksList => {
+            let arguments =
+                arguments::parse::<ListPartnerSubjectLinksArguments>(arguments).ok()?;
+            identity::list_partner_subject_links(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryResourceGrantsList => {
+            let arguments = arguments::parse::<EmptyArguments>(arguments).ok()?;
+            identity::list_directory_resource_grants(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryResourceGrantsGet => {
+            let arguments =
+                arguments::parse::<DirectoryResourceGrantArguments>(arguments).ok()?;
+            identity::get_directory_resource_grant(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryResourceGrantsCreate => {
+            let arguments =
+                arguments::parse::<CreateDirectoryResourceGrantArguments>(arguments).ok()?;
+            identity::create_directory_resource_grant(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryResourceGrantsRevoke => {
+            let arguments =
+                arguments::parse::<RevokeDirectoryResourceGrantArguments>(arguments).ok()?;
+            identity::revoke_directory_resource_grant(
+                command_bus,
+                organization_id,
+                actor_principal_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryMembershipProjectionsList => {
+            let arguments =
+                arguments::parse::<ListDirectoryMembershipProjectionsArguments>(arguments).ok()?;
+            identity::list_directory_membership_projections(
+                query_bus,
+                organization_id,
+                arguments,
+                request_id,
+            )
+            .await
+        }
+        ManagementTool::DirectoryMembershipProjectionsReplace => {
+            let arguments =
+                arguments::parse::<ReplaceDirectoryMembershipProjectionArguments>(arguments)
+                    .ok()?;
+            identity::replace_directory_membership_projection(
                 command_bus,
                 organization_id,
                 actor_principal_id,

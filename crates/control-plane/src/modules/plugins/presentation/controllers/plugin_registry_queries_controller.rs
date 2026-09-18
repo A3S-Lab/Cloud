@@ -1,5 +1,4 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::plugins::application::{
     GetPluginRegistry, InspectCachedPluginCatalog, InspectPluginCatalog, ListPluginRegistries,
     SearchCachedPluginCatalog, SearchPluginCatalog,
@@ -8,7 +7,8 @@ use crate::modules::plugins::presentation::dto::{
     PluginCatalogInspectRequest, PluginCatalogSearchRequest, PluginRegistryResponse,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PluginRegistryId};
-use crate::presentation::{application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     ControllerDefinition, QueryBus, Result,

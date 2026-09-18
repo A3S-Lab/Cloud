@@ -3,7 +3,7 @@ use crate::modules::applications::DeliveryProcessDrain;
 
 #[test]
 fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
-    use a3s_box_core::compose::{ComposeSourceFormat, normalize_compose};
+    use a3s_box_core::compose::{normalize_compose, ComposeSourceFormat};
 
     let source = include_str!("../../../../../deploy/production/compose.acl");
     let environment = std::collections::HashMap::from([
@@ -80,12 +80,10 @@ fn production_box_acl_enforces_migrate_then_serve_secret_boundaries() {
                 .map(String::as_str),
             Some("A3S_CLOUD_POSTGRES_URL")
         );
-        assert!(
-            !service
-                .secret_environment
-                .values()
-                .any(|source| source == "A3S_CLOUD_POSTGRES_MIGRATION_URL")
-        );
+        assert!(!service
+            .secret_environment
+            .values()
+            .any(|source| source == "A3S_CLOUD_POSTGRES_MIGRATION_URL"));
     }
 
     let secret_names = |service_name: &str| {
@@ -252,7 +250,8 @@ async fn delivery_role_exposes_anonymous_delivery_without_management_routes() ->
     let mut process_config = config();
     process_config.server.role = ProcessRole::Delivery;
     let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
-    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let sessions =
+        Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
     let credentials = Arc::new(
         crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
     );
@@ -287,9 +286,7 @@ async fn delivery_role_exposes_anonymous_delivery_without_management_routes() ->
         "/api/v1/health/ready",
     ] {
         let response = app
-            .call(
-                BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"),
-            )
+            .call(BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"))
             .await?;
         assert_eq!(response.status(), 200, "delivery must expose {path}");
     }
@@ -353,9 +350,7 @@ async fn delivery_role_exposes_anonymous_delivery_without_management_routes() ->
 
     for path in ["/api/v1/openapi.json", "/api/v1/organizations"] {
         let response = app
-            .call(
-                BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"),
-            )
+            .call(BootRequest::new(HttpMethod::Get, path).with_header("accept", "application/json"))
             .await?;
         assert_eq!(
             response.status(),
@@ -372,7 +367,8 @@ async fn delivery_role_requires_bearer_for_authenticated_delivery_routes() -> Re
     let mut process_config = config();
     process_config.server.role = ProcessRole::Delivery;
     let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
-    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let sessions =
+        Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
     let credentials = Arc::new(
         crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
     );
@@ -469,7 +465,8 @@ fn delivery_http_fixture(
     let mut process_config = config();
     process_config.server.role = ProcessRole::Delivery;
     let applications = Arc::new(crate::modules::applications::InMemoryApplicationRepository::new());
-    let sessions = Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
+    let sessions =
+        Arc::new(crate::modules::applications::InMemoryApplicationSessionRepository::default());
     let credentials = Arc::new(
         crate::modules::applications::InMemoryApplicationDeliveryCredentialRepository::default(),
     );
@@ -503,9 +500,9 @@ fn delivery_http_fixture(
 async fn bootstrap_delivery_bearer(
     identity: &Arc<InMemoryIdentityRepository>,
 ) -> Result<(String, String)> {
-    use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
-    use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
     use crate::modules::identity::domain::repositories::IIdentityBootstrapRepository;
+    use crate::modules::identity::{BootstrapIdentity, BootstrapIdentityHandler};
+    use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
 
     let identity_bootstrap: Arc<dyn IIdentityBootstrapRepository> = identity.clone();
     let secret = format!("a3s_{}", "b".repeat(64));
@@ -542,7 +539,10 @@ async fn delivery_readiness_reports_down_while_draining() -> Result<()> {
     assert_eq!(ready.status(), 200);
     let ready_body = response_json(&ready)?;
     assert_eq!(ready_body["data"]["status"], "up");
-    assert_eq!(ready_body["data"]["checks"]["delivery-drain"]["status"], "up");
+    assert_eq!(
+        ready_body["data"]["checks"]["delivery-drain"]["status"],
+        "up"
+    );
 
     drain.begin();
     let draining = app
@@ -710,8 +710,16 @@ async fn delivery_allows_observation_close_and_cancel_while_draining() -> Result
                 .with_header("accept", "application/json"),
         )
         .await?;
-    assert_ne!(response.status(), 503, "observation must not be drain-gated");
-    assert_eq!(response.status(), 400, "missing lookupKey remains validation");
+    assert_ne!(
+        response.status(),
+        503,
+        "observation must not be drain-gated"
+    );
+    assert_eq!(
+        response.status(),
+        400,
+        "missing lookupKey remains validation"
+    );
 
     let close = format!(
         "/api/v1/anonymous-delivery/organizations/{org}/projects/{project}/applications/{application}/sessions/{session}/close"
@@ -737,7 +745,11 @@ async fn delivery_allows_observation_close_and_cancel_while_draining() -> Result
                 .with_body(br#"{"expectedVersion":1,"lookupKey":"opaque"}"#.to_vec()),
         )
         .await?;
-    assert_ne!(response.status(), 503, "cancel must continue while draining");
+    assert_ne!(
+        response.status(),
+        503,
+        "cancel must continue while draining"
+    );
     Ok(())
 }
 
@@ -764,14 +776,17 @@ fn delivery_composition_registers_one_drain_readiness_indicator() {
     );
 }
 
-
 #[test]
 fn delivery_composition_has_one_closed_dependency_set() {
     let production = include_str!("../../app.rs");
     let delivery = production
         .split_once("async fn build_delivery_application(")
-        .and_then(|(_, tail)| tail.split_once("
-async fn build_relay_application("))
+        .and_then(|(_, tail)| {
+            tail.split_once(
+                "
+async fn build_relay_application(",
+            )
+        })
         .map(|(body, _)| body)
         .expect("delivery composition root");
 
@@ -864,7 +879,9 @@ impl crate::modules::applications::IApplicationOntologyRevisionPort
 struct DeliveryTestEnvironmentAccess;
 
 #[async_trait::async_trait]
-impl crate::modules::applications::IApplicationsEnvironmentAccess for DeliveryTestEnvironmentAccess {
+impl crate::modules::applications::IApplicationsEnvironmentAccess
+    for DeliveryTestEnvironmentAccess
+{
     async fn environment_exists(
         &self,
         _scope: crate::modules::applications::ApplicationsEnvironmentScope,
@@ -1409,11 +1426,8 @@ fn recipient_contact_proof_has_one_configured_api_worker_composition_boundary() 
     assert!(adapters.contains(
         "recipient_contact_verification_deliveries:\n        Arc<dyn IRecipientContactVerificationDeliveryRepository>"
     ));
-    assert!(
-        adapters.contains(
-            "outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>"
-        )
-    );
+    assert!(adapters
+        .contains("outbound_smtp_attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository>"));
     assert_eq!(
         adapters
             .matches("recipient_contacts: repository.clone()")

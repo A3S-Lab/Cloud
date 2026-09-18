@@ -1,7 +1,7 @@
 use super::tool_result;
 use crate::access_projection::notification_access;
 use crate::modules::identity::domain::services::ResourceAccessEvaluator;
-use crate::modules::notifications::presentation::{
+use crate::modules::notifications::{
     NotificationAlertPolicyMutationResponse, NotificationAlertPolicyPageResponse,
     NotificationAlertPolicyResponse, NotificationMutationResponse, NotificationPageResponse,
     NotificationResponse, OutboundNotificationSubscriptionMutationResponse,

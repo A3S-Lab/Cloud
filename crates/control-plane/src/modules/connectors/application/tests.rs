@@ -18,7 +18,7 @@ use crate::modules::secrets::domain::{
     TransitionSecretVersion,
 };
 use crate::modules::secrets::exact_secret_version_access;
-use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+use crate::modules::secrets::InMemorySecretRepository;
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     EnvironmentId, IdempotencyRequest, OrganizationId, PrincipalId, ProjectId, ResourceName,

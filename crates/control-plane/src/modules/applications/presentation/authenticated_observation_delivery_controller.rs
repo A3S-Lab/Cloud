@@ -13,11 +13,11 @@ use crate::modules::applications::application::{
     ObserveApplicationStreamingInvocation,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     ApplicationInvocationId, ApplicationSessionId, OrganizationId,
 };
-use crate::presentation::{actor_principal_id, application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, actor_principal_id, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     ControllerDefinition, QueryBus, Result,

@@ -19,10 +19,7 @@ create table application_message_citations (
     excerpt text
         check (
             excerpt is null
-            or (
-                octet_length(excerpt) between 1 and 8192
-                and position(E'\000' in excerpt) = 0
-            )
+            or octet_length(excerpt) between 1 and 8192
         ),
     excerpt_digest text not null
         check (excerpt_digest ~ '^sha256:[0-9a-f]{64}$'),

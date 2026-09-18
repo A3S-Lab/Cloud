@@ -11,6 +11,7 @@ mod fixture;
 #[path = "workflow_run_process_death_process.rs"]
 mod process;
 
+use a3s_cloud_control_plane::modules::executions::ProjectsExecutionsEnvironmentAccessAdapter;
 use a3s_cloud_control_plane::infrastructure::FlowInfrastructure;
 use a3s_cloud_control_plane::modules::executions::{
     Execution, ExecutionReconciler, ExecutionStatus, IExecutionRepository,
@@ -677,7 +678,9 @@ async fn coordinate_execution_probe(
         Arc::new(PostgresExecutionTemplateRepository::new(executor.clone()));
     let execution_port: Arc<dyn IWorkflowExecutionPort> =
         Arc::new(WorkflowExecutionApplicationService::new(
-            Arc::new(PostgresProjectsRepository::new(executor.clone())),
+            Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::new(
+                PostgresProjectsRepository::new(executor.clone()),
+            ))),
             templates,
             Arc::clone(&executions),
         ));
@@ -723,7 +726,9 @@ impl RecoveryRuntime {
         );
         let execution_port: Arc<dyn IWorkflowExecutionPort> =
             Arc::new(WorkflowExecutionApplicationService::new(
-                Arc::new(PostgresProjectsRepository::new(fixture.executor.clone())),
+                Arc::new(ProjectsExecutionsEnvironmentAccessAdapter::new(Arc::new(
+                    PostgresProjectsRepository::new(fixture.executor.clone()),
+                ))),
                 templates,
                 Arc::clone(&executions),
             ));

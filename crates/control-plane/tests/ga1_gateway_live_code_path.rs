@@ -27,6 +27,8 @@ mod build_runs_support;
 mod deployment_flow_support;
 #[path = "support/ga1_gateway_live_code_path_support.rs"]
 mod ga1_gateway_live_code_path_support;
+#[path = "support/ga1_management_plane.rs"]
+mod ga1_management_plane_support;
 
 /// Minimal HTTP helpers required by `build_runs` compilation.
 mod postgres_fixture {

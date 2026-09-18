@@ -6,14 +6,11 @@ mod runtime;
 mod types;
 mod workflow;
 
-#[cfg(test)]
-mod tests;
-
 use crate::infrastructure::flow_step_retry_policy;
+use crate::modules::agents::application::IAgentExecutionNodeCommandPort;
 use crate::modules::agents::domain::{
     AgentExecutionProviderRegistry, IAgentExecutionCheckpointObjectStore, IAgentRepository,
 };
-use crate::modules::fleet::domain::repositories::INodeControlRepository;
 use crate::modules::workloads::domain::repositories::IWorkloadRuntimeTargetRepository;
 use a3s_flow::{
     FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation,
@@ -87,7 +84,7 @@ pub struct AgentExecutionFlowRuntimeDependencies {
     pub checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     pub providers: Arc<dyn AgentExecutionProviderRegistry>,
     pub workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
-    pub node_control: Arc<dyn INodeControlRepository>,
+    pub node_commands: Arc<dyn IAgentExecutionNodeCommandPort>,
 }
 
 #[derive(Clone)]
@@ -96,7 +93,7 @@ pub struct AgentExecutionFlowRuntime {
     checkpoint_objects: Arc<dyn IAgentExecutionCheckpointObjectStore>,
     providers: Arc<dyn AgentExecutionProviderRegistry>,
     workload_targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
-    node_control: Arc<dyn INodeControlRepository>,
+    node_commands: Arc<dyn IAgentExecutionNodeCommandPort>,
     config: AgentExecutionFlowConfig,
 }
 
@@ -110,7 +107,7 @@ impl AgentExecutionFlowRuntime {
             checkpoint_objects: dependencies.checkpoint_objects,
             providers: dependencies.providers,
             workload_targets: dependencies.workload_targets,
-            node_control: dependencies.node_control,
+            node_commands: dependencies.node_commands,
             config,
         }
     }
@@ -161,3 +158,6 @@ fn encode<T: serde::Serialize>(value: T) -> a3s_flow::Result<serde_json::Value> 
 fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
     FlowError::Runtime(format!("{context}: {error}"))
 }
+
+#[cfg(test)]
+mod tests;

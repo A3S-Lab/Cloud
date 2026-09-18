@@ -1,10 +1,13 @@
 mod api_token_repository;
+mod directory_membership_projection_repository;
+mod directory_resource_grant_repository;
 mod identity_bootstrap_repository;
 mod inference_credential_repository;
 mod membership_invitation_repository;
 mod membership_repository;
 mod oidc_identity_repository;
 mod organization_repository;
+mod partner_subject_link_repository;
 mod platform_rbac_repository;
 mod privileged_authorization_decision_repository;
 mod recipient_contact_repository;
@@ -16,6 +19,15 @@ mod workload_identity_repository;
 mod workload_runtime_evidence_repository;
 
 pub use api_token_repository::{CreateApiTokenWrite, IApiTokenRepository};
+pub use directory_membership_projection_repository::{
+    ClearDirectoryMembershipProjectionWrite, IDirectoryMembershipProjectionRepository,
+    ReplaceDirectoryMembershipProjectionWrite,
+    MAX_DIRECTORY_MEMBERSHIP_PROJECTION_PRINCIPALS_PER_SUBJECT,
+};
+pub use directory_resource_grant_repository::{
+    CreateDirectoryResourceGrantWrite, IDirectoryResourceGrantRepository,
+    RevokeDirectoryResourceGrantWrite, MAX_ACTIVE_DIRECTORY_RESOURCE_GRANTS_PER_ORG,
+};
 pub use identity_bootstrap_repository::{BootstrapIdentityWrite, IIdentityBootstrapRepository};
 pub use inference_credential_repository::{
     CreateInferenceCredentialWrite, IInferenceCredentialLifecycleRepository,
@@ -36,6 +48,9 @@ pub use oidc_identity_repository::{
 };
 pub use organization_repository::{
     CreateOrganizationWrite, IOrganizationRepository, ReadOrganizationCatalog,
+};
+pub use partner_subject_link_repository::{
+    IPartnerSubjectLinkRepository, LinkPartnerSubjectWrite, RevokePartnerSubjectLinkWrite,
 };
 pub use platform_rbac_repository::{
     AcceptPlatformRolePolicyRevisionWrite, BootstrapPlatformRbacWrite,

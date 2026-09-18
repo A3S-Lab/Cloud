@@ -1,7 +1,9 @@
 pub mod application;
 pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+pub(crate) mod infrastructure;
+pub(crate) mod presentation;
+
+mod facade;
 
 pub use application::{
     CreateNotificationAlertPolicy, CreateNotificationAlertPolicyHandler,
@@ -57,13 +59,17 @@ pub use domain::{
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V2,
     OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V3, OUTBOUND_NOTIFICATION_SUBSCRIPTION_SCHEMA_V4,
 };
-pub use infrastructure::{
+pub use facade::{
     A3sEventOutboundNotificationConsumer, FleetNotificationsNodeAccessAdapter,
     IdentityNotificationOutboxIdentityAccessAdapter, IdentityOutboundRecipientContactAccessAdapter,
-    InMemoryNotificationRepository, OutboxNotificationProjector, PostgresNotificationRepository,
+    InMemoryNotificationRepository, NotificationAlertPolicyMutationResponse,
+    NotificationAlertPolicyPageResponse, NotificationAlertPolicyResponse,
+    NotificationMutationResponse, NotificationPageResponse, NotificationResponse,
+    NotificationsModule, OutboundNotificationSubscriptionMutationResponse,
+    OutboundNotificationSubscriptionPageResponse, OutboundNotificationSubscriptionResponse,
+    OutboxNotificationProjector, PostgresNotificationRepository,
     ProjectsNotificationsEnvironmentAccessAdapter, SignedWebhookNotificationAdapter,
     SlackCompatibleNotificationAdapter, SmtpOutboundNotificationCredentials,
     SmtpOutboundNotificationDeliveryOptions, SmtpOutboundNotificationDeliveryService,
     SmtpOutboundNotificationTlsPolicy,
 };
-pub use presentation::NotificationsModule;

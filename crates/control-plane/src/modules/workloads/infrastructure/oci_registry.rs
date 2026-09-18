@@ -263,7 +263,7 @@ mod tests {
         secret_encryption_context, CreateSecretWrite, ISecretEncryptionService, ISecretRepository,
         Secret, SecretChanged,
     };
-    use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+    use crate::modules::secrets::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
         EnvironmentId, IdempotencyRequest, OrganizationId, ProjectId, ResourceName, SecretId,
     };

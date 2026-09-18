@@ -1,0 +1,1 @@
+A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_BLOCKED reason=box_vm_requires_kvm path=/dev/kvm host=orb:a3s-ga1-live nested_virt=unsupported_on_apple_silicon

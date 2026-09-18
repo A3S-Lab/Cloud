@@ -1,3 +1,4 @@
+use crate::modules::workloads::FleetWorkloadDeploymentNodeCommandAccessAdapter;
 use super::*;
 use crate::modules::workloads::infrastructure::compose_deployment_operation;
 
@@ -72,15 +73,15 @@ async fn route_cutover_rejects_an_observation_from_another_runtime_command(
     .await?;
 
     let route_port: Arc<dyn IEdgeRepository> = routes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> = Arc::new(
         crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
-            &control_port,
+            &node_control,
         )),
     );
     let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
         Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
-            Arc::clone(&control_port),
+            Arc::clone(&node_control),
         ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
@@ -136,15 +137,15 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
         ready_node(&nodes, organization_id, base).await?;
     let compiler = gateway_compiler()?;
     let route_port: Arc<dyn IEdgeRepository> = routes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> = Arc::new(
         crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
-            &control_port,
+            &node_control,
         )),
     );
     let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
         Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
-            Arc::clone(&control_port),
+            Arc::clone(&node_control),
         ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
@@ -161,7 +162,9 @@ async fn routed_update_waits_for_exact_gateway_ack_and_retires_the_previous_runt
             Arc::new(InMemoryResourceClaimRepository::new()),
             Arc::new(UnusedArtifactResolver),
             nodes.clone(),
-            control_port,
+            Arc::new(FleetWorkloadDeploymentNodeCommandAccessAdapter::new(
+                Arc::clone(&node_control),
+            )),
             route_updates,
         ),
         Duration::seconds(5),

@@ -1,0 +1,9 @@
+host=Linux/x86_64
+machine=orb:a3s-ga1-live
+box_revision=8b2804c585d2f31bce06f213990407606a475634
+gateway_revision=e92896769953aee28ef69261f77265e427f9d396
+postgres=127.0.0.1:54320 ok
+registry=127.0.0.1:50020 ok
+agent_image=export A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE='127.0.0.1:50020/a3s/a0-4-agent-runtime@sha256:d4efee9a6ae7c4e75aae745ec4aaf2070dc777d0604f7e9a92efd78e200684d9'
+kvm=/dev/kvm absent
+nested_virt=orbstack_apple_silicon_unsupported

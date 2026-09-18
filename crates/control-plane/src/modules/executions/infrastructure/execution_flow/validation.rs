@@ -2,7 +2,7 @@ use super::flow_error;
 use super::types::{DispatchedExecution, ExecutionFlowInput, ScheduledExecution};
 use crate::modules::executions::domain::Execution;
 use crate::modules::executions::infrastructure::project_execution_task;
-use crate::modules::fleet::domain::entities::NodeCommand;
+use crate::modules::executions::application::ExecutionNodeCommandProjection;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::NodeCommandPayload;
 use a3s_flow::FlowError;
@@ -55,7 +55,7 @@ pub(super) fn validate_dispatched(
 pub(super) fn validate_apply_command(
     execution: &Execution,
     spec: &RuntimeUnitSpec,
-    command: &NodeCommand,
+    command: &ExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
         return Err(FlowError::Runtime(
@@ -79,7 +79,7 @@ pub(super) fn validate_apply_command(
     Ok(())
 }
 
-pub(super) fn apply_result_deadline(command: &NodeCommand) -> a3s_flow::Result<DateTime<Utc>> {
+pub(super) fn apply_result_deadline(command: &ExecutionNodeCommandProjection) -> a3s_flow::Result<DateTime<Utc>> {
     let NodeCommandPayload::RuntimeApply { request, .. } = &command.payload else {
         return Err(FlowError::Runtime(
             "execution command is not a Runtime apply".into(),

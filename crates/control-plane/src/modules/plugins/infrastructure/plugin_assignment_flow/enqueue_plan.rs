@@ -4,7 +4,7 @@ use super::types::{
     PlannedAssignment,
 };
 use super::PluginAssignmentFlowRuntime;
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::plugins::application::PluginAssignmentNodeCommandEnqueueRequest;
 use crate::modules::plugins::domain::entities::PluginAssignment;
 use crate::modules::plugins::domain::services::PluginRegistryCatalogError;
 use crate::modules::shared_kernel::domain::NodeCommandId;
@@ -164,7 +164,7 @@ async fn ensure_pre_plan_observation(
     let locked = authorized.resolved.locked.as_ref();
     let command_id = pre_plan_observe_command_id(locked.operation_id.as_uuid());
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -198,8 +198,8 @@ async fn ensure_pre_plan_observation(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -216,7 +216,7 @@ async fn ensure_pre_plan_observation(
                         "could not enqueue Plugin Host pre-plan observation: {error}"
                     ))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -230,7 +230,7 @@ async fn ensure_pre_plan_observation(
     }
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -300,7 +300,7 @@ async fn enqueue_package_plan(
     let locked = authorized.resolved.locked.as_ref();
     let command_id = enqueue_plan_command_id(locked.operation_id.as_uuid());
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -319,8 +319,8 @@ async fn enqueue_package_plan(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -335,7 +335,7 @@ async fn enqueue_package_plan(
                 .map_err(|error| {
                     FlowError::Runtime(format!("could not enqueue Plugin Host plan: {error}"))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -354,7 +354,7 @@ async fn enqueue_package_plan(
     };
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -423,7 +423,7 @@ async fn enqueue_enablement_plan(
     let locked = authorized.resolved.locked.as_ref();
     let command_id = enqueue_enablement_plan_command_id(locked.operation_id.as_uuid());
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -459,8 +459,8 @@ async fn enqueue_enablement_plan(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -477,7 +477,7 @@ async fn enqueue_enablement_plan(
                         "could not enqueue Plugin Host enablement-plan: {error}"
                     ))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -496,7 +496,7 @@ async fn enqueue_enablement_plan(
     };
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {

@@ -3,7 +3,7 @@ use super::types::{
 };
 use super::PluginAssignmentFlowRuntime;
 use crate::modules::artifacts::application::{INodeArtifactStore, NodeArtifactDescriptor};
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::plugins::application::PluginAssignmentNodeCommandEnqueueRequest;
 use crate::modules::plugins::domain::services::{
     PluginPolicyStoreError, PluginTrustRootStoreError,
 };
@@ -131,7 +131,7 @@ pub(super) async fn authorize_trust(
     .map_err(FlowError::Runtime)?;
 
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -150,8 +150,8 @@ pub(super) async fn authorize_trust(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -168,7 +168,7 @@ pub(super) async fn authorize_trust(
                         "could not enqueue Plugin Host authorize-trust: {error}"
                     ))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -182,7 +182,7 @@ pub(super) async fn authorize_trust(
     }
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {

@@ -360,15 +360,15 @@ async fn managed_route_cutover_stages_inference_credential_and_route_acl_without
     };
 
     let route_port: Arc<dyn IEdgeRepository> = routes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let node_control: Arc<dyn INodeControlRepository> = nodes.clone();
     let observations: Arc<dyn crate::modules::edge::IEdgeRuntimeObservationAccess> = Arc::new(
         crate::modules::edge::FleetEdgeRuntimeObservationAccessAdapter::new(Arc::clone(
-            &control_port,
+            &node_control,
         )),
     );
     let fleet_gateway_commands: Arc<dyn crate::modules::fleet::IFleetGatewaySnapshotCommandPort> =
         Arc::new(crate::modules::fleet::FleetGatewaySnapshotCommandService::new(
-            Arc::clone(&control_port),
+            Arc::clone(&node_control),
         ));
     let gateway_commands: Arc<dyn crate::modules::edge::domain::services::IGatewayCommandQueue> =
         Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));

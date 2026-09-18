@@ -7,21 +7,30 @@ pub mod change_membership_role;
 pub mod complete_oidc_flow;
 pub mod complete_recipient_contact_verification;
 pub mod create_api_token;
+pub mod create_directory_resource_grant;
 pub mod create_inference_key;
 pub mod create_membership;
 pub mod create_membership_invitation;
 pub mod create_organization;
 pub mod create_resource_grant;
+pub mod link_partner_subject;
 pub mod manage_platform_rbac;
 pub mod manage_tenant_support;
 pub mod manage_workload_trust;
+pub mod replace_directory_membership_projection;
 pub mod revoke_api_token;
+pub mod revoke_directory_resource_grant;
 pub mod revoke_inference_key;
 pub mod revoke_membership;
 pub mod revoke_membership_invitation;
+pub mod revoke_partner_subject_link;
 pub mod revoke_recipient_contact;
 pub mod revoke_resource_grant;
 pub mod rotate_inference_key;
+
+#[cfg(test)]
+#[path = "partner_subject_link_tests.rs"]
+mod partner_subject_link_tests;
 
 use crate::modules::identity::domain::services::OidcProviderError;
 use crate::modules::identity::domain::services::RecipientContactProofError;

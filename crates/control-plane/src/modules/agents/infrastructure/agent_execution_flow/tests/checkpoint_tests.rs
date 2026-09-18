@@ -134,7 +134,7 @@ async fn fork_start_materializes_and_verifies_the_checkpoint_trajectory() {
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: Arc::new(InMemoryNodeRepository::new()),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(Arc::new(InMemoryNodeRepository::new()))),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,

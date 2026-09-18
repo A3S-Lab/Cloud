@@ -18,7 +18,9 @@ use a3s_cloud_control_plane::modules::edge::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
-use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
+use a3s_cloud_control_plane::modules::fleet::{
+    FleetGatewaySnapshotCommandService, PostgresNodeRepository,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     GatewayRolloutId, GatewayScopeId, IdempotencyRequest, NodeCommandId, NodeId, RepositoryError,
 };
@@ -200,8 +202,11 @@ pub async fn exercise_gateway_replica_recovery(
         Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let node_control: Arc<dyn INodeControlRepository> =
         Arc::new(PostgresNodeRepository::new(executor.clone()));
+    let fleet_gateway_commands = Arc::new(FleetGatewaySnapshotCommandService::new(Arc::clone(
+        &node_control,
+    )));
     let observation_port: Arc<dyn IGatewayObservationQueue> =
-        Arc::new(FleetGatewayObservationQueue::new(Arc::clone(&node_control)));
+        Arc::new(FleetGatewayObservationQueue::new(fleet_gateway_commands));
     let worker_at = unavailable_at + Duration::seconds(1);
     let worker = GatewayReplicaRecoveryReconciler::new(
         Arc::clone(&edge_port),

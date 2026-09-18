@@ -7,9 +7,9 @@ use crate::modules::artifacts::{
 use crate::modules::shared_kernel::domain::{EnvironmentId, ProjectId, SourceRevisionId};
 use crate::modules::sources::domain::BuildPlatform;
 use a3s_cloud_contracts::{
-    BOX_BUILD_OUTPUT_NAME, NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE, NodeBoxBuildCacheOutput,
-    NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor, NodeBoxBuildOutput, NodeBoxBuildPlatform,
-    artifact_uri,
+    artifact_uri, NodeBoxBuildCacheOutput, NodeBoxBuildCacheReceipt, NodeBoxBuildDescriptor,
+    NodeBoxBuildOutput, NodeBoxBuildPlatform, BOX_BUILD_OUTPUT_NAME,
+    NODE_DIRECTORY_ARTIFACT_MEDIA_TYPE,
 };
 use a3s_runtime::contract::{ArtifactRef, RuntimeOutputArtifact};
 
@@ -86,13 +86,11 @@ async fn source_build_deployment_requires_one_owned_success_and_replays_exactly(
         ))
         .await?;
     assert_eq!(unreserved.status(), 409);
-    assert!(
-        workloads
-            .list_workloads(organization_id, project_id, environment_id)
-            .await
-            .map_err(repository_error)?
-            .is_empty()
-    );
+    assert!(workloads
+        .list_workloads(organization_id, project_id, environment_id)
+        .await
+        .map_err(repository_error)?
+        .is_empty());
 
     let queued = reserve_build(
         builds.as_ref(),
@@ -110,13 +108,11 @@ async fn source_build_deployment_requires_one_owned_success_and_replays_exactly(
         ))
         .await?;
     assert_eq!(pending.status(), 409);
-    assert!(
-        workloads
-            .list_workloads(organization_id, project_id, environment_id)
-            .await
-            .map_err(repository_error)?
-            .is_empty()
-    );
+    assert!(workloads
+        .list_workloads(organization_id, project_id, environment_id)
+        .await
+        .map_err(repository_error)?
+        .is_empty());
 
     let succeeded = succeed_build(builds.as_ref(), queued).await?;
     let published = succeeded

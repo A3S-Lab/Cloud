@@ -1,11 +1,11 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::plugins::application::EnrollPluginRegistry;
 use crate::modules::plugins::presentation::dto::{
     EnrollPluginRegistryRequest, PluginRegistryMutationResponse, PluginRegistryResponse,
 };
 use crate::modules::shared_kernel::domain::OrganizationId;
-use crate::presentation::{actor_principal_id, application_error_response, request_identity};
+use crate::presentation::{
+    OrganizationTenantGuard, actor_principal_id, application_error_response, request_identity};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, Result,

@@ -64,6 +64,16 @@ Commands:
   resource-grants get ID Get one Resource Grant
   resource-grants create MEMBERSHIP KIND ID... Create one project, environment, or node grant
   resource-grants revoke ID Revoke one Resource Grant with optimistic concurrency
+  partner-subject-links list PRINCIPAL List active partner SubjectLinks for one Principal
+  partner-subject-links resolve PROVIDER ISSUER SUBJECT Resolve one partner SubjectLink
+  partner-subject-links link PROVIDER ISSUER SUBJECT PRINCIPAL Link a partner directory subject
+  partner-subject-links revoke PROVIDER ISSUER SUBJECT Revoke one partner SubjectLink
+  directory-resource-grants list List DirectoryProjection resource grants
+  directory-resource-grants get ID Get one DirectoryProjection resource grant
+  directory-resource-grants create SUBJECT_REF KIND ID... Create one directory resource grant
+  directory-resource-grants revoke ID Revoke one directory resource grant
+  directory-membership-projections list List DirectoryProjection membership bindings
+  directory-membership-projections replace SUBJECT_REF PRINCIPAL... Replace one subject membership set
   projects list        List projects in the selected organization
   projects create NAME Create a project idempotently
   project-attribution get [ID] Get the current or one exact immutable attribution profile
@@ -376,6 +386,8 @@ Global options:
   --enrollment-token-stdin   Read a node enrollment credential from standard input
   --scopes <csv>             API token scopes for api-tokens create
   --principal <uuid>         Principal bound to a newly created API token
+  --provider-key <key>       Optional partner SubjectLink provider filter for list
+  --subject-ref <ref>        DirectoryProjection subject ref for membership list
   --expires-at <timestamp>   RFC 3339 credential expiry
   --agent-release-url <url>  HTTPS node-agent release binary for nodes bootstrap
   --agent-release-sha256 <digest> SHA-256 of the node-agent release binary

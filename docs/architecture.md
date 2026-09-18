@@ -15,6 +15,7 @@ shipped claim unless its gate is marked `Verified` in the product roadmap.
 | --- | --- |
 | [README](../README.md) | Product introduction, current capabilities, and operator entry points |
 | This document | Stable target architecture and authority boundaries |
+| [Kense OS partnership boundary](kense-os-boundary.md) | Partner (Kense) vs Cloud ownership: sole control plane, management≠data plane, federation contracts; does not change gates in ROADMAP |
 | [Product roadmap](../ROADMAP.md) | Product gates, status, dependencies, and delivery order |
 | [Architecture optimization and execution roadmap](architecture-optimization-roadmap.md) | Execution waves, dual-track I0, integrity parallel track, and near-term Cloud-only backlog; does not change ownership named here |
 | [Ecosystem project roadmaps](project-roadmaps/README.md) | Cross-repository missions, dependencies, delivery waves, evidence, and forbidden overlap |

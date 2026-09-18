@@ -1,9 +1,9 @@
 use super::*;
-use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::edge::domain::{
     DomainNamePattern, Route, RouteHostname, RoutePath, RoutePortName, RouteTarget,
     UpstreamEndpoint,
 };
+use crate::modules::edge::InMemoryEdgeRepository;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, GatewayCertificateId, NodeId, WorkloadId, WorkloadRevisionId,
 };

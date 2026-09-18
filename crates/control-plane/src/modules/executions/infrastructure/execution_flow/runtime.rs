@@ -12,7 +12,7 @@ use super::validation::{
 use super::{flow_error, ExecutionFlowRuntime};
 use crate::modules::executions::domain::{Execution, ExecutionOutcome, ExecutionStatus};
 use crate::modules::executions::infrastructure::project_execution_task;
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::executions::application::ExecutionNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
 use a3s_flow::FlowError;
@@ -184,7 +184,7 @@ pub(super) async fn dispatch(
     }
     if let Some(command_id) = execution.command_id {
         let command = runtime
-            .node_control
+            .node_commands
             .find_command(input.scheduled.node_id, command_id)
             .await
             .map_err(|error| flow_error("could not reload execution Runtime command", error))?
@@ -243,8 +243,8 @@ pub(super) async fn dispatch(
         resource_claim: None,
     };
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(ExecutionNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id: input.scheduled.node_id,
             aggregate_id: execution.id.as_uuid(),
@@ -255,7 +255,7 @@ pub(super) async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue execution Runtime command", error))?
-        .value;
+        .command;
     validate_apply_command(&execution, &input.scheduled.spec, &command)?;
     let expected = execution.aggregate_version;
     execution
@@ -297,7 +297,7 @@ pub(super) async fn observe(
         });
     }
     if let Some(record) = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(
             input.dispatched.scheduled.node_id,
             &input.dispatched.scheduled.spec.unit_id,
@@ -324,7 +324,7 @@ pub(super) async fn observe(
         }
     }
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(
             input.dispatched.scheduled.node_id,
             input.dispatched.command_id,

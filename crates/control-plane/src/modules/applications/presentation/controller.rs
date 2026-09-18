@@ -9,11 +9,11 @@ use crate::modules::applications::application::{
     PublishApplicationRelease,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationReleaseId, OrganizationId, ProjectId,
 };
 use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, 
     actor_principal_id, application_error_response, request_id, request_identity,
 };
 use a3s_boot::{

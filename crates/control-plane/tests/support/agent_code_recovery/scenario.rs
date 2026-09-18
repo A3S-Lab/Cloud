@@ -245,8 +245,10 @@ async fn prepare_started_provider_scenario_with_tools(
         canonical_timestamp(Utc::now()).max(published.updated_at + Duration::milliseconds(1));
     let workload = CreateAgentWorkloadDeploymentHandler::new(
         Arc::new(ProjectsWorkloadsEnvironmentAccessAdapter::new(projects.clone())),
-        assets.clone(),
-        artifacts.clone(),
+        Arc::new(AssetsWorkloadAgentReleaseAdmissionAdapter::new(
+            assets.clone(),
+            artifacts.clone(),
+        )),
         workloads.clone(),
         Arc::new(SecretsWorkloadsSecretBindingAccessAdapter::new(secrets)),
         Arc::new(FleetWorkloadsNodePoolAccessAdapter::new(nodes.clone())),
@@ -311,7 +313,7 @@ async fn prepare_started_provider_scenario_with_tools(
             },
             issued_at: runtime_command_issued_at,
             not_after: runtime_command_deadline,
-            correlation_id: workload.bundle.operation.id.as_uuid(),
+            correlation_id: workload.bundle.operation.operation_id.as_uuid(),
         })
         .await?
         .value;
@@ -368,12 +370,16 @@ async fn prepare_started_provider_scenario_with_tools(
     if conversation_requested_at < created_at {
         return Err(invalid("Agent recovery conversation time predates its tenant").into());
     }
-    let conversation = CreateAgentConversationHandler::new(projects, agents.clone())
+    let conversation = CreateAgentConversationHandler::new(
+        Arc::new(ProjectsAgentsEnvironmentAccessAdapter::new(projects.clone())),
+        agents.clone(),
+    )
         .execute(
             CreateAgentConversation {
                 organization_id,
                 project_id,
                 environment_id,
+                access: agent_organization_access_for_conformance(),
                 idempotency_key: "create-recovery-conversation".into(),
                 request_id: Uuid::now_v7(),
                 requested_at: conversation_requested_at,
@@ -391,7 +397,7 @@ async fn prepare_started_provider_scenario_with_tools(
             StartAgentExecution {
                 organization_id,
                 conversation_id: conversation.conversation.id,
-                access: AgentAccess::organization_wide(),
+                access: agent_organization_access_for_conformance(),
                 agent_asset_id: asset.id,
                 agent_asset_release_id: published.id,
                 provider_kind: provider_kind.into(),

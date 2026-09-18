@@ -17,7 +17,41 @@ Ordinary API success, error, and streaming responses default to
 with an explicit transport cache policy retain it; in particular, the public
 OpenAPI document remains `public, max-age=300`.
 
-The current semantic contract version is `1.92.0`.
+The current semantic contract version is `1.116.0`.
+
+Contract `1.116.0` adds Artifacts-owned ArtifactAdmission receipts under
+`/organizations/{organizationId}/partner-artifact-admissions` (admin admit/list/get with
+`build:write`). Cloud records `sha256:` digest, kind (`model`/`git`/`oci`/`generic`), byte size,
+and an opaque `partnerRef`. Partner blob bytes are not stored.
+
+Management MCP catalog parity for partner SubjectLink, DirectoryProjection
+resource grants, and directory membership projections dispatches the same
+Identity CQRS already published under OpenAPI `1.112.0`–`1.115.0`. That MCP
+surface addition does not change the REST contract version.
+
+Contract `1.115.0` completes the partner SubjectLink reverse query:
+`GET /organizations/{organizationId}/partner-subject-links?principalId=` (required)
+with optional `providerKey=` (admin + `identity:write`). Returns active links for one
+organization Principal.
+
+Contract `1.114.0` adds Identity-owned DirectoryProjection membership projection APIs under
+`/organizations/{organizationId}/directory-membership-projections` (admin replace/list with
+`identity:write`). Partners replace the full Principal set for one opaque
+`{issuer}#department/{uuid}` or `{issuer}#group/{uuid}` subject ref; Cloud stores bindings only
+(no department/group tree). Auth-time Resource Authorization expands active
+`directory-resource-grants` for subjects bound to the acting Principal via this projection.
+
+Contract `1.113.0` adds Identity-owned DirectoryProjection Resource Grant APIs under
+`/organizations/{organizationId}/directory-resource-grants` (admin create/list/get/revoke
+with `identity:write`). Grants store opaque `{issuer}#department/{uuid}` or
+`{issuer}#group/{uuid}` subject refs only; partner directory trees are not stored.
+Auth-time expansion of directory subjects into memberships remained deferred until
+contract `1.114.0` membership projection.
+
+Contract `1.112.0` adds Identity-owned partner directory SubjectLink APIs under
+`/organizations/{organizationId}/partner-subject-links` (admin link/revoke with
+`identity:write`; member resolve with `cloud:read`) over
+`external_identity_links` and `partner-*` provider keys.
 
 Contract `1.92.0` extends the Files-owned UserFile surface with authorized
 `POST .../user-files/{userFileId}/expire` for awaiting upload reservations

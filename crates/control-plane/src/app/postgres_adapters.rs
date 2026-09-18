@@ -1,18 +1,19 @@
 use crate::modules::agents::{IAgentRepository, PostgresAgentRepository};
 use crate::modules::applications::{
     IApplicationAnnotationRepository, IApplicationDeliveryCredentialRepository,
-    IApplicationFeedbackRepository, IApplicationPublicationRouteIntentRepository,
-    IApplicationMessageCitationRepository,
+    IApplicationFeedbackRepository, IApplicationMessageCitationRepository,
     IApplicationMessageFileReferenceRepository, IApplicationMessageVariantRepository,
-    IApplicationRepository, IApplicationSessionRepository, PostgresApplicationAnnotationRepository,
+    IApplicationPublicationRouteIntentRepository, IApplicationRepository,
+    IApplicationSessionRepository, PostgresApplicationAnnotationRepository,
     PostgresApplicationDeliveryCredentialRepository, PostgresApplicationFeedbackRepository,
-    PostgresApplicationPublicationRouteIntentRepository,
     PostgresApplicationMessageCitationRepository,
     PostgresApplicationMessageFileReferenceRepository, PostgresApplicationMessageVariantRepository,
-    PostgresApplicationRepository, PostgresApplicationSessionRepository,
+    PostgresApplicationPublicationRouteIntentRepository, PostgresApplicationRepository,
+    PostgresApplicationSessionRepository,
 };
 use crate::modules::artifacts::{
-    IArtifactBuildProjectionPort, IBuildRunRepository, PostgresBuildRunRepository,
+    IArtifactBuildProjectionPort, IBuildRunRepository, IPartnerArtifactAdmissionRepository,
+    PostgresBuildRunRepository, PostgresPartnerArtifactAdmissionRepository,
 };
 use crate::modules::assets::{
     IAssetGitRepositoryControl, IAssetRepository, IMcpServiceProfileRepository,
@@ -57,12 +58,14 @@ use crate::modules::fleet::domain::repositories::{
 use crate::modules::fleet::PostgresNodeRepository;
 use crate::modules::forms::{IFormRepository, PostgresFormRepository};
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IIdentityBootstrapRepository, IMembershipInvitationRepository,
-    IMembershipRepository, IOidcIdentityRepository, IOrganizationRepository,
-    IPlatformRbacRepository, IPrivilegedAuthorizationDecisionRepository,
-    IRecipientContactRepository, IRecipientContactVerificationDeliveryRepository,
-    IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
-    ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
+    IApiTokenRepository, IDirectoryMembershipProjectionRepository,
+    IDirectoryResourceGrantRepository, IIdentityBootstrapRepository,
+    IMembershipInvitationRepository, IMembershipRepository, IOidcIdentityRepository,
+    IOrganizationRepository, IPartnerSubjectLinkRepository, IPlatformRbacRepository,
+    IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
+    IRecipientContactVerificationDeliveryRepository, IResourceAuthorizationDecisionRepository,
+    IResourceGrantRepository, ITenantSupportGrantRepository, ITrustDomainRepository,
+    IWorkloadIdentityPolicyRepository,
 };
 use crate::modules::identity::{
     IActiveHumanMembershipQueryPort, IInferenceCredentialAclProjectionPort,
@@ -121,9 +124,8 @@ use crate::modules::workflow::{
 use crate::modules::workloads::{
     IDeploymentFlowWorkloadRepository, IResourceClaimRepository, ISecretRotationRestartRepository,
     IWorkloadReplicaDeploymentRepository, IWorkloadReplicaEvacuationRepository,
-    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeControl,
-    IWorkloadRuntimeTargetRepository, IWorkloadWriterFenceRepository,
-    PostgresResourceClaimRepository, PostgresWorkloadRepository,
+    IWorkloadReplicaRetirementRepository, IWorkloadRepository, IWorkloadRuntimeTargetRepository,
+    IWorkloadWriterFenceRepository, PostgresResourceClaimRepository, PostgresWorkloadRepository,
 };
 use a3s_orm::PostgresExecutor;
 use std::sync::Arc;
@@ -168,6 +170,7 @@ impl PostgresAdapterFactory {
             security_investigations: self.security_investigations(),
             builds: artifacts.builds,
             build_projections: artifacts.build_projections,
+            partner_artifact_admissions: artifacts.partner_artifact_admissions,
             executions: Arc::new(PostgresExecutionRepository::new(self.executor.clone())),
             execution_templates: Arc::new(PostgresExecutionTemplateRepository::new(
                 self.executor.clone(),
@@ -342,6 +345,7 @@ pub(super) struct ApiWorkerPostgresAdapters {
     pub(super) security_investigations: Arc<dyn IGatewayRoutePolicyTimelineRepository>,
     pub(super) builds: Arc<dyn IBuildRunRepository>,
     pub(super) build_projections: Arc<dyn IArtifactBuildProjectionPort>,
+    pub(super) partner_artifact_admissions: Arc<dyn IPartnerArtifactAdmissionRepository>,
     pub(super) executions: Arc<dyn IExecutionRepository>,
     pub(super) execution_templates: Arc<dyn IExecutionTemplateRepository>,
     pub(super) agents: Arc<dyn IAgentRepository>,
@@ -487,14 +491,18 @@ fn pull_request_preview_projection_repository(
 struct ArtifactPostgresAdapters {
     builds: Arc<dyn IBuildRunRepository>,
     build_projections: Arc<dyn IArtifactBuildProjectionPort>,
+    partner_artifact_admissions: Arc<dyn IPartnerArtifactAdmissionRepository>,
 }
 
 impl ArtifactPostgresAdapters {
     fn new(executor: PostgresExecutor) -> Self {
-        let repository = Arc::new(PostgresBuildRunRepository::new(executor));
+        let repository = Arc::new(PostgresBuildRunRepository::new(executor.clone()));
         Self {
             builds: repository.clone(),
             build_projections: repository,
+            partner_artifact_admissions: Arc::new(PostgresPartnerArtifactAdmissionRepository::new(
+                executor,
+            )),
         }
     }
 }
@@ -507,7 +515,10 @@ pub(super) struct IdentityPostgresAdapters {
     pub(super) memberships: Arc<dyn IMembershipRepository>,
     pub(super) membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     pub(super) resource_grants: Arc<dyn IResourceGrantRepository>,
+    pub(super) directory_resource_grants: Arc<dyn IDirectoryResourceGrantRepository>,
+    pub(super) directory_membership_projections: Arc<dyn IDirectoryMembershipProjectionRepository>,
     pub(super) oidc_identity: Arc<dyn IOidcIdentityRepository>,
+    pub(super) partner_subject_links: Arc<dyn IPartnerSubjectLinkRepository>,
     pub(super) recipient_contacts: Arc<dyn IRecipientContactRepository>,
     pub(super) recipient_contact_verification_deliveries:
         Arc<dyn IRecipientContactVerificationDeliveryRepository>,
@@ -539,7 +550,10 @@ impl IdentityPostgresAdapters {
             memberships: repository.clone(),
             membership_invitations: repository.clone(),
             resource_grants: repository.clone(),
+            directory_resource_grants: repository.clone(),
+            directory_membership_projections: repository.clone(),
             oidc_identity: repository.clone(),
+            partner_subject_links: repository.clone(),
             recipient_contacts: repository.clone(),
             recipient_contact_verification_deliveries: repository.clone(),
             resource_authorization_decisions: repository.clone(),
@@ -663,7 +677,6 @@ pub(super) struct FleetPostgresAdapters {
     pub(super) node_control: Arc<dyn INodeControlRepository>,
     pub(super) node_protocol_sessions: Arc<dyn INodeProtocolSessionRepository>,
     pub(super) log_retention: Arc<dyn ILogRetentionRepository>,
-    pub(super) workload_runtime_control: Arc<dyn IWorkloadRuntimeControl>,
 }
 
 impl FleetPostgresAdapters {
@@ -677,8 +690,7 @@ impl FleetPostgresAdapters {
             draining_nodes: repository.clone(),
             node_control: repository.clone(),
             node_protocol_sessions: repository.clone(),
-            log_retention: repository.clone(),
-            workload_runtime_control: repository,
+            log_retention: repository,
         }
     }
 }

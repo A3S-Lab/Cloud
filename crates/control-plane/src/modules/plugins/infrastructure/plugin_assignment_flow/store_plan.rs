@@ -53,7 +53,7 @@ pub(super) async fn store_plan(
     }
 
     let acknowledgement = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, planned.command_id)
         .await
         .map_err(|error| {

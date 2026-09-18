@@ -25,7 +25,9 @@ use a3s_cloud_control_plane::modules::edge::{
 };
 use a3s_cloud_control_plane::modules::fleet::domain::repositories::INodeControlRepository;
 use a3s_cloud_control_plane::modules::fleet::domain::value_objects::NodeCapabilities;
-use a3s_cloud_control_plane::modules::fleet::PostgresNodeRepository;
+use a3s_cloud_control_plane::modules::fleet::{
+    FleetGatewaySnapshotCommandService, PostgresNodeRepository,
+};
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayRolloutId, GatewayScopeId, IdempotencyRequest,
     NodeCommandId, NodeId, OrganizationId, ProjectId, RouteId, WorkloadId, WorkloadRevisionId,
@@ -194,7 +196,10 @@ pub async fn exercise_replicated_gateway_rollout(
     assert_eq!(dispatches[0].publications.len(), 3);
     let node_commands: Arc<dyn INodeControlRepository> =
         Arc::new(PostgresNodeRepository::new(executor.clone()));
-    let commands = Arc::new(FleetGatewayCommandQueue::new(Arc::clone(&node_commands)));
+    let fleet_gateway_commands = Arc::new(FleetGatewaySnapshotCommandService::new(Arc::clone(
+        &node_commands,
+    )));
+    let commands = Arc::new(FleetGatewayCommandQueue::new(fleet_gateway_commands));
     let dispatch_repository: Arc<dyn IEdgeRepository> =
         Arc::new(PostgresEdgeRepository::new(executor.clone()));
     let dispatched = GatewayRolloutReconciler::new(

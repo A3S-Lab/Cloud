@@ -6,8 +6,10 @@ use super::super::types::{
 };
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::{bounded_reason, load_build, load_source, next_poll, project_request};
+use crate::modules::artifacts::application::{
+    ArtifactBuildNodeCommandEnqueueRequest, ArtifactBuildNodeCommandProjection,
+};
 use crate::modules::artifacts::domain::BuildRunStatus;
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId};
 use a3s_cloud_contracts::{
     NodeBoxBuildInspection, NodeBoxBuildPhase, NodeBoxBuildRequest, NodeCommandOutcome,
@@ -135,7 +137,7 @@ pub(super) async fn dispatch(
     }
     if let Some(command_id) = build.command_id {
         let command = runtime
-            .node_control
+            .node_commands
             .find_command(input.scheduled.node_id, command_id)
             .await
             .map_err(|error| flow_error("could not reload Box build start command", error))?
@@ -172,8 +174,8 @@ pub(super) async fn dispatch(
     }
     let command_id = start_command_id(build.id);
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(ArtifactBuildNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id: input.scheduled.node_id,
             aggregate_id: build.id.as_uuid(),
@@ -186,7 +188,7 @@ pub(super) async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue Box build start command", error))?
-        .value;
+        .command;
     validate_start_command(&build, &input.scheduled.request, &command)?;
     let expected = build.aggregate_version;
     build
@@ -240,7 +242,7 @@ pub(super) async fn observe(
     }
 
     let start = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(
             input.dispatched.scheduled.node_id,
             input.dispatched.command_id,
@@ -293,7 +295,7 @@ pub(super) async fn observe(
     }
     let command_id = inspect_command_id(build.id, input.attempt);
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(input.dispatched.scheduled.node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload Box build inspection command", error))?
@@ -310,8 +312,8 @@ pub(super) async fn observe(
                 });
             }
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(ArtifactBuildNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: input.dispatched.scheduled.node_id,
                     aggregate_id: build.id.as_uuid(),
@@ -324,7 +326,7 @@ pub(super) async fn observe(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue Box build inspection", error))?
-                .value
+                .command
         }
     };
     validate_inspect_command(
@@ -334,7 +336,7 @@ pub(super) async fn observe(
         &command,
     )?;
     let acknowledgement = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.scheduled.node_id, command_id)
         .await
         .map_err(|error| flow_error("could not load Box build inspection result", error))?;
@@ -495,7 +497,7 @@ fn validate_dispatched(
 fn validate_start_command(
     build: &crate::modules::artifacts::domain::BuildRun,
     request: &NodeBoxBuildRequest,
-    command: &NodeCommand,
+    command: &ArtifactBuildNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     let NodeCommandPayload::BoxBuildStart { request: admitted } = &command.payload else {
         return Err(FlowError::Runtime(
@@ -522,7 +524,7 @@ fn validate_inspect_command(
     build: &crate::modules::artifacts::domain::BuildRun,
     request: &NodeBoxBuildRequest,
     attempt: u32,
-    command: &NodeCommand,
+    command: &ArtifactBuildNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     let NodeCommandPayload::BoxBuildInspect { request: admitted } = &command.payload else {
         return Err(FlowError::Runtime(
@@ -547,7 +549,7 @@ fn validate_inspect_command(
 
 fn result_deadline(
     runtime: &BuildFlowRuntime,
-    command: &NodeCommand,
+    command: &ArtifactBuildNodeCommandProjection,
 ) -> a3s_flow::Result<DateTime<Utc>> {
     command
         .issued_at

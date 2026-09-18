@@ -1,3 +1,4 @@
+mod agent_execution_node_command_port;
 mod agent_execution_operation_scheduler;
 mod agent_execution_reconciler;
 mod agent_release_admission;
@@ -9,6 +10,11 @@ pub(crate) mod resource_access;
 mod support;
 mod workflow_agent_port;
 
+pub use agent_execution_node_command_port::{
+    AgentExecutionNodeCommandAcknowledgement, AgentExecutionNodeCommandDispatch,
+    AgentExecutionNodeCommandEnqueueRequest, AgentExecutionNodeCommandProjection,
+    AgentExecutionRuntimeObservationProjection, IAgentExecutionNodeCommandPort,
+};
 pub use agent_execution_operation_scheduler::{
     AgentExecutionOperationRequest, AgentExecutionOperationScheduleOutcome,
     IAgentExecutionOperationScheduler,

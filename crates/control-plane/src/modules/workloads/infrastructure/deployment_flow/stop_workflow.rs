@@ -1,6 +1,6 @@
 use super::types::{ReleaseClaimStepInput, ReleaseClaimStepOutput};
 use super::{cancel_database_reservation, flow_error, DeploymentFlowConfig, DeploymentFlowRuntime};
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::workloads::application::WorkloadDeploymentNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, NodeCommandId, NodeId, OperationId, OrganizationId, WorkloadId,
     WorkloadRevisionId,
@@ -445,8 +445,8 @@ async fn dispatch(
         });
     }
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id: child.node_id,
             aggregate_id: input.resolved.workload_id.as_uuid(),
@@ -465,7 +465,7 @@ async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue workload Runtime stop", error))?
-        .value;
+        .command;
     Ok(DispatchOutput::Ready {
         dispatched: DispatchedStop {
             node_id: command.node_id,
@@ -488,7 +488,7 @@ async fn observe_step(
         ));
     }
     if let Some(record) = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(child.node_id, &child.spec.unit_id, child.spec.generation)
         .await
         .map_err(|error| flow_error("could not load workload stop observation", error))?
@@ -502,7 +502,7 @@ async fn observe_step(
         }
     }
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(child.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load workload stop result", error))?

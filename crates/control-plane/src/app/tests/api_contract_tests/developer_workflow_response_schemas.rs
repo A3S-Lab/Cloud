@@ -57,18 +57,14 @@ fn build_plan_schemas_are_closed_bounded_typed_and_acl_only() -> Result<()> {
         schema_without_documentation(&schemas["BuildRecipe"]["properties"]),
         "Sources and Developer Workflows must publish one BuildRecipe property contract"
     );
-    assert!(
-        !source_revision_recipe["required"]
-            .as_array()
-            .expect("source request required fields")
-            .contains(&json!("target"))
-    );
-    assert!(
-        schemas["BuildRecipe"]["required"]
-            .as_array()
-            .expect("BuildRecipe response required fields")
-            .contains(&json!("target"))
-    );
+    assert!(!source_revision_recipe["required"]
+        .as_array()
+        .expect("source request required fields")
+        .contains(&json!("target")));
+    assert!(schemas["BuildRecipe"]["required"]
+        .as_array()
+        .expect("BuildRecipe response required fields")
+        .contains(&json!("target")));
     assert_eq!(
         schemas["AcceptedBuildPlan"]["properties"]["contractAcl"]["maxLength"],
         crate::modules::developer_workflows::BUILD_PLAN_MAX_ACL_BYTES
@@ -149,8 +145,8 @@ fn build_plan_routes_use_one_typed_public_contract() -> Result<()> {
         json!(["sourceRevisionId", "proposalAcl"])
     );
     assert_eq!(
-        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]["proposalAcl"]
-            ["maxLength"],
+        collection["post"]["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["proposalAcl"]["maxLength"],
         crate::modules::developer_workflows::BUILD_PLAN_PROPOSAL_MAX_ACL_BYTES
     );
 
@@ -314,8 +310,8 @@ fn workload_profile_routes_use_one_typed_revision_contract() -> Result<()> {
         json!(["buildPlanId", "profileAcl"])
     );
     assert_eq!(
-        collection["requestBody"]["content"]["application/json"]["schema"]["properties"]["profileAcl"]
-            ["maxLength"],
+        collection["requestBody"]["content"]["application/json"]["schema"]["properties"]
+            ["profileAcl"]["maxLength"],
         crate::modules::developer_workflows::WORKLOAD_PROFILE_MAX_ACL_BYTES
     );
     assert!(has_parameter(collection, "idempotency-key"));
@@ -373,7 +369,8 @@ fn preview_management_schemas_are_closed_bounded_revisioned_and_acl_only() -> Re
         json!([crate::modules::developer_workflows::PULL_REQUEST_PREVIEW_POLICY_SCHEMA])
     );
     assert_eq!(
-        schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractAcl"]["maxLength"],
+        schemas["AcceptedPullRequestPreviewPolicyRevision"]["properties"]["contractAcl"]
+            ["maxLength"],
         crate::modules::developer_workflows::PULL_REQUEST_PREVIEW_POLICY_MAX_ACL_BYTES
     );
     assert_eq!(

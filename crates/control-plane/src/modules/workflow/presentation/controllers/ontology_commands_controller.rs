@@ -2,14 +2,11 @@ use super::request::{
     actor_principal_id, ontology_acl, request_identity, revision_control, workflow_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard,
-};
 use crate::modules::shared_kernel::domain::{OntologyId, OrganizationId, ProjectId};
 use crate::modules::workflow::application::commands::create_ontology::CreateOntology;
 use crate::modules::workflow::application::commands::revise_ontology::ReviseOntology;
 use crate::modules::workflow::presentation::dto::OntologyMutationResponse;
-use crate::presentation::application_error_response;
+use crate::presentation::{with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, Result, RouteDefinition,

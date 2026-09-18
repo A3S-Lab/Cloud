@@ -302,11 +302,19 @@ export type {
   ApiToken,
   ApiTokenMutationResult,
   CreateApiTokenInput,
+  CreateDirectoryResourceGrantInput,
   CreateMembershipInput,
   CreateMembershipInvitationInput,
   CreateResourceGrantInput,
   CompleteRecipientContactVerificationInput,
+  DirectoryMembershipProjectionBinding,
+  DirectoryMembershipProjectionMutationResult,
+  DirectoryResourceGrant,
+  DirectoryResourceGrantMutationResult,
   IdentityPrincipalKind,
+  LinkPartnerSubjectInput,
+  ListDirectoryMembershipProjectionsOptions,
+  ListPartnerSubjectLinksOptions,
   Membership,
   MembershipInvitation,
   MembershipInvitationAcceptanceResult,
@@ -318,13 +326,18 @@ export type {
   OidcCallbackResult,
   OidcLinkResult,
   OidcLoginResult,
+  PartnerSubjectLink,
+  PartnerSubjectLinkMutationResult,
   RecipientContact,
   RecipientContactMutationResult,
   RecipientContactStatus,
+  ReplaceDirectoryMembershipProjectionInput,
   RequestRecipientContactVerificationInput,
+  ResolvePartnerSubjectInput,
   ResourceGrant,
   ResourceGrantMutationResult,
   ResourceGrantScope,
+  RevokePartnerSubjectLinkInput,
 } from './identity';
 export type {
   AcceptPlatformRolePolicyInput,
@@ -520,6 +533,30 @@ export interface BuildRun {
   startedAt: string | null;
   cancellationRequestedAt: string | null;
   finishedAt: string | null;
+}
+
+export type PartnerArtifactKind = 'model' | 'git' | 'oci' | 'generic';
+
+export interface PartnerArtifactAdmission {
+  id: string;
+  organizationId: string;
+  contentDigest: string;
+  kind: PartnerArtifactKind | string;
+  byteSize: number;
+  partnerRef: string;
+  aggregateVersion: number;
+  createdAt: string;
+}
+
+export interface PartnerArtifactAdmissionMutationResult extends PartnerArtifactAdmission {
+  replayed: boolean;
+}
+
+export interface AdmitPartnerArtifactInput {
+  contentDigest: string;
+  kind: PartnerArtifactKind | string;
+  byteSize: number;
+  partnerRef: string;
 }
 
 export interface CancelBuildRunResult {

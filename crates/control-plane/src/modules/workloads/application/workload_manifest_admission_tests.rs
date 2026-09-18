@@ -97,8 +97,8 @@ fn parses_headless_workload_without_ports_or_health() {
 
 #[test]
 fn parses_shipped_examples() {
-    let direct = include_str!("../../../../../../../examples/workload.oci.example.acl");
-    let source = include_str!("../../../../../../../examples/workload.source.example.acl");
+    let direct = include_str!("../../../../../../examples/workload.oci.example.acl");
+    let source = include_str!("../../../../../../examples/workload.source.example.acl");
     assert_eq!(
         parse_workload_manifest(direct.as_bytes())
             .expect("valid direct example")

@@ -9,26 +9,28 @@ use crate::modules::developer_workflows::{
     DEFAULT_WORKLOAD_PROFILE_REVISION_LIST_LIMIT, MAXIMUM_WORKLOAD_PROFILE_REVISION_LIST_LIMIT,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     BuildPlanId, WorkloadProfileId, WorkloadProfileRevisionId,
 };
 use crate::presentation::{
-    actor_principal_id, application_error_response, request_id, request_identity,
+    actor_principal_id, application_error_response, organization_tenant_build_write_controller,
+    organization_tenant_cloud_read_controller, request_id, request_identity,
 };
 use a3s_boot::{
-    controller, get, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
-    BootResponse, CommandBus, ControllerDefinition, QueryBus, Result,
+    controller, get, post, AUTH_SCOPES_METADATA, BootError, BootRequest, BootResponse, CommandBus,
+    ControllerDefinition, QueryBus, Result,
 };
 use std::sync::Arc;
 use uuid::Uuid;
 
 pub fn workload_profile_commands_controller(bus: Arc<CommandBus>) -> Result<ControllerDefinition> {
-    Arc::new(WorkloadProfileCommandsController { bus }).controller()
+    let controller = Arc::new(WorkloadProfileCommandsController { bus }).controller()?;
+    organization_tenant_build_write_controller(controller)
 }
 
 pub fn workload_profile_queries_controller(bus: Arc<QueryBus>) -> Result<ControllerDefinition> {
-    Arc::new(WorkloadProfileQueriesController { bus }).controller()
+    let controller = Arc::new(WorkloadProfileQueriesController { bus }).controller()?;
+    organization_tenant_cloud_read_controller(controller)
 }
 
 #[derive(Debug, Clone)]
@@ -42,8 +44,6 @@ struct WorkloadProfileQueriesController {
 }
 
 #[controller("/organizations")]
-#[use_guard(OrganizationTenantGuard)]
-#[metadata("auth.scopes", vec![ApiTokenScope::BUILD_WRITE])]
 impl WorkloadProfileCommandsController {
     #[post(
         "/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles",
@@ -80,8 +80,6 @@ impl WorkloadProfileCommandsController {
 }
 
 #[controller("/organizations")]
-#[use_guard(OrganizationTenantGuard)]
-#[metadata("auth.scopes", vec![ApiTokenScope::CLOUD_READ])]
 impl WorkloadProfileQueriesController {
     #[get(
         "/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles/{workload_profile_id}",
@@ -213,16 +211,14 @@ mod nest_macro_workload_profile_controller_tests {
             "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles/{workload_profile_id}/revisions/{workload_profile_revision_id}"
                 .into()
         )));
-        for route in routes {
-            assert_eq!(
-                route
-                    .metadata()
-                    .get(AUTH_SCOPES_METADATA)
-                    .cloned()
-                    .expect("auth.scopes"),
-                serde_json::json!([ApiTokenScope::CLOUD_READ])
-            );
-        }
+        assert_eq!(
+            controller
+                .metadata()
+                .get(AUTH_SCOPES_METADATA)
+                .cloned()
+                .expect("auth.scopes"),
+            serde_json::json!([ApiTokenScope::CLOUD_READ])
+        );
     }
 
     #[test]
@@ -238,7 +234,7 @@ mod nest_macro_workload_profile_controller_tests {
             "/organizations/{organization_id}/projects/{project_id}/environments/{environment_id}/workload-profiles"
         );
         assert_eq!(
-            routes[0]
+            controller
                 .metadata()
                 .get(AUTH_SCOPES_METADATA)
                 .cloned()

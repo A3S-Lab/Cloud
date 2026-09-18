@@ -40,8 +40,11 @@ Static Web) are projections over that single path—not six runtimes.
 > treat the lane as unavailable even if components exist.
 
 > [!NOTE]
-> A3S Cloud does not ship a management Dashboard. Management is
-> REST/OpenAPI, TypeScript client, CLI, and Management MCP. Tenant Web releases
+> A3S Cloud does not ship a management Dashboard. Management is REST,
+> OpenAPI, TypeScript client, CLI, and Management MCP. Partner consoles
+> (for example Kense OS) are visualization shells only; they must not become
+> a second writable control plane. Ownership vs Kense extensions:
+> [docs/kense-os-boundary.md](docs/kense-os-boundary.md). Tenant Web releases
 > (when <code>WEB0</code> lands) use the same Gateway and APIs as every other
 > client.
 
@@ -280,7 +283,7 @@ exact evidence in [ROADMAP.md](ROADMAP.md)):
 | Workloads / Fleet / Gateway projection (<code>H0.1</code>–<code>H0.2</code>) | **Verified**; multi-node HA / autoscaling (<code>H0.3</code>+) is GA-3 (`ha`), not GA-0 |
 | Architecture integrity (Wave 0) | **In progress** — owner <code>*Access</code> at REST/MCP entry; parallel forever, not a product EXIT by itself |
 | Box-only platform (<code>BX0</code>) | **In progress** — <code>BX0.software</code> is GA-0 EXIT (LOOP+receipts; Power/TEE not required); checklist <a href="docs/ga0-bx0-software-checklist.md"><code>docs/ga0-bx0-software-checklist.md</code></a>; <code>BX0.tee</code> blocked on SEV hardware |
-| Agent vertical (GA-1) | **In progress**; checklist [docs/ga1-agent-availability-checklist.md](docs/ga1-agent-availability-checklist.md) — first gap is A0.4 Box pin skew vs current `BX0.software` pins |
+| Agent vertical (GA-1) | **In progress**; checklist [docs/ga1-agent-availability-checklist.md](docs/ga1-agent-availability-checklist.md) — phase-2b management-plane code landed; CERTIFIED awaits retained LIVE smoke on BX0.software pins |
 | Workflow / one Application (GA-2) | **In progress / unavailable**; one experience is EXIT—full <code>APP0.6</code> / K0 / AUT0 / CELL0 matrix is deferred |
 | Inference (<code>I0</code>) | Track A control plane in progress; single-node Track B after <code>BX0.software</code>+<code>PW0.software</code>; distributed I0 and <code>EV0</code> are P2 |
 | FaaS / Static Web / Runtime CI/CD / Power / Cell | Planned or early foundation; off GA-0…GA-2 critical path |

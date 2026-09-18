@@ -4,13 +4,15 @@ use super::types::{
 };
 use super::{approval, binding, fork, recovery};
 use super::{flow_error, AgentExecutionFlowRuntime};
+use crate::modules::agents::application::{
+    AgentExecutionNodeCommandEnqueueRequest, AgentExecutionNodeCommandProjection,
+};
 use crate::modules::agents::domain::{
     AgentCodeRunBinding, AgentEventContent, AgentExecution, AgentExecutionEventDraft,
     AgentExecutionEventKind, AgentExecutionStatus, AppendAgentExecutionEventsWrite,
     BindAgentCodeRunWrite, CancelActiveAgentApprovalCheckpointWrite, RecoverAgentCodeRunWrite,
 };
 use crate::modules::agents::infrastructure::{accept_code_receipt, encode_code_command};
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{
     canonical_timestamp, IdempotencyRequest, NodeCommandId, OperationId,
 };
@@ -151,7 +153,7 @@ pub(super) async fn dispatch(
     let command_id = NodeCommandId::from_uuid(execution.id.as_uuid());
     let node_id = input.prepared.binding.node_id();
     let existing = runtime
-        .node_control
+        .node_commands
         .find_command(node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload A3S Code command", error))?;
@@ -173,8 +175,8 @@ pub(super) async fn dispatch(
                 .checked_add_signed(runtime.config.command_ttl)
                 .ok_or_else(|| FlowError::Runtime("A3S Code command deadline overflowed".into()))?;
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(AgentExecutionNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
@@ -196,7 +198,7 @@ pub(super) async fn dispatch(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue A3S Code command", error))?
-                .value
+                .command
         }
     };
     validate_start_command(&execution, &input.prepared, &expected, &command)?;
@@ -315,7 +317,7 @@ pub(super) async fn observe(
     validate_prepared(&execution, &input.dispatched.prepared)?;
     let node_id = input.dispatched.prepared.binding.node_id();
     let command = runtime
-        .node_control
+        .node_commands
         .find_command(node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load A3S Code command", error))?
@@ -328,7 +330,7 @@ pub(super) async fn observe(
         ));
     }
     let acknowledged = if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load A3S Code command result", error))?
@@ -493,7 +495,7 @@ async fn observe_cancellation(
     let command_id = cancel_command_id(execution.id, &expected.identity().run_id);
     let node_id = prepared.binding.node_id();
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload A3S Code cancel command", error))?
@@ -507,8 +509,8 @@ async fn observe_cancellation(
                     FlowError::Runtime("A3S Code cancel command deadline overflowed".into())
                 })?;
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(AgentExecutionNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
@@ -529,12 +531,12 @@ async fn observe_cancellation(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue A3S Code cancel command", error))?
-                .value
+                .command
         }
     };
     validate_cancel_command(&execution, prepared, &expected, &command)?;
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(node_id, command_id)
         .await
         .map_err(|error| flow_error("could not load A3S Code cancel result", error))?
@@ -672,7 +674,7 @@ fn validate_start_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
     expected: &AgentProviderCommandV1,
-    command: &NodeCommand,
+    command: &AgentExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     if command.id != NodeCommandId::from_uuid(execution.id.as_uuid())
         || command.node_id != prepared.binding.node_id()
@@ -696,7 +698,7 @@ fn validate_dispatched_command(
     execution: &AgentExecution,
     dispatched: &DispatchedAgentExecution,
     expected: &AgentProviderCommandV1,
-    command: &NodeCommand,
+    command: &AgentExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     match dispatched.recovery_checkpoint_run_id.as_deref() {
         Some(checkpoint_run_id) => recovery::validate_command(
@@ -714,7 +716,7 @@ fn validate_cancel_command(
     execution: &AgentExecution,
     prepared: &PreparedAgentExecution,
     expected: &AgentProviderCommandV1,
-    command: &NodeCommand,
+    command: &AgentExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     if command.id != cancel_command_id(execution.id, &expected.identity().run_id)
         || command.node_id != prepared.binding.node_id()

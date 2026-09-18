@@ -5,12 +5,10 @@ mod types;
 mod validation;
 mod workflow;
 
-#[cfg(test)]
-mod tests;
-
 use crate::infrastructure::flow_step_retry_policy;
+use crate::modules::executions::application::IExecutionNodeCommandPort;
 use crate::modules::executions::domain::IExecutionRepository;
-use crate::modules::fleet::domain::repositories::{INodeControlRepository, INodeRepository};
+use crate::modules::fleet::domain::repositories::INodeRepository;
 use a3s_flow::{
     FlowError, FlowRuntime, RuntimeCommand, StepInvocation, WorkflowContext, WorkflowInvocation,
 };
@@ -91,14 +89,14 @@ fn duration(milliseconds: u64) -> Result<chrono::Duration, String> {
 pub struct ExecutionFlowRuntimeDependencies {
     pub executions: Arc<dyn IExecutionRepository>,
     pub nodes: Arc<dyn INodeRepository>,
-    pub node_control: Arc<dyn INodeControlRepository>,
+    pub node_commands: Arc<dyn IExecutionNodeCommandPort>,
 }
 
 #[derive(Clone)]
 pub struct ExecutionFlowRuntime {
     pub(super) executions: Arc<dyn IExecutionRepository>,
     pub(super) nodes: Arc<dyn INodeRepository>,
-    pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) node_commands: Arc<dyn IExecutionNodeCommandPort>,
     pub(super) config: ExecutionFlowConfig,
 }
 
@@ -110,7 +108,7 @@ impl ExecutionFlowRuntime {
         Self {
             executions: dependencies.executions,
             nodes: dependencies.nodes,
-            node_control: dependencies.node_control,
+            node_commands: dependencies.node_commands,
             config,
         }
     }
@@ -167,3 +165,6 @@ fn encode<T: serde::Serialize>(value: T) -> a3s_flow::Result<serde_json::Value> 
 fn flow_error(context: &str, error: impl std::fmt::Display) -> FlowError {
     FlowError::Runtime(format!("{context}: {error}"))
 }
+
+#[cfg(test)]
+mod tests;

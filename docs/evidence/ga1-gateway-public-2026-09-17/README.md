@@ -18,9 +18,10 @@ Installer path: `DurableGatewaySnapshotInstaller` against pin-matched
 
 ## Not claimed
 
-- `A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED` — blocked until
-  management-plane conversation/execution + durable events against the same
-  release are proven in the same LIVE smoke.
+- `A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED` — public traffic alone is not
+  enough. Phase-2b management-plane conversation/execution + durable events must
+  appear in the **same** LIVE smoke (`A3S_CLOUD_GA1_MANAGEMENT_PLANE_PROVEN`),
+  then CERTIFIED. Code for that probe is landed; retained LIVE evidence is not.
 - BX0 Python TLS `:18444` is not Gateway LIVE.
 
 ## Artifacts

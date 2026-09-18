@@ -13,10 +13,10 @@ pub(crate) use crate::access_projection::{
     workload_access,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationAdministratorGuard;
 pub(crate) use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
+    authenticated_actor, authenticated_credential_actor, resource_access_evaluator,
+    with_deferred_resource_scope, AuthenticatedCredentialActor, DeferredResourceScope,
+    OrganizationAdministratorGuard, OrganizationTenantGuard,
 };
 use a3s_boot::{
     BootError, BootRequest, ControllerDefinition, Result, RouteDefinition, AUTH_SCOPES_METADATA,

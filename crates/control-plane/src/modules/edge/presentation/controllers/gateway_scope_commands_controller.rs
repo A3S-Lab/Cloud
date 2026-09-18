@@ -5,9 +5,8 @@ use crate::modules::edge::presentation::dto::{
     CreateGatewayScopeRequest, GatewayScopeMutationResponse,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{EnvironmentId, NodeId, OrganizationId, ProjectId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, resource_access_evaluator, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, Result,

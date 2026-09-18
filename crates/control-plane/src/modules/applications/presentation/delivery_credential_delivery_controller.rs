@@ -10,12 +10,12 @@ use crate::modules::applications::application::{
     RegisterApplicationDeliveryCredential, RevokeApplicationDeliveryCredential,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{resource_access_evaluator, OrganizationTenantGuard};
 use crate::modules::shared_kernel::domain::{
     ApplicationDeliveryCredentialId, ApplicationId, ApplicationReleaseId, OrganizationId,
     ProjectId, SecretId, SecretVersionReference,
 };
-use crate::presentation::{actor_principal_id, application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, actor_principal_id, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, BootRequest, BootResponse, CommandBus,
     ControllerDefinition, QueryBus, Result,

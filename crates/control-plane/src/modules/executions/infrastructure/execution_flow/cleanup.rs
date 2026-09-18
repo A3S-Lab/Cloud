@@ -5,7 +5,9 @@ use super::types::{
 };
 use super::{flow_error, ExecutionFlowRuntime};
 use crate::modules::executions::domain::{Execution, ExecutionStatus};
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::executions::application::{
+    ExecutionNodeCommandEnqueueRequest, ExecutionNodeCommandProjection,
+};
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
 use a3s_flow::FlowError;
@@ -64,7 +66,7 @@ pub(super) async fn dispatch(
     let command_id = cleanup_command_id(execution.id, input.attempt);
     if execution.cleanup_command_id == Some(command_id) {
         let command = runtime
-            .node_control
+            .node_commands
             .find_command(node_id, command_id)
             .await
             .map_err(|error| flow_error("could not reload execution cleanup command", error))?
@@ -91,8 +93,8 @@ pub(super) async fn dispatch(
         },
     };
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(ExecutionNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id,
             aggregate_id: execution.id.as_uuid(),
@@ -103,7 +105,7 @@ pub(super) async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue execution cleanup command", error))?
-        .value;
+        .command;
     validate_remove_command(&execution, input.attempt, &command)?;
     let expected = execution.aggregate_version;
     execution
@@ -153,7 +155,7 @@ pub(super) async fn observe(
         ));
     }
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load execution cleanup result", error))?
@@ -271,7 +273,7 @@ fn validate_terminal(
 fn validate_remove_command(
     execution: &Execution,
     attempt: u32,
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &ExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
         return Err(FlowError::Runtime(
@@ -297,7 +299,7 @@ fn validate_remove_command(
 }
 
 fn remove_result_deadline(
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &ExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<DateTime<Utc>> {
     let NodeCommandPayload::RuntimeRemove { request } = &command.payload else {
         return Err(FlowError::Runtime(

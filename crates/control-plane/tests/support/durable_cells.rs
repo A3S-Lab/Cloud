@@ -29,6 +29,7 @@ use a3s_cloud_control_plane::modules::durable_cells::domain::{
     RequestDurableCellApplicationStateWrite, ReviseDurableCellApplicationWrite,
 };
 use a3s_cloud_control_plane::modules::durable_cells::{
+    ProjectsDurableCellsEnvironmentAccessAdapter,
     ArtifactsDurableCellBuildArtifactAdapter, DataDurableCellStorageAdapter,
     FleetDurableCellNodePoolAdapter, PostgresDurableCellApplicationRepository,
     PostgresDurableCellDeploymentRepository, SecretsDurableCellBindingAdapter,
@@ -518,7 +519,7 @@ pub(super) async fn exercise_durable_cell_application_persistence(
     ));
     let cqrs_projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let create_handler = CreateDurableCellApplicationHandler::new(
-        cqrs_projects,
+        Arc::new(ProjectsDurableCellsEnvironmentAccessAdapter::new(cqrs_projects)),
         cqrs_repository.clone(),
         cqrs_build_artifacts.clone(),
     );

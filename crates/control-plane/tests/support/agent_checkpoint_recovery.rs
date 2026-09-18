@@ -7,6 +7,7 @@ mod verification;
 
 use crate::agent_code_recovery_support::prepare_checkpoint_recovery_scenario;
 use a3s_boot::{CommandHandler, CqrsContext, ModuleRef};
+use a3s_cloud_control_plane::conformance::agent_organization_access_for_conformance;
 use a3s_cloud_control_plane::infrastructure::connect_postgres;
 use a3s_cloud_control_plane::modules::agents::{
     AgentExecutionCheckpoint, AgentExecutionCheckpointObjectCaptureReservation,
@@ -22,7 +23,6 @@ use a3s_cloud_control_plane::modules::artifacts::{
     HostedArtifactQueryService, IHostedArtifactQueryPort, PostgresBuildRunRepository,
 };
 use a3s_cloud_control_plane::modules::assets::{IAssetRepository, PostgresAssetRepository};
-use a3s_cloud_control_plane::modules::identity::domain::services::ResourceAccessEvaluator;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     AgentConversationId, AgentExecutionId, OrganizationId, Sha256Digest,
 };
@@ -427,7 +427,7 @@ async fn execute_capture(
         CaptureAgentExecutionCheckpoint {
             organization_id: fixture.organization_id,
             execution_id: fixture.execution_id,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: agent_organization_access_for_conformance(),
             through_event_sequence: None,
             idempotency_key: CHECKPOINT_IDEMPOTENCY_KEY.into(),
             request_id: Uuid::new_v5(
@@ -457,7 +457,7 @@ async fn execute_fork(
             organization_id: fixture.organization_id,
             parent_execution_id: fixture.execution_id,
             checkpoint_id: checkpoint.id,
-            resource_access: ResourceAccessEvaluator::organization_wide(),
+            access: agent_organization_access_for_conformance(),
             input: fork_input(),
             idempotency_key: FORK_IDEMPOTENCY_KEY.into(),
             request_id: Uuid::new_v5(&checkpoint.id.as_uuid(), b"a1.6-fork-process-death"),

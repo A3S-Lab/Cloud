@@ -69,7 +69,7 @@ async fn approval_checkpoint_resumes_only_after_one_exact_durable_decision() {
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,
@@ -540,7 +540,7 @@ async fn provider_restart_closes_pending_approval_without_dispatching_recovery()
                 BuiltInAgentExecutionProviderRegistry::new().expect("provider registry"),
             ),
             workload_targets: Arc::new(InMemoryWorkloadRepository::new()),
-            node_control: nodes.clone(),
+            node_commands: Arc::new(crate::modules::agents::infrastructure::FleetAgentExecutionNodeCommandAccessAdapter::new(nodes.clone())),
         },
         AgentExecutionFlowConfig::new(AgentExecutionFlowConfigOptions {
             heartbeat_timeout_ms: 60_000,

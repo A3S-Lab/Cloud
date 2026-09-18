@@ -225,6 +225,16 @@ fn component_schema_description(name: &str) -> String {
         "RecipientContactMutation" => {
             "Redacted recipient contact mutation result with idempotent replay state.".into()
         }
+        "PartnerSubjectLink" => {
+            "Active partner directory SubjectLink projection binding a UUID subject to one human Principal."
+                .into()
+        }
+        "PartnerSubjectLinkList" => {
+            "Active partner SubjectLink projections for one organization Principal.".into()
+        }
+        "PartnerSubjectLinkMutation" => {
+            "Partner SubjectLink mutation result with idempotent replay state.".into()
+        }
         "NotificationAlertPolicy" => {
             "Immutable personal alert policy over a closed notification source family.".into()
         }
@@ -554,6 +564,50 @@ fn special_description(method: &str, path: &str) -> Option<&'static str> {
         ("get", "/identity/oidc/{provider_key}/callback") => Some(
             "Completes one OIDC login or link flow using the query state and callback-only HttpOnly cookies. Login credentials are returned once in JSON and never placed in a redirect URL.",
         ),
+        ("post", "/organizations/{organization_id}/partner-subject-links") => Some(
+            "Creates or rebinds an administrator-managed partner directory SubjectLink from a UUID subject to one active human Principal under a `partner-*` provider key.",
+        ),
+        ("get", "/organizations/{organization_id}/partner-subject-links") => Some(
+            "Lists active partner SubjectLinks for one organization Principal. Requires administrator authority and optional `providerKey` filter.",
+        ),
+        ("get", "/organizations/{organization_id}/partner-subject-links/resolve") => Some(
+            "Resolves an active partner SubjectLink for an organization member credential. Returns the bound Cloud Principal when the subject remains active in the organization.",
+        ),
+        ("post", "/organizations/{organization_id}/partner-subject-links/revocation") => Some(
+            "Revokes an active partner SubjectLink with optimistic concurrency. Subsequent resolve calls return not found for the same subject.",
+        ),
+        ("post", "/organizations/{organization_id}/directory-resource-grants") => Some(
+            "Creates a DirectoryProjection Resource Grant for an opaque department or group subject ref and an exact resource scope. Auth-time expansion uses directory-membership-projections.",
+        ),
+        ("get", "/organizations/{organization_id}/directory-resource-grants") => Some(
+            "Lists DirectoryProjection Resource Grants for the organization, including revoked history.",
+        ),
+        (
+            "get",
+            "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}",
+        ) => Some("Reads one DirectoryProjection Resource Grant by id."),
+        (
+            "post",
+            "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}/revocation",
+        ) => Some(
+            "Revokes a DirectoryProjection Resource Grant with optimistic concurrency.",
+        ),
+        ("put", "/organizations/{organization_id}/directory-membership-projections") => Some(
+            "Replaces the full Principal membership set for one opaque DirectoryProjection subject ref. Partner directory trees are not stored.",
+        ),
+        ("get", "/organizations/{organization_id}/directory-membership-projections") => Some(
+            "Lists DirectoryProjection membership bindings for one subjectRef or one principalId.",
+        ),
+        ("post", "/organizations/{organization_id}/partner-artifact-admissions") => Some(
+            "Admits a partner artifact by sha256 digest, kind, byte size, and opaque partnerRef. Cloud stores the receipt only and does not store partner blob bytes.",
+        ),
+        ("get", "/organizations/{organization_id}/partner-artifact-admissions") => Some(
+            "Lists partner artifact admission receipts for the organization.",
+        ),
+        (
+            "get",
+            "/organizations/{organization_id}/partner-artifact-admissions/{admission_id}",
+        ) => Some("Reads one partner artifact admission receipt by id."),
         _ => None,
     }
 }
@@ -631,6 +685,54 @@ fn operation_summary(method: &str, path: &str) -> String {
         }
         ("post", "/organizations/{organization_id}/identity/oidc/{provider_key}/link") => {
             return "Start OIDC identity linking".into();
+        }
+        ("post", "/organizations/{organization_id}/partner-subject-links") => {
+            return "Link a partner directory subject".into();
+        }
+        ("get", "/organizations/{organization_id}/partner-subject-links") => {
+            return "List partner SubjectLinks for a Principal".into();
+        }
+        ("get", "/organizations/{organization_id}/partner-subject-links/resolve") => {
+            return "Resolve a partner directory subject".into();
+        }
+        ("post", "/organizations/{organization_id}/partner-subject-links/revocation") => {
+            return "Revoke a partner directory subject link".into();
+        }
+        ("post", "/organizations/{organization_id}/directory-resource-grants") => {
+            return "Create a directory resource grant".into();
+        }
+        ("get", "/organizations/{organization_id}/directory-resource-grants") => {
+            return "List directory resource grants".into();
+        }
+        (
+            "get",
+            "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}",
+        ) => {
+            return "Get a directory resource grant".into();
+        }
+        (
+            "post",
+            "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}/revocation",
+        ) => {
+            return "Revoke a directory resource grant".into();
+        }
+        ("put", "/organizations/{organization_id}/directory-membership-projections") => {
+            return "Replace directory membership projections".into();
+        }
+        ("get", "/organizations/{organization_id}/directory-membership-projections") => {
+            return "List directory membership projections".into();
+        }
+        ("post", "/organizations/{organization_id}/partner-artifact-admissions") => {
+            return "Admit a partner artifact digest".into();
+        }
+        ("get", "/organizations/{organization_id}/partner-artifact-admissions") => {
+            return "List partner artifact admissions".into();
+        }
+        (
+            "get",
+            "/organizations/{organization_id}/partner-artifact-admissions/{admission_id}",
+        ) => {
+            return "Get a partner artifact admission".into();
         }
         _ => {}
     }
@@ -931,6 +1033,10 @@ fn mutation_action_summary(path: &str) -> Option<&'static str> {
             "Revoke a resource grant",
         ),
         (
+            "/directory-resource-grants/{directory_resource_grant_id}/revocation",
+            "Revoke a directory resource grant",
+        ),
+        (
             "/recipient-contacts/{recipient_contact_id}/verification",
             "Verify a recipient contact",
         ),
@@ -1076,6 +1182,15 @@ fn resource_label(segment: &str) -> Option<ResourceLabel> {
         "mcp-route-policies" => ("MCP route policy", "MCP route policies"),
         "membership-invitations" => ("membership invitation", "membership invitations"),
         "memberships" => ("membership", "memberships"),
+        "partner-subject-links" => ("partner subject link", "partner subject links"),
+        "directory-resource-grants" => ("directory resource grant", "directory resource grants"),
+        "directory-membership-projections" => (
+            "directory membership projection",
+            "directory membership projections",
+        ),
+        "partner-artifact-admissions" => {
+            ("partner artifact admission", "partner artifact admissions")
+        }
         "resource-grants" => ("resource grant", "resource grants"),
         "recipient-contacts" => ("recipient contact", "recipient contacts"),
         "node-pools" => ("node pool", "node pools"),

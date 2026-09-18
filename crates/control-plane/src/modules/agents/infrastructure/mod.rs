@@ -5,6 +5,7 @@ mod agent_execution_operation_scheduler;
 mod agent_provider;
 mod agent_release_admission;
 mod approval_authorization;
+mod fleet_agent_execution_node_command_access;
 mod persistence;
 mod project_environment_access;
 
@@ -27,5 +28,6 @@ pub use agent_provider::{
 };
 pub use agent_release_admission::AssetsAgentReleaseAdmissionAdapter;
 pub use approval_authorization::IdentityAgentApprovalAuthorizationAdapter;
+pub use fleet_agent_execution_node_command_access::FleetAgentExecutionNodeCommandAccessAdapter;
 pub use persistence::{InMemoryAgentRepository, PostgresAgentRepository};
 pub use project_environment_access::ProjectsAgentsEnvironmentAccessAdapter;

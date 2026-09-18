@@ -8,7 +8,7 @@ use super::{
     bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment,
     validate_resolved_replica_binding,
 };
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::workloads::application::WorkloadDeploymentNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use crate::modules::workloads::domain::entities::DeploymentStatus;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload};
@@ -95,7 +95,7 @@ pub(super) async fn dispatch(
         },
     };
     let existing = runtime
-        .node_control
+        .node_commands
         .find_command(previous.node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload Runtime retirement command", error))?;
@@ -119,8 +119,8 @@ pub(super) async fn dispatch(
         }
     }
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id: previous.node_id,
             aggregate_id: replica_binding.replica_id.as_uuid(),
@@ -131,7 +131,7 @@ pub(super) async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue Runtime retirement", error))?
-        .value;
+        .command;
     if command.id != command_id
         || command.node_id != previous.node_id
         || command.aggregate_id != replica_binding.replica_id.as_uuid()
@@ -193,7 +193,7 @@ pub(super) async fn observe(
     }
 
     if let Some(record) = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(
             input.dispatched.node_id,
             &previous.spec.unit_id,
@@ -212,7 +212,7 @@ pub(super) async fn observe(
     }
 
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load Runtime retirement result", error))?
@@ -344,7 +344,7 @@ pub(super) async fn complete(
 }
 
 fn stop_result_deadline(
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> a3s_flow::Result<DateTime<Utc>> {
     let NodeCommandPayload::RuntimeStop { request } = &command.payload else {

@@ -168,11 +168,9 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
             .map(Vec::len),
         Some(1)
     );
-    assert!(
-        mcp["result"]["structuredContent"]["data"]["records"][0]
-            .get("details")
-            .is_none()
-    );
+    assert!(mcp["result"]["structuredContent"]["data"]["records"][0]
+        .get("details")
+        .is_none());
     assert_eq!(
         mcp["result"]["structuredContent"]["data"]["records"][0]["attributionStatus"],
         "profile_bound"
@@ -309,11 +307,9 @@ async fn tenant_administrators_query_bounded_redacted_audit_history() -> Result<
     let retention = response_json(&retention)?;
     assert_eq!(retention["data"]["organizationId"], organization);
     assert_eq!(retention["data"]["retentionMs"], 7_776_000_000_u64);
-    assert!(
-        retention["data"]["policyDigest"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:"))
-    );
+    assert!(retention["data"]["policyDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
     assert_eq!(retention["data"]["appliedPolicyDigest"], Value::Null);
     assert_eq!(retention["data"]["currentPolicyApplied"], false);
     assert_eq!(retention["data"]["recordsAvailableFrom"], Value::Null);

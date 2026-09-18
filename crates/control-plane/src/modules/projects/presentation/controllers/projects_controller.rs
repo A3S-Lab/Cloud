@@ -1,8 +1,5 @@
 use crate::access_projection::project_access;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    OrganizationTenantGuard, authenticated_actor, resource_access_evaluator,
-};
 use crate::modules::projects::application::commands::create_environment::CreateEnvironment;
 use crate::modules::projects::application::commands::create_project::CreateProject;
 use crate::modules::projects::application::commands::update_project_attribution::UpdateProjectAttribution;
@@ -11,7 +8,7 @@ use crate::modules::projects::presentation::dto::{
     ProjectAttributionMutationResponse, ProjectResponse, UpdateProjectAttributionRequest,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, ProjectId};
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, authenticated_actor, resource_access_evaluator, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootError, BootRequest,
     BootResponse, CommandBus, ControllerDefinition, Result,

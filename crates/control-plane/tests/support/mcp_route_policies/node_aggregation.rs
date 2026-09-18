@@ -56,6 +56,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
             .edge
             .mutate_mcp_route_policy(policy_write(
                 &first_policy,
+                fixture.profile,
                 McpRoutePolicyMutationKind::Revise,
                 "postgres-mcp-route-policy-first-credential",
             )?)
@@ -119,6 +120,7 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
             .edge
             .mutate_mcp_route_policy(policy_write(
                 &second_policy,
+                fixture.profile,
                 McpRoutePolicyMutationKind::Create,
                 "postgres-mcp-route-policy-second-scope",
             )?)
@@ -175,7 +177,9 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         ))),
         Arc::new(
             WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
-                (*fixture.workloads).clone(),
+                WorkloadMcpActiveRevisionProjectionQueryService::new(Arc::new(
+                    (*fixture.workloads).clone(),
+                )),
             )),
         ),
     ));
@@ -302,7 +306,9 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         ))),
         Arc::new(
             WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter::new(Arc::new(
-                (*fixture.workloads).clone(),
+                WorkloadMcpActiveRevisionProjectionQueryService::new(Arc::new(
+                    (*fixture.workloads).clone(),
+                )),
             )),
         ),
     ));
@@ -396,9 +402,10 @@ pub(super) async fn exercise(fixture: Fixture<'_>) -> TestResult {
         .edge
         .mutate_mcp_route_policy(policy_write(
             &concurrent_policy,
+            fixture.profile,
             McpRoutePolicyMutationKind::Revise,
             "postgres-mcp-route-policy-concurrent-publication",
-        )?)
+            )?)
         .await?;
     assert!(matches!(
         managed_repository
@@ -656,9 +663,7 @@ async fn create_active_workload(
     )?;
     revision.bind_mcp_release(
         &workload,
-        fixture.asset,
-        fixture.release,
-        fixture.profile_binding,
+        &super::mcp_release_admission(fixture.asset, fixture.release, fixture.profile_binding)?,
     )?;
     let deployment = Deployment::create(
         DeploymentId::new(),
@@ -668,18 +673,12 @@ async fn create_active_workload(
         OperationId::new(),
         created_at,
     );
-    let operation = OperationRequest::new(
+    let operation = WorkloadDeploymentOperationIntent::new(
         deployment.operation_id,
         fixture.organization_id,
-        OperationSubject::new("deployment", deployment.id.as_uuid())?,
-        WorkflowIdentity::new(DEPLOYMENT_WORKFLOW_NAME, DEPLOYMENT_WORKFLOW_VERSION)?,
-        json!({
-            "deploymentId": deployment.id,
-            "mcpAssetReleaseId": fixture.release.id,
-            "mcpProfileDigest": fixture.profile.digest(),
-            "revisionId": revision.id,
-            "workloadId": workload.id,
-        }),
+        deployment.id,
+        revision.id,
+        workload.id,
         created_at,
     );
     fixture

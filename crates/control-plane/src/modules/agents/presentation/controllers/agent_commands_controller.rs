@@ -11,15 +11,11 @@ use crate::modules::agents::presentation::dto::{
     ForkAgentExecutionRequest, StartAgentExecutionRequest,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
     AssetId, AssetReleaseId, EnvironmentId, OrganizationId, ProjectId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator, with_deferred_resource_scope, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, Result, RouteDefinition,

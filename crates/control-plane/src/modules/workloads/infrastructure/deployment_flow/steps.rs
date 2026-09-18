@@ -12,7 +12,7 @@ use super::types::{
 };
 use super::DeploymentFlowRuntime;
 use super::{admit_deployment_runtime_execution, flow_error, resource_claim_id};
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::workloads::application::WorkloadDeploymentNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::{NodeCommandId, OperationId, RepositoryError};
 use crate::modules::workloads::application::{
     project_bound_runtime_spec_with_execution, project_replica_runtime_spec_with_execution,
@@ -841,7 +841,7 @@ async fn schedule(
             }
         }
         let Some(inventory) = runtime
-            .node_control
+            .node_commands
             .current_resource_inventory(node.id)
             .await
             .map_err(|error| flow_error("could not load current node resource inventory", error))?
@@ -1051,7 +1051,7 @@ async fn dispatch_with_claim(
                 | DeploymentStatus::Active
         ) {
             let command = runtime
-                .node_control
+                .node_commands
                 .find_command(input.node_id, command_id)
                 .await
                 .map_err(|error| flow_error("could not reload Runtime apply command", error))?
@@ -1107,8 +1107,8 @@ async fn dispatch_with_claim(
         resource_claim,
     };
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id: input.node_id,
             aggregate_id: replica_binding.replica_id.as_uuid(),
@@ -1119,7 +1119,7 @@ async fn dispatch_with_claim(
         })
         .await
         .map_err(|error| flow_error("could not enqueue Runtime apply", error))?
-        .value;
+        .command;
     if command.id != command_id || command.node_id != input.node_id {
         return Err(FlowError::Runtime(
             "node command repository changed the deployment command identity".into(),
@@ -1208,7 +1208,7 @@ async fn observe_with_claim(
     };
 
     let record = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(
             input.dispatched.node_id,
             &input.resolved.spec.unit_id,
@@ -1262,7 +1262,7 @@ async fn observe_with_claim(
             });
         }
     } else if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load node command result", error))?
@@ -1511,7 +1511,7 @@ fn timestamp_millis(value: DateTime<Utc>) -> a3s_flow::Result<u64> {
 }
 
 fn apply_result_deadline(
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
     expected_binding: Option<&NodeResourceClaimBinding>,
 ) -> a3s_flow::Result<DateTime<Utc>> {
@@ -1589,7 +1589,7 @@ async fn dispatched_resource_binding(
     input: &ObserveStepInput,
 ) -> a3s_flow::Result<Option<NodeResourceClaimBinding>> {
     let command = runtime
-        .node_control
+        .node_commands
         .find_command(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not reload resource-bound Runtime apply", error))?
@@ -1657,7 +1657,7 @@ fn validate_resolved_replica_binding(
 async fn persist_runtime_binding(
     runtime: &DeploymentFlowRuntime,
     input: &ObserveStepInput,
-    record: &crate::modules::fleet::domain::repositories::RuntimeObservationRecord,
+    record: &crate::modules::workloads::application::WorkloadDeploymentRuntimeObservationProjection,
     binding: &NodeResourceClaimBinding,
 ) -> a3s_flow::Result<()> {
     let claim = runtime

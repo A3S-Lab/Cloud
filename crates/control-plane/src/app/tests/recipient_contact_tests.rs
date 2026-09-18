@@ -101,11 +101,9 @@ async fn recipient_contact_routes_are_exact_self_scoped_replay_safe_and_redacted
     assert_eq!(begun_data["status"], "pending");
     assert_eq!(begun_data["aggregateVersion"], 1);
     assert_eq!(begun_data["replayed"], false);
-    assert!(
-        begun_data["addressDigest"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71)
-    );
+    assert!(begun_data["addressDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:") && value.len() == 71));
     assert_recipient_contact_response_is_redacted(&begun_body, mailbox);
 
     let replayed = app

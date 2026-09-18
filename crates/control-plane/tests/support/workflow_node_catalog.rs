@@ -7,6 +7,7 @@ use a3s_cloud_control_plane::modules::projects::domain::repositories::IProjectRe
 use a3s_cloud_control_plane::modules::projects::domain::value_objects::ProjectName;
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::workflow::{
+    WorkflowAccess,
     GetWorkflowNodeCatalog, GetWorkflowNodeCatalogHandler, ProjectsWorkflowProjectAccessAdapter,
     WorkflowNodeCatalog,
 };
@@ -96,7 +97,7 @@ async fn query_catalog(
             GetWorkflowNodeCatalog {
                 organization_id,
                 project_id,
-                resource_access: ResourceAccessEvaluator::organization_wide(),
+                access: WorkflowAccess::organization_wide(),
             },
             CqrsContext::new(ModuleRef::new()),
         )

@@ -2,10 +2,17 @@
 
 pub mod application;
 pub mod domain;
-pub mod infrastructure;
-pub mod presentation;
+pub(crate) mod infrastructure;
+pub(crate) mod presentation;
+
+mod facade;
 
 pub use application::*;
 pub use domain::*;
-pub use infrastructure::*;
-pub use presentation::InferenceModule;
+pub use facade::{
+    inference_route_commands_controller, inference_route_queries_controller,
+    usage_queries_controller, usage_retention_controller, InMemoryInferenceRouteRepository,
+    InMemoryInferenceUsageRepository, InferenceModule, InferenceRouteAclProjectionAdapter,
+    PostgresInferenceRouteRepository, PostgresInferenceUsageRepository,
+    ProjectsInferenceEnvironmentAccessAdapter,
+};

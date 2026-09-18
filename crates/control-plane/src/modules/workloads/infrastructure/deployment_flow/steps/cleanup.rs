@@ -8,7 +8,7 @@ use super::{
     bounded_reason, next_poll, timestamp_millis, validate_resolved_deployment,
     validate_resolved_replica_binding,
 };
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::workloads::application::WorkloadDeploymentNodeCommandEnqueueRequest;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use crate::modules::workloads::domain::entities::DeploymentStatus;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload};
@@ -173,7 +173,7 @@ async fn dispatch(
     let command_id = action.command_id(deployment.id, input.attempt);
     if deployment.cleanup_command_id == Some(command_id) {
         let command = runtime
-            .node_control
+            .node_commands
             .find_command(node_id, command_id)
             .await
             .map_err(|error| flow_error("could not reload Runtime cleanup command", error))?
@@ -201,8 +201,8 @@ async fn dispatch(
         runtime_deadline,
     )?;
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id,
             aggregate_id: replica_binding.replica_id.as_uuid(),
@@ -213,7 +213,7 @@ async fn dispatch(
         })
         .await
         .map_err(|error| flow_error("could not enqueue Runtime cleanup", error))?
-        .value;
+        .command;
     if command.id != command_id
         || command.node_id != node_id
         || command.aggregate_id != replica_binding.replica_id.as_uuid()
@@ -290,7 +290,7 @@ async fn observe(
 
     if action == CleanupAction::Stop {
         if let Some(record) = runtime
-            .node_control
+            .node_commands
             .latest_runtime_observation(
                 input.dispatched.node_id,
                 &input.resolved.spec.unit_id,
@@ -310,7 +310,7 @@ async fn observe(
     }
 
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load Runtime cleanup result", error))?
@@ -456,8 +456,8 @@ pub(super) async fn dispatch_failed(
         },
     };
     let command = runtime
-        .node_control
-        .enqueue_command(NodeCommandDraft {
+        .node_commands
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: command_id,
             node_id,
             aggregate_id: replica_binding.replica_id.as_uuid(),
@@ -468,7 +468,7 @@ pub(super) async fn dispatch_failed(
         })
         .await
         .map_err(|error| flow_error("could not enqueue failed Runtime cleanup", error))?
-        .value;
+        .command;
     if command.id != command_id
         || command.node_id != node_id
         || command.aggregate_id != replica_binding.replica_id.as_uuid()
@@ -512,7 +512,7 @@ pub(super) async fn observe_failed(
     }
 
     if let Some(record) = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(
             input.dispatched.node_id,
             &input.resolved.spec.unit_id,
@@ -530,7 +530,7 @@ pub(super) async fn observe_failed(
         }
     }
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| {
@@ -643,7 +643,7 @@ pub(super) async fn complete_cancellation(
 }
 
 fn stop_result_deadline(
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> a3s_flow::Result<DateTime<Utc>> {
     action_result_deadline(CleanupAction::Stop, command, expected_spec)
@@ -651,7 +651,7 @@ fn stop_result_deadline(
 
 fn action_result_deadline(
     action: CleanupAction,
-    command: &crate::modules::fleet::domain::entities::NodeCommand,
+    command: &crate::modules::workloads::application::WorkloadDeploymentNodeCommandProjection,
     expected_spec: &a3s_runtime::contract::RuntimeUnitSpec,
 ) -> a3s_flow::Result<DateTime<Utc>> {
     let request = match (action, &command.payload) {

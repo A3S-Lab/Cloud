@@ -4,8 +4,10 @@ use super::super::types::{
 };
 use super::super::{flow_error, BuildFlowRuntime};
 use super::common::{bounded_reason, load_build, load_source, next_poll, project_request};
+use crate::modules::artifacts::application::{
+    ArtifactBuildNodeCommandEnqueueRequest, ArtifactBuildNodeCommandProjection,
+};
 use crate::modules::artifacts::domain::BuildRunStatus;
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{BuildRunId, NodeCommandId};
 use a3s_cloud_contracts::{
     NodeBoxBuildInspection, NodeBoxBuildRequest, NodeCommandOutcome, NodeCommandPayload,
@@ -78,15 +80,15 @@ pub(super) async fn dispatch(
     let command_id = cleanup_command_id(build.id, input.action, input.attempt);
     let command = if build.cleanup_command_id == Some(command_id) {
         runtime
-            .node_control
+            .node_commands
             .find_command(node_id, command_id)
             .await
             .map_err(|error| flow_error("could not reload Box cleanup command", error))?
             .ok_or_else(|| FlowError::Runtime("Box cleanup command is missing".into()))?
     } else {
         runtime
-            .node_control
-            .enqueue_command(NodeCommandDraft {
+            .node_commands
+            .enqueue_command(ArtifactBuildNodeCommandEnqueueRequest {
                 proposed_command_id: command_id,
                 node_id,
                 aggregate_id: build.id.as_uuid(),
@@ -97,7 +99,7 @@ pub(super) async fn dispatch(
             })
             .await
             .map_err(|error| flow_error("could not enqueue Box cleanup command", error))?
-            .value
+            .command
     };
     validate_cleanup_command(&build, &request, input.action, input.attempt, &command)?;
 
@@ -155,7 +157,7 @@ pub(super) async fn observe(
     let source = load_source(runtime, &build).await?;
     let request = project_request(runtime, &build, &source).await?;
     let command = runtime
-        .node_control
+        .node_commands
         .find_command(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not reload Box cleanup command", error))?
@@ -169,7 +171,7 @@ pub(super) async fn observe(
     )?;
 
     if let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(input.dispatched.node_id, input.dispatched.command_id)
         .await
         .map_err(|error| flow_error("could not load Box cleanup result", error))?
@@ -316,7 +318,7 @@ fn validate_cleanup_command(
     request: &NodeBoxBuildRequest,
     action: BoxCleanupAction,
     attempt: u32,
-    command: &NodeCommand,
+    command: &ArtifactBuildNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     let admitted = match (action, &command.payload) {
         (BoxCleanupAction::Cancel, NodeCommandPayload::BoxBuildCancel { request })

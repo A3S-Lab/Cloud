@@ -1,11 +1,10 @@
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
-use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, RuntimeObservationRecord,
-};
 use crate::modules::shared_kernel::domain::{
-    IdempotentWrite, NodeCommandId, NodeId, RepositoryError, ResourceClaimId,
+    NodeCommandId, NodeId, RepositoryError, ResourceClaimId,
 };
-use crate::modules::workloads::application::project_replica_runtime_spec_with_execution;
+use crate::modules::workloads::application::{
+    project_replica_runtime_spec_with_execution, WorkloadDeploymentNodeCommandEnqueueRequest,
+    WorkloadDeploymentNodeCommandProjection,
+};
 use crate::modules::workloads::domain::entities::{
     DeploymentStatus, ResourceClaim, ResourceClaimState, WorkloadDesiredState,
     WorkloadReplicaLifecycle,
@@ -14,13 +13,12 @@ use crate::modules::workloads::domain::repositories::{
     ActiveRuntimeTarget, IResourceClaimRepository, IWorkloadRuntimeTargetRepository,
 };
 use a3s_cloud_contracts::{
-    NodeCommandAck, NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
+    NodeCommandOutcome, NodeCommandPayload, NodeCommandResult,
     NodeResourceClaimBinding,
 };
 use a3s_runtime::contract::{
     RuntimeApplyRequest, RuntimeInspection, RuntimeUnitSpec, RuntimeUnitState,
 };
-use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use std::sync::Arc;
 use std::time::Duration;
@@ -46,70 +44,7 @@ pub struct WorkloadReconciliationFailure {
     pub message: String,
 }
 
-#[async_trait]
-pub trait IWorkloadRuntimeControl: Send + Sync {
-    async fn enqueue_command(
-        &self,
-        draft: NodeCommandDraft,
-    ) -> Result<IdempotentWrite<NodeCommand>, RepositoryError>;
-
-    async fn find_command(
-        &self,
-        node_id: NodeId,
-        command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommand>, RepositoryError>;
-
-    async fn command_acknowledgement(
-        &self,
-        node_id: NodeId,
-        command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommandAck>, RepositoryError>;
-
-    async fn latest_runtime_observation(
-        &self,
-        node_id: NodeId,
-        unit_id: &str,
-        generation: u64,
-    ) -> Result<Option<RuntimeObservationRecord>, RepositoryError>;
-}
-
-#[async_trait]
-impl<T> IWorkloadRuntimeControl for T
-where
-    T: INodeControlRepository + Send + Sync,
-{
-    async fn enqueue_command(
-        &self,
-        draft: NodeCommandDraft,
-    ) -> Result<IdempotentWrite<NodeCommand>, RepositoryError> {
-        INodeControlRepository::enqueue_command(self, draft).await
-    }
-
-    async fn find_command(
-        &self,
-        node_id: NodeId,
-        command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommand>, RepositoryError> {
-        INodeControlRepository::find_command(self, node_id, command_id).await
-    }
-
-    async fn command_acknowledgement(
-        &self,
-        node_id: NodeId,
-        command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommandAck>, RepositoryError> {
-        INodeControlRepository::command_acknowledgement(self, node_id, command_id).await
-    }
-
-    async fn latest_runtime_observation(
-        &self,
-        node_id: NodeId,
-        unit_id: &str,
-        generation: u64,
-    ) -> Result<Option<RuntimeObservationRecord>, RepositoryError> {
-        INodeControlRepository::latest_runtime_observation(self, node_id, unit_id, generation).await
-    }
-}
+pub use crate::modules::workloads::application::IWorkloadDeploymentNodeCommandPort as IWorkloadRuntimeControl;
 
 pub struct WorkloadRuntimeReconciler {
     targets: Arc<dyn IWorkloadRuntimeTargetRepository>,
@@ -572,13 +507,13 @@ impl WorkloadRuntimeReconciler {
 
     async fn enqueue_or_reload(
         &self,
-        draft: NodeCommandDraft,
+        draft: WorkloadDeploymentNodeCommandEnqueueRequest,
         expected: ExpectedCommand<'_>,
-    ) -> Result<NodeCommand, String> {
+    ) -> Result<WorkloadDeploymentNodeCommandProjection, String> {
         let node_id = draft.node_id;
         let command_id = draft.proposed_command_id;
         match self.control.enqueue_command(draft).await {
-            Ok(write) => Ok(write.value),
+            Ok(write) => Ok(write.command),
             Err(RepositoryError::Conflict(_)) => self
                 .control
                 .find_command(node_id, command_id)
@@ -698,8 +633,8 @@ fn inspection_draft(
     command_id: NodeCommandId,
     issued_at: DateTime<Utc>,
     command_ttl: chrono::Duration,
-) -> Result<NodeCommandDraft, String> {
-    Ok(NodeCommandDraft {
+) -> Result<WorkloadDeploymentNodeCommandEnqueueRequest, String> {
+    Ok(WorkloadDeploymentNodeCommandEnqueueRequest {
         proposed_command_id: command_id,
         node_id,
         aggregate_id: target.replica.id.as_uuid(),
@@ -718,7 +653,7 @@ fn recovery_draft(
     command_id: NodeCommandId,
     command_ttl: chrono::Duration,
     runtime_apply_timeout: chrono::Duration,
-) -> Result<NodeCommandDraft, String> {
+) -> Result<WorkloadDeploymentNodeCommandEnqueueRequest, String> {
     let ReconciliationContext {
         target,
         spec,
@@ -729,7 +664,7 @@ fn recovery_draft(
     let not_after = checked_add(issued_at, command_ttl, "Runtime recovery command")?;
     let runtime_deadline =
         checked_add(issued_at, runtime_apply_timeout, "Runtime recovery apply")?.min(not_after);
-    Ok(NodeCommandDraft {
+    Ok(WorkloadDeploymentNodeCommandEnqueueRequest {
         proposed_command_id: command_id,
         node_id,
         aggregate_id: target.replica.id.as_uuid(),
@@ -749,7 +684,7 @@ fn recovery_draft(
 }
 
 fn validate_command(
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     target: &ActiveRuntimeTarget,
     node_id: NodeId,
     command_id: NodeCommandId,
@@ -766,7 +701,7 @@ fn validate_command(
 }
 
 fn validate_expected_payload(
-    command: &NodeCommand,
+    command: &WorkloadDeploymentNodeCommandProjection,
     expected: ExpectedCommand<'_>,
 ) -> Result<(), String> {
     match (expected, &command.payload) {

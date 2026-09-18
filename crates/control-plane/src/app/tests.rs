@@ -2278,7 +2278,13 @@ fn build_test_application_with_source_dependencies_and_tokens_and_builds_and_sea
             memberships: identity.clone(),
             membership_invitations: identity.clone(),
             resource_grants: identity.clone(),
+            directory_resource_grants: identity.clone(),
+            directory_membership_projections: identity.clone(),
+            partner_artifact_admissions: Arc::new(
+                crate::modules::artifacts::InMemoryPartnerArtifactAdmissionRepository::new(),
+            ),
             oidc_identity: identity.clone(),
+            partner_subject_links: identity.clone(),
             recipient_contacts: identity.clone(),
             recipient_contact_proof: Arc::new(
                 HmacRecipientContactProofService::new(

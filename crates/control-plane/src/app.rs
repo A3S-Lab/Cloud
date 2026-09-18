@@ -9,42 +9,43 @@ use crate::modules::agents::{
     AppendAgentExecutionEventsHandler, AssetsAgentReleaseAdmissionAdapter,
     BuiltInAgentExecutionProviderRegistry, CancelAgentExecutionHandler,
     CaptureAgentExecutionCheckpointHandler, CreateAgentConversationHandler,
-    DecideAgentApprovalCheckpointHandler, ForkAgentExecutionHandler,
-    GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
+    DecideAgentApprovalCheckpointHandler, FleetAgentExecutionNodeCommandAccessAdapter,
+    ForkAgentExecutionHandler, GetAgentApprovalCheckpointHandler, GetAgentConversationHandler,
     GetAgentExecutionChangeSetHandler, GetAgentExecutionCheckpointHandler,
     GetAgentExecutionCheckpointSnapshotHandler, GetAgentExecutionEventsHandler,
     GetAgentExecutionHandler, GetAgentExecutionTrajectoryHandler, IAgentApprovalAuthorizationPort,
-    IAgentExecutionCheckpointObjectStore, IAgentReleaseAdmissionPort, IAgentRepository,
-    IAgentsEnvironmentAccess, IWorkflowAgentPort, IdentityAgentApprovalAuthorizationAdapter,
-    ListAgentApprovalCheckpointsHandler, ListAgentConversationsHandler,
-    ListAgentExecutionCheckpointsHandler, ListAgentExecutionsHandler,
-    ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
+    IAgentExecutionCheckpointObjectStore, IAgentExecutionNodeCommandPort,
+    IAgentReleaseAdmissionPort, IAgentRepository, IAgentsEnvironmentAccess, IWorkflowAgentPort,
+    IdentityAgentApprovalAuthorizationAdapter, ListAgentApprovalCheckpointsHandler,
+    ListAgentConversationsHandler, ListAgentExecutionCheckpointsHandler,
+    ListAgentExecutionsHandler, ProjectsAgentsEnvironmentAccessAdapter, StartAgentExecutionHandler,
     WorkflowAgentApplicationService,
 };
 use crate::modules::applications::{
     AdmitApplicationInvocationHandler, AdmitApplicationSessionHandler,
-    ApplicationAuthenticatedDeliveryModule, DeliveryProcessDrain, ApplicationPublicDeliveryModule, ApplicationsModule,
-    CancelApplicationInvocationHandler, CloseApplicationSessionHandler,
+    ApplicationAuthenticatedDeliveryModule, ApplicationPublicDeliveryModule,
+    ApplicationPublicationRouteIntentAclProjectionAdapter, ApplicationsModule,
+    CancelAnonymousApplicationInvocationHandler, CancelApplicationInvocationHandler,
+    CloseAnonymousApplicationSessionHandler, CloseApplicationSessionHandler,
     CompileApplicationPresetWorkflowHandler, ComposeApplicationInvocationWorkflowRunHandler,
     CreateApplicationAnnotationHandler, CreateApplicationFeedbackHandler, CreateApplicationHandler,
     CreateApplicationMessageCitationHandler, CreateApplicationMessageFileReferenceHandler,
     CreateApplicationMessageVariantHandler, CreateApplicationPublicationRouteIntentHandler,
-    DisableApplicationDeliveryCredentialHandler,
+    DeliveryProcessDrain, DisableApplicationDeliveryCredentialHandler,
     EnableApplicationDeliveryCredentialHandler, GetApplicationAnnotationHandler,
     GetApplicationDeliveryCredentialHandler, GetApplicationFeedbackHandler, GetApplicationHandler,
     GetApplicationInvocationHandler, GetApplicationMessageCitationHandler,
     GetApplicationMessageFileReferenceHandler, GetApplicationMessageVariantHandler,
-    GetApplicationPublicationRouteIntentHandler,
-    GetApplicationReleaseHandler, GetApplicationSessionHandler, IApplicationAnnotationRepository,
+    GetApplicationPublicationRouteIntentHandler, GetApplicationReleaseHandler,
+    GetApplicationSessionHandler, IApplicationAnnotationRepository,
     IApplicationDeliveryCredentialRepository, IApplicationFeedbackRepository,
-    IApplicationPublicationRouteIntentRepository,
     IApplicationMessageCitationRepository, IApplicationMessageFileReferenceRepository,
     IApplicationMessageVariantRepository, IApplicationOntologyRevisionPort,
-    IApplicationPresetWorkflowPort, IApplicationRepository, IApplicationSessionRepository,
-    IApplicationWorkflowRevisionPort, IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess,
-    IWorkflowApplicationEffectsPort, ListApplicationAnnotationsBySessionHandler,
-    ListApplicationDeliveryCredentialsHandler, ListApplicationFeedbackBySessionHandler,
-    ListApplicationMessageCitationsBySessionHandler,
+    IApplicationPresetWorkflowPort, IApplicationPublicationRouteIntentRepository,
+    IApplicationRepository, IApplicationSessionRepository, IApplicationWorkflowRevisionPort,
+    IApplicationWorkflowRunPort, IApplicationsEnvironmentAccess, IWorkflowApplicationEffectsPort,
+    ListApplicationAnnotationsBySessionHandler, ListApplicationDeliveryCredentialsHandler,
+    ListApplicationFeedbackBySessionHandler, ListApplicationMessageCitationsBySessionHandler,
     ListApplicationMessageFileReferencesBySessionHandler,
     ListApplicationMessageVariantsBySessionHandler,
     ListApplicationPublicationRouteIntentsByReleaseHandler, ListApplicationReleasesHandler,
@@ -52,28 +53,28 @@ use crate::modules::applications::{
     ObserveAnonymousApplicationBlockingInvocationHandler,
     ObserveAnonymousApplicationStreamingInvocationHandler,
     ObserveApplicationAsynchronousInvocationHandler, ObserveApplicationBlockingInvocationHandler,
-    ObserveApplicationStreamingInvocationHandler, CancelAnonymousApplicationInvocationHandler, CloseAnonymousApplicationSessionHandler,
-    OpenAnonymousApplicationSessionHandler,
-    OpenApplicationSessionHandler,
-    ProjectsApplicationsEnvironmentAccessAdapter, PublishApplicationReleaseHandler,
-    RegisterApplicationDeliveryCredentialHandler, ReplayApplicationSessionHandler,
-    RequestAnonymousApplicationInvocationHandler, RequestApplicationInvocationHandler,
-    RevokeApplicationDeliveryCredentialHandler, WorkflowApplicationEffectsService,
-    WorkflowApplicationOntologyRevisionReader, WorkflowApplicationPresetCompiler,
-    ApplicationPublicationRouteIntentAclProjectionAdapter,
-    WorkflowApplicationReleaseEvidenceReader, WorkflowApplicationRunService,
+    ObserveApplicationStreamingInvocationHandler, OpenAnonymousApplicationSessionHandler,
+    OpenApplicationSessionHandler, ProjectsApplicationsEnvironmentAccessAdapter,
+    PublishApplicationReleaseHandler, RegisterApplicationDeliveryCredentialHandler,
+    ReplayApplicationSessionHandler, RequestAnonymousApplicationInvocationHandler,
+    RequestApplicationInvocationHandler, RevokeApplicationDeliveryCredentialHandler,
+    WorkflowApplicationEffectsService, WorkflowApplicationOntologyRevisionReader,
+    WorkflowApplicationPresetCompiler, WorkflowApplicationReleaseEvidenceReader,
+    WorkflowApplicationRunService,
 };
 use crate::modules::artifacts::application::{
     BuildRunReconciler, ExternalSourceBuildOutcomeQueryService,
 };
 use crate::modules::artifacts::{
-    ArtifactsModule, BoxBuildEvidenceGenerator, BuildCandidateProjector, BuildFlowRuntime,
-    BuildFlowRuntimeDependencies, CancelBuildRunHandler, CloudBuildSourceResolver,
-    GetBuildEvidenceHandler, GetBuildRunHandler, GetBuildRunLogsHandler,
-    HostedArtifactQueryService, IArtifactBuildProjectionPort, IBuildArtifactPublisher,
-    IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer, IBuildOutputValidator,
-    IBuildRunRepository, IBuildSourceResolver, IHostedArtifactQueryPort, INodeArtifactStore,
-    ListBuildRunsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
+    AdmitPartnerArtifactHandler, ArtifactsModule, BoxBuildEvidenceGenerator,
+    BuildCandidateProjector, BuildFlowRuntime, BuildFlowRuntimeDependencies, CancelBuildRunHandler,
+    CloudBuildSourceResolver, FleetArtifactBuildNodeCommandAccessAdapter, GetBuildEvidenceHandler,
+    GetBuildRunHandler, GetBuildRunLogsHandler, GetPartnerArtifactAdmissionHandler,
+    HostedArtifactQueryService, IArtifactBuildNodeCommandPort, IArtifactBuildProjectionPort,
+    IBuildArtifactPublisher, IBuildEvidenceGenerator, IBuildEvidenceSigner, IBuildInputPreparer,
+    IBuildOutputValidator, IBuildRunRepository, IBuildSourceResolver, IHostedArtifactQueryPort,
+    INodeArtifactStore, IPartnerArtifactAdmissionRepository, ListBuildRunsHandler,
+    ListPartnerArtifactAdmissionsHandler, LocalBuildEvidenceSigner, NodeArtifactObjectStore,
     OciBuildOutputValidator, OciRegistryArtifactPublisher, OciRegistryArtifactPublisherOptions,
     RetryBuildRunHandler, SourceBuildInputPreparer, VaultBuildEvidenceSigner,
 };
@@ -155,13 +156,14 @@ use crate::modules::durable_cells::{
     FleetDurableCellNodePoolAdapter, GetDurableCellApplicationHandler,
     GetDurableCellApplicationRevisionHandler, IDurableCellApplicationRepository,
     IDurableCellBuildArtifactPort, IDurableCellDeploymentRepository, IDurableCellExecutionPort,
-    IDurableCellNodePoolPort, IDurableCellOperationPort, IDurableCellRoutePublicationPort,
-    IDurableCellSecretBindingPort, IDurableCellStoragePort, IDurableCellWorkloadPort,
-    IDurableCellsEnvironmentAccess, ListDurableCellApplicationRevisionsHandler,
-    ListDurableCellApplicationsHandler, OperationsDurableCellOperationAdapter,
-    ProjectsDurableCellsEnvironmentAccessAdapter, PublishDurableCellApplicationRouteHandler,
-    ReviseDurableCellApplicationHandler, SecretsDurableCellBindingAdapter,
-    StartDurableCellApplicationHandler, StopDurableCellApplicationHandler,
+    IDurableCellNodePoolPort, IDurableCellOperationPort, IDurableCellProviderWorkloadAclPort,
+    IDurableCellRoutePublicationPort, IDurableCellSecretBindingPort, IDurableCellStoragePort,
+    IDurableCellWorkloadPort, IDurableCellsEnvironmentAccess,
+    ListDurableCellApplicationRevisionsHandler, ListDurableCellApplicationsHandler,
+    OperationsDurableCellOperationAdapter, ProjectsDurableCellsEnvironmentAccessAdapter,
+    PublishDurableCellApplicationRouteHandler, ReviseDurableCellApplicationHandler,
+    SecretsDurableCellBindingAdapter, StartDurableCellApplicationHandler,
+    StopDurableCellApplicationHandler, WorkloadsDurableCellProviderWorkloadAclAdapter,
     WorkloadsDurableCellWorkloadAdapter,
 };
 use crate::modules::edge::domain::repositories::{
@@ -172,28 +174,23 @@ use crate::modules::edge::domain::services::{
     IGatewayObservationQueue, IMcpCredentialIssuer, IRouteTargetReader,
 };
 use crate::modules::edge::{
+    install_gateway_rate_shaping_catalog,
+    ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter,
     AssetsEdgeMcpServiceProfileAccessAdapter, CreateDomainClaimHandler, CreateGatewayScopeHandler,
-    EdgeApplicationPublicationRateShapingBindingAdmissionAdapter,
     CreateMcpCredentialHandler, CreateMcpRoutePolicyHandler, DnsDomainOwnershipVerifier,
-    EdgeDeploymentRouteUpdater, EdgeGatewayAcknowledgementProjector,
-    EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule, FleetEdgeNodeAccessAdapter,
-    FleetEdgeRuntimeObservationAccessAdapter, FleetGatewayCommandQueue,
+    EdgeApplicationPublicationRateShapingBindingAdmissionAdapter, EdgeDeploymentRouteUpdater,
+    EdgeGatewayAcknowledgementProjector, EdgeInferenceRouteBindingAdmissionAdapter, EdgeModule,
+    FleetEdgeNodeAccessAdapter, FleetEdgeRuntimeObservationAccessAdapter, FleetGatewayCommandQueue,
     FleetGatewayObservationQueue, GatewayCertificateReconciler, GatewayNodeDesiredStatePlanner,
     GatewayReplicaRecoveryReconciler, GatewayRolloutReconciler, GatewayRolloutRollbackCompiler,
     GatewayRolloutRollbackReconciler, GatewaySnapshotCompiler, GatewaySnapshotCompilerConfig,
-    RegisterGatewayRateShapingProfileHandler,
-    InMemoryGatewayRateShapingProfileCatalog,
-    IGatewayRateShapingProfileCatalog,
-    IGatewayRateShapingProfileDurableStore,
-    PostgresGatewayRateShapingProfileDurableStore,
-    install_gateway_rate_shaping_catalog,
-    IApplicationPublicationRateShapingBindingAdmissionPort,
     GetDomainClaimHandler, GetMcpCredentialHandler, GetMcpRoutePolicyHandler, GetRouteHandler,
-    ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter,
-    IEdgeEnvironmentAccess, IEdgeManagedApplicationPublicationRouteIntentAccess,
-    IEdgeManagedInferenceAclAccess, IEdgeMcpCredentialEncryption,
-    IEdgeMcpServiceProfileAccess, IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess,
-    IEdgeRuntimeObservationAccess, IdentityInferenceEdgeManagedAclAccessAdapter,
+    IApplicationPublicationRateShapingBindingAdmissionPort, IEdgeEnvironmentAccess,
+    IEdgeManagedApplicationPublicationRouteIntentAccess, IEdgeManagedInferenceAclAccess,
+    IEdgeMcpCredentialEncryption, IEdgeMcpServiceProfileAccess,
+    IEdgeMcpWorkloadRevisionProjectionAccess, IEdgeNodeAccess, IEdgeRuntimeObservationAccess,
+    IGatewayRateShapingProfileCatalog, IGatewayRateShapingProfileDurableStore,
+    IdentityInferenceEdgeManagedAclAccessAdapter, InMemoryGatewayRateShapingProfileCatalog,
     ListDomainClaimsHandler, ListGatewayCertificatesHandler, ListGatewayScopesHandler,
     ListMcpCredentialsHandler, ListMcpRoutePoliciesHandler, ListRoutesHandler,
     LocalDomainOwnershipVerifier, LocalGatewayCertificateAuthority,
@@ -201,7 +198,8 @@ use crate::modules::edge::{
     McpGatewayNodeProjectionPlanner, McpGatewayProjectionAssembler, McpGatewayProjectionPlanner,
     McpGatewayProjectionSetPlanner, McpGatewaySnapshotReconciler, McpRoutePolicyApplicationService,
     McpRouteProjectionInputReader, McpRouteProjectionPlanner, McpRouteTargetProjectionCompiler,
-    ProjectsEdgeEnvironmentAccessAdapter, PublishRouteHandler, ReviseMcpRoutePolicyHandler,
+    PostgresGatewayRateShapingProfileDurableStore, ProjectsEdgeEnvironmentAccessAdapter,
+    PublishRouteHandler, RegisterGatewayRateShapingProfileHandler, ReviseMcpRoutePolicyHandler,
     RevokeDomainClaimHandler, RevokeMcpCredentialHandler, RotateMcpCredentialHandler,
     SecretsEdgeMcpCredentialEncryptionAdapter, VaultGatewayCertificateAuthority,
     VerifyDomainClaimHandler, WorkloadsEdgeMcpWorkloadRevisionProjectionAccessAdapter,
@@ -210,9 +208,10 @@ use crate::modules::edge::{
 use crate::modules::executions::{
     CancelExecutionHandler, CreateExecutionHandler, CreateExecutionTemplateHandler,
     ExecutionFlowRuntime, ExecutionFlowRuntimeDependencies, ExecutionReconciler, ExecutionsModule,
-    GetExecutionHandler, GetExecutionTemplateHandler, IExecutionRepository,
-    IExecutionTemplateRepository, IExecutionsEnvironmentAccess, IExecutionsProjectAccess,
-    IWorkflowExecutionPort, ListExecutionTemplatesHandler, ListExecutionsHandler,
+    FleetExecutionNodeCommandAccessAdapter, GetExecutionHandler, GetExecutionTemplateHandler,
+    IExecutionNodeCommandPort, IExecutionRepository, IExecutionTemplateRepository,
+    IExecutionsEnvironmentAccess, IExecutionsProjectAccess, IWorkflowExecutionPort,
+    ListExecutionTemplatesHandler, ListExecutionsHandler,
     ProjectsExecutionsEnvironmentAccessAdapter, ProjectsExecutionsProjectAccessAdapter,
     WorkflowExecutionApplicationService,
 };
@@ -245,9 +244,11 @@ use crate::modules::forms::{
     PublishFormReleaseHandler, ReviseFormDraftHandler,
 };
 use crate::modules::identity::domain::repositories::{
-    IApiTokenRepository, IIdentityBootstrapRepository, IInferenceCredentialLifecycleRepository,
-    IInferenceCredentialRepository, IMembershipInvitationRepository, IMembershipRepository,
-    IOidcIdentityRepository, IOrganizationRepository, IPlatformRbacRepository,
+    IApiTokenRepository, IDirectoryMembershipProjectionRepository,
+    IDirectoryResourceGrantRepository, IIdentityBootstrapRepository,
+    IInferenceCredentialLifecycleRepository, IInferenceCredentialRepository,
+    IMembershipInvitationRepository, IMembershipRepository, IOidcIdentityRepository,
+    IOrganizationRepository, IPartnerSubjectLinkRepository, IPlatformRbacRepository,
     IPrivilegedAuthorizationDecisionRepository, IRecipientContactRepository,
     IResourceAuthorizationDecisionRepository, IResourceGrantRepository,
     ITenantSupportGrantRepository, ITrustDomainRepository, IWorkloadIdentityPolicyRepository,
@@ -267,35 +268,37 @@ use crate::modules::identity::infrastructure::{
 use crate::modules::identity::{
     A3sEventRecipientContactVerificationConsumer, AcceptMembershipInvitationHandler,
     AcceptPlatformRolePolicyHandler, AcceptTrustDomainRevisionHandler,
-    AcceptWorkloadIdentityPolicyRevisionHandler, ApproveTenantSupportGrantHandler,
-    AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
+    AcceptWorkloadIdentityPolicyRevisionHandler, ApplicationsIdentityApplicationAccessAdapter,
+    ApproveTenantSupportGrantHandler, AuthorizePrivilegedAccessHandler, BeginOidcFlowHandler,
     BeginRecipientContactVerificationHandler, BootstrapIdentityHandler,
     ChangeMembershipRoleHandler, ChangePlatformRoleBindingHandler, CompleteOidcFlowHandler,
-    CompleteRecipientContactVerificationHandler, CreateApiTokenHandler, CreateInferenceKeyHandler,
-    CreateMembershipHandler, CreateMembershipInvitationHandler, CreateOrganizationHandler,
-    CreatePlatformRoleBindingHandler, CreateResourceGrantHandler, FleetIdentityNodeAccessAdapter,
-    GetApiTokenHandler, GetCurrentPlatformRolePolicyHandler, GetCurrentTrustDomainHandler,
+    CompleteRecipientContactVerificationHandler, CreateApiTokenHandler,
+    CreateDirectoryResourceGrantHandler, CreateInferenceKeyHandler, CreateMembershipHandler,
+    CreateMembershipInvitationHandler, CreateOrganizationHandler, CreatePlatformRoleBindingHandler,
+    CreateResourceGrantHandler, FleetIdentityNodeAccessAdapter, GetApiTokenHandler,
+    GetCurrentPlatformRolePolicyHandler, GetCurrentTrustDomainHandler,
     GetCurrentWorkloadIdentityPolicyForWorkloadHandler, GetCurrentWorkloadIdentityPolicyHandler,
-    GetInferenceKeyHandler, GetMembershipHandler, GetMembershipInvitationHandler,
-    GetPlatformRoleBindingHandler, GetPlatformRolePolicyRevisionHandler,
-    GetPrincipalPlatformRoleBindingHandler, GetRecipientContactHandler, GetResourceGrantHandler,
-    GetTenantSupportGrantHandler, GetTrustDomainRevisionHandler,
-    GetWorkloadIdentityPolicyRevisionHandler, IIdentityApplicationAccess,
-    IIdentityEnvironmentAccess,
-    IIdentityInferenceCredentialEncryption, IIdentityNodeAccess, IIdentityProjectAccess,
-    IdentityInferenceGrantCredentialAdmissionAdapter, IdentityModule, InferenceCredentialIssuer,
-    InspectCurrentTrustDomainProviderHandler, ListApiTokensHandler, ListInferenceKeysHandler,
-    ListMembershipInvitationsHandler, ListMembershipsHandler, ListMyMembershipInvitationsHandler,
-    ListOrganizationsHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
+    GetDirectoryResourceGrantHandler, GetInferenceKeyHandler, GetMembershipHandler,
+    GetMembershipInvitationHandler, GetPlatformRoleBindingHandler,
+    GetPlatformRolePolicyRevisionHandler, GetPrincipalPlatformRoleBindingHandler,
+    GetRecipientContactHandler, GetResourceGrantHandler, GetTenantSupportGrantHandler,
+    GetTrustDomainRevisionHandler, GetWorkloadIdentityPolicyRevisionHandler,
+    IIdentityApplicationAccess, IIdentityEnvironmentAccess, IIdentityInferenceCredentialEncryption,
+    IIdentityNodeAccess, IIdentityProjectAccess, IdentityInferenceGrantCredentialAdmissionAdapter,
+    IdentityModule, InferenceCredentialIssuer, InspectCurrentTrustDomainProviderHandler,
+    LinkPartnerSubjectHandler, ListApiTokensHandler, ListDirectoryMembershipProjectionsHandler,
+    ListDirectoryResourceGrantsHandler, ListInferenceKeysHandler, ListMembershipInvitationsHandler,
+    ListMembershipsHandler, ListMyMembershipInvitationsHandler, ListOrganizationsHandler,
+    ListPartnerSubjectLinksHandler, ListRecipientContactsHandler, ListResourceGrantsHandler,
     ListTrustDomainRevisionsHandler, ListWorkloadIdentityPolicyRevisionsHandler,
     OpenIdConnectProviderService, ProjectsIdentityEnvironmentAccessAdapter,
-    ApplicationsIdentityApplicationAccessAdapter, ProjectsIdentityProjectAccessAdapter,
-    ProposeTenantSupportGrantHandler,
-    RecipientContactVerificationDeliveryDispatcher, RevokeApiTokenHandler,
+    ProjectsIdentityProjectAccessAdapter, ProposeTenantSupportGrantHandler,
+    RecipientContactVerificationDeliveryDispatcher, ReplaceDirectoryMembershipProjectionHandler,
+    ResolvePartnerSubjectHandler, RevokeApiTokenHandler, RevokeDirectoryResourceGrantHandler,
     RevokeInferenceKeyHandler, RevokeMembershipHandler, RevokeMembershipInvitationHandler,
-    RevokePlatformRoleBindingHandler, RevokeRecipientContactHandler, RevokeResourceGrantHandler,
-    RevokeTenantSupportGrantHandler, RotateInferenceKeyHandler,
-    SmtpRecipientContactVerificationDeliveryService,
+    RevokePartnerSubjectLinkHandler, RevokePlatformRoleBindingHandler,
+    RevokeRecipientContactHandler, RevokeResourceGrantHandler, RevokeTenantSupportGrantHandler,
+    RotateInferenceKeyHandler, SmtpRecipientContactVerificationDeliveryService,
     WorkloadRuntimeExecutionAuthorizationQueryService,
     RECIPIENT_CONTACT_VERIFICATION_REQUESTED_EVENT_KEY,
 };
@@ -320,7 +323,7 @@ use crate::modules::knowledge::{
     ListKnowledgePipelinesHandler, ListKnowledgeRetrievalPolicyRevisionsHandler,
     PublishKnowledgePipelineHandler,
 };
-use crate::modules::notifications::infrastructure::SmtpOutboundNotificationDeliveryService;
+use crate::modules::notifications::SmtpOutboundNotificationDeliveryService;
 use crate::modules::notifications::{
     A3sEventOutboundNotificationConsumer, CreateNotificationAlertPolicyHandler,
     CreateOutboundNotificationSubscriptionHandler, FleetNotificationsNodeAccessAdapter,
@@ -349,7 +352,8 @@ use crate::modules::plugins::domain::services::{
 };
 use crate::modules::plugins::{
     A3sUsePluginRegistryCatalog, ConfirmPluginPlanProjectionHandler, EnrollPluginRegistryHandler,
-    GetPluginAssignmentHandler, GetPluginPlanProjectionHandler, GetPluginRegistryHandler,
+    FleetPluginAssignmentNodeCommandAccessAdapter, GetPluginAssignmentHandler,
+    GetPluginPlanProjectionHandler, GetPluginRegistryHandler, IPluginAssignmentNodeCommandPort,
     IdentityPluginRegistryEnrollmentAuthorizerAdapter, InspectCachedPluginCatalogHandler,
     InspectPluginCatalogHandler, ListPluginAssignmentsHandler, ListPluginRegistriesHandler,
     PluginAssignmentFlowConfig, PluginAssignmentFlowConfigOptions, PluginAssignmentFlowRuntime,
@@ -431,17 +435,17 @@ use crate::modules::workloads::{
     BindSkillWorkloadDeploymentHandler, CancelDeploymentHandler,
     CreateAgentWorkloadDeploymentHandler, CreateSourceWorkloadDeploymentHandler,
     CreateWorkloadDeploymentHandler, DeploymentFlowConfig, DeploymentFlowDependencies,
-    DeploymentFlowRuntime, FleetWorkloadLogAccessAdapter,
-    FleetWorkloadRuntimeObservationAccessAdapter, FleetWorkloadsNodePoolAccessAdapter,
-    GetDeploymentHandler, GetWorkloadHandler, GetWorkloadLogsHandler,
-    IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentOperationAccess,
-    IWorkloadHealthyRouteTargetCandidateQueryPort, IWorkloadLogAccess,
-    IWorkloadMcpActiveRevisionProjectionQueryPort, IWorkloadRuntimeExecutionAdmissionPort,
-    IWorkloadRuntimeObservationAccess, IWorkloadSecretMaterializationAuthorizationQueryPort,
-    IWorkloadSkillReleaseAdmissionPort, IWorkloadSourceBuildAdmissionPort,
-    IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess, IWorkloadsSecretBindingAccess,
-    IdentityWorkloadRuntimeExecutionAdmissionAdapter, ListWorkloadsHandler,
-    NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
+    DeploymentFlowRuntime, FleetWorkloadDeploymentNodeCommandAccessAdapter,
+    FleetWorkloadLogAccessAdapter, FleetWorkloadRuntimeObservationAccessAdapter,
+    FleetWorkloadsNodePoolAccessAdapter, GetDeploymentHandler, GetWorkloadHandler,
+    GetWorkloadLogsHandler, IWorkloadAgentReleaseAdmissionPort, IWorkloadDeploymentNodeCommandPort,
+    IWorkloadDeploymentOperationAccess, IWorkloadHealthyRouteTargetCandidateQueryPort,
+    IWorkloadLogAccess, IWorkloadMcpActiveRevisionProjectionQueryPort, IWorkloadRuntimeControl,
+    IWorkloadRuntimeExecutionAdmissionPort, IWorkloadRuntimeObservationAccess,
+    IWorkloadSecretMaterializationAuthorizationQueryPort, IWorkloadSkillReleaseAdmissionPort,
+    IWorkloadSourceBuildAdmissionPort, IWorkloadsEnvironmentAccess, IWorkloadsNodePoolAccess,
+    IWorkloadsSecretBindingAccess, IdentityWorkloadRuntimeExecutionAdmissionAdapter,
+    ListWorkloadsHandler, NodeDrainEvacuationReconciler, OciRegistryArtifactResolver,
     OperationsWorkloadDeploymentOperationAccessAdapter, ProjectsWorkloadsEnvironmentAccessAdapter,
     ReplicaDeploymentMaterializer, ReplicaRetirementReconciler, RollbackWorkloadDeploymentHandler,
     SecretRotationRestartReconciler, SecretsWorkloadsSecretBindingAccessAdapter,
@@ -482,7 +486,10 @@ use std::time::Duration;
 
 mod postgres_adapters;
 
-use postgres_adapters::{ApiWorkerPostgresAdapters, DeliveryPostgresAdapters, PostgresAdapterFactory, RelayPostgresAdapters};
+use postgres_adapters::{
+    ApiWorkerPostgresAdapters, DeliveryPostgresAdapters, PostgresAdapterFactory,
+    RelayPostgresAdapters,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ControlPlaneStartupError {
@@ -628,8 +635,6 @@ struct ManagementAdapterOverrides {
     workload_identity_provider: Arc<dyn IWorkloadIdentityProviderService>,
 }
 
-
-
 async fn build_api_worker_application(
     config: CloudConfig,
     management_adapters: Option<ManagementAdapterOverrides>,
@@ -740,7 +745,10 @@ async fn build_api_worker_application(
     let memberships = adapters.identity.memberships;
     let membership_invitations = adapters.identity.membership_invitations;
     let resource_grants = adapters.identity.resource_grants;
+    let directory_resource_grants = adapters.identity.directory_resource_grants;
+    let directory_membership_projections = adapters.identity.directory_membership_projections;
     let oidc_identity = adapters.identity.oidc_identity;
+    let partner_subject_links = adapters.identity.partner_subject_links;
     let recipient_contacts = adapters.identity.recipient_contacts;
     let recipient_contact_verification_deliveries =
         adapters.identity.recipient_contact_verification_deliveries;
@@ -801,6 +809,11 @@ async fn build_api_worker_application(
     let node_pools = adapters.fleet.node_pools;
     let draining_nodes = adapters.fleet.draining_nodes;
     let node_control = adapters.fleet.node_control;
+    let workload_deployment_node_commands: Arc<dyn IWorkloadDeploymentNodeCommandPort> = Arc::new(
+        FleetWorkloadDeploymentNodeCommandAccessAdapter::new(Arc::clone(&node_control)),
+    );
+    let workload_runtime_control: Arc<dyn IWorkloadRuntimeControl> =
+        Arc::clone(&workload_deployment_node_commands);
     let node_protocol_sessions = adapters.fleet.node_protocol_sessions;
     let node_artifacts: Arc<dyn INodeArtifactStore> = Arc::new(
         NodeArtifactObjectStore::from_client(
@@ -812,6 +825,7 @@ async fn build_api_worker_application(
         .map_err(ControlPlaneStartupError::ObjectStorage)?,
     );
     let builds = adapters.builds;
+    let partner_artifact_admissions = adapters.partner_artifact_admissions;
     let durable_cell_build_artifacts: Arc<dyn IDurableCellBuildArtifactPort> = Arc::new(
         ArtifactsDurableCellBuildArtifactAdapter::new(Arc::clone(&builds)),
     );
@@ -829,7 +843,6 @@ async fn build_api_worker_application(
             .map_err(ControlPlaneStartupError::AgentExecution)?,
     );
     let log_retention_repository = adapters.fleet.log_retention;
-    let workload_runtime_control = adapters.fleet.workload_runtime_control;
     let workloads = adapters.workloads.workloads;
     let deployment_workloads = adapters.workloads.deployment_workloads;
     let replica_deployments = adapters.workloads.replica_deployments;
@@ -1096,7 +1109,9 @@ async fn build_api_worker_application(
         Arc::clone(&fleet_gateway_commands),
     ));
     let gateway_rate_shaping_profile_store: Arc<dyn IGatewayRateShapingProfileDurableStore> =
-        Arc::new(PostgresGatewayRateShapingProfileDurableStore::new(executor.clone()));
+        Arc::new(PostgresGatewayRateShapingProfileDurableStore::new(
+            executor.clone(),
+        ));
     let gateway_rate_shaping_catalog = InMemoryGatewayRateShapingProfileCatalog::empty();
     install_gateway_rate_shaping_catalog(
         gateway_rate_shaping_catalog.as_ref(),
@@ -1107,9 +1122,12 @@ async fn build_api_worker_application(
     .map_err(ControlPlaneStartupError::NodeControl)?;
     let gateway_rate_shaping_bindings: Arc<
         dyn IApplicationPublicationRateShapingBindingAdmissionPort,
-    > = Arc::new(EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(
-        Arc::clone(&gateway_rate_shaping_catalog) as Arc<dyn IGatewayRateShapingProfileCatalog>,
-    ));
+    > = Arc::new(
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(Arc::clone(
+            &gateway_rate_shaping_catalog,
+        )
+            as Arc<dyn IGatewayRateShapingProfileCatalog>),
+    );
     let deployment_route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -1151,16 +1169,17 @@ async fn build_api_worker_application(
         mcp_projection_set_planner,
         McpGatewayProjectionAssembler,
     ));
-    let application_publication_route_intent_acl_projections = Arc::new(
-        ApplicationPublicationRouteIntentAclProjectionAdapter::new(Arc::clone(
-            &application_publication_route_intents,
-        )),
-    );
+    let application_publication_route_intent_acl_projections =
+        Arc::new(ApplicationPublicationRouteIntentAclProjectionAdapter::new(
+            Arc::clone(&application_publication_route_intents),
+        ));
     let edge_managed_publication_route_intent_acl: Arc<
         dyn IEdgeManagedApplicationPublicationRouteIntentAccess,
-    > = Arc::new(ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter::new(
-        application_publication_route_intent_acl_projections,
-    ));
+    > = Arc::new(
+        ApplicationsEdgeManagedPublicationRouteIntentAccessAdapter::new(
+            application_publication_route_intent_acl_projections,
+        ),
+    );
     let gateway_node_desired_state_planner = GatewayNodeDesiredStatePlanner::new(
         Arc::clone(&mcp_gateway_snapshots),
         Arc::clone(&mcp_node_projection_planner),
@@ -1322,7 +1341,7 @@ async fn build_api_worker_application(
                 Arc::clone(&resource_claims),
                 artifacts,
                 scheduling_nodes,
-                Arc::clone(&node_control),
+                Arc::clone(&workload_deployment_node_commands),
                 deployment_route_updates,
             )
             .with_prestart_gate(workload_prestart_gate)
@@ -1332,6 +1351,9 @@ async fn build_api_worker_application(
             deployment_flow_config,
         )
         .map_err(ControlPlaneStartupError::NodeControl)?;
+        let build_node_commands: Arc<dyn IArtifactBuildNodeCommandPort> = Arc::new(
+            FleetArtifactBuildNodeCommandAccessAdapter::new(Arc::clone(&node_control)),
+        );
         let build_runtime = BuildFlowRuntime::new(
             BuildFlowRuntimeDependencies {
                 builds: Arc::clone(&builds),
@@ -1341,19 +1363,25 @@ async fn build_api_worker_application(
                 publisher: build_publisher,
                 evidence: build_evidence,
                 nodes: Arc::clone(&nodes),
-                node_control: Arc::clone(&node_control),
+                node_commands: Arc::clone(&build_node_commands),
             },
             build_flow_config,
+        );
+        let execution_node_commands: Arc<dyn IExecutionNodeCommandPort> = Arc::new(
+            FleetExecutionNodeCommandAccessAdapter::new(Arc::clone(&node_control)),
         );
         let execution_runtime = ExecutionFlowRuntime::new(
             ExecutionFlowRuntimeDependencies {
                 executions: Arc::clone(&executions),
                 nodes: Arc::clone(&nodes),
-                node_control: Arc::clone(&node_control),
+                node_commands: Arc::clone(&execution_node_commands),
             },
             config
                 .execution_flow_config()
                 .map_err(ControlPlaneStartupError::Execution)?,
+        );
+        let agent_execution_node_commands: Arc<dyn IAgentExecutionNodeCommandPort> = Arc::new(
+            FleetAgentExecutionNodeCommandAccessAdapter::new(Arc::clone(&node_control)),
         );
         let agent_execution_runtime = AgentExecutionFlowRuntime::new(
             AgentExecutionFlowRuntimeDependencies {
@@ -1361,7 +1389,7 @@ async fn build_api_worker_application(
                 checkpoint_objects: Arc::clone(&agent_checkpoint_objects),
                 providers: Arc::clone(&agent_execution_providers),
                 workload_targets: Arc::clone(&workload_targets),
-                node_control: Arc::clone(&node_control),
+                node_commands: Arc::clone(&agent_execution_node_commands),
             },
             config
                 .agent_execution_flow_config()
@@ -1402,12 +1430,15 @@ async fn build_api_worker_application(
             )
             .map_err(|error| ControlPlaneStartupError::Plugins(error.to_string()))?,
         );
+        let plugin_assignment_node_commands: Arc<dyn IPluginAssignmentNodeCommandPort> = Arc::new(
+            FleetPluginAssignmentNodeCommandAccessAdapter::new(Arc::clone(&node_control)),
+        );
         let plugin_assignment_runtime = PluginAssignmentFlowRuntime::new(
             PluginAssignmentFlowRuntimeDependencies {
                 assignments: Arc::clone(&plugin_assignments),
                 registries: Arc::clone(&plugin_registries),
                 nodes: Arc::clone(&nodes),
-                node_control: Arc::clone(&node_control),
+                node_commands: Arc::clone(&plugin_assignment_node_commands),
                 trust_roots: plugin_trust_roots_for_flow,
                 policies: plugin_policies_for_flow,
                 artifacts: Arc::clone(&node_artifacts),
@@ -2147,7 +2178,11 @@ async fn build_api_worker_application(
                 memberships,
                 membership_invitations,
                 resource_grants,
+                directory_resource_grants,
+                directory_membership_projections,
+                partner_artifact_admissions,
                 oidc_identity,
+                partner_subject_links,
                 recipient_contacts,
                 recipient_contact_proof,
                 resource_authorization_decisions,
@@ -2281,7 +2316,8 @@ async fn build_api_worker_application(
 async fn build_delivery_application(
     config: CloudConfig,
 ) -> std::result::Result<ControlPlane, ControlPlaneStartupError> {
-    if !config.server.role.serves_application_delivery() || config.server.role.serves_management_api()
+    if !config.server.role.serves_application_delivery()
+        || config.server.role.serves_management_api()
     {
         return Err(ControlPlaneStartupError::Framework(BootError::Internal(
             "delivery composition requires ProcessRole::Delivery".into(),
@@ -2330,7 +2366,10 @@ async fn build_delivery_application(
             drain: DeliveryProcessDrain::new(),
         },
     )?;
-    Ok(ControlPlane::new(application, ControlPlaneWorkers::default()))
+    Ok(ControlPlane::new(
+        application,
+        ControlPlaneWorkers::default(),
+    ))
 }
 
 struct DeliveryHttpDependencies {
@@ -2351,7 +2390,8 @@ fn build_application_delivery_http(
     readiness: HealthModule,
     dependencies: DeliveryHttpDependencies,
 ) -> Result<BootApplication> {
-    if !config.server.role.serves_application_delivery() || config.server.role.serves_management_api()
+    if !config.server.role.serves_application_delivery()
+        || config.server.role.serves_management_api()
     {
         return Err(BootError::Internal(
             "application delivery HTTP requires ProcessRole::Delivery".into(),
@@ -2661,7 +2701,11 @@ struct ManagementApplicationDependencies {
     memberships: Arc<dyn IMembershipRepository>,
     membership_invitations: Arc<dyn IMembershipInvitationRepository>,
     resource_grants: Arc<dyn IResourceGrantRepository>,
+    directory_resource_grants: Arc<dyn IDirectoryResourceGrantRepository>,
+    directory_membership_projections: Arc<dyn IDirectoryMembershipProjectionRepository>,
+    partner_artifact_admissions: Arc<dyn IPartnerArtifactAdmissionRepository>,
     oidc_identity: Arc<dyn IOidcIdentityRepository>,
+    partner_subject_links: Arc<dyn IPartnerSubjectLinkRepository>,
     recipient_contacts: Arc<dyn IRecipientContactRepository>,
     recipient_contact_proof: Arc<dyn IRecipientContactProofService>,
     resource_authorization_decisions: Arc<dyn IResourceAuthorizationDecisionRepository>,
@@ -2787,7 +2831,11 @@ fn build_management_application_with_health(
         memberships,
         membership_invitations,
         resource_grants,
+        directory_resource_grants,
+        directory_membership_projections,
+        partner_artifact_admissions,
         oidc_identity,
+        partner_subject_links,
         recipient_contacts,
         recipient_contact_proof,
         resource_authorization_decisions,
@@ -3234,8 +3282,11 @@ fn build_management_application_with_health(
         deploy_durable_cell_secret_bindings,
         deploy_durable_cell_node_pool_port,
     );
+    let durable_cell_provider_workload_acl: Arc<dyn IDurableCellProviderWorkloadAclPort> = Arc::new(
+        WorkloadsDurableCellProviderWorkloadAclAdapter::new(oci_artifacts),
+    );
     let deploy_durable_cell_from_acl_handler = DeployDurableCellApplicationFromAclHandler::new(
-        oci_artifacts,
+        durable_cell_provider_workload_acl,
         deploy_durable_cell_handler.clone(),
     );
     let project_organizations: Arc<dyn IProjectOrganizationAccess> = Arc::new(
@@ -3372,6 +3423,13 @@ fn build_management_application_with_health(
     let begin_oidc_memberships = Arc::clone(&memberships);
     let begin_oidc_identity = Arc::clone(&oidc_identity);
     let begin_oidc_provider = Arc::clone(&oidc_provider);
+    let link_partner_subject_links = Arc::clone(&partner_subject_links);
+    let link_partner_subject_memberships = Arc::clone(&memberships);
+    let revoke_partner_subject_links = Arc::clone(&partner_subject_links);
+    let resolve_partner_subject_links = Arc::clone(&partner_subject_links);
+    let resolve_partner_subject_memberships = Arc::clone(&memberships);
+    let list_partner_subject_links = Arc::clone(&partner_subject_links);
+    let list_partner_subject_memberships = Arc::clone(&memberships);
     let begin_recipient_contacts = Arc::clone(&recipient_contacts);
     let begin_recipient_contact_proof = Arc::clone(&recipient_contact_proof);
     let complete_recipient_contacts = Arc::clone(&recipient_contacts);
@@ -3403,6 +3461,16 @@ fn build_management_application_with_health(
     let revoke_resource_grants = Arc::clone(&resource_grants);
     let list_resource_grants = Arc::clone(&resource_grants);
     let get_resource_grants = Arc::clone(&resource_grants);
+    let create_directory_resource_grants = Arc::clone(&directory_resource_grants);
+    let directory_resource_grant_projects = Arc::clone(&resource_grant_projects);
+    let directory_resource_grant_environments = Arc::clone(&resource_grant_environments);
+    let directory_resource_grant_applications = Arc::clone(&resource_grant_applications);
+    let directory_resource_grant_nodes = Arc::clone(&resource_grant_nodes);
+    let revoke_directory_resource_grants = Arc::clone(&directory_resource_grants);
+    let list_directory_resource_grants = Arc::clone(&directory_resource_grants);
+    let get_directory_resource_grants = Arc::clone(&directory_resource_grants);
+    let replace_directory_membership_projections = Arc::clone(&directory_membership_projections);
+    let list_directory_membership_projections = Arc::clone(&directory_membership_projections);
     let authorize_privileged_access = privileged_authorization_decisions;
     let query_organizations = Arc::clone(&organizations);
     let query_projects = Arc::clone(&projects);
@@ -3632,9 +3700,12 @@ fn build_management_application_with_health(
     .map_err(BootError::Internal)?;
     let gateway_rate_shaping_bindings: Arc<
         dyn IApplicationPublicationRateShapingBindingAdmissionPort,
-    > = Arc::new(EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(
-        Arc::clone(&gateway_rate_shaping_catalog) as Arc<dyn IGatewayRateShapingProfileCatalog>,
-    ));
+    > = Arc::new(
+        EdgeApplicationPublicationRateShapingBindingAdmissionAdapter::new(Arc::clone(
+            &gateway_rate_shaping_catalog,
+        )
+            as Arc<dyn IGatewayRateShapingProfileCatalog>),
+    );
     let route_compiler = GatewaySnapshotCompiler::new(GatewaySnapshotCompilerConfig {
         entrypoint_address: config.edge.entrypoint_address.clone(),
         management_address: config.edge.management_address.clone(),
@@ -3771,6 +3842,23 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::identity::RevokeResourceGrant, _>(
                     RevokeResourceGrantHandler::new(revoke_resource_grants),
                 )
+                .command_handler::<crate::modules::identity::CreateDirectoryResourceGrant, _>(
+                    CreateDirectoryResourceGrantHandler::new(
+                        create_directory_resource_grants,
+                        directory_resource_grant_projects,
+                        directory_resource_grant_environments,
+                        directory_resource_grant_applications,
+                        directory_resource_grant_nodes,
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RevokeDirectoryResourceGrant, _>(
+                    RevokeDirectoryResourceGrantHandler::new(revoke_directory_resource_grants),
+                )
+                .command_handler::<crate::modules::identity::ReplaceDirectoryMembershipProjection, _>(
+                    ReplaceDirectoryMembershipProjectionHandler::new(
+                        replace_directory_membership_projections,
+                    ),
+                )
                 .command_handler::<crate::modules::identity::AuthorizePrivilegedAccess, _>(
                     AuthorizePrivilegedAccessHandler::new(authorize_privileged_access),
                 )
@@ -3841,6 +3929,15 @@ fn build_management_application_with_health(
                 )
                 .command_handler::<crate::modules::identity::CompleteOidcFlow, _>(
                     CompleteOidcFlowHandler::new(oidc_identity, oidc_provider),
+                )
+                .command_handler::<crate::modules::identity::LinkPartnerSubject, _>(
+                    LinkPartnerSubjectHandler::new(
+                        link_partner_subject_links,
+                        link_partner_subject_memberships,
+                    ),
+                )
+                .command_handler::<crate::modules::identity::RevokePartnerSubjectLink, _>(
+                    RevokePartnerSubjectLinkHandler::new(revoke_partner_subject_links),
                 )
                 .command_handler::<
                     crate::modules::identity::BeginRecipientContactVerification,
@@ -4402,6 +4499,9 @@ fn build_management_application_with_health(
                 .command_handler::<crate::modules::workloads::StopWorkload, _>(
                     StopWorkloadHandler::new(stop_workloads),
                 )
+                .command_handler::<crate::modules::artifacts::AdmitPartnerArtifact, _>(
+                    AdmitPartnerArtifactHandler::new(Arc::clone(&partner_artifact_admissions)),
+                )
                 .command_handler::<crate::modules::artifacts::CancelBuildRun, _>(
                     CancelBuildRunHandler::new(cancel_builds),
                 )
@@ -4608,11 +4708,34 @@ fn build_management_application_with_health(
                 .query_handler::<crate::modules::identity::GetResourceGrant, _>(
                     GetResourceGrantHandler::new(get_resource_grants),
                 )
+                .query_handler::<crate::modules::identity::ListDirectoryResourceGrants, _>(
+                    ListDirectoryResourceGrantsHandler::new(list_directory_resource_grants),
+                )
+                .query_handler::<crate::modules::identity::GetDirectoryResourceGrant, _>(
+                    GetDirectoryResourceGrantHandler::new(get_directory_resource_grants),
+                )
+                .query_handler::<crate::modules::identity::ListDirectoryMembershipProjections, _>(
+                    ListDirectoryMembershipProjectionsHandler::new(
+                        list_directory_membership_projections,
+                    ),
+                )
                 .query_handler::<crate::modules::identity::ListRecipientContacts, _>(
                     ListRecipientContactsHandler::new(list_recipient_contacts),
                 )
                 .query_handler::<crate::modules::identity::GetRecipientContact, _>(
                     GetRecipientContactHandler::new(get_recipient_contacts),
+                )
+                .query_handler::<crate::modules::identity::ResolvePartnerSubject, _>(
+                    ResolvePartnerSubjectHandler::new(
+                        resolve_partner_subject_links,
+                        resolve_partner_subject_memberships,
+                    ),
+                )
+                .query_handler::<crate::modules::identity::ListPartnerSubjectLinks, _>(
+                    ListPartnerSubjectLinksHandler::new(
+                        list_partner_subject_links,
+                        list_partner_subject_memberships,
+                    ),
                 )
                 .query_handler::<crate::modules::identity::GetCurrentPlatformRolePolicy, _>(
                     GetCurrentPlatformRolePolicyHandler::new(
@@ -5188,6 +5311,14 @@ fn build_management_application_with_health(
                 )
                 .query_handler::<crate::modules::artifacts::ListBuildRuns, _>(
                     ListBuildRunsHandler::new(list_builds),
+                )
+                .query_handler::<crate::modules::artifacts::ListPartnerArtifactAdmissions, _>(
+                    ListPartnerArtifactAdmissionsHandler::new(Arc::clone(
+                        &partner_artifact_admissions,
+                    )),
+                )
+                .query_handler::<crate::modules::artifacts::GetPartnerArtifactAdmission, _>(
+                    GetPartnerArtifactAdmissionHandler::new(partner_artifact_admissions),
                 )
                 .query_handler::<crate::modules::artifacts::GetBuildRun, _>(
                     GetBuildRunHandler::new(get_builds),

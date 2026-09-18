@@ -1,6 +1,6 @@
 use super::types::{ObserveInput, ObserveOutput, ObservedAssignment};
 use super::PluginAssignmentFlowRuntime;
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::plugins::application::PluginAssignmentNodeCommandEnqueueRequest;
 use crate::modules::plugins::domain::entities::PluginAssignment;
 use crate::modules::shared_kernel::domain::NodeCommandId;
 use a3s_cloud_contracts::{NodeCommandOutcome, NodeCommandPayload, NodeCommandResult};
@@ -86,7 +86,7 @@ pub(super) async fn observe(
 
     let command_id = observe_command_id(locked.operation_id.as_uuid(), input.observation_attempt);
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -128,8 +128,8 @@ pub(super) async fn observe(
                 })?
                 .min(deadline_at);
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -146,7 +146,7 @@ pub(super) async fn observe(
                         "could not enqueue Plugin Host observation: {error}"
                     ))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -165,7 +165,7 @@ pub(super) async fn observe(
     };
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {

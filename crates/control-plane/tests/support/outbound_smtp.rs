@@ -2,6 +2,7 @@ use super::*;
 use a3s_cloud_control_plane::modules::identity::domain::value_objects::RecipientEmailAddress;
 use a3s_cloud_control_plane::modules::identity::PostgresIdentityRepository;
 use a3s_cloud_control_plane::modules::notifications::{
+    IdentityOutboundRecipientContactAccessAdapter,
     A3sEventOutboundNotificationConsumer, CreateOutboundNotificationSubscriptionWrite,
     INotificationRepository, IOutboundNotificationDeliveryRepository,
     IOutboundNotificationDispatcher, IOutboundNotificationRepository,
@@ -116,7 +117,7 @@ impl IOutboundNotificationSmtpDeliveryService for ObservedSmtpDeliveryService {
     async fn prepare(
         &self,
         delivery: &OutboundNotificationDelivery,
-        address: RecipientEmailAddress,
+        address: String,
     ) -> Result<
         Box<dyn IPreparedOutboundNotificationSmtpDelivery>,
         OutboundNotificationSmtpPreparationError,
@@ -651,7 +652,9 @@ pub(super) async fn exercise_outbound_smtp_provider_delivery(
     let smtp_delivery: Arc<dyn IOutboundNotificationSmtpDeliveryService> =
         observed_delivery.clone();
     let attempts: Arc<dyn IOutboundNotificationSmtpAttemptRepository> = repository.clone();
-    let recipient_contacts = Arc::new(PostgresIdentityRepository::new(executor.clone()));
+    let recipient_contacts = Arc::new(IdentityOutboundRecipientContactAccessAdapter::new(
+        Arc::new(PostgresIdentityRepository::new(executor.clone())),
+    ));
     let smtp_dispatcher = Arc::new(OutboundNotificationSmtpDispatcher::new(
         attempts,
         recipient_contacts,

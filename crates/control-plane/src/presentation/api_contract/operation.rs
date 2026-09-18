@@ -317,6 +317,77 @@ fn describe_parameters(operation: &mut Map<String, Value>, method: &str, path: &
 }
 
 fn describe_query_parameters(parameters: &mut Vec<Value>, method: &str, path: &str) {
+    if method == "get" && is_partner_subject_link_resolve_path(path) {
+        for (name, description) in [
+            (
+                "providerKey",
+                "Partner directory provider key. Must start with `partner-`; Kense uses `partner-kense-directory`.",
+            ),
+            (
+                "issuer",
+                "Canonical HTTPS issuer URL for the partner directory subject space.",
+            ),
+            (
+                "subject",
+                "Partner directory subject as a canonical UUID string (not an email).",
+            ),
+        ] {
+            upsert_parameter(
+                parameters,
+                json!({
+                    "name": name,
+                    "in": "query",
+                    "required": true,
+                    "description": description,
+                    "schema": { "type": "string", "minLength": 1 }
+                }),
+            );
+        }
+    }
+    if method == "get" && is_partner_subject_link_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "principalId",
+                "in": "query",
+                "required": true,
+                "description": "Cloud Principal id whose active partner SubjectLinks are listed. The principal must remain an active organization member.",
+                "schema": { "type": "string", "format": "uuid" }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "providerKey",
+                "in": "query",
+                "required": false,
+                "description": "Optional partner directory provider key filter. Must start with `partner-` when present.",
+                "schema": { "type": "string", "minLength": 1 }
+            }),
+        );
+    }
+    if method == "get" && is_directory_membership_projection_collection_path(path) {
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "subjectRef",
+                "in": "query",
+                "required": false,
+                "description": "Opaque DirectoryProjection subject ref. Exactly one of subjectRef or principalId is required.",
+                "schema": { "type": "string", "minLength": 1, "maxLength": 2304 }
+            }),
+        );
+        upsert_parameter(
+            parameters,
+            json!({
+                "name": "principalId",
+                "in": "query",
+                "required": false,
+                "description": "Cloud Principal id. Exactly one of subjectRef or principalId is required.",
+                "schema": { "type": "string", "format": "uuid" }
+            }),
+        );
+    }
     if method == "get" && is_application_publication_route_intent_release_collection_path(path) {
         upsert_parameter(
             parameters,
@@ -887,6 +958,40 @@ fn describe_request_body(
         );
         return Ok(());
     }
+    if method == "put" && is_directory_membership_projection_collection_path(path) {
+        let mut content = Map::new();
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["subjectRef", "principalIds"],
+                    "properties": {
+                        "subjectRef": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2304,
+                            "description": "Opaque DirectoryProjection subject ref: `{issuer}#department/{uuid}` or `{issuer}#group/{uuid}`."
+                        },
+                        "principalIds": {
+                            "type": "array",
+                            "items": { "type": "string", "format": "uuid" },
+                            "maxItems": 4096
+                        }
+                    }
+                }
+            }),
+        );
+        operation.insert(
+            "requestBody".into(),
+            json!({
+                "required": true,
+                "content": content
+            }),
+        );
+        return Ok(());
+    }
     if method != "post" || request_has_no_body(path) {
         return Ok(());
     }
@@ -928,6 +1033,134 @@ fn describe_request_body(
             }),
         );
     } else if is_membership_invitation_version_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["expectedVersion"],
+                    "properties": {
+                        "expectedVersion": {"type": "integer", "minimum": 1}
+                    }
+                }
+            }),
+        );
+    } else if is_partner_subject_link_collection_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["providerKey", "issuer", "subject", "principalId"],
+                    "properties": {
+                        "providerKey": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 63,
+                            "description": "Partner directory provider key; must start with `partner-`."
+                        },
+                        "issuer": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2048,
+                            "description": "Canonical HTTPS issuer URL for the partner directory."
+                        },
+                        "subject": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Partner directory subject UUID (Kense User/Member id)."
+                        },
+                        "principalId": {
+                            "type": "string",
+                            "format": "uuid",
+                            "description": "Active human Cloud Principal to bind."
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_partner_subject_link_revocation_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["providerKey", "issuer", "subject", "expectedVersion"],
+                    "properties": {
+                        "providerKey": { "type": "string", "minLength": 1, "maxLength": 63 },
+                        "issuer": { "type": "string", "minLength": 1, "maxLength": 2048 },
+                        "subject": { "type": "string", "format": "uuid" },
+                        "expectedVersion": { "type": "integer", "minimum": 1 }
+                    }
+                }
+            }),
+        );
+    } else if is_directory_resource_grant_create_path(path) {
+        content.insert(
+            "application/json".into(),
+            json!({
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["subjectRef", "scope"],
+                    "properties": {
+                        "subjectRef": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 2304,
+                            "description": "Opaque DirectoryProjection subject ref: `{issuer}#department/{uuid}` or `{issuer}#group/{uuid}`."
+                        },
+                        "scope": {
+                            "oneOf": [
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["project"]},
+                                        "projectId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId", "environmentId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["environment"]},
+                                        "projectId": {"type": "string", "format": "uuid"},
+                                        "environmentId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "projectId", "applicationId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["application"]},
+                                        "projectId": {"type": "string", "format": "uuid"},
+                                        "applicationId": {"type": "string", "format": "uuid"}
+                                    }
+                                },
+                                {
+                                    "type": "object",
+                                    "additionalProperties": false,
+                                    "required": ["kind", "nodeId"],
+                                    "properties": {
+                                        "kind": {"type": "string", "enum": ["node"]},
+                                        "nodeId": {"type": "string", "format": "uuid"}
+                                    }
+                                }
+                            ],
+                            "discriminator": {"propertyName": "kind"}
+                        }
+                    }
+                }
+            }),
+        );
+    } else if is_directory_resource_grant_revocation_path(path) {
         content.insert(
             "application/json".into(),
             json!({
@@ -1399,6 +1632,21 @@ fn responses(method: &str, path: &str, is_public: bool) -> Value {
             component.to_owned()
         } else if let Some(component) = recipient_contact_success_component(method, path, status) {
             component
+        } else if let Some(component) = partner_subject_link_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) =
+            directory_resource_grant_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) =
+            directory_membership_projection_success_component(method, path, status)
+        {
+            component
+        } else if let Some(component) =
+            partner_artifact_admission_success_component(method, path, status)
+        {
+            component
         } else if let Some(component) =
             notification_alert_policy_success_component(method, path, status)
         {
@@ -1483,6 +1731,9 @@ fn success_statuses(method: &str, path: &str) -> Vec<u16> {
     }
     if method == "put" && is_user_file_content_path(path) {
         return vec![200];
+    }
+    if method == "put" && is_directory_membership_projection_collection_path(path) {
+        return vec![200, 201];
     }
     if method == "post"
         && (is_knowledge_base_collection_path(path)
@@ -1578,6 +1829,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("resource-grants")
         || path.contains("recipient-contacts")
         || path.contains("/identity/oidc")
+        || path.contains("partner-subject-links")
         || path.contains("/inference/keys")
     {
         "Identity"
@@ -1589,7 +1841,7 @@ fn operation_tag(path: &str) -> &'static str {
         || path.contains("enrollment-tokens")
     {
         "Fleet"
-    } else if path.contains("build-runs") {
+    } else if path.contains("build-runs") || path.contains("partner-artifact-admissions") {
         "Artifacts"
     } else if is_developer_workflow_path(path) {
         "Developer Workflows"
@@ -1774,6 +2026,9 @@ fn creates_resource(path: &str) -> bool {
         || path.ends_with("/membership-invitations")
         || path.ends_with("/membership-invitations/{invitation_id}/acceptance")
         || is_resource_grant_create_path(path)
+        || path.ends_with("/partner-subject-links")
+        || path.ends_with("/directory-resource-grants")
+        || path.ends_with("/partner-artifact-admissions")
         || path.ends_with("/enrollment-tokens")
         || path.ends_with("/node-pools")
         || path.ends_with("/domain-claims")
@@ -1845,6 +2100,112 @@ fn recipient_contact_success_component(method: &str, path: &str, status: u16) ->
         Some("RecipientContactSuccess200".into())
     } else if method == "post" && is_recipient_contact_mutation_path(path) {
         Some(format!("RecipientContactMutationSuccess{status}"))
+    } else {
+        None
+    }
+}
+
+fn is_partner_subject_link_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/partner-subject-links"
+}
+
+fn is_partner_subject_link_resolve_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/partner-subject-links/resolve"
+}
+
+fn is_partner_subject_link_revocation_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/partner-subject-links/revocation"
+}
+
+fn partner_subject_link_success_component(method: &str, path: &str, status: u16) -> Option<String> {
+    if method == "get" && is_partner_subject_link_collection_path(path) {
+        Some("PartnerSubjectLinkListSuccess200".into())
+    } else if method == "get" && is_partner_subject_link_resolve_path(path) {
+        Some("PartnerSubjectLinkSuccess200".into())
+    } else if method == "post"
+        && (is_partner_subject_link_collection_path(path)
+            || is_partner_subject_link_revocation_path(path))
+    {
+        Some(format!("PartnerSubjectLinkMutationSuccess{status}"))
+    } else {
+        None
+    }
+}
+
+fn is_directory_resource_grant_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/directory-resource-grants"
+}
+
+fn is_directory_resource_grant_item_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}"
+}
+
+fn is_directory_resource_grant_create_path(path: &str) -> bool {
+    is_directory_resource_grant_collection_path(path)
+}
+
+fn is_directory_resource_grant_revocation_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/directory-resource-grants/{directory_resource_grant_id}/revocation"
+}
+
+fn directory_resource_grant_success_component(
+    method: &str,
+    path: &str,
+    status: u16,
+) -> Option<String> {
+    if method == "get" && is_directory_resource_grant_collection_path(path) {
+        Some("DirectoryResourceGrantListSuccess200".into())
+    } else if method == "get" && is_directory_resource_grant_item_path(path) {
+        Some("DirectoryResourceGrantSuccess200".into())
+    } else if method == "post"
+        && (is_directory_resource_grant_create_path(path)
+            || is_directory_resource_grant_revocation_path(path))
+    {
+        Some(format!("DirectoryResourceGrantMutationSuccess{status}"))
+    } else {
+        None
+    }
+}
+
+fn is_directory_membership_projection_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/directory-membership-projections"
+}
+
+fn directory_membership_projection_success_component(
+    method: &str,
+    path: &str,
+    status: u16,
+) -> Option<String> {
+    if method == "get" && is_directory_membership_projection_collection_path(path) {
+        Some("DirectoryMembershipProjectionListSuccess200".into())
+    } else if method == "put" && is_directory_membership_projection_collection_path(path) {
+        Some(format!(
+            "DirectoryMembershipProjectionMutationSuccess{status}"
+        ))
+    } else {
+        None
+    }
+}
+
+fn is_partner_artifact_admission_collection_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/partner-artifact-admissions"
+}
+
+fn is_partner_artifact_admission_item_path(path: &str) -> bool {
+    path == "/organizations/{organization_id}/partner-artifact-admissions/{admission_id}"
+}
+
+fn partner_artifact_admission_success_component(
+    method: &str,
+    path: &str,
+    status: u16,
+) -> Option<String> {
+    if method == "get" && is_partner_artifact_admission_collection_path(path) {
+        Some("PartnerArtifactAdmissionListSuccess200".into())
+    } else if method == "get" && is_partner_artifact_admission_item_path(path) {
+        Some("PartnerArtifactAdmissionSuccess200".into())
+    } else if method == "post" && is_partner_artifact_admission_collection_path(path) {
+        Some(format!("PartnerArtifactAdmissionMutationSuccess{status}"))
     } else {
         None
     }

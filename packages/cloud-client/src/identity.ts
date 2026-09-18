@@ -213,3 +213,91 @@ export interface ResourceGrantMutationResult extends ResourceGrant {
 export interface CreateResourceGrantInput {
   scope: ResourceGrantScope;
 }
+
+export interface PartnerSubjectLink {
+  linkId: string;
+  providerKey: string;
+  issuer: string;
+  subject: string;
+  principalId: string;
+  aggregateVersion: number;
+  createdAt: string;
+  lastVerifiedAt: string;
+  revokedAt: string | null;
+}
+
+export interface PartnerSubjectLinkMutationResult extends PartnerSubjectLink {
+  replayed: boolean;
+}
+
+export interface LinkPartnerSubjectInput {
+  providerKey: string;
+  issuer: string;
+  subject: string;
+  principalId: string;
+}
+
+export interface RevokePartnerSubjectLinkInput {
+  providerKey: string;
+  issuer: string;
+  subject: string;
+  expectedVersion: number;
+}
+
+export interface ResolvePartnerSubjectInput {
+  providerKey: string;
+  issuer: string;
+  subject: string;
+}
+
+export interface ListPartnerSubjectLinksOptions {
+  principalId: string;
+  providerKey?: string;
+}
+
+export interface DirectoryResourceGrant {
+  id: string;
+  organizationId: string;
+  subjectRef: string;
+  kind: string;
+  issuer: string;
+  subjectId: string;
+  scope: ResourceGrantScope;
+  aggregateVersion: number;
+  createdAt: string;
+  updatedAt: string;
+  revokedAt: string | null;
+}
+
+export interface DirectoryResourceGrantMutationResult extends DirectoryResourceGrant {
+  replayed: boolean;
+}
+
+export interface CreateDirectoryResourceGrantInput {
+  subjectRef: string;
+  scope: ResourceGrantScope;
+}
+
+export interface DirectoryMembershipProjectionBinding {
+  organizationId: string;
+  subjectRef: string;
+  kind: string;
+  issuer: string;
+  subjectId: string;
+  principalId: string;
+  createdAt: string;
+}
+
+export interface DirectoryMembershipProjectionMutationResult {
+  items: DirectoryMembershipProjectionBinding[];
+  replayed: boolean;
+}
+
+export interface ReplaceDirectoryMembershipProjectionInput {
+  subjectRef: string;
+  principalIds: string[];
+}
+
+export type ListDirectoryMembershipProjectionsOptions =
+  | { subjectRef: string; principalId?: undefined }
+  | { principalId: string; subjectRef?: undefined };

@@ -1,0 +1,1 @@
+host a3s-box smoke skipped: not Darwin and /dev/kvm absent (Linux/x86_64)

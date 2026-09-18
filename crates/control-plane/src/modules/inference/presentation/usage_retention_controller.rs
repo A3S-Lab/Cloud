@@ -1,11 +1,8 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{
-    OrganizationAdministratorGuard, OrganizationTenantGuard,
-};
 use crate::modules::inference::application::GetInferenceUsageRetentionStatus;
 use crate::modules::inference::presentation::dto::InferenceUsageRetentionStatusResponse;
 use crate::modules::shared_kernel::domain::OrganizationId;
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationAdministratorGuard, OrganizationTenantGuard, application_error_response};
 use crate::presentation::request_id;
 use a3s_boot::{
     controller, get, metadata, use_guard, BootRequest, BootResponse, ControllerDefinition,

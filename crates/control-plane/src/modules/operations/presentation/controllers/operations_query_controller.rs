@@ -1,13 +1,10 @@
 use crate::access_projection::operation_access;
-use crate::modules::identity::presentation::{
-    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope,
-    OrganizationTenantGuard,
-};
 use crate::modules::operations::application::queries::list_operations::ListOperations;
 use crate::modules::operations::presentation::dto::OperationListItemResponse;
 use crate::modules::operations::OperationAccess;
 use crate::modules::shared_kernel::domain::OrganizationId;
 use crate::presentation::{
+    resource_access_evaluator, with_deferred_resource_scope, DeferredResourceScope, OrganizationTenantGuard, 
     application_error_response, polling_sse_stream, PollingSseInitial, PollingSseOptions,
 };
 use a3s_boot::{

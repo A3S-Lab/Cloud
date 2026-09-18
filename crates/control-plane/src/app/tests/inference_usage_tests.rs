@@ -1,10 +1,10 @@
 use super::*;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::inference::InMemoryInferenceUsageRepository;
 use crate::modules::inference::domain::repositories::IInferenceUsageRepository;
 use crate::modules::inference::domain::{
     AcceptInferenceUsageBatchWrite, InferenceUsageRetentionPolicy, InferenceUsageRetentionSweep,
 };
+use crate::modules::inference::InMemoryInferenceUsageRepository;
 use crate::modules::shared_kernel::domain::NodeId;
 use a3s_cloud_contracts::{
     InferenceUsageBatchV1, InferenceUsageCursorV1, InferenceUsageEndpointV1,
@@ -162,11 +162,9 @@ async fn inference_usage_showback_http_is_scope_visible_and_fail_closed() -> Res
         .await?;
     assert_eq!(inverted.status(), 422);
     let inverted_body = response_json(&inverted)?;
-    assert!(
-        inverted_body["message"]
-            .as_str()
-            .is_some_and(|message| message.contains("from_day must be <= to_day"))
-    );
+    assert!(inverted_body["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("from_day must be <= to_day")));
 
     let rollups = app.call(get_as(&rollups_path, USAGE_READ_TOKEN)).await?;
     assert_eq!(rollups.status(), 200);
@@ -284,11 +282,9 @@ async fn inference_usage_retention_http_is_admin_only() -> Result<()> {
     let retention = response_json(&retention)?;
     assert_eq!(retention["data"]["organizationId"], organization);
     assert_eq!(retention["data"]["retentionMs"], 7_776_000_000_u64);
-    assert!(
-        retention["data"]["policyDigest"]
-            .as_str()
-            .is_some_and(|value| value.starts_with("sha256:"))
-    );
+    assert!(retention["data"]["policyDigest"]
+        .as_str()
+        .is_some_and(|value| value.starts_with("sha256:")));
     assert_eq!(retention["data"]["version"], 0);
 
     let member_denied = app

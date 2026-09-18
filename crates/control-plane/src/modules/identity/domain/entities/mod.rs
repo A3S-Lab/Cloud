@@ -1,4 +1,6 @@
 mod api_token;
+mod directory_membership_projection_binding;
+mod directory_resource_grant;
 mod external_identity_link;
 mod identity_bootstrap;
 mod identity_principal;
@@ -21,6 +23,8 @@ mod workload_runtime_evidence_binding;
 pub use api_token::{
     ApiToken, AuthenticatedApiToken, MAX_OIDC_LOGIN_TOKEN_LIFETIME, MIN_OIDC_LOGIN_TOKEN_LIFETIME,
 };
+pub use directory_membership_projection_binding::DirectoryMembershipProjectionBinding;
+pub use directory_resource_grant::DirectoryResourceGrant;
 pub use external_identity_link::ExternalIdentityLink;
 pub use identity_bootstrap::IdentityBootstrap;
 pub use identity_principal::{IdentityPrincipal, IdentityPrincipalKind};

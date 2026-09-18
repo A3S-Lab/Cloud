@@ -44,6 +44,11 @@ if [[ -S /var/run/docker.sock || -S /var/run/docker.sock.raw ]]; then
   echo "A3S_CLOUD_A0_4_REAL_BOX_BLOCKED reason=docker_sock_present" | tee "$evidence_directory/blocked.txt"
   exit 3
 fi
+if [[ ! -e /dev/kvm ]]; then
+  echo "A3S_CLOUD_A0_4_REAL_BOX_BLOCKED reason=box_vm_requires_kvm path=/dev/kvm" \
+    | tee "$evidence_directory/blocked.txt"
+  exit 3
+fi
 
 install_dir=${A3S_CLOUD_BOX_INSTALL_DIR:-/home/roylin/code/a3s-box-install}
 if [[ -f $install_dir/BOX-REVISION ]]; then

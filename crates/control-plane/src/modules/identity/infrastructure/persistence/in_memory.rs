@@ -1,8 +1,8 @@
 use crate::modules::identity::domain::entities::{
-    ApiToken, AuthenticatedApiToken, ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal,
-    Membership, MembershipInvitation, OidcFlow, Organization, PlatformRbacBootstrap,
-    RecipientContact, RecipientContactVerification, RecipientContactVerificationDeliveryRecord,
-    ResourceGrant,
+    ApiToken, AuthenticatedApiToken, DirectoryMembershipProjectionBinding, DirectoryResourceGrant,
+    ExternalIdentityLink, IdentityBootstrap, IdentityPrincipal, Membership, MembershipInvitation,
+    OidcFlow, Organization, PlatformRbacBootstrap, RecipientContact, RecipientContactVerification,
+    RecipientContactVerificationDeliveryRecord, ResourceGrant,
 };
 use crate::modules::identity::domain::events::{
     PlatformRoleBindingChanged, PlatformRolePolicyAccepted,
@@ -14,7 +14,7 @@ use crate::modules::identity::domain::repositories::{
 use crate::modules::identity::domain::services::{
     MembershipAdministration, ResourceAuthorizationDecision,
 };
-use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope};
+use crate::modules::identity::domain::value_objects::{ApiTokenDigest, ApiTokenScope, DirectoryGrantSubjectRef};
 use crate::modules::shared_kernel::domain::{
     ApiTokenId, ExternalIdentityLinkId, IdempotencyRequest, IdempotentWrite, InstallationId,
     MembershipId, MembershipInvitationId, OidcFlowId, OrganizationId, PrincipalId,
@@ -45,6 +45,11 @@ pub(super) struct State {
     pub(super) memberships: BTreeMap<MembershipId, Membership>,
     pub(super) membership_invitations: BTreeMap<MembershipInvitationId, MembershipInvitation>,
     pub(super) resource_grants: BTreeMap<ResourceGrantId, ResourceGrant>,
+    pub(super) directory_resource_grants: BTreeMap<ResourceGrantId, DirectoryResourceGrant>,
+    pub(super) directory_membership_projections: BTreeMap<
+        (OrganizationId, DirectoryGrantSubjectRef, PrincipalId),
+        DirectoryMembershipProjectionBinding,
+    >,
     pub(super) resource_authorization_decisions: BTreeMap<Uuid, ResourceAuthorizationDecision>,
     pub(super) membership_subjects: BTreeMap<(OrganizationId, PrincipalId), MembershipId>,
     pub(super) oidc_flows: BTreeMap<OidcFlowId, OidcFlow>,

@@ -173,11 +173,9 @@ fn assert_valid_bearer(bearer: &str, prefix: &Value) -> Result<()> {
     assert_eq!(prefix.len(), 24);
     assert_eq!(bearer.len(), 88);
     assert!(bearer.starts_with(prefix));
-    assert!(
-        bearer[prefix.len()..]
-            .bytes()
-            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
-    );
+    assert!(bearer[prefix.len()..]
+        .bytes()
+        .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
     Ok(())
 }
 

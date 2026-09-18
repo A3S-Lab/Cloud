@@ -1,5 +1,5 @@
 use super::tool_result;
-use crate::modules::audit::presentation::{
+use crate::modules::audit::{
     AuditExportManifestBundleResponse, AuditExportResponse, AuditRecordPageResponse,
     AuditRetentionStatusResponse,
 };

@@ -11,43 +11,53 @@
 //! This module is compiled as part of the `ga1_gateway_live_code_path` test
 //! binary (sibling to `a0_4_real_box_release_support`).
 
+#[cfg(target_os = "linux")]
 use a3s_cloud_contracts::GatewaySnapshot;
+#[cfg(target_os = "linux")]
 use a3s_cloud_node_agent::{
     ArtifactConfig, BoxRuntimeConfig, BoxRuntimeIsolation, ControlPlaneConfig,
     DurableGatewaySnapshotInstaller, GatewayControlConfig, GatewaySnapshotInstallOutcome,
     GatewaySnapshotInstaller, LogShippingConfig, NodeAgentConfig, NodeConfig,
 };
+#[cfg(target_os = "linux")]
 use a3s_runtime::contract::{RuntimeObservation, RuntimeServiceEndpoint, RuntimeUnitSpec};
-use chrono::{Duration as ChronoDuration, Utc};
+#[cfg(target_os = "linux")]
 use sha2::{Digest, Sha256};
+#[cfg(target_os = "linux")]
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use std::time::Duration;
-use uuid::Uuid;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 const CERTIFIED_MARKER: &str = "A3S_CLOUD_GA1_GATEWAY_LIVE_CODE_PATH_CERTIFIED";
+#[cfg(target_os = "linux")]
 const GATEWAY_PUBLIC_MARKER: &str = "A3S_CLOUD_GA1_GATEWAY_PUBLIC_TRAFFIC_PROVEN";
+#[cfg(target_os = "linux")]
 const GATEWAY_TOKEN: &str = "a3s-cloud-ga1-gateway-live-token";
+#[cfg(target_os = "linux")]
 const GATEWAY_TOKEN_ENV: &str = "A3S_GATEWAY_ADMIN_TOKEN";
+#[cfg(target_os = "linux")]
 const AGENT_PORT_NAME: &str = "agent";
+#[cfg(target_os = "linux")]
 const READY_PATH: &str = "/health/ready";
 
+#[cfg(target_os = "linux")]
 pub async fn exercise_ga1_gateway_live_code_path(
     postgres_url: String,
     gateway_bin: &str,
 ) -> TestResult {
     refuse_placeholder(gateway_bin)?;
     let gateway_revision = read_sidecar_revision(gateway_bin)?;
-    let want_gateway = std::fs::read_to_string(
-        "/mnt/d/code/a3s/apps/cloud/tools/gateway-conformance/gateway-revision",
-    )
-    .unwrap_or_default()
-    .trim()
-    .to_owned();
+    let want_gateway = std::fs::read_to_string(cloud_pin("tools/gateway-conformance/gateway-revision"))
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
     if !want_gateway.is_empty() && gateway_revision != want_gateway {
         return Err(format!(
             "gateway pin mismatch want={want_gateway} got={gateway_revision}"
@@ -55,12 +65,10 @@ pub async fn exercise_ga1_gateway_live_code_path(
         .into());
     }
 
-    let box_revision = std::fs::read_to_string(
-        "/mnt/d/code/a3s/apps/cloud/tools/box-conformance/box-revision",
-    )
-    .unwrap_or_default()
-    .trim()
-    .to_owned();
+    let box_revision = std::fs::read_to_string(cloud_pin("tools/box-conformance/box-revision"))
+        .unwrap_or_default()
+        .trim()
+        .to_owned();
     let artifact = std::env::var("A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE").map_err(|_| {
         "A3S_CLOUD_A0_4_AGENT_RUNTIME_IMAGE required (source a0-4-image.env)"
     })?;
@@ -71,22 +79,42 @@ pub async fn exercise_ga1_gateway_live_code_path(
     let box_revision_for_probe = box_revision.clone();
     let artifact_for_probe = artifact.clone();
 
+    let management_counts = Arc::new(std::sync::Mutex::new(
+        None::<crate::ga1_management_plane_support::ManagementPlaneProof>,
+    ));
+    let management_counts_for_probe = Arc::clone(&management_counts);
+
     let live: crate::a0_4_real_box_release_support::LiveAgentProbe =
-        Box::new(move |observation, spec| {
+        Box::new(move |window| {
             let gateway_bin = gateway_bin.clone();
             let gateway_revision = gateway_revision_for_probe.clone();
             let box_revision = box_revision_for_probe.clone();
             let artifact = artifact_for_probe.clone();
+            let management_counts = Arc::clone(&management_counts_for_probe);
             Box::pin(async move {
                 prove_gateway_public_traffic(
                     &gateway_bin,
-                    &observation,
-                    &spec,
+                    &window.observation,
+                    &window.spec,
                     &gateway_revision,
                     &box_revision,
                     &artifact,
                 )
-                .await
+                .await?;
+                let management = crate::ga1_management_plane_support::prove_management_plane_conversation_and_events(
+                    window.organization_id,
+                    window.project_id,
+                    window.environment_id,
+                    window.asset_id,
+                    window.asset_release_id,
+                    window.executor,
+                )
+                .await?;
+                *management_counts
+                    .lock()
+                    .map_err(|_| "GA-1 management plane counts lock poisoned")? =
+                    Some(management);
+                Ok(())
             })
         });
 
@@ -96,16 +124,20 @@ pub async fn exercise_ga1_gateway_live_code_path(
     )
     .await?;
 
-    Err(format!(
-        "GA-1 Gateway LIVE phase-2b pending: management-plane conversation/execution \
-         with durable events against the same published release \
-         (box={box_revision} gateway={gateway_revision} artifact={artifact}). \
-         {GATEWAY_PUBLIC_MARKER} already required; refuse {CERTIFIED_MARKER} without \
-         conversations>=1 events>=1"
-    )
-    .into())
+    let management = management_counts
+        .lock()
+        .map_err(|_| "GA-1 management plane counts lock poisoned")?
+        .clone()
+        .ok_or("GA-1 management plane proof missing after live probe")?;
+    println!(
+        "{CERTIFIED_MARKER} gateway_public=traffic conversations=1 executions=1 events={} \
+         head_sequence={} box={box_revision} gateway={gateway_revision} artifact={artifact}",
+        management.event_count, management.head_sequence
+    );
+    Ok(())
 }
 
+#[cfg(target_os = "linux")]
 async fn prove_gateway_public_traffic(
     gateway_bin: &str,
     observation: &RuntimeObservation,
@@ -217,12 +249,14 @@ async fn prove_gateway_public_traffic(
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 struct ManagedTarget {
     target_id: Uuid,
     unit_id: String,
     generation: u64,
 }
 
+#[cfg(target_os = "linux")]
 impl ManagedTarget {
     fn acl_object(&self) -> String {
         format!(
@@ -245,10 +279,12 @@ impl ManagedTarget {
     }
 }
 
+#[cfg(target_os = "linux")]
 struct GatewayProcess {
     child: Child,
 }
 
+#[cfg(target_os = "linux")]
 impl GatewayProcess {
     fn start(binary: &Path, config_path: &Path) -> std::io::Result<Self> {
         let child = Command::new(binary)
@@ -262,6 +298,7 @@ impl GatewayProcess {
     }
 }
 
+#[cfg(target_os = "linux")]
 impl Drop for GatewayProcess {
     fn drop(&mut self) {
         let _ = self.child.kill();
@@ -270,9 +307,11 @@ impl Drop for GatewayProcess {
 }
 
 /// Signing transport stub: HTTP-only GA-1 smoke never requests certificates.
+#[cfg(target_os = "linux")]
 struct ArcRejectSigner;
 
 #[async_trait::async_trait]
+#[cfg(target_os = "linux")]
 impl a3s_cloud_node_agent::GatewayCertificateSigningTransport for ArcRejectSigner {
     async fn sign_gateway_certificate(
         &self,
@@ -287,6 +326,7 @@ impl a3s_cloud_node_agent::GatewayCertificateSigningTransport for ArcRejectSigne
     }
 }
 
+#[cfg(target_os = "linux")]
 fn unused_loopback_addresses() -> std::io::Result<(SocketAddr, SocketAddr)> {
     let traffic = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
     let management = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))?;
@@ -295,6 +335,7 @@ fn unused_loopback_addresses() -> std::io::Result<(SocketAddr, SocketAddr)> {
     Ok(addresses)
 }
 
+#[cfg(target_os = "linux")]
 fn management_gateway_acl(
     gateway_id: Uuid,
     management_address: SocketAddr,
@@ -320,6 +361,7 @@ management {{
     )
 }
 
+#[cfg(target_os = "linux")]
 fn agent_ready_gateway_acl(
     traffic_port: u16,
     management_port: u16,
@@ -360,6 +402,7 @@ services "ga1-agent-ready" {{
     )
 }
 
+#[cfg(target_os = "linux")]
 fn gateway_node_agent_config(
     root: &Path,
     management_address: SocketAddr,
@@ -415,6 +458,7 @@ fn gateway_node_agent_config(
     })
 }
 
+#[cfg(target_os = "linux")]
 async fn wait_for_gateway_management(
     child: &mut Child,
     management_address: SocketAddr,
@@ -443,6 +487,7 @@ async fn wait_for_gateway_management(
     Err("A3S Gateway management API did not become ready".into())
 }
 
+#[cfg(target_os = "linux")]
 async fn wait_for_http(
     client: &reqwest::Client,
     url: &str,
@@ -465,6 +510,14 @@ async fn wait_for_http(
     Err(format!("HTTP endpoint not ready ({url}): {last}").into())
 }
 
+#[cfg(target_os = "linux")]
+fn cloud_pin(relative: &str) -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join(relative)
+}
+
+#[cfg(target_os = "linux")]
 fn refuse_placeholder(value: &str) -> TestResult {
     if value.contains("PLACEHOLDER") {
         return Err(format!("refuse PLACEHOLDER value: {value}").into());
@@ -472,6 +525,7 @@ fn refuse_placeholder(value: &str) -> TestResult {
     Ok(())
 }
 
+#[cfg(target_os = "linux")]
 fn read_sidecar_revision(gateway_bin: &str) -> TestResult<String> {
     let bin = Path::new(gateway_bin);
     let sidecar = bin

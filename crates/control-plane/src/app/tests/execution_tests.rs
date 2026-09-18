@@ -290,8 +290,8 @@ async fn execution_template_api_is_acl_native_immutable_and_replay_safe() -> Res
 }
 
 #[tokio::test]
-async fn restricted_execution_boundaries_resolve_environment_before_detail_cancel_and_replay()
--> Result<()> {
+async fn restricted_execution_boundaries_resolve_environment_before_detail_cancel_and_replay(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let app = build_test_application(identity, projects)?;

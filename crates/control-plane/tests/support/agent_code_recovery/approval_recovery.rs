@@ -263,7 +263,7 @@ async fn decide_approval_across_reconnect(
         expected_version: scenario.checkpoint.aggregate_version,
         outcome,
         reason: Some(format!("{idempotency_key} by integration policy")),
-        access: AgentAccess::organization_wide(),
+        access: agent_organization_access_for_conformance(),
         actor_principal_id,
         credential_id: ApiTokenId::new(),
         idempotency_key: idempotency_key.into(),

@@ -7,7 +7,7 @@ use crate::modules::connectors::{
     ReserveConnectorExecutionAttempt,
 };
 use crate::modules::shared_kernel::domain::{
-    ConnectorProfileId, ConnectorRevisionId, canonical_timestamp,
+    canonical_timestamp, ConnectorProfileId, ConnectorRevisionId,
 };
 
 const CONNECTOR_TOKEN: &str =
@@ -370,11 +370,9 @@ async fn connector_profile_api_is_acl_native_scoped_revisioned_and_replay_safe()
         unresolved["data"]["attempts"][0]["recoveryState"],
         "indeterminate"
     );
-    assert!(
-        unresolved["data"]["attempts"][0]
-            .get("fenceToken")
-            .is_none()
-    );
+    assert!(unresolved["data"]["attempts"][0]
+        .get("fenceToken")
+        .is_none());
     assert_eq!(
         app.call(get_as(&attempt_path, CONNECTOR_READ_TOKEN))
             .await?

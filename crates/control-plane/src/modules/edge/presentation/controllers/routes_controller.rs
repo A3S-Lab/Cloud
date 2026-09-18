@@ -1,11 +1,10 @@
 use crate::modules::edge::application::PublishRoute;
 use crate::modules::edge::presentation::dto::{PublishRouteRequest, RoutePublicationResponse};
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::shared_kernel::domain::{
     DomainClaimId, EnvironmentId, GatewayScopeId, OrganizationId, ProjectId, WorkloadRevisionId,
 };
-use crate::presentation::application_error_response;
+use crate::presentation::{OrganizationTenantGuard, application_error_response};
 use a3s_boot::{
     controller, metadata, post, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, Result,

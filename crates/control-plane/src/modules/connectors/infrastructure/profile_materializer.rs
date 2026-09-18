@@ -117,7 +117,7 @@ mod tests {
         CreateSecretWrite, EncryptedSecretValue, Secret, SecretChanged, SecretEncryptionError,
         TransitionSecretVersion,
     };
-    use crate::modules::secrets::infrastructure::InMemorySecretRepository;
+    use crate::modules::secrets::InMemorySecretRepository;
     use crate::modules::shared_kernel::domain::{
         ConnectorProfileId, ConnectorRevisionId, EnvironmentId, IdempotencyRequest, OrganizationId,
         PrincipalId, ProjectId, ResourceName, SecretId,

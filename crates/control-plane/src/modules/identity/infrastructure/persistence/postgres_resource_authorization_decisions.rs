@@ -8,11 +8,73 @@ use crate::modules::identity::domain::repositories::IResourceAuthorizationDecisi
 use crate::modules::identity::domain::services::{
     ResourceAuthorizationDecision, ResourceAuthorizationDecisionRequest,
 };
-use crate::modules::identity::domain::value_objects::MembershipRole;
-use crate::modules::shared_kernel::domain::{AuthorizationDecisionRef, RepositoryError};
+use crate::modules::identity::domain::value_objects::{
+    DirectoryGrantSubjectKind, DirectoryGrantSubjectRef, MembershipRole, OidcIssuer,
+};
+use crate::modules::shared_kernel::domain::{
+    AuthorizationDecisionRef, OrganizationId, PrincipalId, RepositoryError,
+};
+use a3s_orm::{sql_query, DecodeError, FromRow, Row};
 use async_trait::async_trait;
 use chrono::Utc;
+use std::collections::{BTreeMap, BTreeSet};
 use uuid::Uuid;
+
+use super::postgres::decode_column;
+use super::postgres_directory_resource_grants::load_active_directory_resource_grants_for_organization;
+
+struct DirectoryMembershipSubjectRow {
+    subject_kind: String,
+    directory_issuer: String,
+    directory_subject_id: Uuid,
+}
+
+impl FromRow for DirectoryMembershipSubjectRow {
+    fn from_row(row: &impl Row) -> Result<Self, DecodeError> {
+        Ok(Self {
+            subject_kind: decode_column(row, 0)?,
+            directory_issuer: decode_column(row, 1)?,
+            directory_subject_id: decode_column(row, 2)?,
+        })
+    }
+}
+
+fn decode_subject(
+    row: DirectoryMembershipSubjectRow,
+) -> Result<DirectoryGrantSubjectRef, RepositoryError> {
+    let kind =
+        DirectoryGrantSubjectKind::parse(&row.subject_kind).map_err(RepositoryError::Storage)?;
+    let issuer = OidcIssuer::parse(row.directory_issuer).map_err(|error| {
+        RepositoryError::Storage(format!("stored directory issuer is invalid: {error}"))
+    })?;
+    Ok(DirectoryGrantSubjectRef::new(
+        kind,
+        issuer,
+        row.directory_subject_id,
+    ))
+}
+
+async fn load_subjects_for_principal(
+    transaction: &a3s_orm::PostgresTransaction,
+    organization_id: OrganizationId,
+    principal_id: PrincipalId,
+) -> Result<Vec<DirectoryGrantSubjectRef>, crate::infrastructure::PostgresPersistenceError> {
+    use crate::infrastructure::fetch_all;
+    fetch_all::<DirectoryMembershipSubjectRow, _>(
+        transaction,
+        sql_query::<DirectoryMembershipSubjectRow>(
+            "select subject_kind, directory_issuer, directory_subject_id from directory_membership_projections where organization_id = ",
+        )
+        .bind(organization_id.as_uuid())
+        .append(" and principal_id = ")
+        .bind(principal_id.as_uuid()),
+    )
+    .await?
+    .into_iter()
+    .map(decode_subject)
+    .collect::<Result<Vec<_>, _>>()
+    .map_err(Into::into)
+}
 
 #[async_trait]
 impl IResourceAuthorizationDecisionRepository for PostgresIdentityRepository {
@@ -60,12 +122,41 @@ impl IResourceAuthorizationDecisionRepository for PostgresIdentityRepository {
                         )
                     })?;
                     let grants = if membership.role == MembershipRole::Restricted {
-                        load_active_resource_grants_for_membership(
+                        let mut grants = load_active_resource_grants_for_membership(
                             transaction,
                             membership.organization_id,
                             membership.id,
                         )
-                        .await?
+                        .await?;
+                        let subjects = load_subjects_for_principal(
+                            transaction,
+                            membership.organization_id,
+                            membership.principal_id,
+                        )
+                        .await?;
+                        if !subjects.is_empty() {
+                            let subject_set = subjects.into_iter().collect::<BTreeSet<_>>();
+                            let directory_grants =
+                                load_active_directory_resource_grants_for_organization(
+                                    transaction,
+                                    membership.organization_id,
+                                )
+                                .await?;
+                            let mut by_id = grants
+                                .iter()
+                                .map(|grant| (grant.id, grant.clone()))
+                                .collect::<BTreeMap<_, _>>();
+                            for grant in directory_grants
+                                .into_iter()
+                                .filter(|grant| subject_set.contains(&grant.subject))
+                            {
+                                by_id.entry(grant.id).or_insert_with(|| {
+                                    grant.as_effective_membership_grant(membership.id)
+                                });
+                            }
+                            grants = by_id.into_values().collect();
+                        }
+                        grants
                     } else {
                         Vec::new()
                     };

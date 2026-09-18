@@ -1,5 +1,9 @@
 mod in_memory;
+mod in_memory_partner_artifact_admissions;
 mod postgres;
+mod postgres_partner_artifact_admissions;
 
 pub use in_memory::InMemoryBuildRunRepository;
+pub use in_memory_partner_artifact_admissions::InMemoryPartnerArtifactAdmissionRepository;
 pub use postgres::PostgresBuildRunRepository;
+pub use postgres_partner_artifact_admissions::PostgresPartnerArtifactAdmissionRepository;

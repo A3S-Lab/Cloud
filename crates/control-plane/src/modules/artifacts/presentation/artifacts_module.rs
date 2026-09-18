@@ -1,4 +1,7 @@
-use super::controllers::{build_run_commands_controller, build_run_queries_controller};
+use super::controllers::{
+    build_run_commands_controller, build_run_queries_controller,
+    partner_artifact_admission_controller,
+};
 use a3s_boot::{CommandBus, ControllerDefinition, Module, ModuleRef, QueryBus, Result};
 
 #[derive(Debug, Clone, Copy, Default)]
@@ -13,6 +16,10 @@ impl Module for ArtifactsModule {
         Ok(vec![
             build_run_commands_controller(module_ref.get::<CommandBus>()?)?,
             build_run_queries_controller(module_ref.get::<QueryBus>()?)?,
+            partner_artifact_admission_controller(
+                module_ref.get::<CommandBus>()?,
+                module_ref.get::<QueryBus>()?,
+            )?,
         ])
     }
 }

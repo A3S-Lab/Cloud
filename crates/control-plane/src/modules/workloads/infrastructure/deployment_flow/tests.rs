@@ -1,3 +1,6 @@
+use crate::modules::workloads::{
+    FleetWorkloadDeploymentNodeCommandAccessAdapter, IWorkloadDeploymentNodeCommandPort,
+};
 use super::{DeploymentFlowConfig, DeploymentFlowDependencies, DeploymentFlowRuntime};
 use crate::modules::edge::domain::events::GatewayScopeCreated;
 use crate::modules::edge::domain::repositories::{
@@ -1809,7 +1812,9 @@ async fn mutable_tag_is_resolved_once_and_replay_keeps_the_persisted_digest(
     let resolver = Arc::new(MovingArtifactResolver::new(first_digest.clone()));
     let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes.clone();
+    let control_port: Arc<dyn IWorkloadDeploymentNodeCommandPort> = Arc::new(
+        FleetWorkloadDeploymentNodeCommandAccessAdapter::new(nodes.clone()),
+    );
     let runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
             workload_port,
@@ -1903,7 +1908,7 @@ async fn resolving_step_lends_only_the_bound_registry_secret_reference_to_the_re
             Arc::new(InMemoryResourceClaimRepository::new()),
             resolver.clone(),
             nodes.clone(),
-            nodes,
+            Arc::new(FleetWorkloadDeploymentNodeCommandAccessAdapter::new(nodes)),
             Arc::new(crate::modules::workloads::domain::services::UnroutedDeploymentRouteUpdater),
         ),
         Duration::seconds(5),
@@ -3072,7 +3077,9 @@ async fn cancellation_while_artifact_resolution_retries_completes_without_a_runt
     let nodes = Arc::new(InMemoryNodeRepository::new());
     let workload_port: Arc<dyn IDeploymentFlowWorkloadRepository> = workloads.clone();
     let node_port: Arc<dyn INodeSchedulingRepository> = nodes.clone();
-    let control_port: Arc<dyn INodeControlRepository> = nodes;
+    let control_port: Arc<dyn IWorkloadDeploymentNodeCommandPort> = Arc::new(
+        FleetWorkloadDeploymentNodeCommandAccessAdapter::new(nodes),
+    );
     let runtime = DeploymentFlowRuntime::new(
         DeploymentFlowDependencies::new(
             workload_port,

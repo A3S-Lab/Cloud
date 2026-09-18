@@ -2,6 +2,7 @@ pub mod commands;
 pub mod queries;
 
 mod environment_access;
+mod execution_node_command_port;
 mod execution_cancellation;
 mod execution_creator;
 mod execution_operation_scheduler;
@@ -21,6 +22,11 @@ pub use commands::{
     CreateExecutionTemplateHandler, CreateExecutionTemplateResult,
 };
 pub use environment_access::{ExecutionsEnvironmentScope, IExecutionsEnvironmentAccess};
+pub use execution_node_command_port::{
+    ExecutionNodeCommandAcknowledgement, ExecutionNodeCommandDispatch,
+    ExecutionNodeCommandEnqueueRequest, ExecutionNodeCommandProjection,
+    ExecutionRuntimeObservationProjection, IExecutionNodeCommandPort,
+};
 pub use execution_operation_scheduler::{
     ExecutionOperationRequest, ExecutionOperationScheduleOutcome, IExecutionOperationScheduler,
 };

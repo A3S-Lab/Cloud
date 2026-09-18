@@ -8,8 +8,8 @@ const RESTRICTED_OPERATION_TOKEN: &str =
     "a3s_f444444444444444444444444444444444444444444444444444444444444444";
 
 #[tokio::test]
-async fn restricted_operation_feed_filters_rest_mcp_and_stream_snapshots_through_subject_owners()
--> Result<()> {
+async fn restricted_operation_feed_filters_rest_mcp_and_stream_snapshots_through_subject_owners(
+) -> Result<()> {
     let identity = Arc::new(InMemoryIdentityRepository::new());
     let projects = Arc::new(InMemoryProjectsRepository::new());
     let executions = Arc::new(InMemoryExecutionRepository::new());

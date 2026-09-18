@@ -4,15 +4,12 @@ mod placement_group_workflow_v2;
 mod previous_workflow;
 mod steps;
 mod stop_workflow;
-#[cfg(test)]
-mod tests;
 mod types;
 mod workflow;
 
 use crate::infrastructure::flow_step_retry_policy;
-use crate::modules::fleet::domain::repositories::{
-    INodeControlRepository, INodeSchedulingRepository,
-};
+use crate::modules::fleet::domain::repositories::INodeSchedulingRepository;
+use crate::modules::workloads::application::IWorkloadDeploymentNodeCommandPort;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, OrganizationId, RepositoryError, ResourceClaimId,
 };
@@ -112,7 +109,7 @@ pub struct DeploymentFlowRuntime {
     pub(super) resource_claims: Arc<dyn IResourceClaimRepository>,
     pub(super) artifacts: Arc<dyn IOciArtifactResolver>,
     pub(super) nodes: Arc<dyn INodeSchedulingRepository>,
-    pub(super) node_control: Arc<dyn INodeControlRepository>,
+    pub(super) node_commands: Arc<dyn IWorkloadDeploymentNodeCommandPort>,
     pub(super) route_updates: Arc<dyn IDeploymentRouteUpdater>,
     pub(super) prestart_gate: Arc<dyn IWorkloadPrestartGate>,
     pub(super) runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
@@ -126,7 +123,7 @@ pub struct DeploymentFlowDependencies {
     resource_claims: Arc<dyn IResourceClaimRepository>,
     artifacts: Arc<dyn IOciArtifactResolver>,
     nodes: Arc<dyn INodeSchedulingRepository>,
-    node_control: Arc<dyn INodeControlRepository>,
+    node_commands: Arc<dyn IWorkloadDeploymentNodeCommandPort>,
     route_updates: Arc<dyn IDeploymentRouteUpdater>,
     prestart_gate: Arc<dyn IWorkloadPrestartGate>,
     runtime_execution_admission: Arc<dyn IWorkloadRuntimeExecutionAdmissionPort>,
@@ -138,7 +135,7 @@ impl DeploymentFlowDependencies {
         resource_claims: Arc<dyn IResourceClaimRepository>,
         artifacts: Arc<dyn IOciArtifactResolver>,
         nodes: Arc<dyn INodeSchedulingRepository>,
-        node_control: Arc<dyn INodeControlRepository>,
+        node_commands: Arc<dyn IWorkloadDeploymentNodeCommandPort>,
         route_updates: Arc<dyn IDeploymentRouteUpdater>,
     ) -> Self {
         Self {
@@ -146,7 +143,7 @@ impl DeploymentFlowDependencies {
             resource_claims,
             artifacts,
             nodes,
-            node_control,
+            node_commands,
             route_updates,
             prestart_gate: Arc::new(UnrestrictedWorkloadPrestartGate),
             runtime_execution_admission: Arc::new(NoWorkloadRuntimeExecutionAdmission),
@@ -181,7 +178,7 @@ impl DeploymentFlowRuntime {
             resource_claims: dependencies.resource_claims,
             artifacts: dependencies.artifacts,
             nodes: dependencies.nodes,
-            node_control: dependencies.node_control,
+            node_commands: dependencies.node_commands,
             route_updates: dependencies.route_updates,
             prestart_gate: dependencies.prestart_gate,
             runtime_execution_admission: dependencies.runtime_execution_admission,
@@ -465,3 +462,6 @@ async fn cancel_database_reservation(
         )),
     }
 }
+
+#[cfg(test)]
+mod tests;

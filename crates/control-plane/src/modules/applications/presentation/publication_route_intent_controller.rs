@@ -17,13 +17,13 @@ use crate::modules::applications::domain::{
     ApplicationPublicationChannel, ApplicationPublicationRateShapingPolicyRef,
 };
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::application::ApplicationError;
 use crate::modules::shared_kernel::domain::{
     ApplicationId, ApplicationPublicationRouteIntentId, ApplicationReleaseId, OrganizationId,
     ProjectId, Sha256Digest,
 };
-use crate::presentation::{actor_principal_id, application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, actor_principal_id, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, BootRequest, BootResponse, CommandBus,
     ControllerDefinition, QueryBus, Result,

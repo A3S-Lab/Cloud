@@ -10,12 +10,12 @@ use crate::modules::applications::application::{
 };
 use crate::modules::applications::domain::ApplicationFeedbackRating;
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::{OrganizationTenantGuard, resource_access_evaluator};
 use crate::modules::shared_kernel::domain::{
     ApplicationAnnotationId, ApplicationFeedbackId, ApplicationId, ApplicationMessageId,
     ApplicationSessionId, OrganizationId, ProjectId,
 };
-use crate::presentation::{actor_principal_id, application_error_response, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, resource_access_evaluator, actor_principal_id, application_error_response, request_id};
 use a3s_boot::{
     controller, get, metadata, post, use_guard, BootError, BootRequest, BootResponse, CommandBus,
     ControllerDefinition, QueryBus, Result,

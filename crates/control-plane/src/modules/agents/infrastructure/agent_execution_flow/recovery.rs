@@ -1,8 +1,10 @@
 use super::runtime::{observe_pending, provider_command_payload_matches};
 use super::types::{DispatchedAgentExecution, ObserveOutput, PreparedAgentExecution};
 use super::{flow_error, AgentExecutionFlowRuntime};
+use crate::modules::agents::application::{
+    AgentExecutionNodeCommandEnqueueRequest, AgentExecutionNodeCommandProjection,
+};
 use crate::modules::agents::domain::{AgentCodeRunBinding, AgentExecution};
-use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::shared_kernel::domain::{AgentExecutionId, NodeCommandId};
 use a3s_cloud_contracts::{AgentProviderCommandV1, NodeCommandPayload, RuntimeServiceEndpoint};
 use a3s_flow::FlowError;
@@ -43,7 +45,7 @@ pub(super) async fn begin(
         runtime_started_at_ms: Some(process.started_at_ms),
     };
     let node_command = match runtime
-        .node_control
+        .node_commands
         .find_command(node_id, command_id)
         .await
         .map_err(|error| flow_error("could not reload A3S Code recovery command", error))?
@@ -57,8 +59,8 @@ pub(super) async fn begin(
                     FlowError::Runtime("A3S Code recovery command deadline overflowed".into())
                 })?;
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(AgentExecutionNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id,
                     aggregate_id: execution.id.as_uuid(),
@@ -79,7 +81,7 @@ pub(super) async fn begin(
                 })
                 .await
                 .map_err(|error| flow_error("could not enqueue A3S Code recovery command", error))?
-                .value
+                .command
         }
     };
     validate_command(
@@ -115,7 +117,7 @@ pub(super) async fn active_runtime_process(
     now: DateTime<Utc>,
 ) -> a3s_flow::Result<Option<ActiveRuntimeProcess>> {
     let observation = runtime
-        .node_control
+        .node_commands
         .latest_runtime_observation(
             binding.node_id(),
             binding.runtime_unit_id(),
@@ -208,7 +210,7 @@ pub(super) fn validate_command(
     prepared: &PreparedAgentExecution,
     checkpoint_run_id: &str,
     expected: &AgentProviderCommandV1,
-    command: &NodeCommand,
+    command: &AgentExecutionNodeCommandProjection,
 ) -> a3s_flow::Result<()> {
     if command.id != command_id(execution.id, checkpoint_run_id)
         || command.node_id != prepared.binding.node_id()

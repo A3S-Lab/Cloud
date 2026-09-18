@@ -1,5 +1,6 @@
 mod execution_flow;
 mod execution_operation_scheduler;
+mod fleet_execution_node_command_access;
 mod persistence;
 mod project_access;
 mod project_environment_access;
@@ -16,5 +17,6 @@ pub use persistence::{
     PostgresExecutionTemplateRepository,
 };
 pub use project_access::ProjectsExecutionsProjectAccessAdapter;
+pub use fleet_execution_node_command_access::FleetExecutionNodeCommandAccessAdapter;
 pub use project_environment_access::ProjectsExecutionsEnvironmentAccessAdapter;
 pub use task_spec::project_execution_task;

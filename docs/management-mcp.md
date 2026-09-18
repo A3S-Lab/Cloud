@@ -263,6 +263,16 @@ scopes control mutation tool visibility and invocation independently:
 | `a3s_cloud_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_partner_subject_links_link` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_partner_subject_links_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_partner_subject_links_resolve` | Member query | `cloud:read`; resolves an active partner SubjectLink for the organization |
+| `a3s_cloud_partner_subject_links_list` | Administrator query | `identity:write` plus organization administrator role; requires `principalId` |
+| `a3s_cloud_directory_resource_grants_list` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_directory_resource_grants_get` | Administrator query | `identity:write` plus organization administrator role |
+| `a3s_cloud_directory_resource_grants_create` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_directory_resource_grants_revoke` | Administrator command | `identity:write` plus organization administrator role |
+| `a3s_cloud_directory_membership_projections_list` | Administrator query | `identity:write` plus organization administrator role; exactly one of `subjectRef` or `principalId` |
+| `a3s_cloud_directory_membership_projections_replace` | Administrator command | `identity:write` plus organization administrator role |
 | `a3s_cloud_platform_role_policy_current_get` | Installation query | `cloud:read` plus exact `PlatformRolePolicyRead` decision |
 | `a3s_cloud_platform_role_policy_revisions_get` | Installation query | `cloud:read` plus exact `PlatformRolePolicyRead` decision |
 | `a3s_cloud_platform_role_policy_revisions_accept` | Installation command | `platform:write`; canonical ACL, predecessor CAS, and idempotency required |

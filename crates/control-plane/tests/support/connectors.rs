@@ -23,12 +23,14 @@ use a3s_cloud_control_plane::modules::connectors::{
     ReviseConnectorProfile, ReviseConnectorProfileHandler, ReviseConnectorProfileWrite,
     RevokeConnectorRevisionWrite, SettleConnectorExecutionAttempt,
 };
-use a3s_cloud_control_plane::modules::connectors::{ConnectorAccess, ConnectorAccessScope};
+use a3s_cloud_control_plane::modules::connectors::{
+    ConnectorAccess, ConnectorAccessScope, ProjectsConnectorsEnvironmentAccessAdapter,
+};
 use a3s_cloud_control_plane::modules::projects::PostgresProjectsRepository;
 use a3s_cloud_control_plane::modules::secrets::{
-    CreateSecretWrite, EncryptedSecretValue, ISecretEncryptionService, ISecretRepository,
-    PostgresSecretRepository, Secret, SecretChanged, SecretEncryptionError,
-    TransitionSecretVersion,
+    exact_secret_version_access, CreateSecretWrite, EncryptedSecretValue,
+    ISecretEncryptionService, ISecretRepository, PostgresSecretRepository, Secret,
+    SecretChanged, SecretEncryptionError, TransitionSecretVersion,
 };
 use a3s_cloud_control_plane::modules::shared_kernel::application::ApplicationError;
 use a3s_cloud_control_plane::modules::shared_kernel::domain::{
@@ -36,7 +38,7 @@ use a3s_cloud_control_plane::modules::shared_kernel::domain::{
     PrincipalId, ProjectId, RepositoryError, ResourceName, SecretId,
 };
 use chrono::Duration;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 pub(super) async fn exercise_connector_profile_persistence(
     url: String,
@@ -562,7 +564,11 @@ pub(super) async fn exercise_connector_application_and_materialization(
     let connectors = Arc::new(PostgresConnectorProfileRepository::new(executor.clone()));
     let projects = Arc::new(PostgresProjectsRepository::new(executor.clone()));
     let create_handler =
-        CreateConnectorProfileHandler::new(projects, connectors.clone(), secrets.clone());
+        CreateConnectorProfileHandler::new(
+            Arc::new(ProjectsConnectorsEnvironmentAccessAdapter::new(projects)),
+            connectors.clone(),
+            exact_secret_version_access(secrets.clone()),
+        );
     let create = CreateConnectorProfile {
         organization_id,
         project_id,
@@ -669,7 +675,10 @@ pub(super) async fn exercise_connector_application_and_materialization(
         Err(ApplicationError::Invalid(_))
     ));
 
-    let revise_handler = ReviseConnectorProfileHandler::new(connectors.clone(), secrets.clone());
+    let revise_handler = ReviseConnectorProfileHandler::new(
+        connectors.clone(),
+        exact_secret_version_access(secrets.clone()),
+    );
     let revise = ReviseConnectorProfile {
         organization_id,
         project_id,

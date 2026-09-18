@@ -1,9 +1,12 @@
 mod api_token_controller;
 mod bootstrap_controller;
+mod directory_membership_projection_controller;
+mod directory_resource_grant_controller;
 mod inference_key_controller;
 mod membership_controller;
 mod membership_invitation_controller;
 mod oidc_controller;
+mod partner_subject_link_controller;
 #[cfg(test)]
 mod enterprise_saml_oidc_scim_claim_path_tests;
 mod organization_controller;
@@ -14,6 +17,8 @@ mod resource_grant_controller;
 
 pub use api_token_controller::api_token_controller;
 pub use bootstrap_controller::bootstrap_controller;
+pub use directory_membership_projection_controller::directory_membership_projection_controller;
+pub use directory_resource_grant_controller::directory_resource_grant_controller;
 pub use inference_key_controller::{
     inference_key_commands_controller, inference_key_queries_controller,
 };
@@ -23,6 +28,10 @@ pub use membership_invitation_controller::{
     membership_invitation_self_query_controller,
 };
 pub use oidc_controller::{oidc_link_controller, oidc_public_controller};
+pub use partner_subject_link_controller::{
+    partner_subject_link_admin_queries_controller, partner_subject_link_commands_controller,
+    partner_subject_link_queries_controller,
+};
 pub use organization_controller::organization_controller;
 pub use organizations_query_controller::organizations_query_controller;
 pub use privileged_management_controller::{

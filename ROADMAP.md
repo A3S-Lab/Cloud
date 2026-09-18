@@ -20,7 +20,7 @@ portfolio matrix as one Definition of Done.
 | This `ROADMAP.md` | Product outcomes, portfolio ordering, public gate status, and cross-product ownership |
 | [Architecture optimization and execution roadmap](docs/architecture-optimization-roadmap.md) | Pragmatic critical path (GA-0…), delivery profiles, dual-track I0, and near-term Cloud-only backlog |
 | [GA-0 / BX0.software checklist](docs/ga0-bx0-software-checklist.md) | Operator sequence and engineering backlog for the first software EXIT (**Verified `2026-09-17`**) |
-| [GA-1 / Code-path Agent availability checklist](docs/ga1-agent-availability-checklist.md) | Narrow AaaS availability after `BX0.software`; first gap is A0.4 pin re-bind |
+| [GA-1 / Code-path Agent availability checklist](docs/ga1-agent-availability-checklist.md) | Narrow AaaS availability after `BX0.software`; phase-2b code landed, CERTIFIED awaits retained LIVE smoke |
 | [Ecosystem project roadmaps](docs/project-roadmaps/README.md) | Mission, ordered outcomes, dependencies, exit evidence, and negative boundary for every A3S subproject |
 | [Cloud substrate dependency roadmap](../../docs/cloud-substrate-dependency-roadmap.md) | Monorepo index of Wave 1–3 crate obligations aligned to Cloud gates |
 | [Platform completeness review](docs/platform-gap-analysis.md) | Structural gaps versus delivery gaps, priority, owner, and proposed closure gates |

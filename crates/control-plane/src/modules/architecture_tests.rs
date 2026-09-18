@@ -9,48 +9,6 @@ use std::path::{Path, PathBuf};
 fn cross_context_outer_layer_debt_can_only_shrink() {
     let allowed = lines(
         r#"
-agents/presentation/controllers/agent_commands_controller.rs -> identity/presentation
-agents/presentation/controllers/agent_queries_controller.rs -> identity/presentation
-applications/presentation/controller.rs -> identity/presentation
-applications/presentation/delivery_controller.rs -> identity/presentation
-audit/presentation/controller.rs -> identity/presentation
-connectors/presentation/controller.rs -> identity/presentation
-durable_cells/presentation/controller.rs -> identity/presentation
-durable_cells/presentation/deployment_admission.rs -> workloads/presentation
-edge/presentation/controllers/domain_claim_commands_controller.rs -> identity/presentation
-edge/presentation/controllers/domain_claim_queries_controller.rs -> identity/presentation
-edge/presentation/controllers/gateway_scope_commands_controller.rs -> identity/presentation
-edge/presentation/controllers/gateway_scope_queries_controller.rs -> identity/presentation
-edge/presentation/controllers/mcp_credential_commands_controller.rs -> identity/presentation
-edge/presentation/controllers/mcp_credential_queries_controller.rs -> identity/presentation
-edge/presentation/controllers/mcp_route_policy_commands_controller.rs -> identity/presentation
-edge/presentation/controllers/mcp_route_policy_queries_controller.rs -> identity/presentation
-edge/presentation/controllers/route_queries_controller.rs -> identity/presentation
-edge/presentation/controllers/routes_controller.rs -> identity/presentation
-executions/presentation/controllers/execution_commands_controller.rs -> identity/presentation
-executions/presentation/controllers/execution_queries_controller.rs -> identity/presentation
-fleet/presentation/controllers/node_management_controller.rs -> identity/presentation
-fleet/presentation/controllers/node_pool_management_controller.rs -> identity/presentation
-fleet/presentation/controllers/node_pool_queries_controller.rs -> identity/presentation
-fleet/presentation/controllers/node_queries_controller.rs -> identity/presentation
-inference/presentation/inference_route_commands_controller.rs -> identity/presentation
-inference/presentation/inference_route_queries_controller.rs -> identity/presentation
-inference/presentation/usage_queries_controller.rs -> identity/presentation
-inference/presentation/usage_retention_controller.rs -> identity/presentation
-notifications/presentation/controller.rs -> identity/presentation
-operations/presentation/controllers/operations_query_controller.rs -> identity/presentation
-projects/presentation/controllers/project_queries_controller.rs -> identity/presentation
-projects/presentation/controllers/projects_controller.rs -> identity/presentation
-sources/presentation/controllers/github_connections_controller.rs -> identity/presentation
-sources/presentation/controllers/github_repository_subscription_queries_controller.rs -> identity/presentation
-sources/presentation/controllers/github_repository_subscriptions_controller.rs -> identity/presentation
-sources/presentation/controllers/source_revision_queries_controller.rs -> identity/presentation
-sources/presentation/controllers/source_revisions_controller.rs -> identity/presentation
-workflow/presentation/controllers/ontology_commands_controller.rs -> identity/presentation
-workflow/presentation/controllers/ontology_queries_controller.rs -> identity/presentation
-workflow/presentation/controllers/request.rs -> identity/presentation
-workflow/presentation/controllers/workflow_commands_controller.rs -> identity/presentation
-workflow/presentation/controllers/workflow_queries_controller.rs -> identity/presentation
 "#,
     );
     let actual = foreign_outer_layer_sites();
@@ -1092,11 +1050,25 @@ fn durable_cells_deployment_acl_keeps_data_materialization_at_the_inbound_edge()
         "DurableCellStorageCredentialRequest::new",
         "DurableCellStorageRetentionPolicyRequest::new",
         "DurableCellStorageRetentionPolicySpec",
-        "DurableCellWorkloadTemplate::from_serializable",
+        "Arc<dyn IDurableCellProviderWorkloadAclPort>",
+        ".admit(",
+        "DurableCellProviderWorkloadAclRequest::new",
     ] {
         assert!(
             admission.contains(required),
             "Durable Cell inbound admission lost bounded owner translation {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::workloads",
+        "parse_workload_manifest",
+        "WorkloadManifest",
+        "IOciArtifactResolver",
+        "DurableCellWorkloadTemplate::from_serializable",
+    ] {
+        assert!(
+            !admission.contains(forbidden),
+            "Durable Cell inbound admission regained Workloads presentation authority {forbidden}"
         );
     }
     assert!(!application.contains("crate::modules::data"));
@@ -1105,6 +1077,75 @@ fn durable_cells_deployment_acl_keeps_data_materialization_at_the_inbound_edge()
     assert!(!application.contains("ObjectNamespaceCredentialBinding"));
     assert!(!application.contains("ObjectNamespaceRetentionPolicy"));
     assert!(!binding.contains("bind_scope("));
+}
+
+#[test]
+fn durable_cells_provider_workload_acl_crosses_one_consumer_owned_port() {
+    let admission = std::fs::read_to_string(
+        module_root().join("durable_cells/presentation/deployment_admission.rs"),
+    )
+    .expect("read Durable Cells deployment ACL admission");
+    let port = std::fs::read_to_string(
+        module_root().join("durable_cells/application/provider_workload_acl_port.rs"),
+    )
+    .expect("read Durable Cells provider-workload ACL port");
+    let adapter = std::fs::read_to_string(
+        module_root().join("durable_cells/infrastructure/workloads_provider_acl.rs"),
+    )
+    .expect("read Durable Cells Workloads provider-workload ACL adapter");
+
+    let admission = production_source(&admission);
+    let port = production_source(&port);
+    let adapter = production_source(&adapter);
+    assert!(admission.contains("Arc<dyn IDurableCellProviderWorkloadAclPort>"));
+    assert!(admission.contains(".admit("));
+    assert!(!admission.contains("crate::modules::workloads"));
+    assert!(!port.contains("crate::modules::workloads"));
+    assert!(!port.contains("parse_workload_manifest"));
+    for required in [
+        "pub struct DurableCellProviderWorkloadAclRequest",
+        "pub struct DurableCellProviderWorkloadAdmission",
+        "pub trait IDurableCellProviderWorkloadAclPort",
+        "DurableCellWorkloadTemplate",
+    ] {
+        assert!(
+            port.contains(required),
+            "Durable Cells provider-workload ACL port lost {required}"
+        );
+    }
+    for required in [
+        "impl IDurableCellProviderWorkloadAclPort",
+        "parse_workload_manifest",
+        "IOciArtifactResolver",
+        "DurableCellWorkloadTemplate::from_serializable",
+        "crate::modules::workloads::application::",
+    ] {
+        assert!(
+            adapter.contains(required),
+            "Durable Cells Workloads provider-workload ACL adapter lost owner translation {required}"
+        );
+    }
+    assert!(
+        !adapter.contains("crate::modules::workloads::presentation"),
+        "Durable Cells provider-workload ACL adapter must not import Workloads presentation"
+    );
+
+    let mut workloads_presentation_sites = BTreeSet::new();
+    visit_production_sources(|relative, source| {
+        if context(relative) == Some("durable_cells")
+            && source.contains("crate::modules::workloads::presentation")
+        {
+            workloads_presentation_sites.insert(display(relative));
+        }
+    });
+    assert!(
+        workloads_presentation_sites.is_empty(),
+        "Durable Cells regained Workloads presentation imports:\n{}",
+        workloads_presentation_sites
+            .into_iter()
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
 }
 
 #[test]
@@ -13193,8 +13234,6 @@ applications -> presentation
 artifacts -> infrastructure
 assets -> infrastructure
 assets -> presentation
-audit -> infrastructure
-audit -> presentation
 connectors -> infrastructure
 connectors -> presentation
 developer_workflows -> infrastructure
@@ -13208,16 +13247,12 @@ identity -> infrastructure
 identity -> presentation
 integration_events -> infrastructure
 integration_events -> presentation
-notifications -> infrastructure
-notifications -> presentation
 operations -> infrastructure
 operations -> presentation
 plugins -> infrastructure
 plugins -> presentation
 projects -> infrastructure
 projects -> presentation
-secrets -> infrastructure
-secrets -> presentation
 sources -> infrastructure
 sources -> presentation
 workflow -> infrastructure
@@ -13988,6 +14023,579 @@ fn edge_deployment_route_updater_isolates_fleet_observations_behind_one_owner_po
         1,
         "root composition must construct the Edge Runtime observation ACA exactly once"
     );
+}
+
+#[test]
+fn agents_execution_flow_isolates_fleet_node_commands_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("agents/application/agent_execution_node_command_port.rs"),
+    )
+    .expect("read Agents AgentExecution node-command port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructAgentExecutionNodeCommandProjection",
+        "pubstructAgentExecutionNodeCommandEnqueueRequest",
+        "pubstructAgentExecutionNodeCommandDispatch",
+        "pubstructAgentExecutionNodeCommandAcknowledgement",
+        "pubstructAgentExecutionRuntimeObservationProjection",
+        "pubtraitIAgentExecutionNodeCommandPort:Send+Sync",
+        "asyncfnenqueue_command(",
+        "asyncfnfind_command(",
+        "asyncfncommand_acknowledgement(",
+        "asyncfnlatest_runtime_observation(",
+        "pubnode_id:NodeId,",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Agents lost its narrow Fleet node-command boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "NodeCommandDraft",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Agents node-command port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "agents/infrastructure/agent_execution_flow/mod.rs",
+        "agents/infrastructure/agent_execution_flow/runtime.rs",
+        "agents/infrastructure/agent_execution_flow/approval.rs",
+        "agents/infrastructure/agent_execution_flow/recovery.rs",
+        "agents/infrastructure/agent_execution_flow/binding.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IAgentExecutionNodeCommandPort")
+                || production.contains("node_commands"),
+            "{relative} lost Agents-owned node-command port wiring"
+        );
+        for forbidden in [
+            "INodeControlRepository",
+            "crate::modules::fleet",
+            "NodeCommandDraft",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("agents/infrastructure/fleet_agent_execution_node_command_access.rs"),
+    )
+    .expect("read Agents Fleet node-command ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetAgentExecutionNodeCommandAccessAdapter",
+        "INodeControlRepository",
+        "impl IAgentExecutionNodeCommandPort for FleetAgentExecutionNodeCommandAccessAdapter",
+        "NodeCommandDraft",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Agents Fleet node-command ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Agents Fleet node-command ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetAgentExecutionNodeCommandAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Agents Fleet node-command ACA exactly once"
+    );
+}
+
+
+#[test]
+fn executions_execution_flow_isolates_fleet_node_commands_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("executions/application/execution_node_command_port.rs"),
+    )
+    .expect("read Executions Execution node-command port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructExecutionNodeCommandProjection",
+        "pubstructExecutionNodeCommandEnqueueRequest",
+        "pubstructExecutionNodeCommandDispatch",
+        "pubstructExecutionNodeCommandAcknowledgement",
+        "pubstructExecutionRuntimeObservationProjection",
+        "pubtraitIExecutionNodeCommandPort:Send+Sync",
+        "asyncfnenqueue_command(",
+        "asyncfnfind_command(",
+        "asyncfncommand_acknowledgement(",
+        "asyncfnlatest_runtime_observation(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Executions lost its narrow Fleet node-command boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "NodeCommandDraft",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Executions node-command port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "executions/infrastructure/execution_flow/mod.rs",
+        "executions/infrastructure/execution_flow/runtime.rs",
+        "executions/infrastructure/execution_flow/cleanup.rs",
+        "executions/infrastructure/execution_flow/validation.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IExecutionNodeCommandPort")
+                || production.contains("node_commands")
+                || production.contains("ExecutionNodeCommandProjection")
+                || production.contains("ExecutionNodeCommandEnqueueRequest"),
+            "{relative} lost Executions-owned node-command port wiring"
+        );
+        for forbidden in ["INodeControlRepository", "NodeCommandDraft"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("executions/infrastructure/fleet_execution_node_command_access.rs"),
+    )
+    .expect("read Executions Fleet node-command ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetExecutionNodeCommandAccessAdapter",
+        "INodeControlRepository",
+        "impl IExecutionNodeCommandPort for FleetExecutionNodeCommandAccessAdapter",
+        "NodeCommandDraft",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Executions Fleet node-command ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Executions Fleet node-command ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetExecutionNodeCommandAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Executions Fleet node-command ACA exactly once"
+    );
+}
+
+
+#[test]
+fn plugins_assignment_flow_isolates_fleet_node_commands_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("plugins/application/plugin_assignment_node_command_port.rs"),
+    )
+    .expect("read Plugins Plugin Assignment node-command port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructPluginAssignmentNodeCommandProjection",
+        "pubstructPluginAssignmentNodeCommandEnqueueRequest",
+        "pubstructPluginAssignmentNodeCommandDispatch",
+        "pubstructPluginAssignmentNodeCommandAcknowledgement",
+        "pubtraitIPluginAssignmentNodeCommandPort:Send+Sync",
+        "asyncfnenqueue_command(",
+        "asyncfnfind_command(",
+        "asyncfncommand_acknowledgement(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Plugins lost its narrow Fleet node-command boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "NodeCommandDraft",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Plugins node-command port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "plugins/infrastructure/plugin_assignment_flow/mod.rs",
+        "plugins/infrastructure/plugin_assignment_flow/resolve_host.rs",
+        "plugins/infrastructure/plugin_assignment_flow/authorize_trust.rs",
+        "plugins/infrastructure/plugin_assignment_flow/enqueue_plan.rs",
+        "plugins/infrastructure/plugin_assignment_flow/enqueue_apply.rs",
+        "plugins/infrastructure/plugin_assignment_flow/observe.rs",
+        "plugins/infrastructure/plugin_assignment_flow/store_plan.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IPluginAssignmentNodeCommandPort")
+                || production.contains("node_commands")
+                || production.contains("PluginAssignmentNodeCommandEnqueueRequest"),
+            "{relative} lost Plugins-owned node-command port wiring"
+        );
+        for forbidden in ["INodeControlRepository", "NodeCommandDraft"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("plugins/infrastructure/fleet_plugin_assignment_node_command_access.rs"),
+    )
+    .expect("read Plugins Fleet node-command ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetPluginAssignmentNodeCommandAccessAdapter",
+        "INodeControlRepository",
+        "impl IPluginAssignmentNodeCommandPort for FleetPluginAssignmentNodeCommandAccessAdapter",
+        "NodeCommandDraft",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Plugins Fleet node-command ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Plugins Fleet node-command ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetPluginAssignmentNodeCommandAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Plugins Fleet node-command ACA exactly once"
+    );
+}
+
+#[test]
+fn artifacts_build_flow_isolates_fleet_node_commands_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("artifacts/application/artifact_build_node_command_port.rs"),
+    )
+    .expect("read Artifacts Build Flow node-command port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructArtifactBuildNodeCommandProjection",
+        "pubstructArtifactBuildNodeCommandEnqueueRequest",
+        "pubstructArtifactBuildNodeCommandDispatch",
+        "pubstructArtifactBuildNodeCommandAcknowledgement",
+        "pubtraitIArtifactBuildNodeCommandPort:Send+Sync",
+        "asyncfnenqueue_command(",
+        "asyncfnfind_command(",
+        "asyncfncommand_acknowledgement(",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Artifacts lost its narrow Fleet node-command boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "NodeCommandDraft",
+        "RuntimeObservationRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Artifacts node-command port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "artifacts/infrastructure/build_flow/mod.rs",
+        "artifacts/infrastructure/build_flow/steps/box_execution.rs",
+        "artifacts/infrastructure/build_flow/steps/cleanup.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IArtifactBuildNodeCommandPort")
+                || production.contains("node_commands")
+                || production.contains("ArtifactBuildNodeCommandEnqueueRequest"),
+            "{relative} lost Artifacts-owned node-command port wiring"
+        );
+        for forbidden in ["INodeControlRepository", "NodeCommandDraft"] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("artifacts/infrastructure/fleet_artifact_build_node_command_access.rs"),
+    )
+    .expect("read Artifacts Fleet node-command ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetArtifactBuildNodeCommandAccessAdapter",
+        "INodeControlRepository",
+        "impl IArtifactBuildNodeCommandPort for FleetArtifactBuildNodeCommandAccessAdapter",
+        "NodeCommandDraft",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Artifacts Fleet node-command ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Artifacts Fleet node-command ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetArtifactBuildNodeCommandAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Artifacts Fleet node-command ACA exactly once"
+    );
+}
+
+#[test]
+fn workloads_deployment_flow_isolates_fleet_node_commands_behind_one_owner_port() {
+    let root = module_root();
+
+    let port = std::fs::read_to_string(
+        root.join("workloads/application/workload_deployment_node_command_port.rs"),
+    )
+    .expect("read Workloads Deployment Flow node-command port");
+    let compact_port = production_source(&port)
+        .split_whitespace()
+        .collect::<String>();
+    for required in [
+        "pubstructWorkloadDeploymentNodeCommandProjection",
+        "pubstructWorkloadDeploymentNodeCommandEnqueueRequest",
+        "pubstructWorkloadDeploymentNodeCommandDispatch",
+        "pubstructWorkloadDeploymentNodeCommandAcknowledgement",
+        "pubstructWorkloadDeploymentRuntimeObservationProjection",
+        "pubstructWorkloadDeploymentResourceInventoryProjection",
+        "pubtraitIWorkloadDeploymentNodeCommandPort:Send+Sync",
+        "asyncfnenqueue_command(",
+        "asyncfnfind_command(",
+        "asyncfncommand_acknowledgement(",
+        "asyncfnlatest_runtime_observation(",
+        "asyncfncurrent_resource_inventory(",
+        "pubreport_id:Uuid",
+        "pubsequence:u64",
+        "publease_id:Uuid",
+    ] {
+        assert!(
+            compact_port.contains(required),
+            "Workloads lost its narrow Fleet node-command boundary {required}"
+        );
+    }
+    for forbidden in [
+        "crate::modules::fleet",
+        "INodeControlRepository",
+        "NodeCommandDraft",
+        "RuntimeObservationRecord",
+        "NodeResourceInventoryRecord",
+    ] {
+        assert!(
+            !production_source(&port).contains(forbidden),
+            "Workloads node-command port leaked Fleet authority {forbidden}"
+        );
+    }
+
+    for relative in [
+        "workloads/infrastructure/deployment_flow/mod.rs",
+        "workloads/infrastructure/deployment_flow/steps.rs",
+        "workloads/infrastructure/deployment_flow/stop_workflow.rs",
+        "workloads/infrastructure/deployment_flow/placement_group_workflow_v2.rs",
+        "workloads/infrastructure/deployment_flow/steps/cleanup.rs",
+        "workloads/infrastructure/deployment_flow/steps/retirement.rs",
+        "workloads/infrastructure/deployment_flow/steps/resource_claims.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IWorkloadDeploymentNodeCommandPort")
+                || production.contains("node_commands")
+                || production.contains("WorkloadDeploymentNodeCommandEnqueueRequest"),
+            "{relative} lost Workloads-owned node-command port wiring"
+        );
+        for forbidden in [
+            "INodeControlRepository",
+            "NodeCommandDraft",
+            "RuntimeObservationRecord",
+            "NodeResourceInventoryRecord",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+    }
+
+    let adapter = std::fs::read_to_string(
+        root.join("workloads/infrastructure/fleet_workload_deployment_node_command_access.rs"),
+    )
+    .expect("read Workloads Fleet node-command ACA");
+    let production_adapter = production_source(&adapter);
+    for required in [
+        "pub struct FleetWorkloadDeploymentNodeCommandAccessAdapter",
+        "INodeControlRepository",
+        "impl IWorkloadDeploymentNodeCommandPort for FleetWorkloadDeploymentNodeCommandAccessAdapter",
+        "NodeCommandDraft",
+        "current_resource_inventory",
+        "latest_runtime_observation",
+        "sequence:",
+        "lease_id:",
+    ] {
+        assert!(
+            production_adapter.contains(required),
+            "Workloads Fleet node-command ACA lost quarantine surface {required}"
+        );
+    }
+    for forbidden in [
+        "Postgres",
+        "InMemory",
+        "IOutboxRepository",
+        "CommandHandler",
+        "tokio::spawn",
+    ] {
+        assert!(
+            !production_adapter.contains(forbidden),
+            "Workloads Fleet node-command ACA introduced concrete state or lifecycle {forbidden}"
+        );
+    }
+
+    let app = std::fs::read_to_string(root.parent().expect("src directory").join("app.rs"))
+        .expect("read root composition");
+    let production_app = production_source(&app);
+    assert_eq!(
+        production_app
+            .matches("FleetWorkloadDeploymentNodeCommandAccessAdapter::new(")
+            .count(),
+        1,
+        "root composition must construct the Workloads Fleet node-command ACA exactly once"
+    );
+
+    for relative in [
+        "workloads/infrastructure/reconciliation/mod.rs",
+        "workloads/infrastructure/replica_retirement_reconciliation.rs",
+    ] {
+        let source = std::fs::read_to_string(root.join(relative))
+            .unwrap_or_else(|error| panic!("read {relative}: {error}"));
+        let production = production_source(&source);
+        assert!(
+            production.contains("IWorkloadDeploymentNodeCommandPort")
+                || production.contains("IWorkloadRuntimeControl")
+                || production.contains("WorkloadDeploymentNodeCommandEnqueueRequest"),
+            "{relative} lost Workloads-owned node-command port wiring"
+        );
+        for forbidden in [
+            "INodeControlRepository",
+            "NodeCommandDraft",
+            "RuntimeObservationRecord",
+        ] {
+            assert!(
+                !production.contains(forbidden),
+                "{relative} regained Fleet repository authority {forbidden}"
+            );
+        }
+        assert!(
+            !production.contains("use crate::modules::fleet::domain::entities::{NodeCommand"),
+            "{relative} regained Fleet NodeCommand entity import"
+        );
+    }
 }
 
 #[test]

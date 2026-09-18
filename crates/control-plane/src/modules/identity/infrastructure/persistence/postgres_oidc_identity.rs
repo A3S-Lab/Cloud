@@ -78,7 +78,7 @@ fn decode_flow(row: OidcFlowRow) -> Result<OidcFlow, RepositoryError> {
     })
 }
 
-struct ExternalIdentityLinkRow {
+pub(super) struct ExternalIdentityLinkRow {
     id: Uuid,
     provider_key: String,
     issuer: String,
@@ -106,7 +106,7 @@ impl FromRow for ExternalIdentityLinkRow {
     }
 }
 
-fn decode_link(row: ExternalIdentityLinkRow) -> Result<ExternalIdentityLink, RepositoryError> {
+pub(super) fn decode_link(row: ExternalIdentityLinkRow) -> Result<ExternalIdentityLink, RepositoryError> {
     Ok(ExternalIdentityLink {
         id: ExternalIdentityLinkId::from_uuid(row.id),
         provider_key: OidcProviderKey::parse(row.provider_key).map_err(stored("provider key"))?,
@@ -128,7 +128,7 @@ fn flow_select() -> &'static str {
     "select id, organization_id, provider_key, issuer, provider_config_digest, purpose, principal_id, state_digest, nonce_digest, pkce_verifier_digest, created_at, expires_at, consumed_at from oidc_flows"
 }
 
-fn link_select() -> &'static str {
+pub(super) fn link_select() -> &'static str {
     "select id, provider_key, issuer, subject, principal_id, aggregate_version, created_at, last_verified_at, revoked_at from external_identity_links"
 }
 
@@ -179,7 +179,7 @@ async fn consume_flow(
     Ok(())
 }
 
-async fn load_exact_link_for_update(
+pub(super) async fn load_exact_link_for_update(
     transaction: &a3s_orm::PostgresTransaction,
     issuer: &OidcIssuer,
     subject: &ExternalIdentitySubject,
@@ -199,7 +199,7 @@ async fn load_exact_link_for_update(
     .map_err(Into::into)
 }
 
-async fn insert_link(
+pub(super) async fn insert_link(
     transaction: &a3s_orm::PostgresTransaction,
     link: &ExternalIdentityLink,
 ) -> Result<(), PostgresPersistenceError> {

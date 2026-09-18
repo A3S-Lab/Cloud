@@ -1,5 +1,4 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::plugins::application::{
     ConfirmPluginPlanProjection, GetPluginPlanProjection,
 };
@@ -7,7 +6,8 @@ use crate::modules::plugins::presentation::dto::{
     ConfirmPluginPlanProjectionRequest, PluginPlanProjectionResponse,
 };
 use crate::modules::shared_kernel::domain::{OrganizationId, PluginPlanProjectionId};
-use crate::presentation::{application_error_response, request_identity, request_id};
+use crate::presentation::{
+    OrganizationTenantGuard, application_error_response, request_identity, request_id};
 use a3s_boot::{
     controller, get, metadata, put, use_guard, AUTH_SCOPES_METADATA, BootRequest, BootResponse,
     CommandBus, ControllerDefinition, QueryBus, Result,

@@ -1,5 +1,4 @@
 use crate::modules::identity::domain::value_objects::ApiTokenScope;
-use crate::modules::identity::presentation::OrganizationTenantGuard;
 use crate::modules::plugins::application::{
     GetPluginAssignment, ListPluginAssignments, SetPluginAssignment,
 };
@@ -11,6 +10,7 @@ use crate::modules::shared_kernel::domain::{
     EnvironmentId, OrganizationId, PluginAssignmentId, PluginRegistryId, ProjectId, Sha256Digest,
 };
 use crate::presentation::{
+    OrganizationTenantGuard, 
     actor_principal_id, application_error_response, plugin_access, request_id, request_identity,
     resource_access_evaluator,
 };

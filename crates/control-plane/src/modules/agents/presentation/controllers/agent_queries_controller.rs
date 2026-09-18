@@ -12,15 +12,12 @@ use crate::modules::agents::presentation::dto::{
     AgentExecutionCheckpointResponse, AgentExecutionCheckpointSnapshotResponse,
     AgentExecutionEventPageResponse, AgentExecutionResponse, AgentExecutionTrajectoryPageResponse,
 };
-use crate::modules::identity::presentation::{
-    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator,
-    with_deferred_resource_scope,
-};
 use crate::modules::shared_kernel::domain::{
     AgentApprovalCheckpointId, AgentConversationId, AgentExecutionCheckpointId, AgentExecutionId,
     EnvironmentId, OrganizationId, ProjectId,
 };
 use crate::presentation::{
+    DeferredResourceScope, OrganizationTenantGuard, resource_access_evaluator, with_deferred_resource_scope, 
     MAX_LIVE_SEQUENCE_RECORDS, application_error_response, decode_sequence_cursor,
     default_live_sequence_limit, resolve_sequence_cursor, sequence_stream_error,
     stream_sequence_pages,

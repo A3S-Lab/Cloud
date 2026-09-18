@@ -1,6 +1,6 @@
 use super::types::{ResolveHostInput, ResolveHostOutput, ResolvedHost};
 use super::PluginAssignmentFlowRuntime;
-use crate::modules::fleet::domain::entities::NodeCommandDraft;
+use crate::modules::plugins::application::PluginAssignmentNodeCommandEnqueueRequest;
 use crate::modules::fleet::domain::value_objects::NodeState;
 use crate::modules::shared_kernel::domain::{NodeCommandId, RepositoryError};
 use a3s_cloud_contracts::{
@@ -88,7 +88,7 @@ pub(super) async fn resolve_host(
     // Reuse an existing inspect command across Flow polls. Re-issuing with a
     // fresh issued_at/not_after is rejected as command-id reuse with different input.
     let command = match runtime
-        .node_control
+        .node_commands
         .find_command(locked.target_host_id, command_id)
         .await
         .map_err(|error| {
@@ -109,8 +109,8 @@ pub(super) async fn resolve_host(
                     .map_err(|error| FlowError::Runtime(error))?,
             };
             runtime
-                .node_control
-                .enqueue_command(NodeCommandDraft {
+                .node_commands
+                .enqueue_command(PluginAssignmentNodeCommandEnqueueRequest {
                     proposed_command_id: command_id,
                     node_id: locked.target_host_id,
                     aggregate_id: locked.assignment_id.as_uuid(),
@@ -125,7 +125,7 @@ pub(super) async fn resolve_host(
                         "could not enqueue Plugin Host capabilities inspect: {error}"
                     ))
                 })?
-                .value
+                .command
         }
     };
     if command.id != command_id
@@ -139,7 +139,7 @@ pub(super) async fn resolve_host(
     }
 
     let Some(acknowledgement) = runtime
-        .node_control
+        .node_commands
         .command_acknowledgement(locked.target_host_id, command_id)
         .await
         .map_err(|error| {

@@ -1,10 +1,17 @@
 use super::*;
+use crate::modules::fleet::domain::entities::{NodeCommand, NodeCommandDraft};
 use crate::modules::fleet::domain::repositories::RuntimeObservationRecord;
 use crate::modules::shared_kernel::domain::{
     DeploymentId, EnvironmentId, NodeId, OperationId, OrganizationId, ProjectId, RepositoryError,
     ResourceName, WorkloadId, WorkloadRevisionId,
 };
-use crate::modules::workloads::application::project_replica_runtime_spec;
+use crate::modules::workloads::application::{
+    project_replica_runtime_spec, IWorkloadDeploymentNodeCommandPort,
+    WorkloadDeploymentNodeCommandAcknowledgement, WorkloadDeploymentNodeCommandDispatch,
+    WorkloadDeploymentNodeCommandEnqueueRequest, WorkloadDeploymentNodeCommandProjection,
+    WorkloadDeploymentResourceInventoryProjection,
+    WorkloadDeploymentRuntimeObservationProjection,
+};
 use crate::modules::workloads::domain::entities::{
     CompiledResourceRequirements, Deployment, DeploymentReplicaBinding, HttpHealthCheck,
     OciArtifact, ResourceClaimBindingEvidence, ResourceClaimReservation, ServicePort,
@@ -12,7 +19,7 @@ use crate::modules::workloads::domain::entities::{
     WorkloadReplicaMember, WorkloadRevision,
 };
 use a3s_cloud_contracts::{
-    NodeCommandFailure, NodeCommandResult, NodeResourceClaimPrepare, NodeResourceInventory,
+    NodeCommandAck, NodeCommandFailure, NodeCommandResult, NodeResourceClaimPrepare, NodeResourceInventory,
     NodeResourceSlot, ResourceAllocation, ResourceKind, ResourceUnit,
 };
 use a3s_runtime::contract::{
@@ -94,15 +101,24 @@ impl FakeControl {
 }
 
 #[async_trait]
-impl IWorkloadRuntimeControl for FakeControl {
+impl IWorkloadDeploymentNodeCommandPort for FakeControl {
     async fn enqueue_command(
         &self,
-        draft: NodeCommandDraft,
-    ) -> Result<IdempotentWrite<NodeCommand>, RepositoryError> {
+        request: WorkloadDeploymentNodeCommandEnqueueRequest,
+    ) -> Result<WorkloadDeploymentNodeCommandDispatch, RepositoryError> {
+        let draft = NodeCommandDraft {
+            proposed_command_id: request.proposed_command_id,
+            node_id: request.node_id,
+            aggregate_id: request.aggregate_id,
+            payload: request.payload,
+            issued_at: request.issued_at,
+            not_after: request.not_after,
+            correlation_id: request.correlation_id,
+        };
         let mut state = self.state.write().await;
         if let Some(command) = state.commands.get(&draft.proposed_command_id) {
-            return Ok(IdempotentWrite {
-                value: command.clone(),
+            return Ok(WorkloadDeploymentNodeCommandDispatch {
+                command: project_command(command),
                 replayed: true,
             });
         }
@@ -110,8 +126,8 @@ impl IWorkloadRuntimeControl for FakeControl {
         let command =
             NodeCommand::issue(draft, state.sequence).map_err(RepositoryError::Conflict)?;
         state.commands.insert(command.id, command.clone());
-        Ok(IdempotentWrite {
-            value: command,
+        Ok(WorkloadDeploymentNodeCommandDispatch {
+            command: project_command(&command),
             replayed: false,
         })
     }
@@ -120,7 +136,7 @@ impl IWorkloadRuntimeControl for FakeControl {
         &self,
         node_id: NodeId,
         command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommand>, RepositoryError> {
+    ) -> Result<Option<WorkloadDeploymentNodeCommandProjection>, RepositoryError> {
         Ok(self
             .state
             .read()
@@ -128,14 +144,14 @@ impl IWorkloadRuntimeControl for FakeControl {
             .commands
             .get(&command_id)
             .filter(|command| command.node_id == node_id)
-            .cloned())
+            .map(project_command))
     }
 
     async fn command_acknowledgement(
         &self,
         node_id: NodeId,
         command_id: NodeCommandId,
-    ) -> Result<Option<NodeCommandAck>, RepositoryError> {
+    ) -> Result<Option<WorkloadDeploymentNodeCommandAcknowledgement>, RepositoryError> {
         Ok(self
             .state
             .read()
@@ -143,7 +159,11 @@ impl IWorkloadRuntimeControl for FakeControl {
             .acknowledgements
             .get(&command_id)
             .filter(|acknowledgement| acknowledgement.node_id == node_id.as_uuid())
-            .cloned())
+            .map(|acknowledgement| WorkloadDeploymentNodeCommandAcknowledgement {
+                lease_id: acknowledgement.lease_id,
+                completed_at: acknowledgement.completed_at,
+                outcome: acknowledgement.outcome.clone(),
+            }))
     }
 
     async fn latest_runtime_observation(
@@ -151,7 +171,7 @@ impl IWorkloadRuntimeControl for FakeControl {
         node_id: NodeId,
         unit_id: &str,
         generation: u64,
-    ) -> Result<Option<RuntimeObservationRecord>, RepositoryError> {
+    ) -> Result<Option<WorkloadDeploymentRuntimeObservationProjection>, RepositoryError> {
         Ok(self
             .state
             .read()
@@ -163,7 +183,34 @@ impl IWorkloadRuntimeControl for FakeControl {
                     && record.observation.unit_id == unit_id
                     && record.observation.generation == generation
             })
-            .cloned())
+            .map(|record| WorkloadDeploymentRuntimeObservationProjection {
+                report_id: record.report_id,
+                node_id: record.node_id,
+                command_id: record.command_id,
+                observed_at: record.observed_at,
+                received_at: record.received_at,
+                observation: record.observation.clone(),
+            }))
+    }
+
+    async fn current_resource_inventory(
+        &self,
+        _node_id: NodeId,
+    ) -> Result<Option<WorkloadDeploymentResourceInventoryProjection>, RepositoryError> {
+        Ok(None)
+    }
+}
+
+fn project_command(command: &NodeCommand) -> WorkloadDeploymentNodeCommandProjection {
+    WorkloadDeploymentNodeCommandProjection {
+        id: command.id,
+        node_id: command.node_id,
+        sequence: command.sequence,
+        aggregate_id: command.aggregate_id,
+        payload: command.payload.clone(),
+        issued_at: command.issued_at,
+        not_after: command.not_after,
+        correlation_id: command.correlation_id,
     }
 }
 
@@ -333,7 +380,7 @@ async fn bound_claim_recovery_reuses_the_exact_durable_prepare_binding(
     let control = Arc::new(FakeControl::default());
     let prepare_command_id = NodeCommandId::new();
     let prepare = control
-        .enqueue_command(NodeCommandDraft {
+        .enqueue_command(WorkloadDeploymentNodeCommandEnqueueRequest {
             proposed_command_id: prepare_command_id,
             node_id,
             aggregate_id: reserved.id.as_uuid(),
@@ -350,7 +397,7 @@ async fn bound_claim_recovery_reuses_the_exact_durable_prepare_binding(
             correlation_id: target.deployment.operation_id.as_uuid(),
         })
         .await?
-        .value;
+        .command;
     let preparing = claims
         .begin_preparation(
             reserved.organization_id,

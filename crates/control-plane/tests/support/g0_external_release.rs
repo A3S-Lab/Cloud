@@ -508,7 +508,7 @@ async fn create_workload_handoff(
         || first.bundle.workload.id != replay.bundle.workload.id
         || first.bundle.revision.id != replay.bundle.revision.id
         || first.bundle.deployment.id != replay.bundle.deployment.id
-        || first.bundle.operation.id != replay.bundle.operation.id
+        || first.bundle.operation.operation_id != replay.bundle.operation.operation_id
     {
         return Err(test_error(
             "published Workload handoff did not preserve exact idempotency replay",
@@ -522,8 +522,9 @@ async fn create_workload_handoff(
         .ok_or_else(|| test_error("published Workload omitted its external build trace"))?;
     if external.source_revision_id != inputs.source.revision.id
         || external.build_run_id != inputs.source.build_run_id
-        || first.bundle.operation.workflow.name() != "cloud.deployment"
-        || first.bundle.operation.workflow.version() != "4"
+        || first.bundle.operation.operation_id != first.bundle.deployment.operation_id
+        || first.bundle.operation.workload_id != first.bundle.workload.id
+        || first.bundle.operation.revision_id != first.bundle.revision.id
     {
         return Err(test_error(
             "published Workload changed its BuildRun or deployment workflow identity",
